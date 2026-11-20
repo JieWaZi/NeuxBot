@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -16,6 +17,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	"golang.org/x/sync/singleflight"
 )
 
 // Service 是 HTTP、执行能力、触发入口及 Runner 共同复用的应用边界。
@@ -36,20 +38,28 @@ type Service struct {
 	runner *runnerLifecycle
 	// repairOutput 只使用已证明禁用业务工具的独立文本通道。
 	repairOutput func(context.Context, models.WorkflowExecutionDefaults, map[string]any, string) (string, error)
+	// summarizeOutput 依据原终态执行无工具的独立补写。
+	summarizeOutput func(context.Context, models.WorkflowExecutionDefaults, string) (string, error)
+	// chatDeliveries 合并同一运行和交付项的同时请求。
+	chatDeliveries singleflight.Group
+	// chatTurns 提供普通发送和停止是否需要进入工作流领域的进程内提示。
+	chatTurns chatRunIndex
 	// worker 是既有 Execution Core 的窄适配端口。
 	worker WorkerPort
 	// creationSessions 保存创作会话与批注。
 	creationSessions controllers.WorkflowCreationController
 	// consumers 保存由用户选择且只在一个真实回合内有效的使用者能力。
 	consumers controllers.WorkflowConsumerController
+	// channelThreads 确认隐藏 Chat 是否是公开团队线程中的成员对话。
+	channelThreads controllers.ChannelThreadController
 	// executions 为真实创作派发中立工作。
 	executions execution.Service
 	// chats 校验当前创作执行身份。
 	chats chat.Module
 	// wakers 校验真实创作与节点伙伴。
 	wakers controllers.WakerController
-	// resources 返回真实可用智能体等公开资源目录。
-	resources func(context.Context) (map[string]any, error)
+	// resources 按类别返回设备上的公开资源项目。
+	resources func(context.Context, string) ([]map[string]any, error)
 	// pythonExecutable 是用户配置的解释器路径。
 	pythonExecutable string
 	// connectors 解析创作获准的现有凭据引用。
@@ -78,20 +88,24 @@ type Config struct {
 	Runs controllers.WorkflowRunController
 	// RepairOutput 通过独立文本调用最多纠正两次输出格式，不注入工作流业务能力。
 	RepairOutput func(context.Context, models.WorkflowExecutionDefaults, map[string]any, string) (string, error)
+	// SummarizeOutput 通过同一 Runtime 禁用原生工具的受限文本通道补写总结。
+	SummarizeOutput func(context.Context, models.WorkflowExecutionDefaults, string) (string, error)
 	// Worker 是真实执行与结果对账端口。
 	Worker WorkerPort
 	// CreationSessions 是创作仓储。
 	CreationSessions controllers.WorkflowCreationController
 	// Consumers 是单回合使用者能力仓储。
 	Consumers controllers.WorkflowConsumerController
+	// ChannelThreads 按真实 Chat 读取团队线程来源。
+	ChannelThreads controllers.ChannelThreadController
 	// Executions 是中立执行入口。
 	Executions execution.Service
 	// Chats 是权威创作会话查询。
 	Chats chat.Module
 	// Wakers 是伙伴目录。
 	Wakers controllers.WakerController
-	// Resources 是智能体等公开资源目录。
-	Resources func(context.Context) (map[string]any, error)
+	// Resources 加载指定类别的设备公开资源目录。
+	Resources func(context.Context, string) ([]map[string]any, error)
 	// PythonExecutable 是用户配置的 CPython 3.11+ 路径。
 	PythonExecutable string
 	// Connectors 是已有连接器仓储。
@@ -110,7 +124,7 @@ type Config struct {
 
 // New 只构造服务，不启动任何后台流程。
 func New(config Config) *Service {
-	return &Service{repairOutput: config.RepairOutput, commands: config.Commands, events: config.Events, store: config.Store, transactions: config.Transactions, runs: config.Runs, state: config.State, worker: config.Worker, creationSessions: config.CreationSessions, consumers: config.Consumers, executions: config.Executions, chats: config.Chats, wakers: config.Wakers, resources: config.Resources, pythonExecutable: config.PythonExecutable, connectors: config.Connectors, dataDirectory: config.DataDirectory, projects: config.Projects, imCall: config.IMCall, imValidate: config.IMValidate}
+	return &Service{repairOutput: config.RepairOutput, summarizeOutput: config.SummarizeOutput, commands: config.Commands, events: config.Events, store: config.Store, transactions: config.Transactions, runs: config.Runs, state: config.State, worker: config.Worker, creationSessions: config.CreationSessions, consumers: config.Consumers, channelThreads: config.ChannelThreads, executions: config.Executions, chats: config.Chats, wakers: config.Wakers, resources: config.Resources, pythonExecutable: config.PythonExecutable, connectors: config.Connectors, dataDirectory: config.DataDirectory, projects: config.Projects, imCall: config.IMCall, imValidate: config.IMValidate}
 }
 
 // runnerLifecycle 拥有调度循环、在途派发和取消生命周期。
@@ -121,6 +135,10 @@ type runnerLifecycle struct {
 	cancel context.CancelFunc
 	// done 表示调度循环已退出。
 	done chan struct{}
+	// copyingRun 仅标记正在独立冻结最终文件的运行；同一时刻至多进行一次此类复制。
+	copyingRun atomic.Pointer[string]
+	// deliveryWake 唤醒独立的交付循环，合并同批运行的终态通知。
+	deliveryWake chan struct{}
 	// workers 等待所有外部派发退出。
 	workers sync.WaitGroup
 }
@@ -136,9 +154,15 @@ func (s *Service) Start(ctx context.Context) error {
 	if s.runner != nil {
 		return status_error.WorkflowStateConflict
 	}
+	s.RestoreChatRunIndex(ctx)
 	child, cancel := context.WithCancel(ctx)
 	s.state.AgentBindings = s.AgentBindings
-	s.runner = &runnerLifecycle{ctx: child, cancel: cancel, done: make(chan struct{})}
+	s.runner = &runnerLifecycle{ctx: child, cancel: cancel, done: make(chan struct{}), deliveryWake: make(chan struct{}, 1)}
+	s.chatTurns.teamStopsReady.Store(true)
+	if s.chats != nil {
+		s.runner.workers.Add(1)
+		go s.runChatDeliveryLoop(s.runner)
+	}
 	go s.runLoop(s.runner)
 	return nil
 }
@@ -148,6 +172,7 @@ func (s *Service) Close() {
 	if s == nil || s.runner == nil {
 		return
 	}
+	s.chatTurns.teamStopsReady.Store(false)
 	lifecycle := s.runner
 	lifecycle.cancel()
 	<-lifecycle.done
@@ -172,7 +197,14 @@ func (s *Service) runLoop(lifecycle *runnerLifecycle) {
 			if lifecycle.ctx.Err() != nil {
 				return
 			}
-			state, err := s.tick(lifecycle.ctx, run.ID)
+			if lifecycle.copying(run.ID) {
+				continue
+			}
+			var batch chatOutputBatch
+			state, err := s.tickCheckpoint(lifecycle.ctx, run.ID, &batch)
+			if s.deferChatOutput(lifecycle, run.ID, &batch, err) {
+				continue
+			}
 			if err != nil {
 				if !errors.Is(err, status_error.WorkflowFenceConflict) {
 					logx.Errorf("advance workflow failed: run_id=%s error=%v", run.ID, err)
@@ -185,6 +217,7 @@ func (s *Service) runLoop(lifecycle *runnerLifecycle) {
 				continue
 			}
 			if workflowstate.TerminalRun(state.Run.Status) {
+				s.notifyTerminalChat(lifecycle, state.Run)
 				continue
 			}
 			if state.Run.Status == constants.WorkflowRunStatusCancelling {

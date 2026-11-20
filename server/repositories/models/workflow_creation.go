@@ -32,8 +32,6 @@ type WorkflowCreationSession struct {
 	ContextInstructions []workinput.Instruction `gorm:"serializer:json;type:text" json:"-"`
 	// Defaults 是本轮用户选择的真实执行配置。
 	Defaults WorkflowExecutionDefaults `gorm:"serializer:json;type:text;not null" json:"defaults"`
-	// AuthToken 是当前轮能力凭证，不向 API 公开。
-	AuthToken string `json:"-"`
 	// LastSavedRevisionID 是工具提交的最新回执，不由回复解析。
 	LastSavedRevisionID string `json:"lastSavedRevisionId"`
 	// CreatedAt 是创建时间。

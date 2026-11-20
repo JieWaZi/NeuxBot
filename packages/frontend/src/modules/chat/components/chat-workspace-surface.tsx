@@ -38,10 +38,7 @@ import { FloatingChat } from "./floating-chat";
 import type { ChatScopeKey } from "../model/conversation-identity";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
 import { WorkspaceDetailSplit } from "./workspace-detail-split";
-import {
-  ChatContributionScope,
-  WorkbenchOpeningProvider,
-} from "./chat-contributions";
+import { WorkbenchOpeningProvider } from "./chat-workspace-host";
 import { RightWorkbench } from "../workbench/right-workbench";
 import { useWorkbench } from "../workbench/workbench-store";
 import type { WorkbenchFileWorkspaceProps } from "../workbench/file/workbench-file-workspace";
@@ -51,7 +48,6 @@ import { workbenchMinWidth } from "../workbench/workbench-model";
 export type ChatWorkspaceAdapter = {
   identity: {
     chatId?: string;
-    messageContributions?: boolean;
     key: ChatScopeKey;
     scopeKey: string;
     /** 仅伙伴与团队会话提供；空字符串表示等待工作目录。 */
@@ -517,25 +513,15 @@ export function ChatWorkspaceSurface({
                   snapshot={snapshot}
                   title={activeTab?.label ?? adapter.thread.wakerName}
                 >
-                  <ChatContributionScope
-                    chatId={identity.chatId}
-                    scopeKey={identity.scopeKey}
-                    isRunning={adapter.snapshot.isRunning}
-                    active={active && sceneActive}
-                    enabled={identity.messageContributions ?? false}
-                  >
-                    <ChatThread
-                      {...adapter.thread}
-                      emptyStatePosition={
-                        canvasInput
-                          ? "center"
-                          : adapter.thread.emptyStatePosition
-                      }
-                      animateComposerSize={canvasInput !== undefined}
-                      fileScopeChatId={identity.chatId}
-                      isRunning={snapshot.isRunning}
-                    />
-                  </ChatContributionScope>
+                  <ChatThread
+                    {...adapter.thread}
+                    emptyStatePosition={
+                      canvasInput ? "center" : adapter.thread.emptyStatePosition
+                    }
+                    animateComposerSize={canvasInput !== undefined}
+                    fileScopeChatId={identity.chatId}
+                    isRunning={snapshot.isRunning}
+                  />
                 </FloatingChat>
               </div>
             }

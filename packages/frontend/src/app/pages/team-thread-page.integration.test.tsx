@@ -26,6 +26,7 @@ import "@/shared/i18n";
 import { ChatQueueProvider } from "@/modules/chat/runtime/chat-queue-store";
 import { WorkbenchProvider } from "@/modules/chat/workbench/workbench-store";
 import type { subscribeChannel, subscribeChat } from "@/shared/api/events";
+import type { subscribeGlobalEvents } from "@/shared/api/global-events";
 import { client } from "@/shared/api/generated/client.gen";
 import type {
   CreateChannelThreadResponse,
@@ -33,18 +34,29 @@ import type {
 } from "@/shared/api/generated/types.gen";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import { AppSceneWorkspaceContextProvider } from "@/shared/workspace/app-scene-workspace";
-import { WorkspaceProvider } from "@/shared/workspace/workspace-context";
+import {
+  WorkspaceProvider,
+  useSceneWorkspace,
+} from "@/shared/workspace/workspace-context";
 import { TeamThreadPage } from "./team-thread-page";
 
+const stagePastedFile = vi.hoisted(() =>
+  vi.fn<(file: File) => Promise<string>>(),
+);
 vi.mock("@/shared/platform", () => ({
   isDesktopRuntime: () => false,
   hasPlatformService: () => false,
   subscribeFileDrop: () => () => undefined,
+  stageAttachment: stagePastedFile,
 }));
 const stream = vi.hoisted(() => ({
   channel: undefined as
     Parameters<typeof subscribeChannel>[2]["onEvent"] | undefined,
   chat: undefined as Parameters<typeof subscribeChat>[1]["onEvent"] | undefined,
+  workflows: new Map<
+    string,
+    Parameters<typeof subscribeGlobalEvents>[2]["onEvent"]
+  >(),
 }));
 vi.mock("@/shared/api/events", () => ({
   subscribeChannel: ((_, __, { onEvent }) => {
@@ -150,9 +162,87 @@ async function verifyQueuedLeadInputFeedback() {
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 }
 
+async function verifyWorkflowDraftMove() {
+  const staging = deferred<string>();
+  stagePastedFile.mockReset();
+  stagePastedFile.mockReturnValue(staging.promise);
+  server.use(
+    http.get(`${api}/workflows`, () =>
+      HttpResponse.json({
+        items: [
+          { id: "flow", title: "Release report", currentRevisionId: "rev" },
+        ],
+      }),
+    ),
+    http.get(`${api}/chats/member-chat`, () =>
+      HttpResponse.json({
+        chat: {
+          id: "member-chat",
+          wakerId: "member",
+          workspaceDirectory: "/tmp/bot",
+        },
+      }),
+    ),
+    http.get(`${api}/chats/member-chat/messages`, () =>
+      HttpResponse.json({ resources: [], hasMore: false }),
+    ),
+    http.get(`${api}/wakers/member/skills`, () => HttpResponse.json([])),
+    http.get(`${api}/wakers/member/connectors`, () => HttpResponse.json([])),
+    http.get(`${api}/wakers/member/plugin-references`, () =>
+      HttpResponse.json([]),
+    ),
+  );
+  const user = userEvent.setup();
+  const input = screen.getByRole("textbox");
+  await user.type(input, "@");
+  await user.click(await screen.findByRole("option", { name: /开发成员/ }));
+  await user.type(input, " #release");
+  await user.click(
+    await screen.findByRole("option", { name: "Release report" }),
+  );
+  fireEvent.paste(input, {
+    clipboardData: {
+      files: [
+        new File(["draft input"], "report.md", { type: "text/markdown" }),
+      ],
+    },
+  });
+  await waitFor(() => expect(stagePastedFile).toHaveBeenCalledOnce());
+  await user.click(screen.getByRole("button", { name: "带草稿打开成员对话" }));
+  await waitFor(() => {
+    expect(screen.getByRole("textbox")).toHaveTextContent("Release report");
+    expect(screen.getByRole("textbox")).not.toHaveTextContent("开发成员");
+  });
+  expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "切换到团队主对话" }));
+  expect(screen.getByRole("textbox")).not.toHaveTextContent("Release report");
+  await user.click(screen.getByRole("button", { name: "切换到开发成员" }));
+  expect(screen.getByRole("textbox")).toHaveTextContent("Release report");
+  await act(async () => staging.resolve("/tmp/bot/uploads/report.md"));
+  expect(await screen.findByText("report.md")).toBeVisible();
+  expect(screen.getAllByText("report.md")).toHaveLength(1);
+  expect(stagePastedFile).toHaveBeenCalledOnce();
+}
+
+function TeamTestTabs() {
+  const workspace = useSceneWorkspace("team:team-1:thread-1");
+  return workspace.snapshot.tabs.map((tab) => (
+    <button
+      key={tab.id}
+      type="button"
+      onClick={() => workspace.dispatch({ type: "select-tab", tabId: tab.id })}
+    >
+      {tab.kind === "chat" ? "切换到团队主对话" : `切换到${tab.label}`}
+    </button>
+  ));
+}
+
 const api = "http://bot.test/api/v1";
 const server = setupServer(
   http.get(`${api}/ai-accounts`, () => HttpResponse.json({ resources: [] })),
+  http.get(`${api}/chats/:chatId/workflow-runs`, () =>
+    HttpResponse.json({ resources: [] }),
+  ),
 );
 const originalScrollTo = HTMLElement.prototype.scrollTo;
 beforeEach(() => {
@@ -193,6 +283,8 @@ describe("团队首发完整路由交接", () => {
     historyFails?: boolean;
     unknownMemberOptions?: boolean;
     checkQueuedFailure?: boolean;
+    checkDraftMove?: boolean;
+    checkWorkflowOnly?: boolean;
   }>([
     { withExecution: true, status: "running" },
     { withExecution: false, status: "running" },
@@ -200,19 +292,24 @@ describe("团队首发完整路由交接", () => {
     { withExecution: false, status: "running", historyFails: true },
     { withExecution: true, status: "running", unknownMemberOptions: true },
     { withExecution: true, status: "running", checkQueuedFailure: true },
+    { withExecution: false, status: "completed", checkDraftMove: true },
+    { withExecution: false, status: "completed", checkWorkflowOnly: true },
   ])(
-    "首发配置与交接 execution=$withExecution，历史=$status，首次查询失败=$historyFails，成员可选配置未知=$unknownMemberOptions，队列结算=$checkQueuedFailure",
+    "首发配置与交接 execution=$withExecution，历史=$status，首次查询失败=$historyFails，成员可选配置未知=$unknownMemberOptions，队列结算=$checkQueuedFailure，草稿移交=$checkDraftMove，独立工作流=$checkWorkflowOnly",
     async ({
       withExecution,
       status,
       historyFails,
       unknownMemberOptions,
       checkQueuedFailure,
+      checkDraftMove,
+      checkWorkflowOnly,
     }) => {
       const creation = deferred<CreateChannelThreadResponse>();
       const history = deferred<ListChannelTimelineResponse>();
       const received = vi.fn();
       let historyRequests = 0;
+      let activeWorkflows = false;
       let submissionId = "";
       const text = "团队首发连续可见";
       const thread = {
@@ -360,6 +457,7 @@ describe("团队首发完整路由交接", () => {
             thread,
             members,
             tasks: [],
+            activeWorkflows,
             leadProcessing: status === "running",
             leadActiveExecutionId:
               status === "running" ? execution.id : undefined,
@@ -446,6 +544,7 @@ describe("团队首发完整路由交接", () => {
                       }}
                     >
                       <RouterProvider router={router} />
+                      {checkDraftMove ? <TeamTestTabs /> : null}
                     </AppSceneWorkspaceContextProvider>
                   </ChatQueueProvider>
                 </WorkbenchProvider>
@@ -611,6 +710,37 @@ describe("团队首发完整路由交接", () => {
           expect(activeAvatar()).toHaveAttribute("data-animation", "notify");
         }
         if (checkQueuedFailure) await verifyQueuedLeadInputFeedback();
+        if (checkDraftMove) await verifyWorkflowDraftMove();
+        if (checkWorkflowOnly) {
+          const stop = '[data-chat-primary-action="stop"]';
+          const changeWorkflowStatus = (active: boolean) => {
+            activeWorkflows = active;
+            expect(stream.workflows.get("member-chat")).toBeDefined();
+            act(() =>
+              stream.workflows.get("member-chat")?.({
+                topic: "workflow",
+                type: "workflow.changed",
+                resource: { kind: "chat", id: "member-chat" },
+                epoch: "test-epoch",
+                connectionId: "test-connection",
+                protocolVersion: 1,
+                deliverySequence: 1,
+                eventId: "workflow-changed",
+                payload: {},
+              }),
+            );
+          };
+          expect(view.container.querySelector(stop)).not.toBeInTheDocument();
+          changeWorkflowStatus(true);
+          await waitFor(() =>
+            expect(view.container.querySelector(stop)).toBeVisible(),
+          );
+          expect(screen.getByText("团队仍在执行")).toBeVisible();
+          changeWorkflowStatus(false);
+          await waitFor(() =>
+            expect(view.container.querySelector(stop)).not.toBeInTheDocument(),
+          );
+        }
       } finally {
         observer.disconnect();
         view.unmount();
@@ -623,5 +753,12 @@ describe("团队首发完整路由交接", () => {
 
 vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
-  subscribeGlobalEvents: () => () => {},
+  subscribeGlobalEvents: ((topic, resource, { onEvent }) => {
+    if (topic !== "workflow" || !resource.id) return () => {};
+    const id = resource.id;
+    stream.workflows.set(id, onEvent);
+    return () => {
+      if (stream.workflows.get(id) === onEvent) stream.workflows.delete(id);
+    };
+  }) satisfies typeof subscribeGlobalEvents,
 }));

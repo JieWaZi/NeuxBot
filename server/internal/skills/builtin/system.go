@@ -12,19 +12,6 @@ import (
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 )
 
-func systemDefinition() (definition, error) {
-	items, err := definitions()
-	if err != nil {
-		return definition{}, err
-	}
-	for _, item := range items {
-		if item.System && item.Directory == constants.AgentCLISkillName {
-			return item, nil
-		}
-	}
-	return definition{}, status_error.SkillUnavailable
-}
-
 // CLIPath 返回系统技能中当前平台的可执行入口。
 func CLIPath(directory string) string {
 	name := constants.AgentCLIBinaryName
@@ -36,7 +23,7 @@ func CLIPath(directory string) string {
 
 // SystemDirectory 将同包资源和受管 CLI 一起准备为不可变技能，不使用用户版本指针。
 func SystemDirectory(dataDirectory, binaryPath string) (string, error) {
-	item, err := systemDefinition()
+	item, err := managedskills.SystemSkillDefinition()
 	if err != nil {
 		return "", err
 	}
@@ -49,7 +36,7 @@ func SystemDirectory(dataDirectory, binaryPath string) (string, error) {
 		return "", status_error.AgentConnectionUnavailable
 	}
 	// CLI 字节和执行位纳入同一内容摘要，更新程序时不会复用旧入口。
-	item.Files = append(item.Files, resource{Path: filepath.ToSlash(CLIPath("")), Data: binary, Executable: true})
+	item.Files = append(item.Files, managedskills.BuiltinResource{Path: filepath.ToSlash(CLIPath("")), Data: binary, Executable: true})
 	root := filepath.Join(dataDirectory, constants.AgentCLISystemSkillsDirectory)
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", status_error.SkillStorageError
@@ -108,7 +95,7 @@ func Guide(id string) (string, error) {
 	if !ok {
 		return "", status_error.AgentOperationForbidden
 	}
-	item, err := systemDefinition()
+	item, err := managedskills.SystemSkillDefinition()
 	if err != nil {
 		return "", err
 	}

@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
@@ -27,12 +30,20 @@ import (
 
 // StartRunCommand 是用户、子运行与自动任务共用的接纳命令。
 type StartRunCommand struct {
+	// localConsumer 随本地伙伴的首次运行接纳一同提交使用权限。
+	localConsumer *models.WorkflowConsumerLease
+	// ChatSource 是服务端确认的聊天来源，运行与该关系一同提交。
+	ChatSource *ChatRunSource `json:"-"`
+	// ReplaySourceRunID 让完整重跑沿用已经冻结的原输入文件，但不复用节点结果。
+	ReplaySourceRunID string `json:"-"`
+	// ExpectedSourceVersion 是重新执行时核对的来源运行版本。
+	ExpectedSourceVersion int64 `json:"-"`
 	// AutomaticRunID 是服务端传入的原自动运行，不能从用户或模型正文绑定。
 	AutomaticRunID string `json:"-"`
 	// InputFileOwnerKeyID 由调用入口填写，原件同时绑定任务和集成主体。
 	InputFileOwnerKeyID string `json:"-"`
-	// InputFileRoots 只由 CLI 认证层提供，允许读取的原文件将在接纳前冻结。
-	InputFileRoots []string `json:"-"`
+	// stagedInputs 是已核验 CLI 文件范围并复制的候选原件。
+	stagedInputs *workflowfiles.StagedInputs
 	// WorkerConfigurations 仅由重新运行入口携带原节点配置，外部输入不能自行填写。
 	WorkerConfigurations map[string]models.WorkflowExecutionDefaults `json:"-"`
 	// InputFileTaskID 是自动任务入口绑定的上传归属，外部请求不能自行填写。
@@ -41,6 +52,8 @@ type StartRunCommand struct {
 	ConsumerLeaseID string `json:"-"`
 	// ApprovedScope 是业务入口已经验证的工作范围，HTTP 和模型不能自行扩大。
 	ApprovedScope *models.WorkflowScopeBinding `json:"-"`
+	// additionalWorkingDirectories 是来源聊天批准的其他根目录。
+	additionalWorkingDirectories []string
 	// TriggerSource 是服务端明确写入的接纳来源。
 	TriggerSource string `json:"-"`
 	// RetrySourceRunID 关联用户明确重新运行的源运行。
@@ -57,6 +70,8 @@ type StartRunCommand struct {
 	Defaults models.WorkflowExecutionDefaults `json:"defaults"`
 	// ParentRunID 是服务端填写的来源运行。
 	ParentRunID string `json:"-"`
+	// AwaitChildResult 表示创建该子运行的 workflow 节点会直接读取结果。
+	AwaitChildResult bool `json:"-"`
 	// Joined 表示跟随父运行取消。
 	Joined bool `json:"-"`
 	// Depth 是服务端填写的调用深度。
@@ -68,14 +83,32 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 	if s.runs == nil {
 		return models.WorkflowRun{}, status_error.WorkflowCapabilityUnsupported
 	}
-	if command.RequestID == "" || len(command.RequestID) > 128 || command.Depth > constants.WorkflowMaxChildDepth {
+	if command.RequestID == "" || len(command.RequestID) > 128 || command.Depth > constants.WorkflowMaxChildDepth ||
+		(command.RetrySourceRunID != "" && command.ReplaySourceRunID != "") || (command.ParentRunID != "" && command.ChatSource != nil) {
 		return models.WorkflowRun{}, status_error.BadRequest
+	}
+	if origin := command.ChatSource; origin != nil && !origin.Workbench && !s.chatTurns.beginStart(origin.ChatID, origin.ExecutionID) {
+		return models.WorkflowRun{}, status_error.WorkflowStateConflict
 	}
 	encodedArgs, err := json.Marshal(command.Args)
 	if err != nil || len(encodedArgs) > constants.WorkflowOutputLimitBytes {
 		return models.WorkflowRun{}, status_error.WorkflowBudgetExceeded.WithField("budget", "input_bytes")
 	}
-	digest := workflowstate.Digest([]any{command, command.DefinitionID, command.TriggerSource, command.RetrySourceRunID, command.ParentRunID, command.Joined, command.Depth, command.ConsumerLeaseID, command.ApprovedScope, command.InputFileTaskID, command.InputFileOwnerKeyID, command.AutomaticRunID, command.WorkerConfigurations})
+	payload := []any{command, command.DefinitionID, command.TriggerSource, command.RetrySourceRunID, command.ParentRunID, command.Joined, command.Depth, command.ConsumerLeaseID, command.ApprovedScope, command.InputFileTaskID, command.InputFileOwnerKeyID, command.AutomaticRunID, command.WorkerConfigurations}
+	if command.ChatSource != nil || command.ReplaySourceRunID != "" {
+		payload = append(payload, command.ChatSource, command.ReplaySourceRunID)
+	}
+	if len(command.additionalWorkingDirectories) != 0 {
+		payload = append(payload, command.additionalWorkingDirectories)
+	}
+	if command.stagedInputs != nil {
+		digests := make(map[string]string, len(command.stagedInputs.Files))
+		for pointer, input := range command.stagedInputs.Files {
+			digests[pointer] = input.Digest
+		}
+		payload = append(payload, digests)
+	}
+	digest := workflowstate.Digest(payload)
 	// 幂等重放不重新访问已经冻结的目录或账号。
 	if receipt, found, err := s.store.FindReceipt(ctx, command.DefinitionID, command.RequestID); err != nil {
 		return models.WorkflowRun{}, err
@@ -104,16 +137,39 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 	if err := verifyRevision(preparedRevision); err != nil {
 		return models.WorkflowRun{}, err
 	}
+	if _, err := validateSourcePolicies(preparedRevision.Manifest); err != nil {
+		return models.WorkflowRun{}, err
+	}
 	if err := s.validateIMDependencies(ctx, preparedRevision); err != nil {
 		return models.WorkflowRun{}, err
 	}
-	preparedID := requestidempotency.Identity{ID: command.RequestID}.ResourceID("workflow-run", definition.ID)
+	preparedID := workflowRunID(definition.ID, command.RequestID)
 	workspace, err := workflowfiles.PrepareWorkspace(s.dataDirectory, definition.ID, preparedID)
 	if err != nil {
 		return models.WorkflowRun{}, err
 	}
+	var parent, previous *models.WorkflowRun
+	limitWorkerPermissions := command.ConsumerLeaseID != ""
+	if sourceID := cmp.Or(command.ParentRunID, command.RetrySourceRunID, command.ReplaySourceRunID); sourceID != "" {
+		source, err := s.runs.GetRun(ctx, sourceID)
+		if err != nil {
+			return models.WorkflowRun{}, err
+		}
+		if sourceID == command.ParentRunID {
+			parent = &source
+		} else {
+			previous = &source
+			command.ApprovedScope = &source.ScopeBinding
+		}
+		command.additionalWorkingDirectories = source.AdditionalWorkingDirectories
+		// 重试与子运行继续使用已冻结的调用者权限，聊天展示和停止归属独立处理。
+		if source.WorkerPermissionsLimited {
+			limitWorkerPermissions = true
+			command.Defaults = constrainWorkflowDefaults(command.Defaults, source.Defaults)
+		}
+	}
 	configurations := make(map[string]models.WorkflowExecutionDefaults)
-	scope, err := s.prepareAdmission(ctx, definition, preparedRevision, command, configurations)
+	scope, err := s.prepareAdmission(ctx, definition, preparedRevision, command, parent, limitWorkerPermissions, configurations)
 	if err != nil {
 		return models.WorkflowRun{}, err
 	}
@@ -130,6 +186,40 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 			return models.WorkflowRun{}, err
 		}
 	}
+	args := command.Args
+	if args == nil {
+		args = map[string]any{}
+	}
+	args = workflowdsl.ApplyDefaults(preparedRevision.Manifest.Meta.InputSchema, args)
+	if err := workflowdsl.ValidateJSON(preparedRevision.Manifest.Meta.InputSchema, args); err != nil {
+		return models.WorkflowRun{}, err
+	}
+	stage := command.stagedInputs
+	if stage == nil && len(workflowdsl.FileValues(preparedRevision.Manifest.Meta.InputSchema, args)) > 0 {
+		stage, err = workflowfiles.StageInputs(workspace, preparedID)
+		if err != nil {
+			return models.WorkflowRun{}, err
+		}
+		defer stage.Close()
+		if err := s.prepareInputFiles(ctx, command, preparedRevision, preparedID, workspace, scope, args, stage, previous, parent); err != nil {
+			return models.WorkflowRun{}, err
+		}
+	}
+	var inputDigests map[string]string
+	if stage != nil {
+		inputDigests = make(map[string]string, len(stage.Files))
+		args, err = workflowdsl.MapFiles(preparedRevision.Manifest.Meta.InputSchema, args, func(pointer, _ string) (string, error) {
+			input, ok := stage.Files[pointer]
+			if !ok {
+				return "", status_error.WorkflowFileInvalid.WithField("field", pointer)
+			}
+			inputDigests[pointer] = input.Digest
+			return input.Path, nil
+		})
+		if err != nil {
+			return models.WorkflowRun{}, err
+		}
+	}
 	s.state.Commands.Lock()
 	defer s.state.Commands.Unlock()
 	if receipt, found, err := s.store.FindReceipt(ctx, command.DefinitionID, command.RequestID); err != nil {
@@ -141,31 +231,17 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		id, _ := receipt.Result["runId"].(string)
 		return s.runs.GetRun(ctx, id)
 	}
-	args := command.Args
-	if args == nil {
-		args = map[string]any{}
-	}
-	args = workflowdsl.ApplyDefaults(preparedRevision.Manifest.Meta.InputSchema, args)
-	if err := workflowdsl.ValidateJSON(preparedRevision.Manifest.Meta.InputSchema, args); err != nil {
-		return models.WorkflowRun{}, err
-	}
-	preparedArgs, err := s.prepareInputFiles(ctx, command, preparedRevision, preparedID, workspace, scope, args)
-	if err != nil {
-		return models.WorkflowRun{}, err
+	if stage != nil {
+		if err := stage.Publish(); err != nil {
+			return models.WorkflowRun{}, err
+		}
 	}
 	var run models.WorkflowRun
 	err = s.transactions.Transaction(ctx, func(ctx context.Context) error {
-		receipt, found, err := s.store.FindReceipt(ctx, command.DefinitionID, command.RequestID)
-		if err != nil {
-			return err
-		}
-		if found {
-			if receipt.Kind != "run" || receipt.PayloadDigest != digest {
-				return status_error.WorkflowRequestConflict
+		if command.ChatSource != nil {
+			if err := s.validateChatRunAdmission(ctx, command); err != nil {
+				return err
 			}
-			id, _ := receipt.Result["runId"].(string)
-			run, err = s.runs.GetRun(ctx, id)
-			return err
 		}
 		definition, err := s.store.GetDefinition(ctx, command.DefinitionID)
 		if err != nil {
@@ -181,6 +257,9 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		if revisionID != preparedRevision.ID {
 			return status_error.WorkflowRevisionConflict
 		}
+		if err := s.validateReexecution(ctx, command, revisionID); err != nil {
+			return err
+		}
 		revision, err := s.store.GetRevision(ctx, definition.ID, revisionID)
 		if err != nil {
 			return err
@@ -188,7 +267,6 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		if err := s.validateIMDependencies(ctx, revision); err != nil {
 			return err
 		}
-		args := preparedArgs
 		encodedArgs, err := json.Marshal(args)
 		if err != nil || len(encodedArgs) > constants.WorkflowOutputLimitBytes {
 			return status_error.WorkflowBudgetExceeded.WithField("budget", "input_bytes")
@@ -213,6 +291,7 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		now := time.Now().UnixMilli()
 		id := preparedID
 		rootRunID := id
+		var captureFilesForChatParent bool
 		if command.ParentRunID != "" {
 			parent, err := s.runs.GetRun(ctx, command.ParentRunID)
 			if err != nil {
@@ -234,6 +313,10 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 			}
 			if count > constants.WorkflowMaxChildren {
 				return status_error.WorkflowBudgetExceeded.WithField("budget", "child_count")
+			}
+			captureFilesForChatParent, err = s.childFilesReachChat(ctx, command, parent, revision)
+			if err != nil {
+				return err
 			}
 		}
 		fiberID := util.New()
@@ -263,10 +346,20 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		if pythonPath != "" {
 			flowContext["pythonExecutable"] = pythonPath
 		}
-		if command.ConsumerLeaseID != "" {
-			flowContext["consumerLeaseId"] = command.ConsumerLeaseID
+		run = models.WorkflowRun{AutomaticRunID: command.AutomaticRunID, ID: id, RootRunID: rootRunID, DefinitionID: definition.ID, RevisionID: revision.ID, RevisionOrdinal: revision.Ordinal, Status: constants.WorkflowRunStatusQueued, Args: args, InputFileDigests: inputDigests, Defaults: command.Defaults, WorkerConfigurations: configurations, Limits: revision.Manifest.Meta.Limits, ScopeBinding: scope, Context: flowContext, RootFiberID: fiberID, ParentRunID: command.ParentRunID, Joined: command.Joined, Depth: command.Depth, Version: 1, StartedAt: now, DeadlineAt: now + timeout}
+		run.WorkerPermissionsLimited = limitWorkerPermissions
+		run.AdditionalWorkingDirectories = command.additionalWorkingDirectories
+		run.CaptureFilesForChatParent = captureFilesForChatParent
+		if origin := command.ChatSource; origin != nil {
+			run.SourceChatID = origin.ChatID
+			run.SourceExecutionID = origin.ExecutionID
+			run.SourceMessageID = origin.MessageID
+			run.SourceThreadID = origin.ThreadID
+			run.SourceWakerID = origin.WakerID
+			run.SourceName = origin.Name
+			run.SourceRunID = origin.RunID
+			run.SourceWorkbench = origin.Workbench
 		}
-		run = models.WorkflowRun{AutomaticRunID: command.AutomaticRunID, ID: id, RootRunID: rootRunID, DefinitionID: definition.ID, RevisionID: revision.ID, RevisionOrdinal: revision.Ordinal, Status: constants.WorkflowRunStatusQueued, Args: args, Defaults: command.Defaults, WorkerConfigurations: configurations, Limits: revision.Manifest.Meta.Limits, ScopeBinding: scope, Context: flowContext, RootFiberID: fiberID, ParentRunID: command.ParentRunID, Joined: command.Joined, Depth: command.Depth, Version: 1, StartedAt: now, DeadlineAt: now + timeout}
 		fiber := models.WorkflowFiber{ID: fiberID, RunID: id, Path: "root", Status: constants.WorkflowStepStatusReady, State: workflowdsl.NewMachine(revision.Bundle, args, flowContext, now)}
 		if err = s.runs.CreateRun(ctx, run, fiber); err != nil {
 			return err
@@ -278,9 +371,45 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 			return err
 		}
 		_, err = s.store.AppendEvent(ctx, models.WorkflowEvent{StreamID: definition.ID, EventID: util.New(), Type: constants.WorkflowRunCreatedEvent, EntityID: id, Payload: map[string]any{"runId": id, "revisionId": revision.ID}})
+		if err == nil && run.SourceChatID != "" {
+			chatID, executionID := run.SourceChatID, run.SourceExecutionID
+			if run.SourceWorkbench {
+				executionID = ""
+			}
+			events.AfterCommit(ctx, func() { s.chatTurns.remember(chatID, executionID) })
+		}
 		return err
 	})
+	if err != nil && stage != nil {
+		stage.Rollback()
+	}
 	return run, err
+}
+
+func workflowRunID(definitionID, requestID string) string {
+	return requestidempotency.Identity{ID: requestID}.ResourceID("workflow-run", definitionID)
+}
+
+func keepsFinalChatFiles(run models.WorkflowRun) bool {
+	return run.CaptureFilesForChatParent || run.SourceChatID != "" && !run.SourceWorkbench
+}
+
+// childFilesReachChat 只给可返回结果的子链保留文件。异步启动要求子流程声明文件且父流程可显式等待。
+func (s *Service) childFilesReachChat(ctx context.Context, command StartRunCommand, parent models.WorkflowRun, revision models.WorkflowRevision) (bool, error) {
+	if !keepsFinalChatFiles(parent) {
+		return false, nil
+	}
+	if command.AwaitChildResult {
+		return true, nil
+	}
+	if !workflowdsl.HasDeclaredFileFields(revision.Manifest.Meta.OutputSchema) {
+		return false, nil
+	}
+	parentRevision, err := s.store.GetRevision(ctx, parent.DefinitionID, parent.RevisionID)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(parentRevision.Manifest.Nodes, func(node workflowdsl.Node) bool { return node.Kind == "joinWorkflow" }), nil
 }
 
 func (s *Service) validateIMDependencies(ctx context.Context, revision models.WorkflowRevision) error {
@@ -329,33 +458,34 @@ func (s *Service) CancelRun(ctx context.Context, id string) error {
 	s.state.Commands.Lock()
 	defer s.state.Commands.Unlock()
 	return s.transactions.Transaction(ctx, func(ctx context.Context) error {
-		state, err := s.state.OwnedRun(ctx, id)
+		run, err := s.requestRunCancellation(ctx, id)
 		if err != nil {
 			return err
 		}
-		if !workflowstate.TerminalRun(state.Run.Status) {
-			state.Run.Status = constants.WorkflowRunStatusCancelling
-			if err := s.state.CommitRun(ctx, state); err != nil {
-				return err
-			}
-		}
-		return capability.Commit(ctx, map[string]any{"runId": id, "definitionId": state.Run.DefinitionID, "cancellationRequested": true})
+		return capability.Commit(ctx, map[string]any{"runId": id, "definitionId": run.DefinitionID, "cancellationRequested": true})
 	})
 }
 
-func (s *Service) prepareAdmission(ctx context.Context, definition models.WorkflowDefinition, revision models.WorkflowRevision, command StartRunCommand, configurations map[string]models.WorkflowExecutionDefaults) (models.WorkflowScopeBinding, error) {
-	scope := definition.ScopeBinding
-	if err := s.validateSourcePolicies(ctx, revision.Manifest); err != nil {
-		return scope, err
+func (s *Service) requestRunCancellation(ctx context.Context, id string) (models.WorkflowRun, error) {
+	state, err := s.state.OwnedRun(ctx, id)
+	if err != nil {
+		return models.WorkflowRun{}, err
 	}
+	if !workflowstate.TerminalRun(state.Run.Status) && state.Run.Status != constants.WorkflowRunStatusCancelling {
+		state.Run.Status = constants.WorkflowRunStatusCancelling
+		if err := s.state.CommitRun(ctx, state); err != nil {
+			return models.WorkflowRun{}, err
+		}
+	}
+	return state.Run, nil
+}
+
+func (s *Service) prepareAdmission(ctx context.Context, definition models.WorkflowDefinition, revision models.WorkflowRevision, command StartRunCommand, parent *models.WorkflowRun, limitWorkerPermissions bool, configurations map[string]models.WorkflowExecutionDefaults) (models.WorkflowScopeBinding, error) {
+	scope := definition.ScopeBinding
 	if command.ApprovedScope != nil {
 		scope = *command.ApprovedScope
 	}
-	if command.ParentRunID != "" {
-		parent, err := s.runs.GetRun(ctx, command.ParentRunID)
-		if err != nil {
-			return scope, err
-		}
+	if parent != nil {
 		if command.Depth != parent.Depth+1 || workflowstate.TerminalRun(parent.Status) || parent.Status == constants.WorkflowRunStatusCancelling {
 			return scope, status_error.WorkflowStateConflict
 		}
@@ -397,12 +527,15 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 	if err != nil {
 		return scope, err
 	}
+	if (command.ApprovedScope != nil || parent != nil) && directory != scope.WorkingDirectory {
+		return scope, status_error.WorkflowResourceInvalid.WithField("field", "workingDirectory")
+	}
 	scope.WorkingDirectory = directory
 	defaults := command.Defaults
 	if defaults.PermissionLevel == "" {
 		defaults.PermissionLevel = constants.PermissionLevelDefault
 	}
-	if command.ConsumerLeaseID != "" {
+	if limitWorkerPermissions {
 		// 已接纳的调用者使用系统身份；保留其冻结选择供同一身份的节点继承。
 		defaults.RuntimeID = strings.TrimSpace(defaults.RuntimeID)
 		defaults.AccountID = strings.TrimSpace(defaults.AccountID)
@@ -431,11 +564,12 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 					return scope, status_error.WorkflowStateInvalid
 				}
 			} else {
-				nodeDefaults = workerConfiguration(node.Options, defaults)
+				var inherited bool
+				nodeDefaults, inherited = workerConfiguration(node.Options, defaults)
+				selectionResolved = limitWorkerPermissions && inherited
 			}
-			if !selectionResolved && command.ConsumerLeaseID != "" {
-				// 同身份节点继承实际调用者的原生空值；显式换 Runtime 或账号仍解析新默认。
-				selectionResolved = nodeDefaults.RuntimeID == defaults.RuntimeID && nodeDefaults.AccountID == defaults.AccountID
+			if limitWorkerPermissions && defaults.WorkspaceReadOnly {
+				nodeDefaults.WorkspaceReadOnly = true
 			}
 			resolved, err := s.worker.ResolveAdmission(ctx, node.Options, nodeDefaults, selectionResolved)
 			if err != nil {
@@ -445,15 +579,8 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 				return scope, err
 			}
 			// 从既有执行调用工作流时，节点配置不能扩大调用者冻结的权限。
-			if command.ConsumerLeaseID != "" {
-				levels := map[constants.PermissionLevel]int{
-					constants.PermissionLevelDefault:    0,
-					constants.PermissionLevelAuto:       1,
-					constants.PermissionLevelFullAccess: 2,
-				}
-				if levels[resolved.PermissionLevel] > levels[defaults.PermissionLevel] {
-					return scope, status_error.WorkflowCapabilityUnsupported.WithField("capability", "worker_permission_escalation")
-				}
+			if limitWorkerPermissions && workflowPermissions(resolved.PermissionLevel) > workflowPermissions(defaults.PermissionLevel) {
+				return scope, status_error.WorkflowCapabilityUnsupported.WithField("capability", "worker_permission_escalation")
 			}
 			configurations[node.ID] = resolved
 		}
@@ -475,40 +602,59 @@ func (s *Service) UploadFile(ctx context.Context, definitionID, taskID, name str
 	return workflowfiles.Save(ctx, s.dataDirectory, definitionID, taskID, name, input)
 }
 
-func (s *Service) prepareInputFiles(ctx context.Context, command StartRunCommand, revision models.WorkflowRevision, runID string, workspace workflowfiles.Workspace, scope models.WorkflowScopeBinding, args any) (any, error) {
-	return workflowdsl.MapFiles(revision.Manifest.Meta.InputSchema, args, func(pointer, reference string) (string, error) {
-		if strings.HasPrefix(reference, constants.WorkflowFileReferencePrefix) {
-			return workflowfiles.Materialize(ctx, s.dataDirectory, command.DefinitionID, command.InputFileTaskID, runID, workspace.RootDirectory, reference, command.InputFileOwnerKeyID)
+func (s *Service) prepareInputFiles(ctx context.Context, command StartRunCommand, revision models.WorkflowRevision, runID string, workspace workflowfiles.Workspace, scope models.WorkflowScopeBinding, args any, stage *workflowfiles.StagedInputs, previous, parent *models.WorkflowRun) error {
+	schema := revision.Manifest.Meta.InputSchema
+	var sourceWorkspace workflowfiles.Workspace
+	var sourceInputs map[string]string
+	if previous != nil {
+		if previous.DefinitionID != revision.DefinitionID || previous.RevisionID != revision.ID {
+			return status_error.WorkflowStateConflict
 		}
-		roots := command.InputFileRoots
-		if len(roots) == 0 {
-			roots = []string{scope.WorkingDirectory, workspace.RootDirectory}
-			ownerWorkspace := workspace
-			// 子流程和明确重跑只继承已接纳来源的内部输入，不接受模型增补目录。
-			sourceID := command.ParentRunID
-			if sourceID == "" {
-				sourceID = command.RetrySourceRunID
+		var err error
+		sourceWorkspace, err = runWorkspace(*previous)
+		if err != nil {
+			return err
+		}
+		sourceInputs = workflowdsl.FileValues(schema, previous.Args)
+	}
+	roots := append([]string{scope.WorkingDirectory, workspace.RootDirectory}, command.additionalWorkingDirectories...)
+	ownerWorkspace := workspace
+	if parent != nil {
+		var err error
+		ownerWorkspace, err = runWorkspace(*parent)
+		if err != nil {
+			return err
+		}
+		roots = append(roots, ownerWorkspace.RootDirectory)
+	}
+	_, err := workflowdsl.MapFiles(schema, args, func(pointer, reference string) (string, error) {
+		var frozen workflowfiles.LocalInput
+		var err error
+		switch {
+		case previous != nil:
+			digest := previous.InputFileDigests[pointer]
+			if reference != sourceInputs[pointer] || digest == "" {
+				return "", status_error.WorkflowFileInvalid.WithField("field", pointer)
 			}
-			if sourceID != "" {
-				source, err := s.runs.GetRun(ctx, sourceID)
-				if err != nil {
-					return "", err
-				}
-				if command.ParentRunID == "" && source.DefinitionID != command.DefinitionID {
-					return "", status_error.WorkflowStateConflict
-				}
-				sourceWorkspace, err := runWorkspace(source)
-				if err != nil {
-					return "", err
-				}
-				roots = append(roots, sourceWorkspace.RootDirectory)
-				ownerWorkspace = sourceWorkspace
+			frozen, err = workflowfiles.ReplayFrozenInput(ctx, sourceWorkspace, previous.ID, workflowfiles.Workspace{RootDirectory: stage.Directory}, runID, pointer, reference, digest)
+			if errors.Is(err, status_error.WorkflowFileInvalid) {
+				return "", status_error.WorkflowFileInvalid.WithField("field", pointer)
 			}
+		case strings.HasPrefix(reference, constants.WorkflowFileReferencePrefix):
+			if command.ChatSource != nil {
+				return "", status_error.WorkflowFileInvalid.WithField("field", pointer)
+			}
+			frozen, err = workflowfiles.Materialize(ctx, s.dataDirectory, command.DefinitionID, command.InputFileTaskID, runID, stage.Directory, reference, command.InputFileOwnerKeyID)
+		default:
 			reference = ownerWorkspace.ResolveRunReference(reference)
+			frozen, err = workflowfiles.FreezeLocalInput(ctx, roots, nil, reference, stage.Directory, runID, pointer, "")
 		}
-		frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, nil, reference, workspace.RootDirectory, runID, pointer, "")
-		return frozen.Path, err
+		if err != nil {
+			return "", err
+		}
+		return reference, stage.Record(pointer, frozen)
 	})
+	return err
 }
 
 // runWorkspace 要求接纳时冻结的完整目录事实，并校验当前目录归属。
@@ -534,7 +680,7 @@ func openRunFile(run models.WorkflowRun, candidate string) (*os.File, error) {
 		return nil, err
 	}
 	candidate = workspace.ResolveRunReference(candidate)
-	directories := []string{run.ScopeBinding.WorkingDirectory, workspace.RootDirectory}
+	directories := runFileRoots(run, workspace)
 	for _, directory := range directories {
 		file, err := workflowfiles.OpenScopeFile(directory, candidate)
 		if err == nil {
@@ -545,6 +691,10 @@ func openRunFile(run models.WorkflowRun, candidate string) (*os.File, error) {
 		}
 	}
 	return nil, status_error.WorkflowFileNotFound
+}
+
+func runFileRoots(run models.WorkflowRun, workspace workflowfiles.Workspace) []string {
+	return append([]string{run.ScopeBinding.WorkingDirectory, workspace.RootDirectory}, run.AdditionalWorkingDirectories...)
 }
 
 // OutputFile 是最终输出 schema 中明确声明的可下载文件。
@@ -578,11 +728,41 @@ func (s *Service) OutputFiles(ctx context.Context, run models.WorkflowRun) ([]Ou
 	if err != nil {
 		return nil, err
 	}
-	return InspectOutputFiles(run, revision.Manifest.Meta.OutputSchema, run.Result), nil
+	return s.InspectFinalOutputFiles(run, revision.Manifest.Meta.OutputSchema), nil
 }
 
 // InspectOutputFiles 检查指定冻结 Schema 和结果中的真实文件，供运行与节点产出入口复用。
 func InspectOutputFiles(run models.WorkflowRun, schema map[string]any, result any) []OutputFile {
+	return inspectOutputFiles(schema, result, func(_ string, path string) (int64, bool) {
+		file, err := openRunFile(run, path)
+		if err != nil {
+			return 0, false
+		}
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil {
+			return 0, false
+		}
+		return info.Size(), true
+	})
+}
+
+// InspectFinalOutputFiles 读取已确认快照的文件元数据，用于结果列表。
+func (s *Service) InspectFinalOutputFiles(run models.WorkflowRun, schema map[string]any) []OutputFile {
+	if !keepsFinalChatFiles(run) {
+		return InspectOutputFiles(run, schema, run.Result)
+	}
+	return inspectOutputFiles(schema, run.Result, func(field, _ string) (int64, bool) {
+		file, size, err := s.openChatSnapshot(run, run.ChatFiles[field])
+		if err != nil {
+			return 0, false
+		}
+		file.Close()
+		return size, true
+	})
+}
+
+func inspectOutputFiles(schema map[string]any, result any, sizeOf func(string, string) (int64, bool)) []OutputFile {
 	files := []OutputFile{}
 	values := workflowdsl.FileValues(schema, result)
 	keys := make([]string, 0, len(values))
@@ -596,14 +776,9 @@ func InspectOutputFiles(run models.WorkflowRun, schema map[string]any, result an
 		if media := mime.TypeByExtension(filepath.Ext(path)); media != "" {
 			view.MediaType = media
 		}
-		file, err := openRunFile(run, path)
-		if err == nil {
-			info, statErr := file.Stat()
-			if statErr == nil {
-				view.Available = true
-				view.Size = info.Size()
-			}
-			file.Close()
+		if size, available := sizeOf(pointer, path); available {
+			view.Available = true
+			view.Size = size
 		}
 		files = append(files, view)
 	}
@@ -622,6 +797,16 @@ func (s *Service) OpenOutputFile(ctx context.Context, definitionID, runID, fileI
 	revision, err := s.store.GetRevision(ctx, run.DefinitionID, run.RevisionID)
 	if err != nil {
 		return nil, "", err
+	}
+	if keepsFinalChatFiles(run) {
+		for pointer := range workflowdsl.FileValues(revision.Manifest.Meta.OutputSchema, run.Result) {
+			if outputFileID(pointer) == fileID {
+				file := run.ChatFiles[pointer]
+				content, err := s.openChatFile(run, file)
+				return content, file.Name, err
+			}
+		}
+		return nil, "", status_error.WorkflowFileNotFound
 	}
 	return OpenDeclaredOutputFile(run, revision.Manifest.Meta.OutputSchema, run.Result, fileID)
 }

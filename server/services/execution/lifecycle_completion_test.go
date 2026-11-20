@@ -71,7 +71,7 @@ func TestFinishExecutionReleasesReservationAndPublishesDurableTerminal(t *testin
 	t.Cleanup(registry.close)
 	journal := &terminalJournal{published: make(chan struct{}, 1)}
 	executionCore := &service{journal: journal, executions: registry}
-	if _, err := registry.reserve(chatID, executionID); err != nil {
+	if _, err := registry.reserve(chatID, executionID, ""); err != nil {
 		t.Fatalf("first reserve() error = %v", err)
 	}
 
@@ -91,6 +91,7 @@ func TestFinishExecutionReleasesReservationAndPublishesDurableTerminal(t *testin
 	if _, err := registry.reserve(
 		chatID,
 		"22222222222222222222222222222222",
+		"",
 	); err != nil {
 		t.Fatalf("reserve after visible terminal event error = %v", err)
 	}

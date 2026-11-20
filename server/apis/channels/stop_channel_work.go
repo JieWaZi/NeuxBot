@@ -13,6 +13,8 @@ type StopChannelWork struct {
 	ChannelID string `in:"path" name:"channelId" validate:"required,max=32"`
 	// 团队对话标识
 	ThreadID string `in:"path" name:"threadId" validate:"required,max=32"`
+	// 在途输入标识
+	SubmissionID string `in:"query" name:"submissionId" validate:"max=64"`
 }
 
 // Path 返回团队对话停止全部当前工作接口路径。
@@ -22,7 +24,31 @@ func (s *StopChannelWork) Path() string {
 
 // Output 通过可恢复停止意图取消负责人和全部成员当前执行，同时保留对话及 in_review 任务。
 func (s *StopChannelWork) Output(ctx *gin.Context) (interface{}, error) {
-	if err := global.ChannelService.StopWork(ctx, s.ChannelID, s.ThreadID); err != nil {
+	if s.SubmissionID != "" {
+		if err := global.ChannelService.StopWorkForSubmission(ctx.Request.Context(), s.ChannelID, s.ThreadID, s.SubmissionID); err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		return ginx.CommonSuccessResponse(), nil
+	}
+	if err := global.ChannelService.StopWork(ctx.Request.Context(), s.ChannelID, s.ThreadID); err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	return ginx.CommonSuccessResponse(), nil
+}
+
+// 停止团队首发
+type StopFirstChannelWork struct {
+	ginx.MethodPost
+	// 团队标识
+	ChannelID string `in:"path" name:"channelId" validate:"required,max=32"`
+	// 首次发送标识
+	ClientRequestID string `in:"query" name:"clientRequestId" validate:"required,max=64"`
+}
+
+func (s *StopFirstChannelWork) Path() string { return "/:channelId/threads/first-send/stop" }
+
+func (s *StopFirstChannelWork) Output(ctx *gin.Context) (interface{}, error) {
+	if err := global.ChannelService.StopFirstWork(ctx.Request.Context(), s.ChannelID, s.ClientRequestID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	return ginx.CommonSuccessResponse(), nil

@@ -14,7 +14,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -97,15 +99,13 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	if wakerID == "" {
 		return WorkerReceipt{}, status_error.WorkflowResourceInvalid
 	}
-	allowedConnectors, err := workerConnectorAllowlist(options)
-	if err != nil {
+	if _, err := validateWorkerToolPolicy(options); err != nil {
 		return WorkerReceipt{}, err
 	}
 	defaults, frozen := input.Run.WorkerConfigurations[input.Effect.Boundary.NodeID]
 	if !frozen {
 		return WorkerReceipt{}, status_error.WorkflowStateInvalid
 	}
-	configuration := execution.ExecutionConfiguration{Resolved: true, RuntimeID: defaults.RuntimeID, AccountID: defaults.AccountID, Model: defaults.Model, Reasoning: defaults.Reasoning, Fast: defaults.Fast, PermissionLevel: defaults.PermissionLevel}
 	schema, _ := options["schema"].(map[string]any)
 	resultInstruction := ""
 	if len(schema) > 0 {
@@ -120,9 +120,6 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	if len(schema) > 0 {
 		tools = append(tools, execution.ToolCapability{ID: "workflow.result", Name: "工作流结果", Bindings: input.ResultBindings})
 	}
-	if err := a.Executions.ValidateConfiguration(ctx, configuration); err != nil {
-		return WorkerReceipt{}, err
-	}
 	domains := []string{"memory", "interaction"}
 	scope := input.Run.ScopeBinding
 	create := &execution.CreateChatSpec{HiddenFromWakerHistory: true, WakerID: wakerID, WorkingDirectory: scope.WorkingDirectory}
@@ -132,13 +129,19 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	}
 	create.ExecutionWorkspaceDirectory = filepath.Join(internalWorkspace.TemporaryDirectory, constants.WorkflowWorkerDirectoryName, input.Effect.ID)
 	encoded, _ := json.Marshal(internalWorkspace)
-	create.AdditionalWorkingDirectories = []string{internalWorkspace.RootDirectory}
+	for _, directory := range append([]string{scope.WorkingDirectory}, input.Run.AdditionalWorkingDirectories...) {
+		canonical, err := workflowfiles.EnsureScopeDirectory(directory)
+		if err != nil || canonical != directory {
+			return WorkerReceipt{}, status_error.WorkflowResourceInvalid.WithField("field", "workingDirectory")
+		}
+	}
+	create.AdditionalWorkingDirectories = append([]string{internalWorkspace.RootDirectory}, input.Run.AdditionalWorkingDirectories...)
 	contextInstructions := []workinput.Instruction{{Name: constants.WorkflowWorkspaceInstructionFileName, Content: "Workflow run workspace: " + string(encoded) + "\nThe chat working directory is for this execution. Keep scripts in scriptsDirectory, persistent state in stateDirectory, caches in cacheDirectory, temporary files in temporaryDirectory, and run deliverables in runDirectory by default. Keep scripts and support files inside rootDirectory. Do not create external support directories such as /tmp or paths under the home directory. Write deliverables to an external directory only if the user specifies it explicitly. Keep scripts, caches, state, and temporary files out of external business directories."}}
 	// 宿主结果协议只进入智能体上下文，聊天正文保留节点的业务要求。
 	if resultInstruction != "" {
 		contextInstructions = append(contextInstructions, workinput.Instruction{Name: constants.WorkflowResultsInstructionFileName, Content: resultInstruction})
 	}
-	accepted, err := a.Executions.Start(ctx, execution.WorkIntent{AutomaticRunID: input.Run.AutomaticRunID, ExecutionID: input.Effect.ExecutionID, ClientRequestID: input.Effect.ID, Chat: execution.ChatTarget{Create: create}, Input: execution.WorkInput{Actor: "workflow", Content: prompt, ContextInstructions: contextInstructions}, Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: configuration.RuntimeID, AccountID: configuration.AccountID, Model: configuration.Model, Reasoning: configuration.Reasoning, Fast: configuration.Fast, PermissionLevel: defaults.PermissionLevel, WorkspaceReadOnly: defaults.WorkspaceReadOnly, SessionPolicy: constants.RuntimeSessionPolicyNew, ToolCapabilities: tools, AllowedConnectorIDs: allowedConnectors, AllowedAgentDomains: &domains}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
+	accepted, err := a.Executions.Start(ctx, execution.WorkIntent{AutomaticRunID: input.Run.AutomaticRunID, ExecutionID: input.Effect.ExecutionID, ClientRequestID: input.Effect.ID, Chat: execution.ChatTarget{Create: create}, Input: execution.WorkInput{Actor: "workflow", Content: prompt, ContextInstructions: contextInstructions}, Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: defaults.RuntimeID, AccountID: defaults.AccountID, Model: defaults.Model, Reasoning: defaults.Reasoning, Fast: defaults.Fast, PermissionLevel: defaults.PermissionLevel, WorkspaceReadOnly: defaults.WorkspaceReadOnly, SessionPolicy: constants.RuntimeSessionPolicyNew, ToolCapabilities: tools, AllowedAgentDomains: &domains}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
 	if err != nil {
 		return WorkerReceipt{}, err
 	}
@@ -225,22 +228,20 @@ func (a CoreWorkerAdapter) Cancel(ctx context.Context, effect models.WorkflowEff
 	return a.Executions.CancelAndWait(ctx, effect.ChatID)
 }
 
-// ValidateAdmission 在接纳事务之外检查真实运行配置与严格工具策略。
+// ValidateAdmission 在接纳事务之外检查节点的智能体选择。
 func (a CoreWorkerAdapter) ValidateAdmission(ctx context.Context, options map[string]any, defaults models.WorkflowExecutionDefaults) error {
-	_, err := a.ResolveAdmission(ctx, options, workerConfiguration(options, defaults), false)
+	configuration, _ := workerConfiguration(options, defaults)
+	_, err := a.ResolveAdmission(ctx, options, configuration, false)
 	return err
 }
 
 // ResolveAdmission 通过 Execution 共用解析边界冻结节点选择，已冻结的选择仅校验。
-func (a CoreWorkerAdapter) ResolveAdmission(ctx context.Context, options map[string]any, defaults models.WorkflowExecutionDefaults, resolved bool) (models.WorkflowExecutionDefaults, error) {
+func (a CoreWorkerAdapter) ResolveAdmission(ctx context.Context, _ map[string]any, defaults models.WorkflowExecutionDefaults, resolved bool) (models.WorkflowExecutionDefaults, error) {
 	if !constants.SelectablePermissionLevel(defaults.PermissionLevel) {
 		return defaults, status_error.BadRequest
 	}
 	config := execution.ExecutionConfiguration{Resolved: resolved, RuntimeID: defaults.RuntimeID, AccountID: defaults.AccountID, Model: defaults.Model, Reasoning: defaults.Reasoning, Fast: defaults.Fast, PermissionLevel: defaults.PermissionLevel}
 
-	if _, err := workerConnectorAllowlist(options); err != nil {
-		return defaults, err
-	}
 	configuration, err := a.Executions.ResolveConfiguration(ctx, config)
 	if err != nil {
 		return defaults, err
@@ -250,7 +251,7 @@ func (a CoreWorkerAdapter) ResolveAdmission(ctx context.Context, options map[str
 	return defaults, nil
 }
 
-func workerConfiguration(options map[string]any, defaults models.WorkflowExecutionDefaults) models.WorkflowExecutionDefaults {
+func workerConfiguration(options map[string]any, defaults models.WorkflowExecutionDefaults) (models.WorkflowExecutionDefaults, bool) {
 	resolve, _ := options["resolve"].(map[string]any)
 	defaults.RuntimeID = strings.TrimSpace(defaults.RuntimeID)
 	defaults.AccountID = strings.TrimSpace(defaults.AccountID)
@@ -272,8 +273,9 @@ func workerConfiguration(options map[string]any, defaults models.WorkflowExecuti
 	if !explicitModel && sameAccount {
 		model = defaults.Model
 	}
-	sameModel := sameAccount && model == defaults.Model
+	sameModel := sameAccount && model == defaults.Model && (!explicitModel || model != "")
 	reasoning, explicitReasoning := resolve["reasoning"].(string)
+	reasoning = strings.TrimSpace(reasoning)
 	if !explicitReasoning && sameModel {
 		reasoning = defaults.Reasoning
 	}
@@ -284,29 +286,22 @@ func workerConfiguration(options map[string]any, defaults models.WorkflowExecuti
 	if permission, ok := resolve["permissionLevel"].(string); ok && permission != "" {
 		defaults.PermissionLevel = constants.PermissionLevel(permission)
 	}
-	return defaults
+	// 同一模型沿用调用方冻结的原生空值；显式清空表示重新选择默认值。
+	inherited := sameModel && (!explicitReasoning || reasoning != "")
+	return defaults, inherited
 }
 
-func workerConnectorAllowlist(options map[string]any) (*[]string, error) {
+func validateWorkerToolPolicy(options map[string]any) (string, error) {
 	policy, _ := options["toolPolicy"].(map[string]any)
-	native, _ := policy["nativeTools"].(map[string]any)
-	// ACP 尚无逐原生工具的强制隔离端口，严格要求继续拒绝，不能降级为提示词。
-	if native["mode"] == "allowlist" {
-		return nil, status_error.WorkflowCapabilityUnsupported.WithField("capability", "toolPolicy.nativeTools.allowlist")
+	// 原生执行没有隔离继承工具与连接器的端口，按节点限制的流程应拒绝接纳。
+	for _, key := range []string{"nativeTools", "connectors"} {
+		scope, _ := policy[key].(map[string]any)
+		if scope["mode"] == "allowlist" {
+			field := "toolPolicy." + key
+			return field, status_error.WorkflowCapabilityUnsupported.WithField("capability", field+".allowlist")
+		}
 	}
-	connectors, _ := policy["connectors"].(map[string]any)
-	if connectors["mode"] != "allowlist" {
-		return nil, nil
-	}
-	ids, err := json.Marshal(connectors["connectorIds"])
-	if err != nil {
-		return nil, status_error.WorkflowResourceInvalid
-	}
-	allowed := []string{}
-	if json.Unmarshal(ids, &allowed) != nil {
-		return nil, status_error.WorkflowResourceInvalid
-	}
-	return &allowed, nil
+	return "", nil
 }
 
 // workerRetryPolicy 是创作预检、配置检查和运行接纳共用的重试能力判定。
@@ -435,7 +430,7 @@ func (s *Service) dispatchEffect(ctx context.Context, run models.WorkflowRun, ef
 	}
 	var receipt WorkerReceipt
 	if effect.Status == constants.WorkflowStepStatusPrepared {
-		receipt, err = s.worker.Dispatch(ctx, WorkerDispatch{Run: run, Effect: effect, ResultBindings: s.AgentBindings(effect.ID, effect.AuthToken, constants.WorkflowCapabilityScopeResult)})
+		receipt, err = s.worker.Dispatch(ctx, WorkerDispatch{Run: run, Effect: effect, ResultBindings: s.AgentBindings(workflowtool.Scope{Key: effect.ID, Token: effect.AuthToken, Kind: constants.WorkflowCapabilityScopeResult})})
 	} else {
 		receipt, err = s.worker.Inspect(ctx, effect)
 	}
@@ -507,7 +502,8 @@ func (s *Service) finishEffect(ctx context.Context, effect models.WorkflowEffect
 		return
 	}
 	defer release()
-	err = s.state.MutateEffect(ctx, effect.RunID, effect.ID, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
+	schema, _ := workflowstate.BoundaryOptions(effect.Boundary)["schema"].(map[string]any)
+	err = s.commitChatOutputEffect(ctx, effect, schema, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
 		if workflowstate.StepTerminal(current.Status) || current.Status == constants.WorkflowStepStatusUnknown {
 			return nil
 		}

@@ -1,8 +1,9 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 
 /** 与 Native 的 appData/com.neuxbot.desktop 保持同一 Core 数据身份。 */
 export function defaultCoreDataDirectory(
@@ -52,6 +53,16 @@ export function webRuntimeEnvironment(directory, inherited = process.env) {
   return environment;
 }
 
+/** 发布启动与显式终端安装共用同包 botcli 的安装入口。 */
+export function installBundledBotCLI(environment) {
+  if (environment.NEUXBOT_SKIP_BOTCLI_INSTALL === "1") return Promise.resolve();
+  return promisify(execFile)(environment.BOTCLI_BINARY_PATH, ["install"], {
+    env: environment,
+    timeout: 10000,
+    windowsHide: true,
+  });
+}
+
 export function startWeb(directory, overrides = {}) {
   const binary = path.join(
     directory,
@@ -60,9 +71,13 @@ export function startWeb(directory, overrides = {}) {
   );
   if (!existsSync(binary))
     throw new Error("缺少 Core 二进制，请先运行 pnpm package:web。");
+  const environment = { ...webRuntimeEnvironment(directory), ...overrides };
+  void installBundledBotCLI(environment).catch((error) => {
+    console.error(`botcli 安装失败：${error.stderr?.trim() || error.message}`);
+  });
   const child = spawn(binary, [], {
     cwd: directory,
-    env: { ...webRuntimeEnvironment(directory), ...overrides },
+    env: environment,
     stdio: "inherit",
   });
   child.once("error", (error) => {

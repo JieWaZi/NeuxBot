@@ -11,6 +11,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -46,6 +47,10 @@ type Service interface {
 	StopTask(ctx context.Context, taskID string) error
 	// StopWork 以可恢复 canceling intent 停止一个团队对话的全部当前工作。
 	StopWork(ctx context.Context, channelID string, threadID string) error
+	// StopWorkForSubmission 只停止指定输入及其已经接纳的工作。
+	StopWorkForSubmission(ctx context.Context, channelID, threadID, submissionID string) error
+	// StopFirstWork 以团队和首发请求标识停止原负责人占位。
+	StopFirstWork(ctx context.Context, channelID, submissionID string) error
 	// ReconcileThread 补齐已接纳的首发，再推进任务、负责人输入和结果通知队列。
 	ReconcileThread(ctx context.Context, threadID string) error
 	// ReconcileThreadPublication 只补交团队首发，供持有原机会的入口核对接纳结果。
@@ -62,6 +67,10 @@ type Service interface {
 
 // Config 声明团队服务需要的稳定依赖。
 type Config struct {
+	// FreezeWorkflowSelection 固定团队接纳时用户选择的定义和可运行版本。
+	FreezeWorkflowSelection func(context.Context, *workinput.WorkflowReference) (*workinput.WorkflowReference, error)
+	// StopChatWorkflows 按仍有效的停止代次撤销原成员聊天关联的工作流。
+	StopChatWorkflows func(ctx context.Context, threadID string, chatIDs []string, cancelingAt int64) error
 	// ManagedFilesDirectory 是 Chat 引用写入和聚合删除共用操作门的受管文件根。
 	ManagedFilesDirectory string
 	// Commands 保存与任务事务一起提交的 CLI 回执。
@@ -92,6 +101,10 @@ type Config struct {
 
 // service 是团队业务用例的唯一实现。
 type service struct {
+	// freezeWorkflowSelection 将已选版本随团队首发或队列 payload 保存。
+	freezeWorkflowSelection func(context.Context, *workinput.WorkflowReference) (*workinput.WorkflowReference, error)
+	// stopChatWorkflows 同时用于团队显式停止和启动恢复。
+	stopChatWorkflows func(context.Context, string, []string, int64) error
 	// managedFilesDirectory 标识成员会话引用与删除共用的操作门。
 	managedFilesDirectory string
 	// commands 持久化任务命令接纳事实。
@@ -130,12 +143,6 @@ type service struct {
 	watchers map[string]struct{}
 	// closing 与 watcher 注册共用锁，阻止 Close 开始后继续 WaitGroup.Add。
 	closing bool
-	// scheduleMutex 保护按 Team 对话建立的短生命周期调度锁。
-	scheduleMutex sync.Mutex
-	// scheduleLocks 让不同 Team 并行 reconcile，同一 Team 仍按序发起 CAS claim。
-	scheduleLocks map[string]*threadScheduleLock
-	// notificationDrainLocks 按团队对话散列串行化通知直达判定与负责人唤醒。
-	notificationDrainLocks [64]sync.Mutex
 	// interactionMutex 只保护成员 Chat 交互投影游标，不在锁内执行外部 I/O。
 	interactionMutex sync.Mutex
 	// interactionCursors 保存每个成员 Chat 已经完成持久投影的最大事件序号。
@@ -162,6 +169,8 @@ func New(config Config) (Service, error) {
 		return nil, status_error.CoreChannelInitializationFailed
 	}
 	return &service{
+		freezeWorkflowSelection:  config.FreezeWorkflowSelection,
+		stopChatWorkflows:        config.StopChatWorkflows,
 		managedFilesDirectory:    config.ManagedFilesDirectory,
 		commands:                 config.Commands,
 		channels:                 config.Channels,
@@ -177,7 +186,6 @@ func New(config Config) (Service, error) {
 		executions:         config.Executions,
 		chatGroups:         config.ChatGroups,
 		watchers:           make(map[string]struct{}),
-		scheduleLocks:      make(map[string]*threadScheduleLock),
 		interactionCursors: make(map[string]int64),
 		events:             newChannelEventBroker(),
 		capabilities:       channeltool.NewRegistry(),
@@ -222,39 +230,6 @@ func (s *service) effectiveWatcherPolicy() deliveryWatcherPolicy {
 		policy.maximumDelay = defaults.maximumDelay
 	}
 	return policy
-}
-
-// threadScheduleLock 是带引用计数的单 Team 调度锁。
-type threadScheduleLock struct {
-	// mutex 串行化同一 Team 对话的 reconcile。
-	mutex sync.Mutex
-	// users 是已经获得或正在等待该锁的调用数。
-	users int
-}
-
-// acquireScheduleLock 获取单 Team 锁并返回配对释放函数。
-func (s *service) acquireScheduleLock(threadID string) func() {
-	s.scheduleMutex.Lock()
-	if s.scheduleLocks == nil {
-		s.scheduleLocks = make(map[string]*threadScheduleLock)
-	}
-	lock := s.scheduleLocks[threadID]
-	if lock == nil {
-		lock = &threadScheduleLock{}
-		s.scheduleLocks[threadID] = lock
-	}
-	lock.users++
-	s.scheduleMutex.Unlock()
-	lock.mutex.Lock()
-	return func() {
-		lock.mutex.Unlock()
-		s.scheduleMutex.Lock()
-		lock.users--
-		if lock.users == 0 && s.scheduleLocks[threadID] == lock {
-			delete(s.scheduleLocks, threadID)
-		}
-		s.scheduleMutex.Unlock()
-	}
 }
 
 // ensureThreadWritable 以事务内最新对话状态校验团队存在且没有正在进行的停止意图。

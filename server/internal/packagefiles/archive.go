@@ -164,21 +164,36 @@ func (a Archive) validateImportRelativePath(value string) (string, error) {
 
 // Digest 校验完整目录并计算包含执行位与链接目标的摘要。
 func (a Archive) Digest(root string) (string, error) {
+	full, _, err := a.SelectedDigests(root, nil)
+	return full, err
+}
+
+// SelectedDigests 在同一次完整校验中计算原目录与所选内容的摘要。
+// include 为 nil 时仅计算完整摘要。筛选器应同时选中所保留文件的父目录。
+func (a Archive) SelectedDigests(root string, include func(string) bool) (string, string, error) {
 	root, err := filepath.Abs(root)
 	if err != nil {
-		return "", a.Invalid
+		return "", "", a.Invalid
 	}
 	fileCount := 0
 	var importedBytes int64
 	foldedPaths := make(map[string]string)
 	seenFiles := make([]os.FileInfo, 0)
 	hash := sha256.New()
+	selected := sha256.New()
 	// 路径有长度前缀，载荷固定为 SHA-256；文件内容不能模拟下一条目录记录。
 	record := func(name string, kind byte, payload [sha256.Size]byte) {
-		_, _ = hash.Write(binary.BigEndian.AppendUint64(nil, uint64(len(name))))
+		header := binary.BigEndian.AppendUint64(nil, uint64(len(name)))
+		_, _ = hash.Write(header)
 		_, _ = io.WriteString(hash, name)
 		_, _ = hash.Write([]byte{kind})
 		_, _ = hash.Write(payload[:])
+		if include != nil && include(name) {
+			_, _ = selected.Write(header)
+			_, _ = io.WriteString(selected, name)
+			_, _ = selected.Write([]byte{kind})
+			_, _ = selected.Write(payload[:])
+		}
 	}
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -277,13 +292,21 @@ func (a Archive) Digest(root string) (string, error) {
 		return nil
 	})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	if include == nil {
+		return hex.EncodeToString(hash.Sum(nil)), "", nil
+	}
+	return hex.EncodeToString(hash.Sum(nil)), hex.EncodeToString(selected.Sum(nil)), nil
 }
 
 // CopyDirectory 有界复制目录并保持指定的程序执行位。
 func (a Archive) CopyDirectory(source, target string) error {
+	return a.CopySelectedDirectory(source, target, nil)
+}
+
+// CopySelectedDirectory 有界复制符合筛选器的目录和文件，跳过未选中的子树。
+func (a Archive) CopySelectedDirectory(source, target string, include func(string) bool) error {
 	seenFiles := make([]os.FileInfo, 0)
 	foldedPaths := make(map[string]string)
 	fileCount := 0
@@ -307,6 +330,12 @@ func (a Archive) CopyDirectory(source, target string) error {
 			return pathErr
 		}
 		normalized = filepath.ToSlash(normalized)
+		if include != nil && !include(normalized) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		folded := strings.ToLower(normalized)
 		if _, exists := foldedPaths[folded]; exists {
 			return a.Invalid

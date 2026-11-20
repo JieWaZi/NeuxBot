@@ -82,6 +82,18 @@ func (f *reviewChannelExecutionFake) CancelAndWait(
 	return nil
 }
 
+// StopNativeExecutions 记录聚合停止，并在等待时完成模拟终态。
+func (f *reviewChannelExecutionFake) StopNativeExecutions(chatIDs []string) func(context.Context) error {
+	return func(ctx context.Context) error {
+		for _, id := range chatIDs {
+			if err := f.CancelAndWait(ctx, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
 // cancelOrder 返回成员与主协调 Chat 的实际取消顺序。
 func (f *reviewChannelExecutionFake) cancelOrder() []string {
 	f.mutex.Lock()
@@ -234,6 +246,7 @@ func TestReviewChannelTaskKeepsHumanDecisionInAPIUseCase(t *testing.T) {
 	}
 
 	ginContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ginContext.Request = httptest.NewRequest("POST", "/", nil)
 	reject := &ReviewChannelTask{
 		ChannelID: channelID,
 		ThreadID:  threadID,

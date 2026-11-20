@@ -1,4 +1,5 @@
 import { ApiError } from "@/shared/api/errors";
+import { applicationErrorKey } from "@/shared/api/error-presentation";
 import {
   reportErrorNotice,
   apiErrorNoticePresentation,
@@ -87,6 +88,10 @@ const convertComposerMessage = (message: ThreadMessageLike) => message;
 
 export type { PreparedChatSubmission } from "./chat-queue-store";
 
+type ChatCancellationTarget =
+  | { executionId: string; submissionId?: never }
+  | { executionId?: never; submissionId: string };
+
 type ChatRuntimeOptions = {
   conversationKey: ChatScopeKey;
   queueKey: string;
@@ -111,9 +116,10 @@ type ChatRuntimeOptions = {
   selection: ChatSendSelection;
   onMessageAccepted?: () => void;
   onMessageRejected?: (selection: ChatSendSelection) => void;
+  captureDraft?: (message: AppendMessage) => QueuedChatEntry["settleDraft"];
   onApprovalRequested?: (approval: PendingApproval) => void;
   prepareSubmission: ChatSubmissionPreparer;
-  cancel: () => Promise<void>;
+  cancel: (target?: ChatCancellationTarget) => Promise<void>;
   onSettled?: (
     result: MessageResult,
     invocation: ChatInvocation & { current: boolean },
@@ -141,6 +147,7 @@ type SendSnapshot = {
   chatId?: string;
   selection: ChatSendSelection;
   prepareSubmission: ChatSubmissionPreparer;
+  settleDraft?: QueuedChatEntry["settleDraft"];
 };
 
 type FirstSubmissionRecovery = {
@@ -247,7 +254,11 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   const pendingSubmissionsRef = useRef(
     new Map<
       string,
-      { submission: PreparedChatSubmission; noticeId?: string }
+      {
+        submission: PreparedChatSubmission;
+        settleDraft?: SendSnapshot["settleDraft"];
+        noticeId?: string;
+      }
     >(),
   );
   const confirmSubmission = useCallback((submissionId: string | undefined) => {
@@ -256,6 +267,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     if (!pending) return;
     pendingSubmissionsRef.current.delete(submissionId);
     pending.submission.confirmAccepted?.();
+    pending.settleDraft?.(false);
     if (recoveryRef.current?.prepared === pending.submission) {
       recoveryRef.current = undefined;
       setFirstSubmissionRecovery(undefined);
@@ -469,27 +481,59 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       pendingApprovals.length > 0 || pendingElicitations.length > 0;
   }, [pendingApprovals, pendingElicitations]);
 
-  const isRunning = Boolean(
-    (sending?.queueKey === options.queueKey &&
-      !messages.some(
-        (message) =>
-          sending.submission?.submissionId &&
-          message.submissionId === sending.submission.submissionId &&
-          message.role === "assistant" &&
-          ["completed", "failed", "canceled"].includes(message.status ?? ""),
-      )) ||
-    messages.some(
+  const pendingSubmission =
+    sending?.queueKey === options.queueKey &&
+    !messages.some(
       (message) =>
+        sending.submission?.submissionId &&
+        message.submissionId === sending.submission.submissionId &&
         message.role === "assistant" &&
-        ["pending", "running"].includes(message.status ?? ""),
-    ) ||
-    (options.activeExecutionId &&
-      !messages.some(
-        (message) =>
-          message.executionId === options.activeExecutionId &&
-          ["completed", "failed", "canceled"].includes(message.status ?? ""),
-      )),
+        ["completed", "failed", "canceled"].includes(message.status ?? ""),
+    )
+      ? sending
+      : undefined;
+  const runningAssistant = messages.findLast(
+    (message) =>
+      message.role === "assistant" &&
+      !message.question &&
+      ["pending", "running"].includes(message.status ?? ""),
   );
+  const activeExecutionId =
+    options.activeExecutionId &&
+    !messages.some(
+      (message) =>
+        message.executionId === options.activeExecutionId &&
+        ["completed", "failed", "canceled"].includes(message.status ?? ""),
+    )
+      ? options.activeExecutionId
+      : undefined;
+  const isRunning = Boolean(
+    pendingSubmission || runningAssistant || activeExecutionId,
+  );
+  const cancelExecutionId =
+    runningAssistant?.executionId ??
+    (runningAssistant?.optimistic ? undefined : activeExecutionId);
+  const cancelSubmissionId =
+    runningAssistant?.submissionId ??
+    pendingSubmission?.submission?.submissionId;
+  const pendingCancel = pendingSubmission?.submission?.cancel;
+  const teamPendingSubmissionId = options.serverManagedQueue
+    ? pendingSubmission?.submission?.submissionId
+    : undefined;
+  const cancelCurrent = useCallback(() => {
+    if (pendingCancel) return pendingCancel();
+    if (teamPendingSubmissionId)
+      return cancel({ submissionId: teamPendingSubmissionId });
+    if (cancelExecutionId) return cancel({ executionId: cancelExecutionId });
+    if (cancelSubmissionId) return cancel({ submissionId: cancelSubmissionId });
+    return cancel();
+  }, [
+    cancel,
+    cancelExecutionId,
+    cancelSubmissionId,
+    pendingCancel,
+    teamPendingSubmissionId,
+  ]);
   const reconcileHistory = useCallback(() => {
     void sourceRef.current.reconcile().catch(() => {});
   }, []);
@@ -505,14 +549,18 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       original?: PreparedChatSubmission,
     ) {
       const attachmentPaths = attachmentPathsOf(message);
-      const text =
-        textOf(message) ||
-        (attachmentPaths.length
-          ? attachmentOnlyText
-          : snapshot.selection.codeReferences?.length
-            ? (referenceOnlyText ?? attachmentOnlyText)
-            : "");
-      if (!text) return;
+      const workflowOnly = Boolean(
+        snapshot.selection.workflow && snapshot.selection.workflowOnly,
+      );
+      const text = workflowOnly
+        ? ""
+        : textOf(message) ||
+          (attachmentPaths.length
+            ? attachmentOnlyText
+            : snapshot.selection.codeReferences?.length
+              ? (referenceOnlyText ?? attachmentOnlyText)
+              : "");
+      if (!text && !workflowOnly) return;
 
       const now = Date.now();
       const prepared =
@@ -530,6 +578,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       )
         pendingSubmissionsRef.current.set(prepared.submissionId, {
           submission: prepared,
+          settleDraft: snapshot.settleDraft,
         });
       const operation = `send:${snapshot.queueKey}`;
       const recovery = captureErrorNoticeRecovery(operation);
@@ -568,6 +617,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           codeReferences: (snapshot.selection.codeReferences ?? []).map(
             (reference) => ({ ...reference }),
           ),
+          workflow: snapshot.selection.workflow,
           createdAt: now,
           updatedAt: now,
           optimistic: true,
@@ -595,7 +645,10 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       try {
         const result = await prepared.accept();
         if (prepared.submissionId) confirmSubmission(prepared.submissionId);
-        else prepared.confirmAccepted?.();
+        else {
+          prepared.confirmAccepted?.();
+          snapshot.settleDraft?.(false);
+        }
         const execution = result.execution;
         const resultChatID = result.chat?.id ?? snapshot.chatId;
         const committedMessages: BotChatMessage[] = execution
@@ -681,21 +734,35 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           onStarted(result, invocation);
         }
       } catch (error) {
-        // 已被权威事实接纳，或已有后续命令取得当前输入所有权时，旧 HTTP 失败不回退界面。
-        if (
-          !mountedRef.current ||
-          currentSubmissionRef.current !== prepared ||
-          (prepared.submissionId &&
-            !pendingSubmissionsRef.current.has(prepared.submissionId))
-        )
+        // 已被权威日志确认的输入不再处理 HTTP 失败。
+        const pending = prepared.submissionId
+          ? pendingSubmissionsRef.current.get(prepared.submissionId)
+          : undefined;
+        if (prepared.submissionId && !pending) return;
+        const failure = classifyChatSendFailure(error);
+        const canceled =
+          error instanceof ApiError &&
+          applicationErrorKey(error.code) === "OperationCanceled";
+        const needsReceipt = prepared.hasUnconfirmedReceipt?.() === true;
+        if (!needsReceipt) {
+          const rejected = prepared.confirmRejected?.(error) === true;
+          if (snapshot.settleDraft) {
+            snapshot.settleDraft(rejected || canceled);
+            if (pending?.submission === prepared) {
+              pending.settleDraft = undefined;
+              if (rejected && prepared.submissionId)
+                pendingSubmissionsRef.current.delete(prepared.submissionId);
+            }
+          }
+        }
+        // 当前编辑器和错误提示仍受原呈现生命周期约束。
+        if (!mountedRef.current || currentSubmissionRef.current !== prepared)
           return;
         runningByQueueRef.current[snapshot.queueKey] = false;
         const current =
           mountedRef.current &&
           observedChatKeyRef.current === snapshot.conversationKey;
         if (current) runningRef.current = false;
-        const failure = classifyChatSendFailure(error);
-        const needsReceipt = prepared.hasUnconfirmedReceipt?.() === true;
         if (needsReceipt) {
           const next = { prepared, message, snapshot };
           recoveryRef.current = next;
@@ -708,6 +775,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         const canRetry =
           current &&
           !needsReceipt &&
+          !snapshot.settleDraft &&
           error instanceof ApiError &&
           error.status === 429;
         const canCheck =
@@ -723,7 +791,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           );
           if (pending) pending.noticeId = noticeId;
         }
-        if (!needsReceipt)
+        if (!needsReceipt && !canceled)
           reportErrorNotice(
             {
               id: noticeId,
@@ -777,39 +845,43 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           };
           overlayRef.current = failedOverlay;
           setOverlay(failedOverlay);
-          setSendFailure({
-            chatId: snapshot.chatId,
-            value: failure,
-            noticeId,
-          });
+          if (!canceled) {
+            setSendFailure({
+              chatId: snapshot.chatId,
+              value: failure,
+              noticeId,
+            });
+          }
         }
-        window.setTimeout(() => {
-          if (
-            !mountedRef.current ||
-            observedChatKeyRef.current !== snapshot.conversationKey ||
-            currentSubmissionRef.current !== prepared ||
-            (prepared.submissionId &&
-              !pendingSubmissionsRef.current.has(prepared.submissionId))
-          ) {
-            return;
-          }
-          if (
-            !needsReceipt &&
-            prepared.hasUnconfirmedReceipt &&
-            prepared.submissionId
-          )
-            pendingSubmissionsRef.current.delete(prepared.submissionId);
-          messageRejectedRef.current?.(snapshot.selection);
-          const composer = runtimeRef.current?.thread?.composer;
-          composer?.setText(text);
-          if (composer && composer.getState().attachments.length === 0) {
-            for (const attachmentPath of attachmentPaths) {
-              void composer.addAttachment(pathFile(attachmentPath));
+        if (!snapshot.settleDraft)
+          window.setTimeout(() => {
+            if (
+              !mountedRef.current ||
+              observedChatKeyRef.current !== snapshot.conversationKey ||
+              currentSubmissionRef.current !== prepared ||
+              (prepared.submissionId &&
+                !pendingSubmissionsRef.current.has(prepared.submissionId))
+            ) {
+              return;
             }
-          }
-        }, 0);
+            if (
+              !needsReceipt &&
+              (prepared.hasUnconfirmedReceipt || canceled) &&
+              prepared.submissionId
+            )
+              pendingSubmissionsRef.current.delete(prepared.submissionId);
+            messageRejectedRef.current?.(snapshot.selection);
+            const composer = runtimeRef.current?.thread?.composer;
+            composer?.setText(text);
+            if (composer && composer.getState().attachments.length === 0) {
+              for (const attachmentPath of attachmentPaths) {
+                void composer.addAttachment(pathFile(attachmentPath));
+              }
+            }
+          }, 0);
         if (
           !needsReceipt &&
+          !canceled &&
           failure.kind === "unknown" &&
           mountedRef.current &&
           observedChatKeyRef.current === snapshot.conversationKey
@@ -863,6 +935,9 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         codeReferences: options.selection.codeReferences?.map((reference) => ({
           ...reference,
         })),
+        workflow: options.selection.workflow && {
+          ...options.selection.workflow,
+        },
       },
     }),
     [
@@ -902,6 +977,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         chatId: head.chatId,
         selection: { ...head.selection, steerExecutionId },
         prepareSubmission: head.prepareSubmission ?? prepareSubmission,
+        settleDraft: head.settleDraft,
       });
     },
     [
@@ -1314,6 +1390,15 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     streamRecoveryGeneration,
   ]);
 
+  const captureDraft = options.captureDraft;
+  const clearOutgoingDraft = useCallback(
+    (message: AppendMessage): SendSnapshot => {
+      const settleDraft = captureDraft?.(message);
+      messageAcceptedRef.current?.();
+      return { ...currentSnapshot, settleDraft };
+    },
+    [captureDraft, currentSnapshot],
+  );
   const onNew = useCallback(
     async (message: AppendMessage) => {
       if (
@@ -1322,23 +1407,15 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         (options.singleSubmission && runningRef.current)
       )
         return;
-      messageAcceptedRef.current?.();
-      return submit(message, currentSnapshot);
+      return submit(message, clearOutgoingDraft(message));
     },
-    [currentSnapshot, options.singleSubmission, submit],
+    [clearOutgoingDraft, options.singleSubmission, submit],
   );
   const queue = useMemo<ExternalThreadQueueAdapter>(() => {
-    const currentAssistant = messages.findLast(
-      (item) =>
-        item.role === "assistant" &&
-        ["pending", "running"].includes(item.status ?? ""),
-    );
     const steerTarget = isRunning
       ? {
-          steerExecutionId: currentAssistant
-            ? currentAssistant.executionId
-            : options.activeExecutionId,
-          steerSubmissionId: currentAssistant?.submissionId,
+          steerExecutionId: cancelExecutionId,
+          steerSubmissionId: cancelSubmissionId,
         }
       : {};
     return {
@@ -1352,23 +1429,28 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           (options.singleSubmission && runningRef.current)
         )
           return;
+        const snapshot = clearOutgoingDraft(message);
         if (options.serverManagedQueue) {
-          messageAcceptedRef.current?.();
-          void submit(message, currentSnapshot);
+          void submit(message, snapshot);
           return;
         }
         const entry: QueuedChatEntry = {
           id: crypto.randomUUID(),
-          prompt: promptOf(message),
+          prompt: [
+            snapshot.selection.workflow?.name,
+            snapshot.selection.workflowOnly ? "" : promptOf(message),
+          ]
+            .filter(Boolean)
+            .join(" · "),
           message,
-          chatId: currentSnapshot.chatId,
+          chatId: snapshot.chatId,
           selection: {
-            ...currentSnapshot.selection,
+            ...snapshot.selection,
             ...(steer ? steerTarget : {}),
           },
-          prepareSubmission: currentSnapshot.prepareSubmission,
+          prepareSubmission: snapshot.prepareSubmission,
+          settleDraft: snapshot.settleDraft,
         };
-        messageAcceptedRef.current?.();
         const current = queueStore.getEntries(queueKey);
         const queueIsRunning = runningByQueueRef.current[queueKey] ?? isRunning;
         if (
@@ -1376,12 +1458,12 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           !queueIsRunning &&
           current.length === 0
         ) {
-          void submit(message, currentSnapshot);
+          void submit(message, snapshot);
           return;
         }
         queueStore.enqueue(queueKey, entry, steer);
         if (!queueIsRunning) advanceQueue(queueKey);
-        else if (steer) void cancel();
+        else if (steer) void cancelCurrent();
       },
       steer: (queueItemID) => {
         if (interactionPendingRef.current) return;
@@ -1389,7 +1471,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         const target = current.find((item) => item.id === queueItemID);
         if (!target) return;
         queueStore.promote(queueKey, queueItemID, steerTarget);
-        if (isRunning) void cancel();
+        if (isRunning) void cancelCurrent();
         else advanceQueue(queueKey);
       },
       remove: (queueItemID) => {
@@ -1402,13 +1484,13 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     };
   }, [
     advanceQueue,
-    currentSnapshot,
+    clearOutgoingDraft,
     isRunning,
-    cancel,
+    cancelCurrent,
+    cancelExecutionId,
+    cancelSubmissionId,
     queueKey,
     queuedEntries,
-    messages,
-    options.activeExecutionId,
     queueStore,
     submit,
     options.serverManagedQueue,
@@ -1428,7 +1510,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       Boolean(firstSubmissionRecovery),
     queue,
     onNew,
-    onCancel: options.cancel,
+    onCancel: cancelCurrent,
     adapters: { attachments: chatAttachmentAdapter },
     unstable_capabilities: { copy: true },
   });

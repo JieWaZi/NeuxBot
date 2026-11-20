@@ -43,6 +43,26 @@ func TestReplayMessagesPreservesSelectedCapabilitySnapshots(t *testing.T) {
 	}
 }
 
+func TestRunDeliveryUpdatesOnlyTheOriginReplyOnReplay(t *testing.T) {
+	delivery, err := json.Marshal(map[string]any{"attachments": []eventlog.AttachmentReference{{Name: "report.md", Path: "attachments/run-1/report.md", Managed: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := ReplayMessages([]eventlog.Record{
+		chatCreatedRecord(1, "/workspace"),
+		executionCreatedRecord(2, "execution-1"),
+		executionCreatedRecord(3, "execution-2"),
+		{Sequence: 4, Type: constants.ChatEventType("execution.delivery"), MessageID: "execution-1", ExecutionID: "execution-1", Data: delivery},
+		{Sequence: 5, Type: constants.ChatEventType("execution.delivery"), MessageID: "execution-1", ExecutionID: "execution-1", Data: delivery},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 || messages[0].ID != "execution-1" || len(messages[0].Attachments) != 1 || messages[0].Attachments[0].Name != "report.md" || len(messages[1].Attachments) != 0 {
+		t.Fatalf("delivery did not attach once to the original reply: %+v", messages)
+	}
+}
+
 func TestReplayMessagesKeepsWholeFileCodeReferencesSeparateFromAttachments(t *testing.T) {
 	t.Parallel()
 

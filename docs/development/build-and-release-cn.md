@@ -2,7 +2,9 @@
 
 ## 入口
 
-`pnpm dev:web` 启动 Vite 与本机 Core；`pnpm dev:native` 启动原生开发入口。`pnpm build:web` 构建浏览器静态资源，`pnpm start:web` 启动本机 Web 发布入口，`pnpm package:web` 组装当前平台的 Web 发布目录（Core、CLI、前端、Pi Bridge、PTY worker、许可与 Node 启动器）。Web 包要求安装 Node.js 22+，运行包内 `node start-web.mjs`。
+`pnpm dev:web` 启动 Vite 与本机 Core；`pnpm dev:native` 启动原生开发入口。`pnpm build:web` 构建浏览器静态资源，`pnpm start:web` 启动本机 Web 发布入口，`pnpm package:web` 组装当前平台的 Web 发布目录（Core、CLI、前端、Pi Bridge、PTY worker、许可与 Node 启动器）。Linux Web 包在对应架构的 Linux 构建，以便装入该目标的原生 PTY 模块。Web 包要求安装 Node.js 22+，运行包内 `node start-web.mjs`。
+
+`pnpm dev:native` 构建后通过 `botcli install` 安装或更新当前用户的终端命令。新终端可直接运行 `botcli`。隔离开发时可设置 `NEUXBOT_SKIP_BOTCLI_INSTALL=1`。
 
 `pnpm build` 构建 Core、Renderer 与 Electron 代码。`pnpm build:native`（别名 `build:desktop`）调用 scripts/package-desktop.mjs，在当前 macOS 或 Windows 原生环境生成安装包；desktop 的 electron:package 复用同一流程。
 
@@ -38,7 +40,7 @@ NEUX_VERIFY_LOCAL_PLUGIN_ARTIFACTS=1 pnpm dev:native:plugins --plugins ../neux-p
 
 首屏静态 JS 预算为 500,000 bytes，工作台启动 JS 预算为 4,500,000 bytes；统计包含启动前等待或预热的动态依赖。启动错误面板仅在失败时加载，Mermaid 引擎仅在实际绘图时加载。打包检查安装包 170 MiB、安装文件 450 MiB、Resources 215 MiB 的体积上限，输出机器可读报告。Resources 包含 Core、CLI、前端产物及必要原生模块；插件业务包由启动后台任务独立预取，安装缺包时才联网兜底。各平台体积以当前构建报告为准。Windows 即使超限也输出三项实测体积及最大的 30 个文件，失败构建的报告由发布工作流单独保存。实际文件名与默认平台以打包脚本为准。
 
-发布矩阵在原生 runner 上分别构建 macOS arm64、macOS x64（amd64）与 Windows x64，并校验构建机架构。GitHub Release 直接提供用户可安装的 NeuxBot-mac-arm64.dmg、NeuxBot-mac-x64.dmg 和 NeuxBot-windows-x64.exe，附带分架构体积报告及 SHA256SUMS。Actions 中以 NeuxBot 命名的 artifact 仅用于 CI 暂存与跨任务传输，用户下载入口为 Release 中的 DMG 或 EXE。代码签名、公证及签名密钥由发布环境管理；本地签名不表示完成发行签名与公证。
+发布矩阵在原生 runner 上构建 macOS arm64、macOS x64（amd64）与 Windows x64 的桌面安装包，以及 Linux x64 的本机 Web 压缩包，并核对构建机架构。GitHub Release 提供 NeuxBot-mac-arm64.dmg、NeuxBot-mac-x64.dmg、NeuxBot-windows-x64.exe 和 NeuxBot-linux-x64.tar.gz，附带桌面体积报告及 SHA256SUMS。Linux 解压后通过 Node.js 22+ 启动。Actions 中以 NeuxBot 命名的 artifact 用于 CI 暂存与跨任务传输。代码签名、公证及签名密钥由发布环境管理，本地签名与发行签名分别验证。
 
 ## 发布前
 

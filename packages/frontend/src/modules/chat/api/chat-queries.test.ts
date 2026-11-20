@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { client } from "@/shared/api/generated/client.gen";
+import type { ChatEvent } from "@/shared/api/events";
 
 import {
   commitAcceptedChat,
@@ -357,6 +358,167 @@ describe("chat history network budget", () => {
       await observer.refetch();
       expect(received).toEqual([null, 81, 41, null]);
       expect(observer.getCurrentResult().data?.pages).toHaveLength(3);
+    } finally {
+      unsubscribe();
+      queryClient.clear();
+    }
+  });
+
+  it("窗口外的交付推进游标，先发起的旧页读取补读到交付结果", async () => {
+    let releaseOld!: () => void;
+    let olderReads = 0;
+    const delivery = {
+      type: "execution.delivery",
+      sequence: 12,
+      message: {
+        id: "earlier",
+        role: "assistant",
+        status: "completed",
+        createdSequence: 4,
+        revision: 12,
+        attachments: [{ name: "report.md", path: "attachments/report.md" }],
+      },
+    } as const satisfies ChatEvent;
+    server.use(
+      http.get(
+        "http://127.0.0.1:19876/api/v1/chats/history-delivery/messages",
+        async ({ request }) => {
+          if (!new URL(request.url).searchParams.has("beforeSequence")) {
+            return HttpResponse.json({
+              resources: [{ id: "latest", role: "assistant" }],
+              latestSequence: 10,
+              nextBeforeSequence: 5,
+              hasMore: true,
+            });
+          }
+          olderReads++;
+          if (olderReads === 1) {
+            await new Promise<void>((resolve) => {
+              releaseOld = resolve;
+            });
+            return HttpResponse.json({
+              resources: [
+                {
+                  id: "earlier",
+                  role: "assistant",
+                  status: "completed",
+                  createdSequence: 4,
+                  revision: 5,
+                },
+              ],
+              latestSequence: 10,
+              hasMore: false,
+            });
+          }
+          return HttpResponse.json({
+            resources: [delivery.message],
+            latestSequence: 12,
+            hasMore: false,
+          });
+        },
+      ),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const observer = new InfiniteQueryObserver(
+      queryClient,
+      chatMessagesInfiniteOptions("history-delivery"),
+    );
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await observer.refetch();
+      const older = observer.fetchNextPage();
+      await waitFor(() => expect(olderReads).toBe(1));
+      expect(
+        mergeChatHistoryEvents(queryClient, "history-delivery", [delivery]),
+      ).toBe(12);
+      expect(observer.getCurrentResult().data?.pages[0]).toMatchObject({
+        latestSequence: 12,
+        resources: [{ id: "latest" }],
+      });
+      releaseOld();
+      await older;
+      expect(observer.getCurrentResult().data?.pages[1]?.resources).toEqual([
+        delivery.message,
+      ]);
+      expect(olderReads).toBe(2);
+      mergeChatHistoryEvents(queryClient, "history-delivery", [
+        {
+          ...delivery,
+          sequence: 13,
+          message: { ...delivery.message, revision: 13, content: "完成交付" },
+        },
+      ]);
+      expect(observer.getCurrentResult().data?.pages[1]?.resources).toEqual([
+        { ...delivery.message, revision: 13, content: "完成交付" },
+      ]);
+    } finally {
+      releaseOld?.();
+      unsubscribe();
+      queryClient.clear();
+    }
+  });
+
+  it("恢复对账刷新固定游标旧页，读到离线期间的交付", async () => {
+    const chatId = "history-recovery-delivery";
+    let delivered = false;
+    let olderReads = 0;
+    server.use(
+      http.get(
+        `http://127.0.0.1:19876/api/v1/chats/${chatId}/messages`,
+        ({ request }) => {
+          const version = delivered ? 12 : 10;
+          if (!new URL(request.url).searchParams.has("beforeSequence")) {
+            return HttpResponse.json({
+              resources: [{ id: "latest", role: "assistant" }],
+              latestSequence: version,
+              nextBeforeSequence: 5,
+              hasMore: true,
+            });
+          }
+          olderReads++;
+          return HttpResponse.json({
+            resources: [
+              {
+                id: "earlier",
+                role: "assistant",
+                status: "completed",
+                createdSequence: 4,
+                revision: delivered ? 12 : 5,
+                content: delivered ? "补交结果" : "等待交付",
+              },
+            ],
+            latestSequence: version,
+            hasMore: false,
+          });
+        },
+      ),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const observer = new InfiniteQueryObserver(
+      queryClient,
+      chatMessagesInfiniteOptions(chatId),
+    );
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await observer.refetch();
+      await observer.fetchNextPage();
+      delivered = true;
+      const source = chatMessageSource(queryClient, chatId, {
+        messages: [],
+        latestSequence: 10,
+        ready: true,
+      });
+      expect(await source.reconcile()).toBe(12);
+      expect(
+        observer.getCurrentResult().data?.pages[1]?.resources,
+      ).toMatchObject([{ id: "earlier", content: "补交结果", revision: 12 }]);
+      expect(olderReads).toBe(2);
+      expect(await source.reconcile()).toBe(12);
+      expect(olderReads).toBe(2);
     } finally {
       unsubscribe();
       queryClient.clear();

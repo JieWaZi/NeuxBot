@@ -17,6 +17,8 @@ import (
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
 	"github.com/JieWaZi/NeuxBot/server/internal/uploads"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -285,6 +287,111 @@ func TestSendMessagePreStartFailureLeavesNoAuthoritativeMessageOrExecution(
 			t.Fatalf("unadmitted chat created a log file %s: %v", path, err)
 		}
 	}
+}
+
+func TestTeamStopCancelsMemberInputStillPreparing(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	manager := newMessageTestService(t, t.TempDir())
+	core := manager.execution.(*service)
+	first, err := manager.sendTestMessage(ctx, testMessageInput{
+		NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()},
+		Message: userMessage{Text: "建立成员对话"},
+		Runtime: runtimeSelection{RuntimeID: constants.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	core.acquireTeamChatInput = func(ctx context.Context, _ string, _ bool) (context.Context, func(), error) {
+		return teamwork.Acquire(ctx, "fixture-team")
+	}
+	lookup := core.runtimeEnvironments
+	reached, proceed := make(chan struct{}), make(chan struct{})
+	core.runtimeEnvironments = pausedTeamRuntimeLookup{runtimeEnvironmentReader: lookup, reached: reached, proceed: proceed}
+	intent := WorkIntent{
+		Chat:    ChatTarget{ChatID: first.Chat.ID},
+		Input:   WorkInput{Actor: "user", Content: "成员继续工作"},
+		Options: WorkOptions{RuntimeID: constants.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
+	}
+	finished := make(chan error, 1)
+	go func() {
+		_, err := core.Start(ctx, intent)
+		finished <- err
+	}()
+	select {
+	case <-reached:
+	case err := <-finished:
+		t.Fatalf("member input did not reach runtime lookup: %v", err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	// Team StopWork crosses the same gate, then cancels and drains outside it.
+	_, release, err := teamwork.Acquire(ctx, "fixture-team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	stopErr := core.StopNativeExecutions([]string{first.Chat.ID})(ctx)
+	close(proceed)
+	if stopErr != nil {
+		t.Fatal(stopErr)
+	}
+	if err := <-finished; !errors.Is(err, status_error.OperationCanceled) {
+		t.Fatalf("member input captured by stop: %v, want OperationCanceled", err)
+	}
+	core.runtimeEnvironments = lookup
+	if next, err := core.Start(ctx, intent); err != nil || next.Execution.ID == "" {
+		t.Fatalf("new input after stop: %+v, %v", next, err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+}
+
+type pausedTeamRuntimeLookup struct {
+	// runtimeEnvironmentReader reads the actual fixture configuration after release.
+	runtimeEnvironmentReader
+	// reached marks the first runtime lookup in the member input's preparation.
+	reached chan<- struct{}
+	// proceed unblocks the lookup if the stop missed the input.
+	proceed <-chan struct{}
+}
+
+func (r pausedTeamRuntimeLookup) Get(ctx context.Context, id string) (models.RuntimeEnvironment, error) {
+	close(r.reached)
+	select {
+	case <-ctx.Done():
+		return models.RuntimeEnvironment{}, status_error.DatabaseOperationCancelled
+	case <-r.proceed:
+		return r.runtimeEnvironmentReader.Get(ctx, id)
+	}
+}
+
+func TestStopFirstChatBeforeSendReservesExecution(t *testing.T) {
+	ctx := t.Context()
+	manager := newMessageTestService(t, t.TempDir())
+	request := testMessageInput{
+		ClientRequestID: "stopped-create-request",
+		NewChat:         &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()},
+		Message:         userMessage{Text: "停止原输入"},
+		Runtime:         runtimeSelection{RuntimeID: constants.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
+	}
+	id := requestidempotency.Identity{ID: request.ClientRequestID}
+	chatID := id.ResourceID("chat", request.NewChat.WakerID)
+	if err := manager.execution.CancelSubmissionAndWait(ctx, chatID, id.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.sendTestMessage(ctx, request); !errors.Is(err, status_error.OperationCanceled) {
+		t.Fatalf("stopped first send: %v", err)
+	}
+	if calls := manager.nativeCalls(t, "turn/start"); len(calls) != 0 {
+		t.Fatalf("stopped first send dispatched %d turns", len(calls))
+	}
+	request.ClientRequestID = "new-create-request"
+	accepted, err := manager.sendTestMessage(ctx, request)
+	if err != nil || accepted.Chat.ID == "" || accepted.Chat.ID == chatID {
+		t.Fatalf("new first send: %+v, %v", accepted, err)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
 }
 
 func TestCreateChatReplaysSameFirstRequestAndRejectsChangedContent(t *testing.T) {
@@ -1053,7 +1160,7 @@ func (r recordedRun) turnRequest(id string, detection agent.DetectionResult) (ag
 }
 func (r *recordedRun) prepare(m *service, chat models.Chat, id string, capabilities []ToolCapability, domains *[]string, paths []string) (func(), func(), error) {
 	r.Runtime.WorkspaceReadOnly = r.ReadOnly
-	grant, err := m.prepareAgent(context.Background(), models.RuntimeEnvironment{Detection: r.Detection}, r.Workspace, &r.Skills, &r.Instructions, &r.Connectors, &r.ContextInstructions, chat, id, pendingMessage{runtime: r.Runtime, toolCapabilities: capabilities, allowedAgentDomains: domains}, paths)
+	grant, err := m.prepareAgent(context.Background(), models.RuntimeEnvironment{Detection: r.Detection}, r.Workspace, &r.Skills, &r.Instructions, &r.Connectors, &r.ContextInstructions, chat, id, pendingMessage{runtime: r.Runtime, toolCapabilities: capabilities, allowedAgentDomains: domains}, paths, nil)
 	r.CLIContextFile = grant.cliContextFile
 	return grant.activate, grant.finish, err
 }

@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -17,10 +18,10 @@ import (
 type activeExecution struct {
 	// executionID 是当前占用对话的执行标识。
 	executionID string
+	// submissionID 允许界面在收到执行回执前精确取消原提交。
+	submissionID string
 	// cancel 结束 Runtime 运行使用的 Context。
 	cancel context.CancelFunc
-	// done 在执行完成日志和查询索引处理结束后关闭。
-	done chan struct{}
 }
 
 // executionSettlement 记录同一后台所有者的文件冻结与最终退出屏障，不复制业务状态。
@@ -32,6 +33,16 @@ type executionSettlement struct {
 	// done 在差异计算、发布和后台资源清理全部退出后关闭。
 	done chan struct{}
 }
+
+type submissionStopKey struct {
+	// chatID 绑定准备中的输入归属。
+	chatID string
+	// submissionID 与尚未写入 Chat 的请求身份一致。
+	submissionID string
+}
+
+// submissionStopLifetime 覆盖在途发送与停止的传输乱序，过期后释放未到达的请求。
+const submissionStopLifetime = time.Minute
 
 // executionRegistry 统一维护 Chat 执行的进程生命周期和单执行约束。
 //
@@ -45,6 +56,8 @@ type executionRegistry struct {
 	active map[string]activeExecution
 	// settling 保存已接纳后台工作的技术屏障，冻结后允许下一轮读取基线和写盘。
 	settling map[string]map[string]*executionSettlement
+	// pendingStops 暂存比对应占位先到的停止，只在本进程调用窗口内有效。
+	pendingStops map[submissionStopKey]*time.Timer
 	// lifecycleContext 控制全部后台执行。
 	lifecycleContext context.Context
 	// lifecycleCancel 取消全部后台执行。
@@ -53,11 +66,16 @@ type executionRegistry struct {
 	waitGroup sync.WaitGroup
 	// started 表示注册表已经绑定进程根 Context。
 	started bool
+	// cancelAssociated 撤销由当前执行接纳的工作流，内部清理与关闭不调用。
+	cancelAssociated func(context.Context, string, string) error
 }
 
 // newExecutionRegistry 创建尚未绑定进程生命周期的执行注册表。
 func newExecutionRegistry() *executionRegistry {
-	return &executionRegistry{active: make(map[string]activeExecution), settling: make(map[string]map[string]*executionSettlement)}
+	return &executionRegistry{
+		active: make(map[string]activeExecution), settling: make(map[string]map[string]*executionSettlement),
+		pendingStops: make(map[submissionStopKey]*time.Timer),
+	}
 }
 
 // start 绑定进程根 Context；重复调用保持幂等。
@@ -80,6 +98,10 @@ func (r *executionRegistry) close() {
 	}
 	cancel := r.lifecycleCancel
 	r.started = false
+	for _, timer := range r.pendingStops {
+		timer.Stop()
+	}
+	clear(r.pendingStops)
 	r.mutex.Unlock()
 
 	cancel()
@@ -90,11 +112,16 @@ func (r *executionRegistry) close() {
 func (r *executionRegistry) reserve(
 	chatID string,
 	executionID string,
+	submissionID string,
 ) (context.Context, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	if !r.started {
 		return nil, status_error.ChatServiceNotStarted
+	}
+	key := submissionStopKey{chatID: chatID, submissionID: submissionID}
+	if r.pendingStops[key] != nil {
+		return nil, status_error.OperationCanceled
 	}
 	if _, exists := r.active[chatID]; exists {
 		return nil, status_error.ChatHasActiveExecution
@@ -108,9 +135,9 @@ func (r *executionRegistry) reserve(
 	}
 	r.settling[chatID][executionID] = &executionSettlement{cancel: cancel, frozen: make(chan struct{}), done: make(chan struct{})}
 	r.active[chatID] = activeExecution{
-		executionID: executionID,
-		cancel:      cancel,
-		done:        make(chan struct{}),
+		executionID:  executionID,
+		submissionID: submissionID,
+		cancel:       cancel,
 	}
 	return executionContext, nil
 }
@@ -134,7 +161,6 @@ func (r *executionRegistry) release(chatID string, executionID string) {
 	defer r.mutex.Unlock()
 	if active, exists := r.active[chatID]; exists && active.executionID == executionID {
 		delete(r.active, chatID)
-		close(active.done)
 	}
 	if settlement, exists := r.settling[chatID][executionID]; exists {
 		settlement.cancel()
@@ -214,41 +240,99 @@ func (r *executionRegistry) complete(
 ) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	active, exists := r.active[chatID]
-	matched := exists && active.executionID == executionID
-	if matched {
+	if active, exists := r.active[chatID]; exists && active.executionID == executionID {
 		delete(r.active, chatID)
 	}
 	if publish != nil {
 		publish()
 	}
-	if matched {
-		close(active.done)
-	}
 }
 
 // cancel 取消 Chat 当前活跃执行；没有活跃执行时保持幂等。
-func (r *executionRegistry) cancel(chatID string) {
+func (r *executionRegistry) cancel(chatID string) string {
 	r.mutex.Lock()
 	active, exists := r.active[chatID]
 	r.mutex.Unlock()
-	if exists && active.cancel != nil {
+	if exists {
 		active.cancel()
+	}
+	return active.executionID
+}
+
+// stopSubmission 在占位锁内记录尚未到达的停止，或返回本次占位的精确执行。
+func (r *executionRegistry) stopSubmission(chatID, submissionID string) string {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	active := r.active[chatID]
+	key := submissionStopKey{chatID: chatID, submissionID: submissionID}
+	if r.started && r.pendingStops[key] == nil {
+		var expiry *time.Timer
+		expiry = time.AfterFunc(submissionStopLifetime, func() {
+			r.mutex.Lock()
+			defer r.mutex.Unlock()
+			if r.pendingStops[key] == expiry {
+				delete(r.pendingStops, key)
+			}
+		})
+		r.pendingStops[key] = expiry
+	}
+	if active.submissionID == submissionID {
+		return active.executionID
+	}
+	return ""
+}
+
+// submissionStopped 保留原提交停止事实，供持久队列在接纳边界核对。
+func (r *executionRegistry) submissionStopped(chatID, submissionID string) bool {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	return r.pendingStops[submissionStopKey{chatID: chatID, submissionID: submissionID}] != nil
+}
+
+// cancelNativeExecution 取消指定执行，即使 Chat 已由其他执行接管。
+func (r *executionRegistry) cancelNativeExecution(chatID, executionID string) {
+	r.mutex.Lock()
+	settlement := r.settling[chatID][executionID]
+	r.mutex.Unlock()
+	if settlement != nil {
+		settlement.cancel()
 	}
 }
 
-// cancelAndWait 取消活跃执行，并等待该 Chat 已发布终态的文件收尾退出。
+// cancelAndWait 取消活跃执行，并等待该 Chat 的所有现有执行收尾退出。
 func (r *executionRegistry) cancelAndWait(ctx context.Context, chatID string) error {
+	active, pending := r.stopNative([]string{chatID})
+	var associatedErr error
+	if len(active) != 0 {
+		associatedErr = r.cancelAssociatedWork(ctx, chatID, active[0].executionID)
+	}
+	if err := waitForExecutionSettlements(ctx, pending); err != nil {
+		return err
+	}
+	return associatedErr
+}
+
+// stopNative 捕获并取消已占位的执行，等待只使用本次捕获的收尾屏障。
+func (r *executionRegistry) stopNative(chatIDs []string) ([]activeExecution, []<-chan struct{}) {
 	r.mutex.Lock()
-	active, exists := r.active[chatID]
-	pending := make([]<-chan struct{}, 0, len(r.settling[chatID]))
-	for _, settlement := range r.settling[chatID] {
-		pending = append(pending, settlement.done)
+	var active []activeExecution
+	var pending []<-chan struct{}
+	for _, chatID := range chatIDs {
+		if execution, exists := r.active[chatID]; exists {
+			active = append(active, execution)
+		}
+		for _, settlement := range r.settling[chatID] {
+			pending = append(pending, settlement.done)
+		}
 	}
 	r.mutex.Unlock()
-	if exists && active.cancel != nil {
-		active.cancel()
+	for _, execution := range active {
+		execution.cancel()
 	}
+	return active, pending
+}
+
+func waitForExecutionSettlements(ctx context.Context, pending []<-chan struct{}) error {
 	for _, done := range pending {
 		select {
 		case <-done:
@@ -260,7 +344,7 @@ func (r *executionRegistry) cancelAndWait(ctx context.Context, chatID string) er
 }
 
 // cancelExecutionAndWait 捕获精确执行并等待其文件收尾，旧请求不能取消新工作。
-func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, executionID string) error {
+func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, executionID string, withAssociatedWork bool) error {
 	r.mutex.Lock()
 	active, exists := r.active[chatID]
 	var done <-chan struct{}
@@ -268,8 +352,12 @@ func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, 
 		done = settlement.done
 	}
 	r.mutex.Unlock()
-	if exists && active.executionID == executionID && active.cancel != nil {
+	if exists && active.executionID == executionID {
 		active.cancel()
+	}
+	var associatedErr error
+	if withAssociatedWork {
+		associatedErr = r.cancelAssociatedWork(ctx, chatID, executionID)
 	}
 	if done != nil {
 		select {
@@ -278,7 +366,14 @@ func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, 
 			return status_error.ChatHasActiveExecution
 		}
 	}
-	return nil
+	return associatedErr
+}
+
+func (r *executionRegistry) cancelAssociatedWork(ctx context.Context, chatID, executionID string) error {
+	if r.cancelAssociated == nil || executionID == "" {
+		return nil
+	}
+	return r.cancelAssociated(ctx, chatID, executionID)
 }
 
 // executionStartResult is the sending caller’s durable admission receipt.

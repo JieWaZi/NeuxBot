@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspacefiles"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
@@ -702,5 +704,79 @@ func TestForkPreservesRemovedAttachmentReference(t *testing.T) {
 	manifest, err := os.ReadFile(filepath.Join(target, "removed-chat-files.json"))
 	if err != nil || string(manifest) != `["attachments/before.txt"]` {
 		t.Fatalf("child attachment marker: %q %v", manifest, err)
+	}
+}
+
+func TestForkInheritsLateDeliveryOnlyForIncludedMessages(t *testing.T) {
+	m, source := forkFixture(t)
+	ctx := t.Context()
+	if _, err := m.LoadExecutionChat(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	for _, delivery := range []ExecutionDelivery{
+		{ChatID: source, ExecutionID: "after", SourceID: "later-run", Summary: "later summary"},
+		{ChatID: source, ExecutionID: "before", SourceID: "selected-run", Summary: "selected summary", Files: []ExecutionDeliveryFile{
+			{ID: "report", Name: "report.md", Open: func() (io.ReadCloser, error) {
+				return io.NopCloser(strings.NewReader("confirmed report")), nil
+			}},
+			{ID: "draft", Name: "draft.md", Open: func() (io.ReadCloser, error) {
+				return io.NopCloser(strings.NewReader("discarded draft")), nil
+			}},
+		}},
+	} {
+		if err := m.PublishExecutionDelivery(ctx, delivery); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const removedPath = "attachments/draft/draft.md"
+	parent, err := m.storage.ChatRoot(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := workspacefiles.New()
+	scope, err := files.OpenChat("reader", source, t.TempDir(), parent, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := files.DeleteChatFile("reader", scope.ID, "", removedPath); err != nil {
+		t.Fatal(err)
+	}
+	child, err := m.ForkChat(ctx, ForkInput{ChatID: source, ExecutionID: "before", ClientRequestID: "late-delivery"}, NativeFork{
+		Execute: func(_ context.Context, input NativeForkInput) (agent.NativeBinding, error) {
+			if input.Boundary.Position != "turn-before" {
+				t.Fatalf("late delivery changed the native fork position: %+v", input.Boundary)
+			}
+			return forkTestBinding("child-with-late-delivery"), nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := m.ReadMessageHistory(ctx, child, 0, 20)
+	if err != nil || len(page.Resources) != 2 || page.Resources[0].Content != "before" {
+		t.Fatalf("fork did not preserve the selected prefix: %+v, %v", page, err)
+	}
+	answer := page.Resources[1]
+	if answer.Content != "selected summary" || len(answer.Attachments) != 2 || !answer.Inherited {
+		t.Fatalf("fork answer lost the selected delivery: %+v", answer)
+	}
+	if err := m.DeleteChat(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	target, err := m.storage.ChatRoot(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(target, "attachments", "report", "report.md"))
+	if err != nil || string(content) != "confirmed report" {
+		t.Fatalf("fork did not retain the delivered bytes independently: %q, %v", content, err)
+	}
+	childScope, err := files.OpenChat("reader", child, t.TempDir(), target, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := files.ListChatFiles(ctx, "reader", childScope.ID, "")
+	if err != nil || len(listed.RemovedPaths) != 1 || listed.RemovedPaths[0] != removedPath {
+		t.Fatalf("fork did not preserve the removed attachment marker: %+v, %v", listed, err)
 	}
 }

@@ -28,7 +28,7 @@ func TestCreationResourcePagesExposeEnforcedPoliciesAndBoundConnectors(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(encoded), `"nativeTools":["inherit"]`) || !strings.Contains(string(encoded), `"connectors":["inherit","allowlist"]`) {
+		if !strings.Contains(string(encoded), `"nativeTools":["inherit"]`) || !strings.Contains(string(encoded), `"connectors":["inherit"]`) {
 			t.Fatalf("actual policy capabilities absent from %s: %s", kind, encoded)
 		}
 		if kind == "wakers" && (!strings.Contains(string(encoded), `"id":"bound"`) || !strings.Contains(string(encoded), definition.CreationWakerID) || !strings.Contains(string(encoded), `"name":"NeuxBot"`)) {

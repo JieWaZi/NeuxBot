@@ -150,7 +150,7 @@ export function useChatWorkspaceBindings({
       const result = file.reference
         ? Promise.resolve({ status: "resolved" as const, file: file.reference })
         : resolveFileReference(candidate, {
-            chatId: activeChatId,
+            chatId: file.sourceChatId ?? activeChatId,
             baseDirectory: rootPath,
             workspaceRoot: rootPath,
             sourceRoots: additionalWorkingDirectories ?? [],
@@ -171,6 +171,7 @@ export function useChatWorkspaceBindings({
             rootPath: result.file.rootPath,
             title: file.name || fileName(result.file.canonicalPath),
             mode: file.mode,
+            fileChatId: file.sourceChatId,
           });
           onOpenWorkbench?.();
         })

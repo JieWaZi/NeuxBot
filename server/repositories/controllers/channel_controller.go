@@ -30,7 +30,7 @@ type ChannelController interface {
 	NameExists(ctx context.Context, name string, excludeID string) (bool, error)
 	// Update 原子事务内更新团队主体并完整替换成员配置。
 	Update(ctx context.Context, channel models.Channel, members []models.ChannelMember) error
-	// CountActiveWork 统计阻止删除的待执行任务、运行任务、负责人输入和活跃 Chat Execution。
+	// CountActiveWork 统计仍拥有团队对话的任务、负责人输入、Chat 执行和工作流。
 	CountActiveWork(ctx context.Context, channelID string) (int64, error)
 	// Delete 删除团队主体及其当前成员配置；团队对话必须先由上层清理。
 	Delete(ctx context.Context, channelID string) error
@@ -237,7 +237,7 @@ func (c *channelController) Update(
 	return nil
 }
 
-// CountActiveWork 统计阻止删除的待执行任务、负责人输入与成员（含负责人）活跃 Chat Execution。
+// CountActiveWork 统计阻止删除的活跃工作。
 func (c *channelController) CountActiveWork(
 	ctx context.Context,
 	channelID string,
@@ -271,7 +271,13 @@ func (c *channelController) CountActiveWork(
 	if err != nil {
 		return 0, databaseError("count_channel_active_inputs", "channel_id="+channelID, err)
 	}
-	return taskCount + executionCount + inputCount, nil
+	threadIDs := db.Model(&models.ChannelThread{}).Select("id").Where("channel_id = ?", channelID)
+	workflowCount, err := countActiveTeamChatRuns(db.Where("source_thread_id IN (?)", threadIDs), channelID)
+	if err != nil {
+		return 0, err
+	}
+	notificationCount, err := countOpenLeadNotifications(db.Where("thread_id IN (?)", threadIDs), channelID)
+	return taskCount + executionCount + inputCount + workflowCount + notificationCount, err
 }
 
 // ListIDsByMemberWaker 返回指定伙伴当前参与的全部团队标识。

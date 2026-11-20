@@ -6,6 +6,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 )
 
 // Record 是从聊天权威日志投影出的已提交事件信封。
@@ -122,6 +123,8 @@ type ChatTitleUpdatedData struct {
 
 // AttachmentReference 是一条经过路径校验并可以安全重放的附件引用。
 type AttachmentReference struct {
+	// Partial 标记失败或停止时仍然有效的部分成果。
+	Partial bool `json:"partial,omitempty"`
 	// Name 是向用户和 Agent 展示的原始文件名。
 	Name string `json:"name"`
 	// Path 是相对 Chat 工作目录的稳定路径。
@@ -188,6 +191,20 @@ type MessageCreatedData struct {
 	Connectors []MessageConnectorReference `json:"connectors,omitempty"`
 	// CodeReferences 是本轮用户选择的有序整文件或代码片段引用。
 	CodeReferences []CodeReference `json:"codeReferences,omitempty"`
+	// Workflow 保存用户这次明确选择的工作流版本及发送时名称。
+	Workflow *workinput.WorkflowReference `json:"workflow,omitempty"`
+}
+
+// ExecutionDeliveryData 对同一答复追加已确认的领域交付。
+type ExecutionDeliveryData struct {
+	// SourceID 是已交付的原领域运行身份。
+	SourceID string `json:"sourceId"`
+	// Attachments 只引用已经提交的会话文件。
+	Attachments []AttachmentReference `json:"attachments,omitempty"`
+	// Summary 是根据同一次运行结果补写的正文。
+	Summary string `json:"summary,omitempty"`
+	// SummaryFallback 表示正文是已确认结果的直接呈现，仍允许补写用户语言的总结。
+	SummaryFallback bool `json:"summaryFallback,omitempty"`
 }
 
 // ExecutionCreatedData 保存一次执行创建时冻结的选择。

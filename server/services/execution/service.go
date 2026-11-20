@@ -23,6 +23,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -46,10 +48,18 @@ type Service interface {
 	ResolveConfiguration(ctx context.Context, config ExecutionConfiguration) (ExecutionConfiguration, error)
 	// Cancel 取消指定 Chat 当前活跃的执行。
 	Cancel(chatID string) error
-	// CancelAndWait 取消指定 Chat 当前活跃执行并等待 durable 终态。
+	// CancelAndWait 取消指定 Chat 当前活跃执行及关联工作流，等待原生收尾。
 	CancelAndWait(ctx context.Context, chatID string) error
+	// StopNativeExecutions 发出一组原生取消，返回等待这些执行收尾的函数。
+	StopNativeExecutions(chatIDs []string) func(context.Context) error
+	// CancelNativeExecutionAndWait 精确停止单次原生执行，供内部监听与派发补偿使用。
+	CancelNativeExecutionAndWait(ctx context.Context, chatID, executionID string) error
 	// CancelExecutionAndWait 只取消指定执行占用，旧任务不得影响同Chat后续输入。
 	CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error
+	// CancelSubmissionAndWait 在界面尚未收到执行身份时，只取消对应的提交占用。
+	CancelSubmissionAndWait(ctx context.Context, chatID, submissionID string) error
+	// IsSubmissionStopped 判断原提交是否已被点击停止。
+	IsSubmissionStopped(chatID, submissionID string) bool
 	// IsExecutionActive 检查指定执行是否仍持有会话占位。
 	IsExecutionActive(chatID, executionID string) bool
 	// ResolveApproval 处理 Chat 当前执行的一次未决审批。
@@ -112,6 +122,10 @@ type service struct {
 	agentBindings func(models.Chat, string, []string, string, string) []capability.Binding
 	// validateIntent 在首发和续发接纳前校验领域持久约束。
 	validateIntent func(context.Context, WorkIntent) error
+	// bindWorkflowTurn 签发当前公开回合中用户明确选择或已有历史允许的工作流能力。
+	bindWorkflowTurn func(context.Context, models.Chat, string, *workinput.WorkflowReference) (WorkflowTurnBinding, error)
+	// bindLocalWorkflowTurn 为本地伙伴和创作回合提供同一套工作流工具。
+	bindLocalWorkflowTurn func(context.Context, models.Chat, string, *workinput.WorkflowReference, string) (WorkflowTurnBinding, error)
 	// acquireTeamChatInput 将团队成员 Chat 的直接输入纳入团队聚合接纳边界。
 	acquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// accounts 为执行冻结账号并生成隔离配置。
@@ -172,6 +186,12 @@ var _ Service = (*service)(nil)
 
 // Config 声明 Execution Core 所需的稳定外部依赖。
 type Config struct {
+	// BindWorkflowTurn 为已经确定准确 Chat 和 Execution 的输入准备受限工作流工具。
+	BindWorkflowTurn func(context.Context, models.Chat, string, *workinput.WorkflowReference) (WorkflowTurnBinding, error)
+	// BindLocalWorkflowTurn 为本地交互回合绑定工作流目标及共享工具。
+	BindLocalWorkflowTurn func(context.Context, models.Chat, string, *workinput.WorkflowReference, string) (WorkflowTurnBinding, error)
+	// CancelWorkflowTurn 请求取消确切执行已获授权或已启动的工作流。
+	CancelWorkflowTurn func(context.Context, string, string) error
 	// Events 提供已提交状态的有界观察。
 	Events *events.Hub
 	// Agent 是当前 Core 独占的短期执行能力注册表。
@@ -293,6 +313,8 @@ func New(config Config) (Core, error) {
 			logx.Warnf("clean retired execution contexts: %v", err)
 		}
 	}
+	registry := newExecutionRegistry()
+	registry.cancelAssociated = config.CancelWorkflowTurn
 	return &service{
 		agent:                  config.Agent,
 		events:                 config.Events,
@@ -300,6 +322,8 @@ func New(config Config) (Core, error) {
 		systemSkillDirectory:   systemSkillDirectory,
 		agentBindings:          config.AgentBindings,
 		validateIntent:         config.ValidateIntent,
+		bindWorkflowTurn:       config.BindWorkflowTurn,
+		bindLocalWorkflowTurn:  config.BindLocalWorkflowTurn,
 		accounts:               config.Accounts,
 		acquireTeamChatInput:   config.AcquireTeamChatInput,
 		threads:                config.Threads,
@@ -320,7 +344,7 @@ func New(config Config) (Core, error) {
 		runtimeEnvironments: config.RuntimeEnvironments,
 		skillDataDirectory:  strings.TrimSpace(config.SkillDataDirectory),
 		storage:             storage,
-		executions:          newExecutionRegistry(),
+		executions:          registry,
 		createRequests:      newCreateRequestRegistry(),
 		approvals:           newApprovalCoordinator(config.Journal),
 		elicitations:        newElicitationCoordinator(config.Journal, config.Events),
@@ -349,11 +373,11 @@ func (m *service) Cancel(chatID string) error {
 	if chatID == "" {
 		return status_error.BadRequest
 	}
-	m.executions.cancel(chatID)
-	return nil
+	executionID := m.executions.cancel(chatID)
+	return m.executions.cancelAssociatedWork(context.Background(), chatID, executionID)
 }
 
-// CancelAndWait 取消指定 Chat 当前活跃执行并等待 durable 终态。
+// CancelAndWait 取消指定 Chat 当前活跃执行及关联工作流，等待原生收尾。
 func (m *service) CancelAndWait(ctx context.Context, chatID string) error {
 	chatID = strings.TrimSpace(chatID)
 	if chatID == "" {
@@ -362,14 +386,55 @@ func (m *service) CancelAndWait(ctx context.Context, chatID string) error {
 	return m.executions.cancelAndWait(ctx, chatID)
 }
 
+// StopNativeExecutions 在开始等待之前向整组活跃执行发出取消。
+func (m *service) StopNativeExecutions(chatIDs []string) func(context.Context) error {
+	_, pending := m.executions.stopNative(chatIDs)
+	return func(ctx context.Context) error { return waitForExecutionSettlements(ctx, pending) }
+}
+
+// CancelNativeExecutionAndWait 只停止指定执行及其收尾，关联工作流仍按原事实交付。
+func (m *service) CancelNativeExecutionAndWait(ctx context.Context, chatID, executionID string) error {
+	return m.cancelExecutionAndWait(ctx, chatID, executionID, false)
+}
+
 // CancelExecutionAndWait 原子匹配聊天与执行身份后取消，等待该次执行的持久收尾。
 func (m *service) CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error {
+	return m.cancelExecutionAndWait(ctx, chatID, executionID, true)
+}
+
+// CancelSubmissionAndWait 以原提交定位执行，后续执行不受旧请求影响。
+func (m *service) CancelSubmissionAndWait(ctx context.Context, chatID, submissionID string) error {
+	chatID = strings.TrimSpace(chatID)
+	submissionID = strings.TrimSpace(submissionID)
+	if chatID == "" || submissionID == "" || len(submissionID) > constants.InputSubmissionIDMaximumLength {
+		return status_error.BadRequest
+	}
+	executionID := m.executions.stopSubmission(chatID, submissionID)
+	if executionID == "" {
+		// 原生回合可能已释放占位，关联工作流仍可运行。
+		receipt, err := m.journal.ReadSubmission(ctx, chatID, submissionID)
+		if util.HasStatusCode(err, status_error.ChatNotFound) {
+			return nil
+		}
+		if err != nil || receipt == nil {
+			return err
+		}
+		executionID = receipt.ID
+	}
+	return m.executions.cancelExecutionAndWait(ctx, chatID, executionID, true)
+}
+
+func (m *service) IsSubmissionStopped(chatID, submissionID string) bool {
+	return m.executions.submissionStopped(chatID, submissionID)
+}
+
+func (m *service) cancelExecutionAndWait(ctx context.Context, chatID, executionID string, withAssociatedWork bool) error {
 	chatID = strings.TrimSpace(chatID)
 	executionID = strings.TrimSpace(executionID)
 	if chatID == "" || executionID == "" {
 		return status_error.BadRequest
 	}
-	return m.executions.cancelExecutionAndWait(ctx, chatID, executionID)
+	return m.executions.cancelExecutionAndWait(ctx, chatID, executionID, withAssociatedWork)
 }
 
 func resolveWorkingDirectory(value string) (models.ProjectSource, error) {

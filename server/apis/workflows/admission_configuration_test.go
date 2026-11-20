@@ -64,6 +64,9 @@ func TestConsumerWorkerAdmissionPreservesOnlyMatchingCallerSelection(t *testing.
 	}{
 		{name: "same caller", account: "system", resolve: `{"kind":"waker","wakerId":"fixture-waker","runtimeId":"codex"}`, runtime: "codex"},
 		{name: "same native account alias", account: "", resolve: `{"kind":"waker","wakerId":"fixture-waker","runtimeId":"codex","accountId":"system"}`, runtime: "codex"},
+		{name: "explicit empty model", account: "system", resolve: `{"kind":"waker","wakerId":"fixture-waker","model":""}`, runtime: "codex", model: "codex-latest", reasoning: "high", fast: &fast},
+		{name: "explicit empty reasoning for new model", account: "system", resolve: `{"kind":"waker","wakerId":"fixture-waker","model":"codex-latest","reasoning":""}`, runtime: "codex", model: "codex-latest", reasoning: "high", fast: &fast},
+		{name: "changed model", account: "system", resolve: `{"kind":"waker","wakerId":"fixture-waker","model":"codex-other"}`, runtime: "codex", model: "codex-other", fast: &fast},
 		{name: "changed runtime", account: "system", resolve: `{"kind":"waker","wakerId":"fixture-waker","runtimeId":"claude"}`, runtime: "claude", model: "claude-latest", reasoning: "high", fast: &fast},
 		{name: "changed account", account: "previous-managed-account", resolve: `{"kind":"waker","wakerId":"fixture-waker","runtimeId":"codex","accountId":"system"}`, runtime: "codex", model: "codex-latest", reasoning: "high", fast: &fast},
 	} {

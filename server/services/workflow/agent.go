@@ -3,41 +3,64 @@ package workflow
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 
-	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-// AgentBindings 只签发当前服务端场景具有的操作，不接受调用方声明场景或身份。
-func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabilityScope) []capability.Binding {
-	scope := workflowtool.Scope{Key: key, Token: token, Kind: kind}
-	ids := []string{}
-	switch kind {
-	case constants.WorkflowCapabilityScopeCreation:
-		ids = []string{"workflow.authoring.prepare", "workflow.source.get", "workflow.source.validate", "workflow.source.save", "workflow.sdk.get", "workflow.resources.list", "workflow.annotations.list", "workflow.evidence.list"}
-	case constants.WorkflowCapabilityScopeConsumer:
-		ids = []string{"workflow.definitions.list", "workflow.definitions.describe", "workflow.runs.start", "workflow.runs.get", "workflow.runs.cancel", "workflow.runs.wait"}
-	case constants.WorkflowCapabilityScopeResult:
-		ids = []string{"workflow.results.schema", "workflow.results.submit"}
+var workflowAuthoringOperations = []string{
+	"workflow.authoring.prepare", "workflow.source.get", "workflow.source.validate", "workflow.source.save",
+	"workflow.sdk.get", "workflow.resources.list", "workflow.annotations.list", "workflow.evidence.list",
+}
+
+var workflowRunOperations = []string{
+	"workflow.definitions.list", "workflow.definitions.describe", "workflow.runs.start",
+	"workflow.runs.get", "workflow.runs.cancel", "workflow.runs.wait",
+}
+
+// AgentBindings 只使用 Core 固定的对话、执行和业务身份。
+func (s *Service) AgentBindings(scope workflowtool.Scope) []capability.Binding {
+	if scope.Kind == constants.WorkflowCapabilityScopeResult {
+		return s.agentBindings(scope, []string{"workflow.results.schema", "workflow.results.submit"})
 	}
+	return nil
+}
+
+func (s *Service) consumerAgentBindings(lease models.WorkflowConsumerLease) []capability.Binding {
+	scope := workflowtool.Scope{Key: lease.ID, Kind: constants.WorkflowCapabilityScopeConsumer}
+	ids := []string{"workflow.runs.get", "workflow.runs.wait", "workflow.runs.cancel"}
+	if lease.Selection != nil {
+		ids = append(ids, "workflow.definitions.list", "workflow.definitions.describe", "workflow.runs.start")
+	} else {
+		ids = append(ids, "workflow.runs.list", "workflow.runs.repeat")
+	}
+	return s.agentBindings(scope, ids)
+}
+
+// consumerReceiptOwner 保证不同聊天回合的相同命令 requestId 不能串用接纳回执。
+func consumerReceiptOwner(lease models.WorkflowConsumerLease) string {
+	return "workflow.consumer:" + lease.ChatID + ":" + lease.ID
+}
+
+func (s *Service) agentBindings(scope workflowtool.Scope, ids []string) []capability.Binding {
 	bindings := make([]capability.Binding, 0, len(ids))
 	for _, id := range ids {
 		op, _ := capability.Find(id)
 		binding := capability.Binding{Operation: id}
 		binding.Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
+			if scope.LocalChatID != "" && (id == "workflow.definitions.list" || id == "workflow.definitions.describe") {
+				return s.readLocalWorkflowDefinitions(ctx, scope, request)
+			}
 			if op.Effect != constants.AgentCLIEffectRead {
 				access, err := s.authorizeWorkflowTool(ctx, scope)
 				if err != nil {
@@ -45,8 +68,22 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 				}
 				if id == "workflow.runs.start" {
 					definitionID, _ := request.Params["definitionId"].(string)
-					if !slices.Contains(access.definitions, definitionID) {
-						return capability.Result{}, status_error.AgentOperationForbidden
+					revisionID, _ := request.Params["revisionId"].(string)
+					if scope.LocalChatID != "" {
+						allowed, err := s.localWorkflowRevision(scope, definitionID, revisionID)
+						if err != nil {
+							return capability.Result{}, err
+						}
+						if revisionID != allowed {
+							return capability.Result{}, status_error.WorkflowRevisionConflict
+						}
+					} else {
+						if access.selection == nil || definitionID != access.selection.ID {
+							return capability.Result{}, status_error.AgentOperationForbidden
+						}
+						if revisionID != access.selection.RevisionID {
+							return capability.Result{}, status_error.WorkflowRevisionConflict
+						}
 					}
 					return s.startAgentRun(ctx, scope, access.owner, request)
 				}
@@ -56,7 +93,10 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 					_, err := access.call(ctx, input)
 					return err
 				})
-				return workflowAgentReceipt(id, result), err
+				if err != nil {
+					return result, err
+				}
+				return s.workflowAgentReceipt(scope, id, result), nil
 			}
 			if id == "workflow.runs.wait" {
 				if s.events == nil {
@@ -70,8 +110,10 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 					if err != nil {
 						return nil, false, err
 					}
-					run, err := s.runs.GetRun(ctx, input.RunID)
-					return unwrapWorkflow(value), workflowstate.TerminalRun(run.Status), err
+					details := unwrapWorkflow(value)
+					run, _ := details["run"].(map[string]any)
+					status, _ := run["status"].(constants.WorkflowRunStatus)
+					return details, workflowstate.TerminalRun(status), nil
 				})
 			}
 			input := workflowAgentInput(request)
@@ -84,6 +126,9 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 				items, _ := value["items"].([]map[string]any)
 				for _, item := range items {
 					if item["id"] == request.Params["definitionId"] {
+						if revision, _ := request.Params["revisionId"].(string); revision != "" && item["revisionId"] != revision {
+							return capability.Result{}, status_error.WorkflowRevisionConflict
+						}
 						return capability.Result{Data: item}, nil
 					}
 				}
@@ -110,15 +155,10 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 					return capability.Result{}, err
 				}
 				result, err := capability.Lookup(ctx, s.commands, access.owner, id, requestID)
-				if err == nil && kind == constants.WorkflowCapabilityScopeConsumer {
-					data, _ := result.Data.(map[string]any)
-					if definition, ok := data["definitionId"].(string); ok {
-						if !slices.Contains(access.definitions, definition) {
-							return capability.Result{}, status_error.AgentOperationForbidden
-						}
-					}
+				if err != nil {
+					return result, err
 				}
-				return workflowAgentReceipt(id, result), err
+				return s.workflowAgentReceipt(scope, id, result), nil
 			}
 		}
 		bindings = append(bindings, binding)
@@ -127,99 +167,59 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 }
 
 func (s *Service) startAgentRun(ctx context.Context, scope workflowtool.Scope, owner string, request capability.Request) (capability.Result, error) {
-	for attempt := 0; ; attempt++ {
-		prepared, err := s.prepareAgentRunInput(ctx, owner, request)
-		if err != nil {
-			return capability.Result{}, err
-		}
-		defer prepared.close()
-		result, callErr := capability.Execute(ctx, s.commands, owner, prepared.request, func(ctx context.Context) error {
-			input := workflowAgentInput(prepared.request)
-			input.Args, input.InputFileRoots = prepared.args, prepared.roots
-			input.RequestID = capability.ID(owner, request.Operation, request.RequestID)
-			// 冻结文件可能跨过授权期限，新运行接纳前读取当前执行范围。
-			_, err := s.handleTool(ctx, scope, input)
-			return err
-		})
-		revisionID, _ := request.Params["revisionId"].(string)
-		if !errors.Is(callErr, status_error.AgentCommandRequestConflict) || revisionID != "" || attempt != 0 {
-			return result, callErr
-		}
-		// 并发首提可能先按另一个 Head 准备；只按已经胜出的原回执重核一次。
-		accepted, err := capability.Lookup(ctx, s.commands, owner, request.Operation, request.RequestID)
-		data, _ := accepted.Data.(map[string]any)
-		if err != nil || data["revisionId"] == prepared.request.Params["revisionId"] {
-			return result, callErr
-		}
+	commandID := capability.ID(owner, request.Operation, request.RequestID)
+	executionID := scope.Key
+	if scope.LocalChatID != "" {
+		executionID = scope.ExecutionID
 	}
-}
-
-// agentRunInput 持有单次接纳前的冻结原件，不让临时路径进入幂等摘要。
-type agentRunInput struct {
-	// request 保留规范路径参数及同一次复制得到的文件摘要。
-	request capability.Request
-	// args 只向领域接纳传递受管冻结路径。
-	args any
-	// roots 只授权领域读取本次临时原件。
-	roots []string
-	// directory 在调用结束或重放后整体释放。
-	directory string
-}
-
-func (p *agentRunInput) close() {
-	if p.directory != "" {
-		if err := os.RemoveAll(p.directory); err != nil {
-			logx.Errorf("remove frozen agent inputs failed: error=%v", err)
-		}
+	prepared, staged, err := s.prepareAgentRunInput(ctx, request, consumerRunRequestID(executionID, commandID))
+	if err != nil {
+		return capability.Result{}, err
 	}
+	if staged != nil {
+		defer staged.Close()
+	}
+	return capability.Execute(ctx, s.commands, owner, prepared, func(ctx context.Context) error {
+		input := workflowAgentInput(prepared)
+		input.StagedInputs = staged
+		input.RequestID = commandID
+		// 冻结文件可能跨过授权期限，新运行接纳前读取当前执行范围。
+		_, err := s.handleTool(ctx, scope, input)
+		return err
+	})
 }
 
-func (s *Service) prepareAgentRunInput(ctx context.Context, owner string, request capability.Request) (_ *agentRunInput, err error) {
+func (s *Service) prepareAgentRunInput(ctx context.Context, request capability.Request, runRequestID string) (_ capability.Request, _ *workflowfiles.StagedInputs, err error) {
 	input := workflowAgentInput(request)
 	if input.RevisionID == "" {
-		accepted, err := capability.Lookup(ctx, s.commands, owner, request.Operation, request.RequestID)
-		if err == nil {
-			data, _ := accepted.Data.(map[string]any)
-			if data["definitionId"] != input.WorkflowID {
-				return nil, status_error.AgentCommandRequestConflict
-			}
-			input.RevisionID, _ = data["revisionId"].(string)
-			if input.RevisionID == "" {
-				return nil, status_error.AgentCommandOutcomeUnknown
-			}
-		} else if !errors.Is(err, status_error.AgentReceiptNotFound) {
-			return nil, err
-		} else {
-			definition, err := s.store.GetDefinition(ctx, input.WorkflowID)
-			if err != nil {
-				return nil, err
-			}
-			input.RevisionID = definition.CurrentRevisionID
-		}
+		return request, nil, status_error.AgentInputInvalid.WithField("field", "revisionId")
 	}
 	revision, err := s.store.GetRevision(ctx, input.WorkflowID, input.RevisionID)
 	if err != nil {
-		return nil, err
+		return request, nil, err
 	}
 	args := workflowdsl.ApplyDefaults(revision.Manifest.Meta.InputSchema, input.Args)
 	if err := workflowdsl.ValidateJSON(revision.Manifest.Meta.InputSchema, args); err != nil {
-		return nil, err
+		return request, nil, err
 	}
-	prepared := &agentRunInput{request: request}
+	params := make(map[string]any, len(request.Params))
+	for key, value := range request.Params {
+		params[key] = value
+	}
+	request.Params = params
+	request.InputDigests = make(map[string]string)
+	roots, allowedFiles := capability.FileRoots(ctx), capability.FilePaths(ctx)
+	managedSpace := capability.ManagedSpace(ctx)
+	runID := workflowRunID(input.WorkflowID, runRequestID)
+	var stage *workflowfiles.StagedInputs
 	defer func() {
-		if err != nil {
-			prepared.close()
+		if err != nil && stage != nil {
+			stage.Close()
 		}
 	}()
-	prepared.request.Params = make(map[string]any, len(request.Params))
-	for key, value := range request.Params {
-		prepared.request.Params[key] = value
-	}
-	prepared.request.InputDigests = map[string]string{}
-	frozenPaths := map[string]string{}
 	canonicalArgs, err := workflowdsl.MapFiles(revision.Manifest.Meta.InputSchema, args, func(pointer, reference string) (string, error) {
 		if strings.HasPrefix(reference, constants.WorkflowFileReferencePrefix) {
-			return reference, nil
+			return "", status_error.WorkflowFileInvalid.WithField("field", pointer)
 		}
 		if !filepath.IsAbs(reference) {
 			if !filepath.IsAbs(request.CWD) {
@@ -228,45 +228,31 @@ func (s *Service) prepareAgentRunInput(ctx context.Context, owner string, reques
 			reference = filepath.Join(request.CWD, reference)
 		}
 		reference = filepath.Clean(reference)
-		if prepared.directory == "" {
+		if stage == nil {
 			workspace, err := workflowfiles.PrepareWorkspace(s.dataDirectory, input.WorkflowID, "")
 			if err != nil {
 				return "", err
 			}
-			directory, err := os.MkdirTemp(workspace.TemporaryDirectory, "workflow-input-staging-")
+			stage, err = workflowfiles.StageInputs(workspace, runID)
 			if err != nil {
-				logx.Errorf("prepare frozen agent inputs failed: error=%v", err)
-				return "", status_error.WorkflowFileStorageError
+				return "", err
 			}
-			prepared.directory = directory
-			actual, err := filepath.EvalSymlinks(directory)
-			if err != nil {
-				logx.Errorf("resolve frozen agent inputs failed: error=%v", err)
-				return "", status_error.WorkflowFileStorageError
-			}
-			prepared.directory, prepared.roots = actual, []string{actual}
 		}
-		frozen, err := workflowfiles.FreezeLocalInput(ctx, capability.FileRoots(ctx), capability.FilePaths(ctx), reference, prepared.directory, "input", pointer, capability.ManagedSpace(ctx))
+		frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, allowedFiles, reference, stage.Directory, runID, pointer, managedSpace)
 		if err != nil {
 			return "", err
 		}
-		prepared.request.InputDigests[pointer], frozenPaths[pointer] = frozen.Digest, frozen.Path
-		return reference, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	prepared.request.Params["args"], prepared.request.Params["revisionId"] = canonicalArgs, revision.ID
-	prepared.args, err = workflowdsl.MapFiles(revision.Manifest.Meta.InputSchema, canonicalArgs, func(pointer, reference string) (string, error) {
-		if path, ok := frozenPaths[pointer]; ok {
-			return path, nil
+		if err := stage.Record(pointer, frozen); err != nil {
+			return "", err
 		}
+		request.InputDigests[pointer] = frozen.Digest
 		return reference, nil
 	})
 	if err != nil {
-		return nil, err
+		return request, nil, err
 	}
-	return prepared, nil
+	request.Params["args"], request.Params["revisionId"] = canonicalArgs, revision.ID
+	return request, stage, nil
 }
 
 func unwrapWorkflow(value map[string]any) map[string]any {
@@ -276,8 +262,8 @@ func unwrapWorkflow(value map[string]any) map[string]any {
 	return value
 }
 
-// workflowAgentReceipt 只从已持久化的保存回执派生完成标志，回放与查询保持同一语义。
-func workflowAgentReceipt(operation string, result capability.Result) capability.Result {
+// workflowAgentReceipt 从有效保存回执恢复所选工作流的同回合版本授权。
+func (s *Service) workflowAgentReceipt(scope workflowtool.Scope, operation string, result capability.Result) capability.Result {
 	if operation != "workflow.source.save" {
 		return result
 	}
@@ -286,6 +272,11 @@ func workflowAgentReceipt(operation string, result capability.Result) capability
 	digest, _ := data["sourceDigest"].(string)
 	if !ok || revisionID == "" || digest == "" {
 		return result
+	}
+	if scope.Selection != nil && data["definitionId"] == scope.Selection.ID {
+		if grant := s.chatTurns.current(scope.LocalChatID); grant != nil && grant.executionID == scope.ExecutionID {
+			grant.savedRevisions.Store(revisionID, struct{}{})
+		}
 	}
 	copy := make(map[string]any, len(data)+1)
 	for key, value := range data {
@@ -328,6 +319,11 @@ func workflowAgentInput(request capability.Request) workflowtool.Input {
 	case "workflow.runs.start":
 		input.Action = constants.WorkflowActionRunStart
 		input.WorkflowID, _ = request.Params["definitionId"].(string)
+	case "workflow.runs.list":
+		input.Action = constants.WorkflowActionRunList
+		input.PageParams = request.Params
+	case "workflow.runs.repeat":
+		input.Action = constants.WorkflowActionRunRepeat
 	case "workflow.runs.get", "workflow.runs.wait":
 		input.Action = constants.WorkflowActionRunGet
 	case "workflow.runs.cancel":

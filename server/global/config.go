@@ -7,6 +7,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 
 	"context"
 	"crypto/rand"
@@ -41,6 +42,7 @@ import (
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/sqlite"
 	storagefs "github.com/JieWaZi/NeuxBot/server/internal/storage"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -629,6 +631,30 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		}
 	})
 	executionCore, err := execution.New(execution.Config{
+		BindLocalWorkflowTurn: func(ctx context.Context, chat models.Chat, executionID string, selection *workinput.WorkflowReference, creationSessionID string) (execution.WorkflowTurnBinding, error) {
+			if WorkflowService == nil {
+				if selection != nil || creationSessionID != "" {
+					return execution.WorkflowTurnBinding{}, status_error.WorkflowCapabilityUnsupported
+				}
+				return execution.WorkflowTurnBinding{}, nil
+			}
+			return WorkflowService.BindLocalWorkflowTurn(ctx, chat, executionID, selection, creationSessionID)
+		},
+		BindWorkflowTurn: func(ctx context.Context, chat models.Chat, executionID string, selection *workinput.WorkflowReference) (execution.WorkflowTurnBinding, error) {
+			if WorkflowService == nil {
+				if selection != nil {
+					return execution.WorkflowTurnBinding{}, status_error.WorkflowCapabilityUnsupported
+				}
+				return execution.WorkflowTurnBinding{}, nil
+			}
+			return WorkflowService.BindWorkflowTurn(ctx, chat, executionID, selection)
+		},
+		CancelWorkflowTurn: func(ctx context.Context, chatID, executionID string) error {
+			if WorkflowService == nil {
+				return nil
+			}
+			return WorkflowService.StopChatWorkflowTurn(ctx, chatID, executionID)
+		},
 		ValidateIntent: func(ctx context.Context, intent execution.WorkIntent) error {
 			if KnowledgeService == nil {
 				return nil
@@ -693,6 +719,18 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	}
 	var imModule *imservice.Service
 	channelModule, err := channelservice.New(channelservice.Config{
+		StopChatWorkflows: func(ctx context.Context, threadID string, chatIDs []string, cancelingAt int64) error {
+			if WorkflowService == nil {
+				return status_error.WorkflowCapabilityUnsupported
+			}
+			return WorkflowService.StopTeamWorkflowTurns(ctx, threadID, chatIDs, cancelingAt)
+		},
+		FreezeWorkflowSelection: func(ctx context.Context, selection *workinput.WorkflowReference) (*workinput.WorkflowReference, error) {
+			if WorkflowService == nil {
+				return nil, status_error.WorkflowCapabilityUnsupported
+			}
+			return WorkflowService.FreezeWorkflowSelection(ctx, selection)
+		},
 		ManagedFilesDirectory: configuration.ManagedFilesDirectory,
 		AutomaticRun:          AutomaticTaskControllerManager.GetRun,
 		Commands:              controllers.NewAgentCommandController(DB),
@@ -725,13 +763,11 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	ChannelService = channelModule
 	imModule = imservice.New(imservice.Config{Events: EventHub, Store: IMControllerManager, Transactions: TransactionControllerManager, Executions: ExecutionService, Chats: ChatService, Teams: ChannelService, Channels: ChannelControllerManager, Threads: ChannelThreadControllerManager, TeamTasks: ChannelTaskControllerManager, DataDirectory: configuration.ManagedFilesDirectory})
 	IMService = imModule
-	if err := ChannelService.Start(ctx); err != nil {
-		return mapCoreError("start_channel_service", status_error.CoreChannelInitializationFailed, err)
-	}
 	WorkflowState = workflowstate.New(WorkflowControllerManager, WorkflowRunControllerManager, TransactionControllerManager)
 	WorkflowService = workflow.New(workflow.Config{
-		RepairOutput: repairWorkflowOutput,
-		Commands:     controllers.NewAgentCommandController(DB), Events: EventHub,
+		RepairOutput:    repairWorkflowOutput,
+		SummarizeOutput: summarizeWorkflowOutput,
+		Commands:        controllers.NewAgentCommandController(DB), Events: EventHub,
 		State:            WorkflowState,
 		Resources:        workflowResources,
 		IMCall:           IMService.WorkflowCall,
@@ -742,6 +778,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Worker:           workflow.CoreWorkerAdapter{Executions: ExecutionService, Chats: chatModule},
 		CreationSessions: WorkflowCreationControllerManager,
 		Consumers:        controllers.NewWorkflowConsumerController(DB),
+		ChannelThreads:   ChannelThreadControllerManager,
 		Executions:       ExecutionService,
 		Chats:            chatModule,
 		Wakers:           WakerControllerManager,
@@ -750,6 +787,13 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		DataDirectory:    configuration.ManagedFilesDirectory,
 		Projects:         ProjectControllerManager,
 	})
+	if err := workflowfiles.RecoverStagedInputs(ctx, configuration.ManagedFilesDirectory, WorkflowRunControllerManager.OwnedInputRunIDs); err != nil && ctx.Err() == nil {
+		logx.Warnf("recover staged workflow inputs failed: error=%v", err)
+	}
+	WorkflowService.RestoreChatRunIndex(ctx)
+	if err := ChannelService.Start(ctx); err != nil {
+		return mapCoreError("start_channel_service", status_error.CoreChannelInitializationFailed, err)
+	}
 	scheduleConfig := schedule.Config{AuthorizationWrite: IntegrationService.WithAuthorizationWrite,
 		BindKnowledge: KnowledgeService.BindIntent,
 		Workflows:     WorkflowService,

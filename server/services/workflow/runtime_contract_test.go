@@ -120,7 +120,7 @@ func TestRelativeChildResultsFreezeChildRunDirectory(t *testing.T) {
 		}
 	}
 	effect := models.WorkflowEffect{ID: "relative-child-result"}
-	result, err := s.freezeChildResult(ctx, parentRun, effect, childRun)
+	result, _, err := s.freezeChildResult(ctx, parentRun, effect, childRun)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestRelativeChildResultsFreezeChildRunDirectory(t *testing.T) {
 	if err := os.Remove(actual); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.freezeChildResult(ctx, parentRun, effect, childRun); err == nil {
+	if _, _, err := s.freezeChildResult(ctx, parentRun, effect, childRun); err == nil {
 		t.Fatal("missing child output fell back to a same-name file")
 	}
 }

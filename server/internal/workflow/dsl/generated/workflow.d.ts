@@ -5,7 +5,7 @@ type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type Schema = { [key: string]: Json };
 interface VisualNode { id: string; label: string; description?: string; phase: string; inputs?: string[]; outputs?: string[]; successCondition?:{path:string;equals:Json} }
 interface WakerResolve { kind: 'waker'; wakerId: string; runtimeId?: string; accountId?: string; model?: string; reasoning?: string; permissionLevel?: 'default'|'auto'|'full-access' }
-interface ToolPolicy { connectors?: {mode:'inherit'} | {mode:'allowlist';connectorIds:string[]}; nativeTools?: {mode:'inherit'} | {mode:'allowlist';capabilityIds:string[]} }
+interface ToolPolicy { connectors?: {mode:'inherit'}; nativeTools?: {mode:'inherit'} }
 interface WorkerOptions { resolve: WakerResolve; schema?: Schema; toolPolicy?: ToolPolicy; retry?: {maxAttempts:number;safety:'pure'|'idempotent';idempotencyKey?:string} }
 interface HumanOptions { kind:'text'|'select'|'multiselect'|'form'|'confirm'; choices?:Array<{value:string;label:string}>|{fileRef:string}; allowCustom?:boolean; schema?:Schema; minSelections?:number; maxSelections?:number; defaultValue?:Json; allowSkip?:boolean; timeoutMs?:number; onTimeout?:'fail'|'skip'|'default' }
 interface HumanAnswer { questionId:string; status:'answered'|'skipped'|'timed_out'; source:'user'|'user_skip'|'timeout'|'cache_replay'; value?:Json }

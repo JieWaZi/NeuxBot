@@ -20,7 +20,7 @@ type WorkflowController interface {
 	// GetDefinition 按稳定身份读取定义。
 	GetDefinition(context.Context, string) (models.WorkflowDefinition, error)
 	// ListDefinitions 先按字面搜索与分类过滤，再按更新时间游标读取有界列表。
-	ListDefinitions(context.Context, string, int64, string, int, *string) ([]models.WorkflowDefinition, error)
+	ListDefinitions(ctx context.Context, query string, before int64, beforeID string, limit, offset int, category *string) ([]models.WorkflowDefinition, error)
 	// UpdateCategories 只更新目录标签，保留源码版本和执行关系。
 	UpdateCategories(context.Context, string, []string) error
 	// UpdateHead 在当前版本仍匹配时提交新版本指针及摘要。
@@ -102,7 +102,7 @@ func (c *workflowController) GetDefinition(ctx context.Context, id string) (mode
 	}
 	return value, nil
 }
-func (c *workflowController) ListDefinitions(ctx context.Context, query string, before int64, beforeID string, limit int, category *string) ([]models.WorkflowDefinition, error) {
+func (c *workflowController) ListDefinitions(ctx context.Context, query string, before int64, beforeID string, limit, offset int, category *string) ([]models.WorkflowDefinition, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
@@ -115,13 +115,13 @@ func (c *workflowController) ListDefinitions(ctx context.Context, query string, 
 		}
 	}
 	if query = strings.ToLower(strings.TrimSpace(query)); query != "" {
-		db = db.Where("instr(lower(title), ?) > 0 OR instr(lower(description), ?) > 0", query, query)
+		db = db.Where("instr(lower(title), ?) > 0 OR instr(lower(description), ?) > 0 OR instr(lower(when_to_use), ?) > 0", query, query, query)
 	}
 	if before > 0 {
 		db = db.Where("updated_at < ? OR (updated_at = ? AND id < ?)", before, before, beforeID)
 	}
 	values := []models.WorkflowDefinition{}
-	if err := db.Order("updated_at DESC, id DESC").Limit(limit).Find(&values).Error; err != nil {
+	if err := db.Order("updated_at DESC, id DESC").Offset(offset).Limit(limit).Find(&values).Error; err != nil {
 		return nil, databaseError("list_workflow_definitions", "", err)
 	}
 	return values, nil

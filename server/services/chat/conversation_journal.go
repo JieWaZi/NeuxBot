@@ -15,6 +15,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
 // NativeJournal is the Chat business boundary used by Thread admission and observation.
@@ -463,7 +464,7 @@ func (j *conversationJournal) messageWindow(id string, before int64, page agent.
 			return window, err
 		}
 		for _, record := range factRecords(id, late) {
-			if record.Type == constants.ChatEventTypeFileChanges {
+			if record.Type == constants.ChatEventTypeFileChanges || record.Type == constants.ChatEventTypeExecutionDelivery {
 				window.Records = append(window.Records, record)
 			}
 		}
@@ -629,5 +630,73 @@ func (j *conversationJournal) applyPublic(ctx context.Context, adapter *eventstr
 		}
 	}
 	projected, err := adapter.Apply(row)
+	if err == nil && row.Type == constants.ChatEventTypeExecutionDelivery && projected.Message == nil {
+		// 很早的回复可能没有进入当前事件窗口；按原执行身份补齐本次更新，避免重放聊天全史。
+		projected.Message, err = j.lateDeliveryMessage(ctx, row)
+	}
 	return projected, true, err
+}
+
+func (j *conversationJournal) lateDeliveryMessage(ctx context.Context, delivery eventlog.Record) (*messageview.Message, error) {
+	created, err := j.ReadAfter(delivery.ChatID, 0, 1)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := j.ReadTurn(ctx, delivery.ChatID, delivery.ExecutionID)
+	if err != nil {
+		return nil, err
+	}
+	builder := messageview.NewPublicMessageViewBuilder()
+	for _, record := range created {
+		if _, err := builder.Apply(record); err != nil {
+			return nil, err
+		}
+	}
+	var checkpoint eventlog.Record
+	for _, row := range rows {
+		record := factRecord(delivery.ChatID, row)
+		if record.Sequence > delivery.Sequence {
+			break
+		}
+		if isNativeCheckpoint(record) && record.MessageID == delivery.MessageID {
+			checkpoint = record
+		}
+		if _, err := builder.Apply(record); err != nil {
+			return nil, err
+		}
+	}
+	if checkpoint.Sequence > 0 {
+		stored, cursor, err := j.ReadMessageCheckpoint(ctx, delivery.ChatID, delivery.MessageID, checkpoint.Sequence)
+		if err != nil {
+			return nil, err
+		}
+		if cursor == checkpoint.Sequence {
+			if err := builder.ReplaceStoredContent(stored, cursor, checkpoint.RecordedAt); err != nil {
+				return nil, err
+			}
+		}
+	}
+	outcome, err := j.nativeOutcome(ctx, delivery.ChatID, delivery.ExecutionID)
+	if err != nil {
+		return nil, err
+	}
+	if outcome != nil && outcome.ForkMode == acpmeta.ForkLatest {
+		latestID, err := j.ReadLatestExecutionID(ctx, delivery.ChatID)
+		if err != nil {
+			return nil, err
+		}
+		sessionID := ""
+		if latestID == delivery.ExecutionID {
+			binding, err := j.ReadBinding(ctx, delivery.ChatID)
+			if err != nil {
+				return nil, err
+			}
+			if binding != nil && !binding.Cleared {
+				sessionID = binding.Session.SessionID
+			}
+		}
+		builder.SetCurrentForkBoundary(latestID, sessionID)
+	}
+	builder.SetNativeResult(delivery.MessageID, outcome)
+	return builder.PublicMessage(delivery.MessageID), nil
 }

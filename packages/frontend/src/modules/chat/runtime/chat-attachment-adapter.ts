@@ -20,11 +20,17 @@ function mediaTypeOf(path: string): string {
   return "application/octet-stream";
 }
 
-export function pathFile(path: string): BotPathFile {
-  const name = path.split(/[\\/]/).pop() || "attachment";
-  return Object.assign(new File([], name, { type: mediaTypeOf(path) }), {
-    botSourcePath: path,
-  });
+export function pathFile(
+  path: string,
+  metadata?: { name: string; contentType?: string },
+): BotPathFile {
+  const name = metadata?.name || path.split(/[\\/]/).pop() || "attachment";
+  return Object.assign(
+    new File([], name, { type: metadata?.contentType ?? mediaTypeOf(path) }),
+    {
+      botSourcePath: path,
+    },
+  );
 }
 
 export const chatAttachmentAdapter = {

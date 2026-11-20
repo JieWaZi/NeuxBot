@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { WorkbenchContribution } from "../components/chat-contributions";
 import { ChatBrowserView } from "../components/chat-browser-view";
 import { closeTerminal } from "@/shared/platform";
 import { Button } from "@/shared/ui/button";
@@ -52,6 +51,8 @@ import { paneHeaderGeometry } from "./pane-geometry";
 import { workbenchDocumentBuffers } from "./document-buffers";
 import type { WorkbenchFileWorkspaceProps } from "./file/workbench-file-workspace";
 import type { ScopedGitChangesProps } from "../components/scoped-git-changes";
+import { WorkflowRunWorkbenchView } from "./workflow-run-workbench-view";
+import { workflowRunContentType } from "./workflow-run-reference";
 
 const WorkspaceFileViewer = lazy(async () => ({
   default: (await import("../components/workspace-file-viewer"))
@@ -403,12 +404,14 @@ export function RightWorkbench({
 
   const renderTab = (tab: WorkbenchTab, active: boolean) => {
     if (tab.kind === "content") {
-      if (tab.contentReference)
+      if (tab.contentReference?.type === workflowRunContentType)
         return (
-          <WorkbenchContribution
-            reference={tab.contentReference}
+          <WorkflowRunWorkbenchView
             active={active && visible}
+            navigationRevision={tab.navigationRevision}
+            reference={tab.contentReference}
             scopeKey={scopeKey}
+            title={tab.title}
           />
         );
       if (tab.contentId !== contentTab?.contentId) return null;
@@ -529,7 +532,7 @@ export function RightWorkbench({
             path={tab.path}
             rootPath={tab.rootPath}
             draftKey={`${scopeKey}:${tab.id}`}
-            scopeChatId={parentChatId}
+            scopeChatId={tab.fileChatId ?? parentChatId}
             sourceRoots={sourceRoots}
             mode={tab.fileMode}
             executionDiff={tab.executionDiff}

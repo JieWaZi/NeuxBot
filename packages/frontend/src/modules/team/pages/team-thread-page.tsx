@@ -19,6 +19,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { subscribeChannel } from "@/shared/api/events";
 import { ApiError } from "@/shared/api/errors";
+import { subscribeGlobalEvents } from "@/shared/api/global-events";
 import type {
   GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail as ChannelThreadDetail,
   GithubComJieWaZiNeuxBotServerServicesChannelTimelineMessage as ChannelTimelineMessage,
@@ -233,6 +234,29 @@ export function TeamThreadPage({
     }
   }, [channelId, queryClient, threadId]);
 
+  const threadMembers = threadQuery.data?.members;
+  useEffect(() => {
+    if (!sceneActive || !threadId || !threadMembers) return;
+    const unsubscribe = threadMembers.flatMap(({ chatId }) =>
+      chatId
+        ? [
+            subscribeGlobalEvents(
+              "workflow",
+              { kind: "chat", id: chatId },
+              {
+                onEvent: ({ type }) => {
+                  if (type === "workflow.changed" || type === "workflow.ready")
+                    refreshThreadDetail();
+                },
+                onResync: refreshThreadDetail,
+              },
+            ),
+          ]
+        : [],
+    );
+    return () => unsubscribe.forEach((release) => release());
+  }, [refreshThreadDetail, sceneActive, threadId, threadMembers]);
+
   const refreshThreadNavigation = useCallback(() => {
     void queryClient.invalidateQueries({
       queryKey: teamQueryKeys.threads(channelId),
@@ -396,9 +420,10 @@ export function TeamThreadPage({
   )
     leadActivity.activeExecutionId = undefined;
   const isStopping = Boolean(thread?.cancelingAt) || stopWork.isPending;
-  const workState = isStopping
-    ? "running"
-    : teamWorkStateOf(tasks, leadActivity);
+  const workState =
+    isStopping || projectedThreadDetail?.activeWorkflows
+      ? "running"
+      : teamWorkStateOf(tasks, leadActivity);
   const teamMembers = useMemo(
     () =>
       projectTeamMembers({
@@ -409,10 +434,14 @@ export function TeamThreadPage({
       }),
     [leadWakerId, members, projectedThreadDetail, t, threadId],
   );
-  const stopCurrentWork = async () => {
+  const stopCurrentWork = async (submissionId?: string) => {
     if (!threadId || isStopping) return;
     try {
-      await stopWork.mutateAsync({ path: { channelId, threadId } });
+      await stopWork.mutateAsync({
+        path: { channelId, threadId },
+        query: submissionId ? { submissionId } : undefined,
+      });
+      if (submissionId) eventRefreshScheduler.push();
     } catch (error) {
       eventRefreshScheduler.push();
       throw error;
@@ -439,7 +468,7 @@ export function TeamThreadPage({
       ? "idle"
       : workState === "review"
         ? "review"
-        : activeTask
+        : activeTask || projectedThreadDetail?.activeWorkflows
           ? "executing"
           : leadActivity.summarizing
             ? "summarizing"

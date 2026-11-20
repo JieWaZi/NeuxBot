@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
@@ -22,45 +21,17 @@ func (s *service) agentTeamBindings(endpoint, leaseID string) []capability.Bindi
 	} else if scope.AllowMutations {
 		operations = append(operations, "team.tasks.create", "team.tasks.update", "team.tasks.follow-up", "team.tasks.retry", "team.tasks.cancel")
 	}
-	validate := func(ctx context.Context) (string, error) {
-		current, exists := s.capabilities.Resolve(endpoint)
-		if !exists || current.LeaseID != leaseID {
-			return "", status_error.AgentContextUnauthorized
-		}
-		thread, err := s.threads.Get(ctx, current.ThreadID)
-		if err != nil {
-			return "", err
-		}
-		member, err := s.threads.GetMember(ctx, thread.ID, current.CallerWakerID)
-		if err != nil {
-			return "", err
-		}
-		if (current.Role == constants.ChannelCapabilityRoleLead) != (thread.LeadWakerID == current.CallerWakerID) {
-			return "", status_error.AgentOperationForbidden
-		}
-		summary, err := s.chats.GetChatSummary(ctx, member.ChatID)
-		if err != nil {
-			return "", err
-		}
-		if summary.Chat.ActiveExecutionID != current.ExecutionID {
-			return "", status_error.AgentContextUnauthorized
-		}
-		owner := "team:" + thread.ID + ":" + current.CallerWakerID
-		if current.Role == constants.ChannelCapabilityRoleMember {
-			owner += ":" + current.AttemptID
-		}
-		return owner, nil
-	}
 	result := make([]capability.Binding, 0, len(operations))
 	for _, id := range operations {
 		binding := capability.Binding{Operation: id}
+		op, _ := capability.Find(id)
 		binding.Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
-			owner, err := validate(ctx)
+			authorized, err := s.authorizeTeamTool(ctx, endpoint, leaseID)
 			if err != nil {
 				return capability.Result{}, err
 			}
 			if id == "team.members.list" {
-				members, err := s.currentThreadMemberProfiles(ctx, scope.ThreadID)
+				members, err := s.currentThreadMemberProfiles(ctx, authorized.thread.ID)
 				items := make([]map[string]any, 0, len(members))
 				for _, member := range members {
 					items = append(items, map[string]any{"wakerId": member.WakerID, "name": member.DisplayName, "role": member.RoleName, "bio": member.Bio, "isLead": member.IsLead})
@@ -68,15 +39,13 @@ func (s *service) agentTeamBindings(endpoint, leaseID string) []capability.Bindi
 				return capability.Result{Data: map[string]any{"items": items}}, err
 			}
 			input := teamAgentInput(request)
-			call := func(ctx context.Context) (channeltool.TaskOutput, error) {
-				output, err := s.toolChannelTasks(ctx, endpoint, input)
-				return output, err
-			}
-			op, _ := capability.Find(id)
 			if op.Effect != constants.AgentCLIEffectRead {
-				return capability.Execute(ctx, s.commands, owner, request, func(ctx context.Context) error { _, err := call(ctx); return err })
+				return capability.Execute(ctx, s.commands, authorized.commandOwner(), request, func(ctx context.Context) error {
+					_, err := s.toolChannelTasks(ctx, authorized, input)
+					return err
+				})
 			}
-			output, err := call(ctx)
+			output, err := s.toolChannelTasks(ctx, authorized, input)
 			if err != nil {
 				return capability.Result{}, err
 			}
@@ -86,14 +55,13 @@ func (s *service) agentTeamBindings(endpoint, leaseID string) []capability.Bindi
 			}
 			return capability.Result{Data: output.Task}, nil
 		}
-		op, _ := capability.Find(id)
 		if op.Effect != constants.AgentCLIEffectRead {
 			binding.Receipt = func(ctx context.Context, requestID string) (capability.Result, error) {
-				owner, err := validate(ctx)
+				authorized, err := s.authorizeTeamTool(ctx, endpoint, leaseID)
 				if err != nil {
 					return capability.Result{}, err
 				}
-				return capability.Lookup(ctx, s.commands, owner, id, requestID)
+				return capability.Lookup(ctx, s.commands, authorized.commandOwner(), id, requestID)
 			}
 		}
 		result = append(result, binding)
@@ -140,19 +108,12 @@ func (s *service) watchTaskCancellation(attempt models.ChannelTaskAttempt) {
 		delay := policy.initialDelay
 		for index := 0; index < policy.maximumFailures; index++ {
 			task, err := s.tasks.Get(ctx, attempt.TaskID)
-			if err == nil && (task.CurrentFence != attempt.Fence || task.Status != constants.ChannelTaskStatusInProgress || task.CancelRequestedAt == nil || task.CancelRequestedFence != attempt.Fence) {
+			if err == nil && (task.CurrentFence != attempt.Fence || task.Status != constants.ChannelTaskStatusInProgress || !taskCancellationRequested(task, attempt.Fence)) {
 				return
 			}
 			if err == nil {
-				summary, readErr := s.chats.GetChatSummary(ctx, attempt.ChatID)
-				if readErr == nil && summary.Chat.ActiveExecutionID != attempt.ExecutionID {
-					return
-				}
-				if readErr != nil {
-					err = readErr
-				} else {
-					err = s.executions.CancelAndWait(ctx, attempt.ChatID)
-				}
+				// 原执行占位可能先于 Chat 投影，精确取消由 Execution 匹配。
+				err = s.executions.CancelExecutionAndWait(ctx, attempt.ChatID, attempt.ExecutionID)
 			}
 			if err == nil || ctx.Err() != nil {
 				return

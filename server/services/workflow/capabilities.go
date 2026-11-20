@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -17,18 +18,17 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
-	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowcatalog "github.com/JieWaZi/NeuxBot/server/internal/workflow/catalog"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
-func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Scope, session models.WorkflowCreationSession, input workflowtool.Input) (map[string]any, error) {
+func (s *Service) handleCreationTool(ctx context.Context, session models.WorkflowCreationSession, input workflowtool.Input) (map[string]any, error) {
 	if input.SDK != "" && input.SDK != constants.WorkflowSDKIdentifier {
 		return nil, status_error.WorkflowCapabilityUnsupported.WithField("capability", "sdk_identity")
 	}
@@ -50,10 +50,7 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 	case constants.WorkflowActionSourceGet:
 		return s.readWorkflowAuthoringSource(ctx, session.DefinitionID, input.RevisionID)
 	case constants.WorkflowActionSourceValidate:
-		compiled, diagnostics, err := workflowdsl.Compile(input.Source)
-		if err == nil {
-			err = s.validateSourcePolicies(ctx, compiled.Manifest)
-		}
+		compiled, diagnostics, err := CompileSource(input.Source)
 		if err == nil {
 			var configurationDiagnostics []workflowdsl.Diagnostic
 			configurationDiagnostics, err = validateWorkerRetryPolicies(compiled.Manifest, &session.Defaults)
@@ -82,7 +79,7 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 		for i, p := range input.Patches {
 			patches[i] = SourcePatch{Search: p.Search, Replace: p.Replace}
 		}
-		receipt, diagnostics, err := s.SaveSource(ctx, SaveSourceCommand{Patches: patches, BaseSourceDigest: input.BaseSourceDigest, DefinitionID: session.DefinitionID, RequestID: input.RequestID, ExpectedRevisionID: input.ExpectedRevisionID, Source: input.Source, SDK: input.SDK, CreationSessionID: session.ID, CreationExecutionID: session.ActiveExecutionID, CreationToken: scope.Token, ResolvedAnnotationIDs: input.ResolvedAnnotationIDs})
+		receipt, diagnostics, err := s.SaveSource(ctx, SaveSourceCommand{Patches: patches, BaseSourceDigest: input.BaseSourceDigest, DefinitionID: session.DefinitionID, RequestID: input.RequestID, ExpectedRevisionID: input.ExpectedRevisionID, Source: input.Source, SDK: input.SDK, CreationSessionID: session.ID, ExecutionID: session.ActiveExecutionID, ExecutionChatID: session.ChatID, ResolvedAnnotationIDs: input.ResolvedAnnotationIDs})
 		if err != nil {
 			if diagnostics == nil {
 				diagnostics = []workflowdsl.Diagnostic{}
@@ -202,11 +199,15 @@ func (s *Service) prepareAuthoring(
 	if slices.Contains(input.Primitives, "worker") {
 		resourceKinds = append(resourceKinds, "wakers", "runtimes", "accounts")
 	}
-	if slices.Contains(input.Primitives, "action") || slices.Contains(input.Features, "im") {
-		resourceKinds = append(resourceKinds, "builtinActions", "scriptLanguages")
+	needsActions := slices.Contains(input.Primitives, "action") || slices.Contains(input.Features, "im")
+	if needsActions {
+		resourceKinds = append(resourceKinds, "builtinActions")
 	}
 	if input.Language == "python" {
-		resourceKinds = append(resourceKinds, "functionLanguages", "scriptLanguages")
+		resourceKinds = append(resourceKinds, "functionLanguages")
+	}
+	if input.Language == "python" && slices.Contains(input.Primitives, "action") {
+		resourceKinds = append(resourceKinds, "scriptLanguages")
 	}
 	for _, primitive := range input.Primitives {
 		if workflowcatalog.PrimitiveTopics()[primitive] == "workflow" {
@@ -245,8 +246,9 @@ func (s *Service) prepareAuthoring(
 		return nil, err
 	}
 	resources := map[string]any{}
+	resolvePython := sync.OnceValues(func() (string, error) { return s.resolvePython(ctx) })
 	for _, kind := range resourceKinds {
-		page, err := s.resourceItemsPage(ctx, session.DefinitionID, kind, "")
+		page, err := s.resourceItemsPage(ctx, session.DefinitionID, kind, "", resolvePython)
 		if err != nil {
 			return nil, err
 		}
@@ -276,225 +278,221 @@ func (s *Service) prepareAuthoring(
 	return result, nil
 }
 
-// BindConsumer 签发用户选择的单回合能力，并只向中立 Core 绑定受限 CLI 能力。
-func (s *Service) BindConsumer(ctx context.Context, intent execution.WorkIntent, definitionIDs []string) (execution.WorkIntent, error) {
-	if len(definitionIDs) == 0 {
-		return intent, nil
+func (s *Service) persistConsumer(ctx context.Context, lease models.WorkflowConsumerLease) (models.WorkflowConsumerLease, error) {
+	lease.DeadlineAt = time.Now().UnixMilli() + constants.WorkflowDefaultTimeoutMillis
+	var err error
+	if lease.ThreadID == "" {
+		err = s.consumers.CreateConsumer(ctx, lease)
+	} else {
+		err = s.transactions.Transaction(ctx, func(tx context.Context) error {
+			if err := s.ensureTeamWorkflowWritable(tx, lease.ThreadID); err != nil {
+				return err
+			}
+			return s.consumers.CreateConsumer(tx, lease)
+		})
 	}
-	if len(definitionIDs) > 100 || s.consumers == nil || s.state.AgentBindings == nil || s.chats == nil || s.executions == nil {
-		return intent, status_error.WorkflowCapabilityUnsupported
-	}
-	seen := map[string]bool{}
-	for _, id := range definitionIDs {
-		if id == "" || len(id) > 32 || seen[id] {
-			return intent, status_error.BadRequest
-		}
-		seen[id] = true
-		definition, err := s.store.GetDefinition(ctx, id)
-		if err != nil {
-			return intent, err
-		}
-		if definition.CurrentRevisionID == "" {
-			return intent, status_error.WorkflowStateConflict.WithField("workflowId", id)
-		}
-	}
-	if err := s.executions.ValidateConfiguration(ctx, execution.ExecutionConfiguration{Resolved: intent.Options.ConfigurationResolved, RuntimeID: intent.Options.RuntimeID, AccountID: intent.Options.AccountID, Model: intent.Options.Model, Reasoning: intent.Options.Reasoning, Fast: intent.Options.Fast, PermissionLevel: intent.Options.PermissionLevel}); err != nil {
-		return intent, err
-	}
-	chatID := intent.Chat.ChatID
-	if intent.Chat.Create != nil {
-		if intent.ClientRequestID == "" {
-			return intent, status_error.BadRequest
-		}
-		identity := requestidempotency.Identity{ID: intent.ClientRequestID}
-		chatID = identity.ResourceID("chat", intent.Chat.Create.WakerID)
-		if intent.ExecutionID == "" {
-			intent.ExecutionID = identity.ResourceID("workflow-use-execution", intent.Chat.Create.WakerID)
-		}
-	}
-	if chatID == "" {
-		return intent, status_error.BadRequest
-	}
-	if intent.ExecutionID == "" {
-		intent.ExecutionID = util.New()
-	}
-	ids := slices.Clone(definitionIDs)
-	slices.Sort(ids)
-	// 尚未由 Core 补齐的可选枚举不能直接 MarshalText；摘要显式编码入口的原始选择。
-	options := intent.Options
-	fingerprint, err := requestidempotency.New(intent.ExecutionID, []any{chatID, intent.ClientRequestID, intent.Chat.Create, intent.Input, options.RuntimeID, options.AccountID, options.Model, options.Reasoning, string(options.PermissionLevel), options.WorkspaceReadOnly, string(options.SessionPolicy), options.HistoryTurns, string(options.HistoryMode), options.SummaryModel, options.SummaryReasoning, ids})
 	if err != nil {
-		return intent, err
-	}
-	lease := models.WorkflowConsumerLease{ID: intent.ExecutionID, ChatID: chatID, DefinitionIDs: ids, PayloadDigest: fingerprint.Hash, AuthToken: util.New() + util.New(), DeadlineAt: time.Now().UnixMilli() + constants.WorkflowDefaultTimeoutMillis}
-	// 插入只保留首次事实；同一客户端首发重试不能改变白名单或凭据。
-	if err := s.consumers.CreateConsumer(ctx, lease); err != nil {
-		return intent, err
+		return models.WorkflowConsumerLease{}, err
 	}
 	current, err := s.consumers.GetConsumer(ctx, lease.ID)
 	if err != nil {
-		return intent, err
+		return models.WorkflowConsumerLease{}, err
 	}
-	if current.PayloadDigest != lease.PayloadDigest || current.ChatID != chatID {
-		return intent, status_error.WorkflowRequestConflict
+	if current.PayloadDigest != lease.PayloadDigest || current.ChatID != lease.ChatID || current.StoppedAt != nil {
+		return models.WorkflowConsumerLease{}, status_error.WorkflowRequestConflict
 	}
-	intent.Options.ToolCapabilities = append(intent.Options.ToolCapabilities, execution.ToolCapability{
-		ID: "workflow.consumer", Name: "工作流使用", Bindings: s.AgentBindings(current.ID, current.AuthToken, constants.WorkflowCapabilityScopeConsumer),
-	})
-	return intent, nil
+	return current, nil
 }
 
 func (s *Service) handleConsumerTool(ctx context.Context, lease models.WorkflowConsumerLease, actual models.Execution, chat models.Chat, input workflowtool.Input) (map[string]any, error) {
-	if input.Action == constants.WorkflowActionQuery && input.Type == constants.WorkflowQueryWorkflows {
+	wrap := func(value map[string]any) (map[string]any, error) {
+		return map[string]any{"ok": true, "data": value}, nil
+	}
+	switch input.Action {
+	case constants.WorkflowActionQuery:
 		items := []map[string]any{}
-		query := strings.ToLower(strings.TrimSpace(input.Search))
-		for _, id := range lease.DefinitionIDs {
-			definition, err := s.store.GetDefinition(ctx, id)
+		if lease.Selection != nil {
+			item, err := s.describeWorkflowDefinition(ctx, lease.Selection.ID, lease.Selection.RevisionID)
 			if err != nil {
 				return nil, err
 			}
-			if query != "" && !strings.Contains(strings.ToLower(definition.Title+" "+definition.Description+" "+definition.WhenToUse), query) {
-				continue
+			if matchesWorkflowDefinition(item, input.Search) {
+				items = append(items, item)
 			}
-			item := map[string]any{"id": id, "name": definition.Title, "description": definition.Description, "whenToUse": definition.WhenToUse, "revisionId": definition.CurrentRevisionID, "runnable": definition.CurrentRevisionID != "", "outputSchema": map[string]any{}}
-			if definition.CurrentRevisionID != "" {
-				revision, err := s.store.GetRevision(ctx, id, definition.CurrentRevisionID)
-				if err != nil {
-					return nil, err
-				}
-				item["inputSchema"] = revision.Manifest.Meta.InputSchema
-				item["outputSchema"] = revision.Manifest.Meta.OutputSchema
-			}
-			items = append(items, item)
 		}
-		return map[string]any{"ok": true, "data": map[string]any{"items": items}}, nil
-	}
-	if input.Action == constants.WorkflowActionRunStart {
-		if !slices.Contains(lease.DefinitionIDs, input.WorkflowID) || input.RequestID == "" || len(input.RequestID) > 128 {
-			return nil, status_error.WorkflowStateConflict
+		return wrap(map[string]any{"items": items})
+	case constants.WorkflowActionRunList:
+		if lease.Selection != nil {
+			return nil, status_error.AgentOperationForbidden
 		}
-		if len(chat.AdditionalWorkingDirectories) == 0 {
-			return nil, status_error.WorkflowResourceInvalid.WithField("field", "workingDirectory")
-		}
-		approved := models.WorkflowScopeBinding{ProjectID: chat.ProjectID, WorkingDirectory: chat.AdditionalWorkingDirectories[0]}
-		requestID := requestidempotency.Identity{ID: input.RequestID}.ResourceID("workflow-use-run", lease.ID)
-		roots := capability.FileRoots(ctx)
-		if input.InputFileRoots != nil {
-			roots = input.InputFileRoots
-		}
-		run, err := s.StartRun(ctx, StartRunCommand{AutomaticRunID: actual.AutomaticRunID, InputFileRoots: roots, DefinitionID: input.WorkflowID, RevisionID: input.RevisionID, RequestID: requestID, Args: input.Args, TriggerSource: "agent", ConsumerLeaseID: lease.ID, ApprovedScope: &approved, Defaults: models.WorkflowExecutionDefaults{RuntimeID: actual.RuntimeID, AccountID: actual.AccountID, Model: actual.Model, Reasoning: actual.Reasoning, Fast: actual.Fast, PermissionLevel: actual.PermissionLevel, WorkspaceReadOnly: actual.WorkspaceReadOnly}})
+		page, err := capability.PageFrom(input.PageParams, func(offset, limit int) ([]any, int, error) {
+			return s.listChatRunPage(ctx, lease.ChatID, offset, limit)
+		})
 		if err != nil {
 			return nil, err
 		}
-		publicRun := map[string]any{"rootRunId": run.RootRunID, "id": run.ID, "definitionId": run.DefinitionID, "revisionId": run.RevisionID, "revisionOrdinal": run.RevisionOrdinal, "status": run.Status, "args": run.Args, "defaults": run.Defaults, "limits": run.Limits, "scopeBinding": run.ScopeBinding, "parentRunId": run.ParentRunID, "joined": run.Joined, "depth": run.Depth, "result": run.Result, "version": run.Version, "startedAt": run.StartedAt, "deadlineAt": run.DeadlineAt, "createdAt": run.CreatedAt, "updatedAt": run.UpdatedAt, "triggerSource": run.Context["triggerSource"]}
-		if run.Failure != nil {
-			publicRun["failure"] = run.Failure
-		}
-		if run.CompletedAt != nil {
-			publicRun["completedAt"] = run.CompletedAt
-		}
-		return map[string]any{"ok": true, "data": publicRun}, nil
+		return wrap(page)
+	case constants.WorkflowActionRunStart:
+		return s.startConsumerRun(ctx, lease, actual, chat, input, false)
 	}
-	if input.Action != constants.WorkflowActionRunGet && input.Action != constants.WorkflowActionRunCancel {
-		return nil, status_error.WorkflowCapabilityUnsupported
-	}
-	run, err := s.runs.GetRun(ctx, input.RunID)
+
+	run, err := s.visibleConsumerRun(ctx, lease, input.RunID)
 	if err != nil {
 		return nil, err
 	}
-	originID, _ := run.Context["consumerLeaseId"].(string)
-	origin, originErr := s.consumers.GetConsumer(ctx, originID)
-	if originErr != nil || origin.ChatID != lease.ChatID || !slices.Contains(lease.DefinitionIDs, run.DefinitionID) {
-		return nil, status_error.WorkflowNotFound
+	return s.handleConsumerRun(ctx, lease, run, actual, chat, input, false)
+}
+
+func (s *Service) listChatRunPage(ctx context.Context, chatID string, offset, limit int) ([]any, int, error) {
+	var runs []models.WorkflowRun
+	var total int64
+	err := s.transactions.Transaction(ctx, func(tx context.Context) error {
+		var err error
+		runs, total, err = s.runs.ListVisibleChatRunSources(tx, chatID, offset, limit)
+		return err
+	})
+	if err != nil {
+		return nil, 0, err
 	}
-	if input.Action == constants.WorkflowActionRunCancel {
+	items := make([]any, 0, len(runs))
+	for _, run := range runs {
+		items = append(items, map[string]any{"runId": run.ID, "definitionId": run.DefinitionID, "revisionId": run.RevisionID,
+			"name": run.SourceName, "status": run.Status, "createdAt": run.CreatedAt})
+	}
+	return items, int(total), nil
+}
+
+func (s *Service) startConsumerRun(ctx context.Context, lease models.WorkflowConsumerLease, actual models.Execution, chat models.Chat, input workflowtool.Input, local bool) (map[string]any, error) {
+	if lease.Selection == nil || lease.Selection.ID != input.WorkflowID || input.RequestID == "" || len(input.RequestID) > 128 {
+		return nil, status_error.WorkflowStateConflict
+	}
+	if input.RevisionID != lease.Selection.RevisionID {
+		return nil, status_error.WorkflowRevisionConflict
+	}
+	approved, rootsFromChat, err := chatRunScope(chat)
+	if err != nil {
+		return nil, err
+	}
+	requestID := consumerRunRequestID(lease.ID, input.RequestID)
+	command := StartRunCommand{
+		AutomaticRunID: actual.AutomaticRunID, stagedInputs: input.StagedInputs, DefinitionID: input.WorkflowID,
+		RevisionID: input.RevisionID, RequestID: requestID, Args: input.Args, TriggerSource: "agent",
+		ConsumerLeaseID: lease.ID, ApprovedScope: &approved, additionalWorkingDirectories: rootsFromChat,
+		Defaults: workflowExecutionDefaults(actual), ChatSource: consumerChatSource(lease, actual, chat, lease.Selection.Name, ""),
+	}
+	if local {
+		command.localConsumer = &lease
+	}
+	run, err := s.StartRun(ctx, command)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "data": consumerRunDetails(run)}, nil
+}
+
+func consumerRunRequestID(executionID, requestID string) string {
+	return requestidempotency.Identity{ID: requestID}.ResourceID("workflow-use-run", executionID)
+}
+
+func (s *Service) handleConsumerRun(ctx context.Context, lease models.WorkflowConsumerLease, run models.WorkflowRun, actual models.Execution, chat models.Chat, input workflowtool.Input, local bool) (map[string]any, error) {
+	wrap := func(value map[string]any) (map[string]any, error) {
+		return map[string]any{"ok": true, "data": value}, nil
+	}
+	switch input.Action {
+	case constants.WorkflowActionRunRepeat:
+		if lease.Selection != nil {
+			return nil, status_error.AgentOperationForbidden
+		}
+		run, err := s.repeatChatRun(ctx, lease, actual, chat, run, input.RequestID, local)
+		if err != nil {
+			return nil, err
+		}
+		return wrap(consumerRunDetails(run))
+	case constants.WorkflowActionRunCancel:
 		if input.RequestID == "" || len(input.RequestID) > 128 {
 			return nil, status_error.BadRequest
+		}
+		if run.SourceWorkbench || run.SourceExecutionID == "" || (!local && run.SourceExecutionID != lease.ID) {
+			return nil, status_error.AgentOperationForbidden
 		}
 		if err := s.CancelRun(ctx, run.ID); err != nil {
 			return nil, err
 		}
-		run, err = s.runs.GetRun(ctx, run.ID)
-		publicRun := map[string]any{"rootRunId": run.RootRunID, "id": run.ID, "definitionId": run.DefinitionID, "revisionId": run.RevisionID, "revisionOrdinal": run.RevisionOrdinal, "status": run.Status, "args": run.Args, "defaults": run.Defaults, "limits": run.Limits, "scopeBinding": run.ScopeBinding, "parentRunId": run.ParentRunID, "joined": run.Joined, "depth": run.Depth, "result": run.Result, "version": run.Version, "startedAt": run.StartedAt, "deadlineAt": run.DeadlineAt, "createdAt": run.CreatedAt, "updatedAt": run.UpdatedAt, "triggerSource": run.Context["triggerSource"]}
-		if run.Failure != nil {
-			publicRun["failure"] = run.Failure
+		run, err := s.runs.GetRun(ctx, run.ID)
+		if err != nil {
+			return nil, err
 		}
-		if run.CompletedAt != nil {
-			publicRun["completedAt"] = run.CompletedAt
+		return wrap(consumerRunDetails(run))
+	case constants.WorkflowActionRunGet:
+		humans, err := s.runs.ListHumanRequests(ctx, run.ID)
+		if err != nil {
+			return nil, err
 		}
-		return map[string]any{"ok": true, "data": publicRun}, err
+		operations, err := s.runs.ListOperations(ctx, run.ID)
+		if err != nil {
+			return nil, err
+		}
+		files, err := s.OutputFiles(ctx, run)
+		if err != nil {
+			return nil, err
+		}
+		details := map[string]any{"run": consumerRunDetails(run), "humanRequests": humans, "operationRequests": operations, "outputFiles": files}
+		if run.Status == constants.WorkflowRunStatusCancelled || run.Status == constants.WorkflowRunStatusFailed {
+			details["partialResults"] = deliveredChatPartialResults(run)
+		}
+		return wrap(details)
+	default:
+		return nil, status_error.WorkflowCapabilityUnsupported
 	}
-	humans, err := s.runs.ListHumanRequests(ctx, run.ID)
-	if err != nil {
-		return nil, err
-	}
-	operations, err := s.runs.ListOperations(ctx, run.ID)
-	if err != nil {
-		return nil, err
-	}
-	publicRun := map[string]any{"rootRunId": run.RootRunID, "id": run.ID, "definitionId": run.DefinitionID, "revisionId": run.RevisionID, "revisionOrdinal": run.RevisionOrdinal, "status": run.Status, "args": run.Args, "defaults": run.Defaults, "limits": run.Limits, "scopeBinding": run.ScopeBinding, "parentRunId": run.ParentRunID, "joined": run.Joined, "depth": run.Depth, "result": run.Result, "version": run.Version, "startedAt": run.StartedAt, "deadlineAt": run.DeadlineAt, "createdAt": run.CreatedAt, "updatedAt": run.UpdatedAt, "triggerSource": run.Context["triggerSource"]}
-	if run.Failure != nil {
-		publicRun["failure"] = run.Failure
-	}
-	if run.CompletedAt != nil {
-		publicRun["completedAt"] = run.CompletedAt
-	}
-	return map[string]any{"ok": true, "data": map[string]any{"run": publicRun, "humanRequests": humans, "operationRequests": operations}}, nil
 }
 
-// Resources 返回创作可引用的真实目录，凭据仅输出可选择的引用身份。
-func (s *Service) resourcesCatalog(ctx context.Context, definitionID string) (map[string]any, error) {
-	definition, err := s.store.GetDefinition(ctx, definitionID)
+func (s *Service) visibleConsumerRun(ctx context.Context, lease models.WorkflowConsumerLease, runID string) (models.WorkflowRun, error) {
+	run, err := s.runs.GetRun(ctx, runID)
 	if err != nil {
-		return nil, err
+		return run, err
 	}
-	pythonPath, pythonErr := s.resolvePython(ctx)
-	resources := map[string]any{"builtinActions": []map[string]any{{"id": constants.IMBuiltinConnectorID, "name": "IM delivery", "toolName": constants.IMBuiltinToolName, "description": "The workflow runner delivers messages and files through this built-in action. No MCP connector is required."}}, "sdk": constants.WorkflowSDKIdentifier, "toolPolicyCapabilities": workflowToolPolicyCapabilities(), "functionLanguages": []map[string]any{{"language": "javascript", "available": true, "executionModes": []string{"pure"}}, {"language": "python", "available": pythonErr == nil, "executable": pythonPath, "executionModes": []string{"trusted_local"}}}}
-	resources["scriptLanguages"] = []map[string]any{{"language": "python", "available": pythonErr == nil, "executable": pythonPath, "protocols": []string{"json", "text"}}}
-	if s.wakers != nil {
-		wakers, err := s.wakers.List(ctx, "", 100, 0)
+	if run.SourceChatID == lease.ChatID && run.HistoryDeletedAt == nil && (lease.Selection == nil || run.SourceExecutionID == lease.ID && !run.SourceWorkbench) {
+		return run, nil
+	}
+	return models.WorkflowRun{}, status_error.WorkflowNotFound
+}
+
+func consumerRunDetails(run models.WorkflowRun) map[string]any {
+	return map[string]any{
+		"rootRunId": run.RootRunID, "id": run.ID, "definitionId": run.DefinitionID, "revisionId": run.RevisionID,
+		"revisionOrdinal": run.RevisionOrdinal, "status": run.Status, "args": run.Args, "defaults": run.Defaults,
+		"limits": run.Limits, "scopeBinding": run.ScopeBinding, "parentRunId": run.ParentRunID, "joined": run.Joined,
+		"depth": run.Depth, "result": run.Result, "version": run.Version, "startedAt": run.StartedAt,
+		"deadlineAt": run.DeadlineAt, "createdAt": run.CreatedAt, "updatedAt": run.UpdatedAt,
+		"triggerSource": run.Context["triggerSource"], "failure": run.Failure, "completedAt": run.CompletedAt,
+	}
+}
+
+// boundedResourceItems 仅加载请求的设备配置或内置能力目录。
+func (s *Service) boundedResourceItems(ctx context.Context, definitionID, kind string, resolvePython func() (string, error)) ([]map[string]any, error) {
+	switch kind {
+	case "builtinActions":
+		return []map[string]any{{
+			"id": constants.IMBuiltinConnectorID, "name": "IM delivery", "toolName": constants.IMBuiltinToolName,
+			"description": "The workflow runner delivers messages and files through this built-in action. No MCP connector is required.",
+		}}, nil
+	case "functionLanguages", "scriptLanguages":
+		pythonPath, pythonErr := resolvePython()
+		python := map[string]any{"language": "python", "available": pythonErr == nil, "executable": pythonPath}
+		if kind == "functionLanguages" {
+			python["executionModes"] = []string{"trusted_local"}
+			return []map[string]any{{"language": "javascript", "available": true, "executionModes": []string{"pure"}}, python}, nil
+		}
+		python["protocols"] = []string{"json", "text"}
+		return []map[string]any{python}, nil
+	case "connectors":
+		definition, err := s.store.GetDefinition(ctx, definitionID)
 		if err != nil {
 			return nil, err
 		}
-		items := []map[string]any{}
-		for _, waker := range wakers {
-			item := map[string]any{"id": waker.ID, "name": waker.Name}
-			if s.connectors != nil {
-				bound, err := s.connectors.ListEnabled(ctx, waker.ID)
-				if err != nil {
-					return nil, err
-				}
-				connectors := []map[string]any{}
-				for _, connector := range bound {
-					connectors = append(connectors, map[string]any{"id": connector.ID, "name": connector.Name, "tools": connector.TestTools})
-				}
-				item["connectors"] = connectors
-			}
-			items = append(items, item)
+		if s.connectors == nil {
+			return nil, nil
 		}
-		resources["wakers"] = items
-	}
-	workflows, err := s.store.ListDefinitions(ctx, "", 0, "", 100, nil)
-	if err != nil {
-		return nil, err
-	}
-	items := []map[string]any{}
-	for _, target := range workflows {
-		items = append(items, map[string]any{"id": target.ID, "title": target.Title, "currentRevisionId": target.CurrentRevisionID, "runnable": target.CurrentRevisionID != ""})
-	}
-	resources["workflows"] = items
-	if s.projects != nil {
-		projects, err := s.projects.ListByWaker(ctx, definition.CreationWakerID, "", 100, 0)
-		if err != nil {
-			return nil, err
-		}
-		items := []map[string]any{}
-		for _, project := range projects {
-			items = append(items, map[string]any{"id": project.ID, "name": project.Name})
-		}
-		resources["projects"] = items
-	}
-	if s.connectors != nil {
 		connectors, err := s.connectors.ListEnabled(ctx, definition.CreationWakerID)
 		if err != nil {
 			return nil, err
@@ -509,23 +507,20 @@ func (s *Service) resourcesCatalog(ctx context.Context, definitionID string) (ma
 			}
 			items = append(items, map[string]any{"id": connector.ID, "name": connector.Name, "tools": connector.TestTools, "secretRefs": refs})
 		}
-		resources["connectors"] = items
-	}
-	if s.resources != nil {
-		additional, err := s.resources(ctx)
-		if err != nil {
-			return nil, err
+		return items, nil
+	case "runtimes", "accounts", "imTargets":
+		if s.resources == nil {
+			return nil, nil
 		}
-		for key, value := range additional {
-			resources[key] = value
-		}
+		return s.resources(ctx, kind)
+	default:
+		return nil, status_error.BadRequest
 	}
-	return resources, nil
 }
 
 // workflowToolPolicyCapabilities 只声明执行层实际支持并强制实施的策略。
 func workflowToolPolicyCapabilities() map[string]any {
-	return map[string]any{"connectors": []string{"inherit", "allowlist"}, "nativeTools": []string{"inherit"}}
+	return map[string]any{"connectors": []string{"inherit"}, "nativeTools": []string{"inherit"}}
 }
 
 func pageOffset(cursor string) (int, error) {
@@ -565,7 +560,7 @@ func (s *Service) resourcePage(ctx context.Context, definitionID, kind, cursor s
 		}
 		page = map[string]any{"kind": kind, "items": []any{workflowToolPolicyCapabilities()}, "nextCursor": ""}
 	} else {
-		page, err = s.resourceItemsPage(ctx, definitionID, kind, cursor)
+		page, err = s.resourceItemsPage(ctx, definitionID, kind, cursor, func() (string, error) { return s.resolvePython(ctx) })
 		if err != nil {
 			return nil, err
 		}
@@ -574,7 +569,7 @@ func (s *Service) resourcePage(ctx context.Context, definitionID, kind, cursor s
 	return page, nil
 }
 
-func (s *Service) resourceItemsPage(ctx context.Context, definitionID, kind, cursor string) (map[string]any, error) {
+func (s *Service) resourceItemsPage(ctx context.Context, definitionID, kind, cursor string, resolvePython func() (string, error)) (map[string]any, error) {
 	if !slices.Contains(workflowcatalog.ResourceKinds(), kind) {
 		return nil, status_error.BadRequest
 	}
@@ -589,7 +584,7 @@ func (s *Service) resourceItemsPage(ctx context.Context, definitionID, kind, cur
 				return nil, status_error.BadRequest
 			}
 		}
-		values, err := s.store.ListDefinitions(ctx, "", position.UpdatedAt, position.ID, limit+1, nil)
+		values, err := s.store.ListDefinitions(ctx, "", position.UpdatedAt, position.ID, limit+1, 0, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -608,7 +603,10 @@ func (s *Service) resourceItemsPage(ctx context.Context, definitionID, kind, cur
 	if err != nil {
 		return nil, err
 	}
-	if kind == "wakers" && s.wakers != nil {
+	if kind == "wakers" {
+		if s.wakers == nil {
+			return map[string]any{"kind": kind, "items": items, "nextCursor": next}, nil
+		}
 		values, err := s.wakers.List(ctx, "", limit+1, offset)
 		if err != nil {
 			return nil, err
@@ -634,10 +632,13 @@ func (s *Service) resourceItemsPage(ctx context.Context, definitionID, kind, cur
 		}
 		return map[string]any{"kind": kind, "items": items, "nextCursor": next}, nil
 	}
-	if kind == "projects" && s.projects != nil {
+	if kind == "projects" {
 		definition, err := s.store.GetDefinition(ctx, definitionID)
 		if err != nil {
 			return nil, err
+		}
+		if s.projects == nil {
+			return map[string]any{"kind": kind, "items": items, "nextCursor": next}, nil
 		}
 		values, err := s.projects.ListByWaker(ctx, definition.CreationWakerID, "", limit+1, offset)
 		if err != nil {
@@ -653,32 +654,22 @@ func (s *Service) resourceItemsPage(ctx context.Context, definitionID, kind, cur
 		return map[string]any{"kind": kind, "items": items, "nextCursor": next}, nil
 	}
 	// 设备配置目录和已启用连接器是有界配置集合，不暴露启动环境与凭据。
-	resources, err := s.resourcesCatalog(ctx, definitionID)
+	values, err := s.boundedResourceItems(ctx, definitionID, kind, resolvePython)
 	if err != nil {
 		return nil, err
 	}
-	if value, found := resources[kind]; found {
-		encoded, err := json.Marshal(value)
-		if err != nil || json.Unmarshal(encoded, &items) != nil {
-			return nil, status_error.WorkflowStateInvalid
-		}
-	}
-	sort.SliceStable(items, func(i, j int) bool {
-		left, _ := items[i].(map[string]any)
-		right, _ := items[j].(map[string]any)
-		a, _ := left["id"].(string)
-		b, _ := right["id"].(string)
+	values = slices.Clone(values)
+	sort.SliceStable(values, func(i, j int) bool {
+		a, _ := values[i]["id"].(string)
+		b, _ := values[j]["id"].(string)
 		return a < b
 	})
-	if offset >= len(items) {
-		items = []any{}
-	} else {
-		end := offset + limit
-		if end > len(items) {
-			end = len(items)
+	if offset < len(values) {
+		end := min(offset+limit, len(values))
+		next = nextOffset(offset, end-offset, len(values))
+		for _, value := range values[offset:end] {
+			items = append(items, value)
 		}
-		next = nextOffset(offset, end-offset, len(items))
-		items = items[offset:end]
 	}
 	return map[string]any{"kind": kind, "items": items, "nextCursor": next}, nil
 }
@@ -687,31 +678,17 @@ func (s *Service) resourceItemsPage(ctx context.Context, definitionID, kind, cur
 type workflowToolAccess struct {
 	// owner 是耐久命令回执的业务归属。
 	owner string
-	// definitions 是工作流使用者获准的定义集合。
-	definitions []string
+	// selection 固定使用者显式选定的版本。
+	selection *workinput.WorkflowReference
 	// call 在本次核验的领域事实下分派实际操作。
 	call func(context.Context, workflowtool.Input) (map[string]any, error)
 }
 
 func (s *Service) authorizeWorkflowTool(ctx context.Context, scope workflowtool.Scope) (workflowToolAccess, error) {
+	if scope.LocalChatID != "" {
+		return s.authorizeLocalWorkflowTool(ctx, scope)
+	}
 	switch scope.Kind {
-	case constants.WorkflowCapabilityScopeCreation:
-		if s.creationSessions == nil {
-			return workflowToolAccess{}, status_error.WorkflowCapabilityUnsupported
-		}
-		session, err := s.creationSessions.GetCreationSession(ctx, scope.Key)
-		if err != nil {
-			return workflowToolAccess{}, err
-		}
-		if err := s.validateCreationExecution(ctx, session, scope.Token); err != nil {
-			return workflowToolAccess{}, err
-		}
-		return workflowToolAccess{
-			owner: "workflow.authoring:" + session.DefinitionID + ":" + session.ChatID,
-			call: func(ctx context.Context, input workflowtool.Input) (map[string]any, error) {
-				return s.handleCreationTool(ctx, scope, session, input)
-			},
-		}, nil
 	case constants.WorkflowCapabilityScopeConsumer:
 		if s.consumers == nil || s.chats == nil {
 			return workflowToolAccess{}, status_error.WorkflowCapabilityUnsupported
@@ -720,7 +697,10 @@ func (s *Service) authorizeWorkflowTool(ctx context.Context, scope workflowtool.
 		if err != nil {
 			return workflowToolAccess{}, err
 		}
-		if subtle.ConstantTimeCompare([]byte(lease.AuthToken), []byte(scope.Token)) != 1 || lease.DeadlineAt <= time.Now().UnixMilli() {
+		if lease.DeadlineAt <= time.Now().UnixMilli() || lease.StoppedAt != nil {
+			return workflowToolAccess{}, status_error.WorkflowStateConflict
+		}
+		if s.chatTurns.stopped(lease.ChatID, lease.ID) {
 			return workflowToolAccess{}, status_error.WorkflowStateConflict
 		}
 		actual, err := s.chats.ReadExecution(ctx, lease.ChatID, lease.ID)
@@ -738,8 +718,8 @@ func (s *Service) authorizeWorkflowTool(ctx context.Context, scope workflowtool.
 			return workflowToolAccess{}, status_error.WorkflowStateConflict
 		}
 		return workflowToolAccess{
-			owner:       "workflow.consumer:" + lease.ChatID,
-			definitions: lease.DefinitionIDs,
+			owner:     consumerReceiptOwner(lease),
+			selection: lease.Selection,
 			call: func(ctx context.Context, input workflowtool.Input) (map[string]any, error) {
 				return s.handleConsumerTool(ctx, lease, actual, summary.Chat, input)
 			},
@@ -773,7 +753,7 @@ func (s *Service) authorizeWorkflowTool(ctx context.Context, scope workflowtool.
 }
 
 func (s *Service) handleTool(ctx context.Context, scope workflowtool.Scope, input workflowtool.Input) (map[string]any, error) {
-	if !workflowtool.Allows(scope.Kind, input) {
+	if scope.LocalChatID == "" && !workflowtool.Allows(scope.Kind, input) {
 		return nil, status_error.WorkflowCapabilityUnsupported
 	}
 	access, err := s.authorizeWorkflowTool(ctx, scope)
@@ -829,8 +809,8 @@ func (s *Service) handleResultTool(ctx context.Context, effect models.WorkflowEf
 
 // validateCreationExecution 让创作授权跟随当前执行；等待用户回答不会消耗独立期限。
 // 源码保存事务复用此校验，阻止编译期间已结束或被替换的执行迟到写入。
-func (s *Service) validateCreationExecution(ctx context.Context, session models.WorkflowCreationSession, token string) error {
-	if session.ActiveExecutionID == "" || token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(session.AuthToken)) != 1 {
+func (s *Service) validateCreationExecution(ctx context.Context, session models.WorkflowCreationSession, executionID string) error {
+	if executionID == "" || session.ActiveExecutionID != executionID {
 		return status_error.WorkflowAuthoringSuperseded
 	}
 	chatID := session.ChatID

@@ -72,6 +72,31 @@ func TestCommittedOrdinaryChatActivityOnlyRefreshesItsWaker(t *testing.T) {
 	}
 }
 
+func TestCommittedWorkflowCreationActivityDoesNotRefreshWaker(t *testing.T) {
+	hub := events.New()
+	t.Cleanup(hub.Close)
+	db := WithEventPublisher(newTestDB(t), hub)
+	if err := db.Create(&models.Chat{ID: "creation", WakerID: "waker", HiddenFromWakerHistory: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	session := models.WorkflowCreationSession{ID: "session", DefinitionID: "workflow", ChatID: "creation"}
+	if err := db.Create(&session).Error; err != nil {
+		t.Fatal(err)
+	}
+	waker := hub.Subscribe("entities", events.Resource{Kind: "waker", ID: "waker"})
+	defer waker.Close()
+	board := hub.Subscribe("work-board", events.Resource{Kind: "chat", ID: "creation"})
+	defer board.Close()
+	if err := NewChatController(db).AdvanceProjection(t.Context(), "creation", 0, map[string]any{
+		"active_execution_id": "execution", "latest_sequence": 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(waker.Events) != 0 || len(board.Events) != 1 {
+		t.Fatalf("workflow creation refreshed wrong scopes: waker=%d board=%d", len(waker.Events), len(board.Events))
+	}
+}
+
 func TestCommittedDeletedChatActivityKeepsWakerScope(t *testing.T) {
 	hub := events.New()
 	defer hub.Close()

@@ -96,6 +96,12 @@ func (c *chatController) chatAttentionChanges(ctx context.Context, id string, fi
 	if string(before) == string(after) {
 		return nothing, nil
 	}
+	if old.WaitingApproval || current.WaitingApproval || old.WaitingElicitation || current.WaitingElicitation {
+		return func() {
+			changed()
+			publishWorkerChatWorkflowChanges(ctx, c.db, id, []string{old.ActiveExecutionID, current.ActiveExecutionID})
+		}, nil
+	}
 	return changed, nil
 }
 
@@ -262,6 +268,7 @@ func (c *workflowRunController) workflowAttentionChanges(ctx context.Context, va
 	}
 	resource := eventsResource("workflow_run", value.Run.ID)
 	recheck := func() {
+		publishChatWorkflowChanges(ctx, c.db, []models.WorkflowRun{value.Run})
 		publishCommittedChange(ctx, c.db, "work-board", resource)
 		publishWorkRequestRecheck(ctx, c.db, eventsResource("global", ""))
 	}
@@ -347,6 +354,7 @@ func (c *workflowRunController) workflowAttentionChanges(ctx context.Context, va
 			publishCommittedChange(ctx, c.db, "work-board", eventsResource("chat", chatID))
 		}
 		if statusChanged {
+			publishChatWorkflowChanges(ctx, c.db, []models.WorkflowRun{run})
 			publishCommittedChange(ctx, c.db, "work-board", resource)
 		}
 	}

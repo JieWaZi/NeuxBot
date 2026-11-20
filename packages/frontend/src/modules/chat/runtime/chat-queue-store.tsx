@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import type { BotChatMessage } from "./chat-projection";
+import type { ChatWorkflowReference } from "../components/chat-workflow-reference";
 import type { PermissionLevel } from "@/shared/lib/runtime-permissions";
 
 import type { GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as MessageResult } from "@/shared/api/generated/types.gen";
@@ -18,8 +19,12 @@ export type PreparedChatSubmission = {
   submissionId?: string;
   /** 权威消息或成功回执确认接纳后，按本命令身份退役重试记录；重复确认无副作用。 */
   confirmAccepted?: () => void;
+  /** 判断该回执是否明确拒绝原命令，并结算其本地提交身份。 */
+  confirmRejected?: (error: unknown) => boolean;
   /** 仅支持幂等重放的首发入口提供；待确认期间禁止开始替代提交。 */
   hasUnconfirmedReceipt?: () => boolean;
+  /** 首发未分配公开会话标识时，按冻结的原请求身份停止。 */
+  cancel?: () => Promise<void>;
   accept: () => Promise<MessageResult>;
 };
 
@@ -63,6 +68,8 @@ export type ChatSendSelection = {
     name: string;
   }>;
   codeReferences?: ChatCodeReference[];
+  workflow?: ChatWorkflowReference;
+  workflowOnly?: boolean;
 };
 
 export type ChatCodeReference = {
@@ -80,6 +87,8 @@ export type QueuedChatEntry = {
   chatId?: string;
   selection: ChatSendSelection;
   prepareSubmission?: ChatSubmissionPreparer;
+  /** 编辑草稿随原输入结算，即使提交前后切换了页签。 */
+  settleDraft?: (rejected: boolean) => void;
 };
 
 type Listener = () => void;

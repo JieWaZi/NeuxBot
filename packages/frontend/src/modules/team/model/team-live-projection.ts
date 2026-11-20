@@ -20,9 +20,7 @@ export type TeamLiveProjectionAction =
   | { type: "reconnect" };
 
 export type TeamEventNotice =
-  | "lead-input-failed"
-  | "leader-retry-exhausted"
-  | "task-recovery-failed";
+  "lead-input-failed" | "leader-retry-exhausted" | "task-recovery-failed";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -112,16 +110,22 @@ export function reduceTeamLiveProjection(
     action.event.type === "team.leader.processing" &&
     typeof payload.active === "boolean"
   ) {
-    view = {
-      ...view,
-      leadActiveExecutionId:
-        payload.active && typeof payload.executionId === "string"
-          ? payload.executionId
-          : payload.active
-            ? view.leadActiveExecutionId
-            : undefined,
-      leadProcessing: payload.active,
-    };
+    const executionId =
+      typeof payload.executionId === "string" ? payload.executionId : undefined;
+    const previousExecutionEnded =
+      !payload.active &&
+      executionId &&
+      view.leadActiveExecutionId &&
+      executionId !== view.leadActiveExecutionId;
+    if (!previousExecutionEnded) {
+      view = {
+        ...view,
+        leadActiveExecutionId: payload.active
+          ? (executionId ?? view.leadActiveExecutionId)
+          : undefined,
+        leadProcessing: payload.active,
+      };
+    }
   } else if (
     action.event.type === "thread.work_stopping" &&
     typeof payload.cancelingAt === "number" &&

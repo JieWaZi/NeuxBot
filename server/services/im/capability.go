@@ -100,6 +100,7 @@ func (s *Service) WorkflowCall(ctx context.Context, run models.WorkflowRun, call
 	if workspace.RootDirectory != run.ScopeBinding.WorkingDirectory {
 		roots = append(roots, workspace.RootDirectory)
 	}
+	roots = append(roots, run.AdditionalWorkingDirectories...)
 	for index, reference := range input.Files {
 		input.Files[index] = workspace.ResolveRunReference(reference)
 	}

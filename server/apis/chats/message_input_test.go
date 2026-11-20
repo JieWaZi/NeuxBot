@@ -45,6 +45,28 @@ func TestMessagePreservesSteerExecution(t *testing.T) {
 	}
 }
 
+func TestChatWorkflowSelectionKeepsOnlyTheDefinitionFromHTTP(t *testing.T) {
+	for _, request := range []interface {
+		workInput() (execution.WorkInput, execution.WorkOptions)
+	}{&MessageRequest{}, &SendMessageRequest{}} {
+		if err := json.Unmarshal([]byte(`{"workflowId":" selected-flow ","revisionId":"forged","name":"forged"}`), request); err != nil {
+			t.Fatal(err)
+		}
+		input, _ := request.workInput()
+		encoded, err := json.Marshal(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(encoded, &fields); err != nil {
+			t.Fatal(err)
+		}
+		if string(fields["workflow"]) != `{"id":"selected-flow"}` || input.Content != "" {
+			t.Fatalf("unexpected workflow selection: %s", encoded)
+		}
+	}
+}
+
 type createChatReplayExecution struct {
 	// Service 保留测试无需调用的执行端口。
 	execution.Service

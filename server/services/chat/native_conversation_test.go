@@ -3,17 +3,24 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspacefiles"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
@@ -128,6 +135,357 @@ func TestNativeQuestionHistoryPagesAtRequestAndReadsLateResolution(t *testing.T)
 		}
 	}
 	t.Fatal("replayed events omitted the resolution")
+}
+
+func TestLateExecutionDeliverySurvivesPagingAndRepeatedPublication(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	store := newTestConversationJournal(t, root)
+	chatID := "aabbccddaabbccddaabbccddaabbccdd"
+	const executionID = "first-execution"
+	facts, err := store.Create(chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})},
+		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "first-input", Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: "task"})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionCreatedData{UserMessageID: "first-input"})},
+		{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
+		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "second-input", Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: "later input"})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "delivery.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, err := db.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	module := newTestService(t, Config{StorageDirectory: root, Conversations: store.Store, QueryIndexes: QueryIndexDependencies{
+		Chats: controllers.NewChatController(db.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(db.DB)),
+	}})
+	defer module.Close()
+	opened := 0
+	delivery := ExecutionDelivery{ChatID: chatID, ExecutionID: executionID, SourceID: "run-first", Summary: "已生成正式报告", Files: []ExecutionDeliveryFile{{ID: "report-first", Name: "report.md", Open: func() (io.ReadCloser, error) {
+		opened++
+		return io.NopCloser(strings.NewReader("Report from original execution")), nil
+	}}}}
+	for range 2 {
+		if err := module.PublishExecutionDelivery(ctx, delivery); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := module.ReadMessageHistory(ctx, chatID, facts[4].Sequence, 2)
+	if err != nil || len(page.Resources) != 2 {
+		t.Fatalf("older history page missing: %+v %v", page, err)
+	}
+	message := page.Resources[1]
+	if opened != 1 || message.ID != executionID || message.Status != constants.ExecutionStatusCompleted || message.Content != delivery.Summary || len(message.Attachments) != 1 {
+		t.Fatalf("delivery is missing, duplicated or changed terminal state: opens=%d message=%+v", opened, message)
+	}
+	directory, err := module.storage.ChatRoot(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(directory, filepath.FromSlash(message.Attachments[0].Path)))
+	if err != nil || string(data) != "Report from original execution" {
+		t.Fatalf("managed attachment bytes = %q, %v", data, err)
+	}
+	public, err := module.ListEvents(ctx, chatID, facts[4].Sequence, 10)
+	if err != nil || len(public) != 1 || public[0].Type != constants.ChatEventTypeExecutionDelivery || public[0].Message == nil || public[0].Message.ID != executionID {
+		t.Fatalf("publication did not emit one durable update: %+v, %v", public, err)
+	}
+}
+
+func TestExecutionDeliveryCopyAllowsChatAdmission(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	root := t.TempDir()
+	store := newTestConversationJournal(t, root)
+	_, chats := newRecoveryTestService(t, root, store.Store)
+	const chatID = "ab12ab12ab12ab12ab12ab12ab12ab12"
+	const executionID = "generating-report"
+	if _, err := store.Create(chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: []byte(`{}`)},
+		{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	opening := make(chan struct{})
+	sourceReady := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- chats.PublishExecutionDelivery(ctx, ExecutionDelivery{ChatID: chatID, ExecutionID: executionID, SourceID: "run", Files: []ExecutionDeliveryFile{{
+			ID: "report", Name: "report.md", Open: func() (io.ReadCloser, error) {
+				close(opening)
+				select {
+				case <-sourceReady:
+					return io.NopCloser(strings.NewReader("report")), nil
+				case <-ctx.Done():
+					return nil, status_error.OperationCanceled
+				}
+			},
+		}}})
+	}()
+	select {
+	case <-opening:
+	case err := <-done:
+		t.Fatalf("delivery exited before it opened the source: %v", err)
+	case <-ctx.Done():
+		t.Fatal("delivery did not open its source")
+	}
+	if release, err := chatstorage.AcquireOperation(chats.storage.Root(), chatID); !errors.Is(err, status_error.ChatHasActiveExecution) {
+		if release != nil {
+			release()
+		}
+		t.Errorf("protect staged bytes against deletion: %v", err)
+	}
+	release, err := chatstorage.AcquireAdmission(chats.storage.Root(), "waker", chatID)
+	if err != nil {
+		t.Errorf("admit a turn while source is blocked: %v", err)
+	} else {
+		defer release()
+	}
+	close(sourceReady)
+	select {
+	case err := <-done:
+		if !errors.Is(err, status_error.ChatHasActiveExecution) {
+			t.Errorf("publication should yield to an ongoing admission: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("delivery did not finish after the source was released")
+	}
+	chatDirectory, err := chats.storage.ChatRoot(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join(chatDirectory, constants.ExecutionWorkspaceAttachmentsDirectory))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("a failed publication left attachment files: %v, %v", entries, err)
+	}
+}
+
+func TestExecutionDeliveryRetrySkipsRemovedCommittedAttachment(t *testing.T) {
+	ctx := t.Context()
+	_, chats := newRecoveryTestService(t, t.TempDir())
+	const chatID = "d32f19007b4d49b8882369538857449e"
+	const executionID = "exec"
+	createCompletedDeliveryExecution(t, chats, chatID, executionID)
+	opened := 0
+	first := ExecutionDeliveryFile{ID: "first", Name: "first.md", Open: func() (io.ReadCloser, error) {
+		opened++
+		return io.NopCloser(strings.NewReader("first result")), nil
+	}}
+	second := ExecutionDeliveryFile{ID: "second", Name: "second.md", Open: func() (io.ReadCloser, error) {
+		return nil, status_error.WorkflowFileNotFound
+	}}
+	delivery := ExecutionDelivery{ChatID: chatID, ExecutionID: executionID, SourceID: "run", Files: []ExecutionDeliveryFile{first, second}}
+	if err := chats.PublishExecutionDelivery(ctx, delivery); !errors.Is(err, status_error.WorkflowFileNotFound) {
+		t.Fatalf("initial delivery = %v, want the missing second file error", err)
+	}
+	const removedPath = "attachments/first/first.md"
+	directory, err := chats.storage.ChatRoot(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := workspacefiles.New()
+	scope, err := files.OpenChat("reader", chatID, t.TempDir(), directory, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := files.DeleteChatFile("reader", scope.ID, "", removedPath); err != nil {
+		t.Fatal(err)
+	}
+	delivery.Files[1].Open = func() (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader("second result")), nil
+	}
+	if err := chats.PublishExecutionDelivery(ctx, delivery); err != nil {
+		t.Fatalf("retry did not finish the outstanding attachment: %v", err)
+	}
+	listed, err := files.ListChatFiles(ctx, "reader", scope.ID, "")
+	if opened != 1 || err != nil || len(listed.RemovedPaths) != 1 || listed.RemovedPaths[0] != removedPath {
+		t.Fatalf("retry restored the deleted file: source opens = %d, removed = %+v, err = %v", opened, listed, err)
+	}
+	page, err := chats.ReadMessageHistory(ctx, chatID, 0, 1)
+	if err != nil || len(page.Resources) != 1 || len(page.Resources[0].Attachments) != 2 {
+		t.Fatalf("retry did not preserve both delivery references: %+v, %v", page, err)
+	}
+	content, err := os.ReadFile(filepath.Join(directory, "attachments", "second", "second.md"))
+	if err != nil || string(content) != "second result" {
+		t.Fatalf("retry did not publish remaining file bytes: %q, %v", content, err)
+	}
+}
+
+func TestExecutionDeliveryReportsSourceFailureAlongsideTargetFailure(t *testing.T) {
+	ctx := t.Context()
+	_, chats := newRecoveryTestService(t, t.TempDir())
+	const chatID = "5488d879d966499b9774cc5c220029b2"
+	const executionID = "exec"
+	createCompletedDeliveryExecution(t, chats, chatID, executionID)
+	var sourceError error
+	delivery := ExecutionDelivery{ChatID: chatID, ExecutionID: executionID, SourceID: "run", Files: []ExecutionDeliveryFile{
+		{ID: "missing", Name: "missing.md", Open: func() (io.ReadCloser, error) { return nil, status_error.WorkflowFileNotFound },
+			HandleSourceError: func(err error) bool { sourceError = err; return true }},
+		{ID: "invalid-target", Name: "../invalid.md"},
+		{ID: "copy", Name: "report.md", Open: func() (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("verified result")), nil
+		}},
+	}}
+	if err := chats.PublishExecutionDelivery(ctx, delivery); !errors.Is(err, status_error.MessageAttachmentInvalid) || !errors.Is(sourceError, status_error.WorkflowFileNotFound) {
+		t.Fatalf("source error=%v target error=%v", sourceError, err)
+	}
+	page, err := chats.ReadMessageHistory(ctx, chatID, 0, 10)
+	if err != nil || len(page.Resources) != 1 || len(page.Resources[0].Attachments) != 1 || page.Resources[0].Attachments[0].Name != "report.md" {
+		t.Fatalf("valid file was not committed on the original execution: %+v, %v", page, err)
+	}
+}
+
+func TestExecutionDeliveryRetryRechecksReceiptsAfterStaging(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	_, chats := newRecoveryTestService(t, t.TempDir())
+	const chatID = "19477c10bb0541cfafee37fb75be9c58"
+	const executionID = "exec"
+	createCompletedDeliveryExecution(t, chats, chatID, executionID)
+	opening, firstCommitted := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- chats.PublishExecutionDelivery(ctx, ExecutionDelivery{ChatID: chatID, ExecutionID: executionID, SourceID: "run", Files: []ExecutionDeliveryFile{{
+			ID: "report", Name: "report.md", Open: func() (io.ReadCloser, error) {
+				close(opening)
+				select {
+				case <-firstCommitted:
+					return io.NopCloser(strings.NewReader("concurrent result")), nil
+				case <-ctx.Done():
+					return nil, status_error.OperationCanceled
+				}
+			},
+		}}})
+	}()
+	select {
+	case <-opening:
+	case err := <-done:
+		t.Fatalf("concurrent delivery did not open the source: %v", err)
+	case <-ctx.Done():
+		t.Fatal("concurrent delivery did not open the source")
+	}
+	if err := chats.PublishExecutionDelivery(ctx, ExecutionDelivery{ChatID: chatID, ExecutionID: executionID, SourceID: "run", Files: []ExecutionDeliveryFile{{
+		ID: "report", Name: "report.md", Open: func() (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("first result")), nil
+		},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := chats.storage.ChatRoot(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := workspacefiles.New()
+	scope, err := files.OpenChat("reader", chatID, t.TempDir(), directory, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const removedPath = "attachments/report/report.md"
+	if err := files.DeleteChatFile("reader", scope.ID, "", removedPath); err != nil {
+		t.Fatal(err)
+	}
+	close(firstCommitted)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("a competing receipt should supersede the staged copy: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("concurrent delivery did not finish")
+	}
+	listed, err := files.ListChatFiles(ctx, "reader", scope.ID, "")
+	if err != nil || len(listed.RemovedPaths) != 1 || listed.RemovedPaths[0] != removedPath {
+		t.Fatalf("concurrent delivery restored the deleted file: %+v, %v", listed, err)
+	}
+}
+
+func createCompletedDeliveryExecution(t *testing.T, chats *service, chatID, executionID string) {
+	t.Helper()
+	workspace := t.TempDir()
+	if _, err := chats.logStore.Create(chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker", WorkspaceDirectory: workspace, AdditionalWorkingDirectories: []string{workspace}})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: []byte(`{}`)},
+		{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := chats.LoadExecutionChat(t.Context(), chatID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLateExecutionDeliveryReplaysNativeMetricsAndCurrentForkBoundary(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	store := newTestConversationJournal(t, root)
+	const chatID = "ab34ab34ab34ab34ab34ab34ab34ab34"
+	const executionID = "first-execution"
+	const newestID = "newer-execution"
+	binding := forkTestBinding("native-session")
+	key := agent.NativeResultKey{Session: binding.Session, InvocationID: "native-turn"}
+	inputTokens := int64(23)
+	if err := store.CommitNativeResult(ctx, agent.NativeResult{Key: key, ForkMode: acpmeta.ForkLatest,
+		FinalMessage: &agent.NativeFinalMessage{ID: "native-message", Text: "Original answer"},
+		Turn: acpmeta.NativeTurn{InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost, Status: acpmeta.NativeTurnCompleted,
+			ConsumedInputIDs: []string{"input"}, Usage: &acpmeta.TurnUsage{Source: "fixture", Coverage: "native_turn", Complete: true, InputTokens: &inputTokens}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	terminal := marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})
+	receipt, err := store.Commit(ctx, agent.ConversationBatch{ChatID: chatID, Key: "first", Changes: []agent.ConversationChange{
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})}},
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: []byte(`{}`)}},
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: executionID, InvocationID: "host"}},
+		{Binding: &binding},
+		{Input: &agent.HostInput{Session: binding.Session, HostInvocationID: "host", AdapterInputID: "input", ExecutionID: executionID, AssistantMessageID: executionID}},
+		{Consumption: &agent.InputConsumption{HostInvocationID: "host", Result: key}},
+		{Message: &agent.MessageChange{MessageID: executionID, ExecutionID: executionID, Kind: agent.MessageNativeFinal, Result: &key}},
+		{Message: &agent.MessageChange{MessageID: executionID, ExecutionID: executionID, Kind: agent.MessageComplete}},
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: executionID, Data: terminal}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chats := newTestService(t, Config{StorageDirectory: root, Conversations: store.Store})
+	t.Cleanup(chats.Close)
+	assertDelivery := func(after int64, summary string, available bool) {
+		t.Helper()
+		if _, err := store.Append(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeExecutionDelivery, MessageID: executionID,
+			ExecutionID: executionID, Data: marshalData(eventlog.ExecutionDeliveryData{SourceID: "run", Summary: summary})}}); err != nil {
+			t.Fatal(err)
+		}
+		events, err := chats.ListEvents(ctx, chatID, after, 1)
+		if err != nil || len(events) != 1 || events[0].Message == nil || events[0].Type != constants.ChatEventTypeExecutionDelivery {
+			t.Fatalf("late delivery replay = %+v, %v", events, err)
+		}
+		message := events[0].Message
+		if message.Content != "Original answer\n\n"+summary || message.RunMetrics == nil || message.RunMetrics.InputTokens != inputTokens || message.RunMetrics.TokenUsage == nil {
+			t.Errorf("late delivery did not preserve the native answer and usage: %+v", message)
+		}
+		if message.Fork == nil || !message.Fork.LatestOnly || message.Fork.Available != available || (!available && message.Fork.ReasonCode != "latest_only") {
+			t.Errorf("late delivery fork = %+v, want latest-only with availability %v", message.Fork, available)
+		}
+		history, err := chats.ReadMessageHistory(ctx, chatID, 0, 2)
+		if err != nil || len(history.Resources) == 0 || !reflect.DeepEqual(*message, history.Resources[0]) {
+			t.Fatalf("late replay message %+v differs from latest history %+v: %v", message, history, err)
+		}
+	}
+	assertDelivery(receipt.Version, "First delivery", true)
+	newer, err := store.Append(chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: newestID, Data: []byte(`{}`)},
+		{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: newestID, Data: terminal},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDelivery(newer[len(newer)-1].Sequence, "Updated delivery", false)
 }
 
 func assertSafeQuestionResult(t *testing.T, encoded []byte) {

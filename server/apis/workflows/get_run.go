@@ -163,7 +163,7 @@ func (o *GetWorkflowRun) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	response.Files = []workflow.OutputFile{}
 	if run.Status == constants.WorkflowRunStatusSucceeded {
-		response.Files = workflow.InspectOutputFiles(run, revision.Manifest.Meta.OutputSchema, run.Result)
+		response.Files = global.WorkflowService.InspectFinalOutputFiles(run, revision.Manifest.Meta.OutputSchema)
 	}
 	response.NodeCounts, err = global.WorkflowRunControllerManager.NodeCounts(ctx, o.RunID)
 	if err != nil {

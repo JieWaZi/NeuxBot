@@ -24,5 +24,6 @@ func init() {
 	Router.Register(&ReviewChannelTask{})
 	Router.Register(&StopChannelTask{})
 	Router.Register(&StopChannelWork{})
+	Router.Register(&StopFirstChannelWork{})
 	Router.Register(&ListChannelEvents{})
 }

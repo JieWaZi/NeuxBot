@@ -11,6 +11,8 @@ const (
 	AgentCLIExecutionPath = "/execution"
 	// AgentCLIExecutionHeader 携带外部操作发起时由宿主返回的执行标识。
 	AgentCLIExecutionHeader = "X-NeuxBot-Execution-ID"
+	// AgentCLIConnectionHeader 定位共享 Core token 下的宿主连接。
+	AgentCLIConnectionHeader = "X-NeuxBot-Connection-ID"
 	// AgentCLIBinaryEnvironment 允许应用装配明确提供受管 CLI 的实际路径。
 	AgentCLIBinaryEnvironment = "BOTCLI_BINARY_PATH"
 	// AgentCLIContextEnvironment 是宿主交给原生进程的能力连接文件路径。

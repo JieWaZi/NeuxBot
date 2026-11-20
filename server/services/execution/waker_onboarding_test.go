@@ -265,11 +265,12 @@ func TestWakerOnboardingSavesAfterInterviewWithoutConfirmation(t *testing.T) {
 		}
 		run := recordedRun{Runtime: runtimeSelection{RuntimeID: "unsupported"}}
 		grant, err := manager.prepareAgent(ctx, models.RuntimeEnvironment{}, run.Workspace, &run.Skills, &run.Instructions, &run.Connectors, &run.ContextInstructions,
-			chat, "turn", pendingMessage{admission: constants.ExecutionAdmissionCommitOnRuntimeAccept, message: userMessage{Actor: "user"}}, nil)
+			chat, "turn", pendingMessage{admission: constants.ExecutionAdmissionCommitOnRuntimeAccept, message: userMessage{Actor: "user"}}, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer grant.finish()
+		reserveAgentTestExecution(t, manager, chat.ID, "turn")
 		grant.activate()
 		connection, err := capability.ReadConnection(grant.cliContextFile)
 		if err != nil {

@@ -447,7 +447,7 @@ func (p *queryIndexStore) replaceReadingProjection(ctx context.Context, projecti
 		if err != nil {
 			return err
 		}
-		changes, err = p.prepareReading(ctx, projection.chat.ID, records, projection.chat.LatestSequence)
+		changes, err = p.prepareReading(ctx, projection.chat.ID, records, 0, projection.chat.LatestSequence)
 		if err != nil {
 			return err
 		}

@@ -5,13 +5,16 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/apis/chats"
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // 团队消息输入
 type ChannelWorkInput struct {
 	// 消息正文
-	Text string `json:"text" validate:"required,max=1048576"`
+	Text string `json:"text" validate:"required_without=WorkflowID,max=1048576"`
+	// 所选工作流
+	WorkflowID string `json:"workflowId,omitempty" validate:"max=32"`
 	// 提及伙伴
 	MentionWakerID string `json:"mentionWakerId" validate:"max=32"`
 	// 附件列表
@@ -45,6 +48,7 @@ func (i ChannelWorkInput) workInput() execution.WorkInput {
 	return execution.WorkInput{
 		Actor:          string(constants.ChannelMessageActorUser),
 		Content:        i.Text,
+		Workflow:       workinput.SelectWorkflow(strings.TrimSpace(i.WorkflowID)),
 		Attachments:    attachments,
 		CodeReferences: references,
 		SkillIDs:       append([]string(nil), i.SkillIDs...),

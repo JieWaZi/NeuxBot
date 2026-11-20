@@ -1,14 +1,19 @@
 package workflow
 
 import (
-	"context"
+	"strings"
 	"testing"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
+
+const connectorPolicyWorkerSource = `export const meta={sdk:'bot.workflow',title:'复核',description:'复核',phases:[{id:'check',title:'检查',detail:'检查'}]};
+return await worker('复核',{id:'review',phase:'check',label:'复核',resolve:{kind:'waker',wakerId:'one'},toolPolicy:TOOL_POLICY});`
 
 func TestSaveWorkerSchemaWithoutExtraMeta(t *testing.T) {
 	service, _ := workflowTestService(t)
@@ -19,37 +24,58 @@ func TestSaveWorkerSchemaWithoutExtraMeta(t *testing.T) {
 	}
 }
 
-func TestSourcePoliciesRejectUnsupportedNativeBeforeSave(t *testing.T) {
-	service := &Service{}
-	compiled, diagnostics, err := workflowdsl.Compile(`export const meta={sdk:'bot.workflow',title:'复核',description:'复核',phases:[{id:'check',title:'检查',detail:'检查'}]};
-phase('check');
-const result=await worker('复核',{id:'review',phase:'check',label:'复核',resolve:{kind:'waker',wakerId:'one'},toolPolicy:{connectors:{mode:'allowlist',connectorIds:[]},nativeTools:{mode:'allowlist',capabilityIds:[]}}});
-return result;`)
-	if err != nil {
-		t.Fatalf("%v %+v", err, diagnostics)
-	}
-	if err := service.validateSourcePolicies(context.Background(), compiled.Manifest); workflowstate.ErrorKey(err) != status_error.WorkflowCapabilityUnsupported.Key() {
-		t.Fatalf("unsupported native restrictions were accepted: %v", err)
-	}
-	delete(compiled.Manifest.Nodes[0].Options["toolPolicy"].(map[string]any), "nativeTools")
-	if err := service.validateSourcePolicies(context.Background(), compiled.Manifest); err != nil {
-		t.Fatalf("supported empty MCP allowlist was rejected: %v", err)
+func TestSourcePoliciesRejectUnsupportedAllowlistsBeforeSave(t *testing.T) {
+	for _, policy := range []string{
+		`{connectors:{mode:'allowlist',connectorIds:[]}}`,
+		`{connectors:{mode:'allowlist',connectorIds:['business']}}`,
+		`{nativeTools:{mode:'allowlist',capabilityIds:[]}}`,
+	} {
+		t.Run(policy, func(t *testing.T) {
+			ctx := t.Context()
+			service, _ := workflowTestService(t)
+			definition, err := fixtureDefinition(ctx, service.store, definitionFixture{Title: "复核"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := strings.Replace(connectorPolicyWorkerSource, "TOOL_POLICY", policy, 1)
+			if _, _, err := service.SaveSource(ctx, SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDK: constants.WorkflowSDKIdentifier}); workflowstate.ErrorKey(err) != status_error.WorkflowCapabilityUnsupported.Key() {
+				t.Fatalf("unexpected save for unsupported policy %s: %v", policy, err)
+			}
+			stored, err := service.store.GetDefinition(ctx, definition.ID)
+			if err != nil || stored.CurrentRevisionID != "" {
+				t.Fatalf("unsupported policy changed the workflow head: %+v %v", stored, err)
+			}
+		})
 	}
 }
 
-func TestWorkerConnectorAllowlistPreservesOnlyDeclaredPublicConnectors(t *testing.T) {
-	options := map[string]any{"toolPolicy": map[string]any{"connectors": map[string]any{"mode": "allowlist", "connectorIds": []any{"business"}}}}
-	allowed, err := workerConnectorAllowlist(options)
-	if err != nil || allowed == nil || len(*allowed) != 1 || (*allowed)[0] != "business" {
-		t.Fatalf("public connector scope: %v %v", allowed, err)
-	}
-	service := &Service{connectors: fixtureConnectors{connector: models.MCPConnector{ID: "business"}}}
-	manifest := workflowdsl.Manifest{Nodes: []workflowdsl.Node{{Kind: "worker", Options: options}}}
-	if err := service.validateSourcePolicies(context.Background(), manifest); err != nil {
+func TestRunAdmissionRejectsPersistedWorkerConnectorAllowlist(t *testing.T) {
+	ctx := t.Context()
+	service, _ := workflowTestService(t)
+	service.worker = &holdingWorker{}
+	definition, err := fixtureDefinition(ctx, service.store, definitionFixture{Title: "复核"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	options["toolPolicy"].(map[string]any)["connectors"].(map[string]any)["connectorIds"] = []any{"missing"}
-	if err := service.validateSourcePolicies(context.Background(), manifest); workflowstate.ErrorKey(err) != status_error.WorkflowResourceInvalid.Key() {
-		t.Fatal("undeclared business connector accepted", err)
+	source := strings.Replace(connectorPolicyWorkerSource, "TOOL_POLICY", `{connectors:{mode:'allowlist',connectorIds:[]}}`, 1)
+	compiled, diagnostics, err := workflowdsl.Compile(source)
+	if err != nil {
+		t.Fatalf("compile stored source: %v %+v", err, diagnostics)
+	}
+	revision := models.WorkflowRevision{
+		ID: util.New(), DefinitionID: definition.ID, Ordinal: 1, Source: source,
+		SourceDigest: compiled.SourceDigest, ManifestDigest: compiled.ManifestDigest, IRDigest: compiled.IRDigest,
+		SDK: constants.WorkflowSDKIdentifier, CompilerVersion: constants.WorkflowCompilerVersion, IRVersion: constants.WorkflowIRVersion,
+		Manifest: compiled.Manifest, Bundle: compiled.Bundle,
+	}
+	if err := service.store.CreateRevision(ctx, revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.StartRun(ctx, StartRunCommand{DefinitionID: definition.ID, RevisionID: revision.ID, RequestID: "run", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex"}}); workflowstate.ErrorKey(err) != status_error.WorkflowCapabilityUnsupported.Key() {
+		t.Fatalf("admitted a revision with an unsupported connector policy: %v", err)
+	}
+	runs, err := service.runs.ListRuns(ctx, definition.ID, 0, "", 1)
+	if err != nil || len(runs) != 0 {
+		t.Fatalf("unsupported policy left a run record: %+v %v", runs, err)
 	}
 }

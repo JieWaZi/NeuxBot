@@ -19,7 +19,7 @@ type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type Schema = { [key: string]: Json };
 interface VisualNode { id: string; label: string; description?: string; phase: string; inputs?: string[]; outputs?: string[]; successCondition?:{path:string;equals:Json} }
 interface WakerResolve { kind: 'waker'; wakerId: string; runtimeId?: string; accountId?: string; model?: string; reasoning?: string; permissionLevel?: 'default'|'auto'|'full-access' }
-interface ToolPolicy { connectors?: {mode:'inherit'} | {mode:'allowlist';connectorIds:string[]}; nativeTools?: {mode:'inherit'} | {mode:'allowlist';capabilityIds:string[]} }
+interface ToolPolicy { connectors?: {mode:'inherit'}; nativeTools?: {mode:'inherit'} }
 interface WorkerOptions { resolve: WakerResolve; schema?: Schema; toolPolicy?: ToolPolicy; retry?: {maxAttempts:number;safety:'pure'|'idempotent';idempotencyKey?:string} }
 declare const flowContext: Readonly<{workflowId:string;revisionId:string;runId:string;workflowName:string;runStartedAt:number;parentRunId:string|null;retrySourceRunId:string|null;triggerSource:'manual'|'schedule'|'local_api'|'agent'|'child';scope:{projectId:string|null;workingDirectory:string};workspace:Readonly<{rootDirectory:string;scriptsDirectory:string;stateDirectory:string;cacheDirectory:string;temporaryDirectory:string;runsDirectory:string;runDirectory:string}>}>;
 declare function worker<T extends Json = string>(prompt: string, options: VisualNode & WorkerOptions): Promise<T>;

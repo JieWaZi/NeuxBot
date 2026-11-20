@@ -19,6 +19,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/cliinstall"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/spf13/cobra"
 )
 
@@ -64,6 +66,7 @@ func (c client) send(ctx context.Context, httpClient *http.Client, method, path 
 		return capability.Response{}, status_error.AgentConnectionUnavailable
 	}
 	request.Header.Set("Authorization", "Bearer "+c.connection.Token)
+	request.Header.Set(constants.AgentCLIConnectionHeader, c.connection.GrantID)
 	request.Header.Set("Content-Type", "application/json")
 	if executionID != "" {
 		request.Header.Set(constants.AgentCLIExecutionHeader, executionID)
@@ -236,6 +239,21 @@ func (r *runner) root() *cobra.Command {
 	root := &cobra.Command{Use: "botcli", Short: "Use capabilities authorized for the current NeuxBot execution", SilenceErrors: true, SilenceUsage: true, CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true}}
 	root.AddCommand(r.mcpCommand())
 	root.RunE = func(cmd *cobra.Command, _ []string) error { r.entered = true; return status_error.AgentInputInvalid }
+	root.AddCommand(&cobra.Command{Use: "install", Short: "Make botcli available in new terminals for the current user", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		r.entered = true
+		r.response.Operation = "install"
+		executable, err := os.Executable()
+		if err != nil {
+			logx.Errorf("install botcli: find running executable: %v", err)
+			return status_error.BotCLIInstallationFailed
+		}
+		path, err := cliinstall.Install(cmd.Context(), executable)
+		if err != nil {
+			return err
+		}
+		r.response = capability.Response{ProtocolVersion: constants.AgentCLIProtocolVersion, OK: true, Operation: "install", Result: capability.Result{Data: map[string]any{"path": path}}}
+		return nil
+	}})
 	root.AddCommand(&cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(_ *cobra.Command, _ []string) error {
 		r.entered = true
 		r.response = capability.Response{ProtocolVersion: constants.AgentCLIProtocolVersion, OK: true, Operation: "version", Result: capability.Result{Data: map[string]any{"version": constants.ApplicationVersion, "protocolVersion": constants.AgentCLIProtocolVersion}}}

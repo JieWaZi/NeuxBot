@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
@@ -15,7 +16,9 @@ type MessageRequest struct {
 	// AccountID 是本次冻结的账号标识；空值使用智能体默认配置。
 	AccountID string `json:"accountId,omitempty" validate:"max=32"`
 	// 消息正文
-	Text string `json:"text" validate:"required,max=1048576"`
+	Text string `json:"text" validate:"required_without=WorkflowID,max=1048576"`
+	// 所选工作流
+	WorkflowID string `json:"workflowId,omitempty" validate:"max=32"`
 	// 运行时标识
 	RuntimeID string `json:"runtimeId" validate:"required,max=120"`
 	// 模型
@@ -92,6 +95,7 @@ func (r MessageRequest) workInput() (execution.WorkInput, execution.WorkOptions)
 			Actor:            "user",
 			SteerExecutionID: strings.TrimSpace(r.SteerExecutionID),
 			Content:          r.Text,
+			Workflow:         workinput.SelectWorkflow(strings.TrimSpace(r.WorkflowID)),
 			Attachments:      attachments,
 			SkillIDs:         append([]string(nil), r.SkillIDs...),
 			ConnectorIDs:     append([]string(nil), r.ConnectorIDs...),

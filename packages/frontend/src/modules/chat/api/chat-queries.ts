@@ -56,6 +56,13 @@ type MessageCursor = {
   beforeSequence: number;
 };
 
+type ChatMessageHistory = InfiniteData<
+  ListChatMessagesResponse,
+  MessageCursor | undefined
+> & {
+  deliverySequence?: number;
+};
+
 import { chatListKey } from "@/shared/api/chat-list-key";
 export { chatListKey };
 
@@ -144,15 +151,14 @@ export function mergeChatHistoryEvents(
   events: readonly ChatEvent[],
 ): number | undefined {
   const key = chatMessagesKey(chatId);
-  const current =
-    queryClient.getQueryData<
-      InfiniteData<ListChatMessagesResponse, MessageCursor | undefined>
-    >(key);
+  const current = queryClient.getQueryData<ChatMessageHistory>(key);
   const head = current?.pages[0];
   if (!current || !head) return undefined;
   let sequence = head.latestSequence ?? 0;
+  let deliverySequence = current.deliverySequence;
   let forkLatestExecutionId = head.forkLatestExecutionId;
   const updates = new Map<string, ChatMessage>();
+  const appendable = new Set<string>();
   for (const event of events) {
     if (event.transient) continue;
     const next = event.sequence;
@@ -160,6 +166,8 @@ export function mergeChatHistoryEvents(
       return undefined;
     if (next <= sequence) continue;
     sequence = next;
+    const delivery = event.type === "execution.delivery";
+    if (delivery) deliverySequence = next;
     if (event.fileChanges) {
       const id = event.fileChanges.messageId;
       const message =
@@ -181,6 +189,7 @@ export function mergeChatHistoryEvents(
     }
     if (!event.message) continue;
     if (!event.message.id) return undefined;
+    if (!delivery) appendable.add(event.message.id);
     if (
       ["execution.created", "message.inherited"].includes(event.type ?? "") &&
       event.message.role === "assistant" &&
@@ -198,28 +207,31 @@ export function mergeChatHistoryEvents(
     });
   }
   if (sequence === (head.latestSequence ?? 0)) return sequence;
-  const added = new Map(updates);
   const pages = current.pages.map((page) => {
     let changed = false;
     const resources = page.resources?.map((message) => {
       const snapshot = message.id ? updates.get(message.id) : undefined;
       if (!snapshot) return message;
       changed = true;
-      added.delete(message.id ?? "");
+      if (message.id) appendable.delete(message.id);
       return snapshot;
     });
     return changed ? { ...page, resources } : page;
   });
-  queryClient.setQueryData(key, {
+  const added = [...updates].flatMap(([id, message]) =>
+    appendable.has(id) ? [message] : [],
+  );
+  queryClient.setQueryData<ChatMessageHistory>(key, {
     ...current,
+    deliverySequence,
     pages: pages.map((page, index) =>
       index === 0
         ? {
             ...page,
             latestSequence: sequence,
             forkLatestExecutionId,
-            resources: added.size
-              ? [...(page.resources ?? []), ...added.values()]
+            resources: added.length
+              ? [...(page.resources ?? []), ...added]
               : page.resources,
           }
         : page,
@@ -263,9 +275,7 @@ export function chatListInfiniteOptions(wakerId: string) {
   });
 }
 
-function isMessageHistory(
-  value: unknown,
-): value is InfiniteData<ListChatMessagesResponse, MessageCursor | undefined> {
+function isMessageHistory(value: unknown): value is ChatMessageHistory {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -313,19 +323,24 @@ function reconcileMessageHistory(current: unknown, incoming: unknown) {
       }),
     };
   });
-  return replaceEqualDeep(current, { ...incoming, pages });
+  return replaceEqualDeep(current, {
+    ...incoming,
+    deliverySequence: incoming.deliverySequence ?? current.deliverySequence,
+    pages,
+  });
 }
 
 export function chatMessagesInfiniteOptions(chatId: string) {
+  const queryKey = chatMessagesKey(chatId);
+  let refreshOlder = false;
   return infiniteQueryOptions({
-    queryKey: chatMessagesKey(chatId),
+    queryKey,
     initialPageParam: undefined as MessageCursor | undefined,
     queryFn: async ({ pageParam, signal, client }) => {
-      if (pageParam) {
-        // JSONL 只追加；固定游标的旧窗口可复用，新边界必须重新读取。
-        const cached = client.getQueryData<
-          InfiniteData<ListChatMessagesResponse, MessageCursor | undefined>
-        >(chatMessagesKey(chatId));
+      const readCache = () => client.getQueryData<ChatMessageHistory>(queryKey);
+      if (pageParam && !refreshOlder) {
+        // 正常读取复用固定窗口；重连要补读期间未收到的交付。
+        const cached = readCache();
         const index = cached?.pageParams.findIndex(
           (cursor) => cursor?.beforeSequence === pageParam.beforeSequence,
         );
@@ -340,16 +355,34 @@ export function chatMessagesInfiniteOptions(chatId: string) {
             return page;
         }
       }
-      const { data } = await listChatMessages({
-        path: { chatId },
-        query: { limit: 50, ...pageParam },
-        signal,
-        throwOnError: true,
-      });
+      const readPage = async () =>
+        (
+          await listChatMessages({
+            path: { chatId },
+            query: { limit: 50, ...pageParam },
+            signal,
+            throwOnError: true,
+          })
+        ).data;
+      let deliverySequence = readCache()?.deliverySequence ?? 0;
+      let data = await readPage();
+      // 正在读取的旧窗口可能还不含交付所更新的消息，补读同一游标。
+      while (pageParam && !signal.aborted) {
+        const latestDelivery = readCache()?.deliverySequence ?? 0;
+        if (
+          latestDelivery <= deliverySequence ||
+          latestDelivery <= (data.latestSequence ?? 0)
+        )
+          break;
+        deliverySequence = latestDelivery;
+        data = await readPage();
+      }
       // 请求发起后，连续持久事件可能已接管头部；迟到快照不能回退事实或游标。
-      const current = client.getQueryData<
-        InfiniteData<ListChatMessagesResponse, MessageCursor | undefined>
-      >(chatMessagesKey(chatId))?.pages[0];
+      const current = readCache()?.pages[0];
+      if (!pageParam && !signal.aborted) {
+        refreshOlder =
+          (data.latestSequence ?? 0) > (current?.latestSequence ?? 0);
+      }
       if (
         !pageParam &&
         current &&

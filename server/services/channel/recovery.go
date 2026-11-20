@@ -162,6 +162,13 @@ func (s *service) watchRecoveryDrain(threadID string) {
 				s.unregisterWatcher(watcherID)
 				return
 			case <-ticker.C:
+				thread, err := s.threads.Get(watcherContext, threadID)
+				if err == nil && thread.CancelingAt != nil {
+					if stopErr := s.finishStopWork(watcherContext, thread); stopErr != nil && watcherContext.Err() == nil {
+						logx.Errorf("recover channel stop failed: thread_id=%s error=%v", threadID, stopErr)
+					}
+					continue
+				}
 				if err := s.projectPendingMemberReports(watcherContext, threadID); err != nil {
 					logx.Errorf("recover channel member report projection failed: thread_id=%s error=%v", threadID, err)
 					continue
@@ -181,7 +188,7 @@ func (s *service) watchRecoveryDrain(threadID string) {
 	}()
 }
 
-// recoveryQueuesEmpty 判断重启恢复需要照看的负责人输入和结果队列是否已经进入投递态或完成态。
+// recoveryQueuesEmpty 判断等待派发的任务、负责人输入和结果队列是否已经取空。
 func (s *service) recoveryQueuesEmpty(ctx context.Context, threadID string) bool {
 	thread, err := s.threads.Get(ctx, threadID)
 	if hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
@@ -193,12 +200,12 @@ func (s *service) recoveryQueuesEmpty(ctx context.Context, threadID string) bool
 	if err := s.ensureThreadWritable(ctx, thread); err != nil {
 		return false
 	}
-	tasks, err := s.tasks.ListByThread(ctx, threadID)
+	snapshot, err := s.tasks.LoadDispatchSnapshot(ctx, threadID)
 	if err != nil {
 		return false
 	}
-	for _, task := range tasks {
-		if task.Status == constants.ChannelTaskStatusPending && task.DeferUntilLeadIdle {
+	for _, task := range snapshot.Tasks {
+		if dispatchableTask(thread, snapshot, task) {
 			return false
 		}
 	}

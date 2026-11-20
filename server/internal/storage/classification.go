@@ -54,7 +54,7 @@ func programDataCategory(root *scanRoot, parts []string) constants.StorageCatego
 		if len(parts) > 2 && parts[1] == "versions" {
 			return constants.StorageCategoryPrograms
 		}
-	case "system-skills", "runtime-installations":
+	case constants.AgentCLISystemSkillsDirectory, "runtime-installations":
 		return constants.StorageCategoryPrograms
 	case "ai-accounts", "account-workspaces":
 		return constants.StorageCategoryAccounts

@@ -41,6 +41,8 @@ type ChannelThreadDetail struct {
 	LeadActiveExecutionID string `json:"leadActiveExecutionId,omitempty"`
 	// 负责人汇总中
 	LeadProcessing bool `json:"leadProcessing"`
+	// 关联工作流尚未结算
+	ActiveWorkflows bool `json:"activeWorkflows,omitempty"`
 	// 等待用户处理的成员交互
 	PendingInteractions []channelservice.PendingTeamInteraction `json:"pendingInteractions"`
 	// 成员运行与等待操作状态
@@ -108,6 +110,10 @@ func (g *GetChannelThread) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	activeWorkflows, err := global.ChannelThreadControllerManager.CountActiveWorkflows(ctx, thread.ID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	return ChannelThreadDetail{
 		Thread:                thread,
 		Members:               members,
@@ -115,6 +121,7 @@ func (g *GetChannelThread) Output(ctx *gin.Context) (interface{}, error) {
 		Delegations:           threadDelegations(thread, tasks, delegationAttempts),
 		LeadActiveExecutionID: leadSummary.Chat.ActiveExecutionID,
 		LeadProcessing:        leadProcessing,
+		ActiveWorkflows:       activeWorkflows > 0,
 		PendingInteractions:   interactions,
 		MemberActivities:      activities,
 		EventCursor:           eventCursor,

@@ -3,8 +3,6 @@ package builtin
 
 import (
 	"context"
-	_ "embed"
-	"encoding/json"
 	"errors"
 	"math/big"
 	"os"
@@ -22,32 +20,7 @@ import (
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
-//go:embed bundle.generated.json
-var bundle []byte
-
-// definition 保存仓库发布清单和完整技能资源，不依赖运行时的源码目录。
-type definition struct {
-	// System 表示每次受管执行必备、不进入普通技能编辑关系的系统技能。
-	System bool `json:"system,omitempty"`
-	// ID 是跨应用重启保持稳定的技能身份。
-	ID string `json:"id"`
-	// Directory 是技能声明名及仓库内目录名称。
-	Directory string `json:"directory"`
-	// Version 是首次安装和内容刷新时采用的最低发布版本。
-	Version string `json:"version"`
-	// Files 保存该技能的全部资源和执行位。
-	Files []resource `json:"files"`
-}
-
-// resource 是生成器打包的一个普通文件。
-type resource struct {
-	// Path 是相对于技能目录的安全路径。
-	Path string `json:"path"`
-	// Data 是 JSON 中以 Base64 保存的原始字节。
-	Data []byte `json:"data"`
-	// Executable 表示资源需要保留脚本执行位。
-	Executable bool `json:"executable"`
-}
+var definitions = managedskills.BuiltinDefinitions
 
 // Installer 在文件准备完成后以事务安装或刷新内置技能，保留用户编辑版本。
 type Installer struct {
@@ -57,18 +30,6 @@ type Installer struct {
 	Skills controllers.SkillController
 	// Transactions 原子提交技能包、版本历史及当前版本指针。
 	Transactions controllers.TransactionController
-}
-
-func definitions() ([]definition, error) {
-	var content struct {
-		// Skills 是构建时从仓库根 skills/ 生成的目录。
-		Skills []definition `json:"skills"`
-	}
-	if err := json.Unmarshal(bundle, &content); err != nil {
-		logx.Errorf("decode builtin skill bundle failed: error=%v", err)
-		return nil, status_error.SkillContentInvalid
-	}
-	return content.Skills, nil
 }
 
 // EnsureCatalog 幂等安装内置技能，并将未被用户编辑的技能刷新到随应用发布的内容。
@@ -88,7 +49,7 @@ func (installer Installer) EnsureCatalog(ctx context.Context) error {
 	return nil
 }
 
-func (installer Installer) ensureDefinition(ctx context.Context, item definition) error {
+func (installer Installer) ensureDefinition(ctx context.Context, item managedskills.BuiltinDefinition) error {
 	stored, err := installer.Skills.GetPackage(ctx, item.ID)
 	exists := err == nil
 	var current models.SkillVersion
@@ -234,7 +195,7 @@ func nextBuiltinVersion(published string, versions []models.SkillVersion) (strin
 	return number, nil
 }
 
-func materialize(item definition, directory string) error {
+func materialize(item managedskills.BuiltinDefinition, directory string) error {
 	for _, file := range item.Files {
 		if !filepath.IsLocal(file.Path) {
 			return status_error.SkillContentInvalid
@@ -270,7 +231,7 @@ func EnableForWaker(
 	if err != nil {
 		return err
 	}
-	byName := make(map[string]definition, len(items))
+	byName := make(map[string]managedskills.BuiltinDefinition, len(items))
 	for _, item := range items {
 		byName[item.Directory] = item
 	}

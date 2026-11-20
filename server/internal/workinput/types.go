@@ -22,10 +22,30 @@ type Input struct {
 	ConnectorIDs []string `json:"connectorIds,omitempty"`
 	// PluginIDs 是本轮明确选择的插件标识。
 	PluginIDs []string `json:"pluginIds,omitempty"`
+	// Workflow 是本轮选择；进入持久队列与日志时包含已固定版本及名称。
+	Workflow *WorkflowReference `json:"workflow,omitempty"`
 	// IMReplyLinkID 是受信 IM 入口冻结的原会话标识，随工作输入进入持久队列。
 	IMReplyLinkID string `json:"imReplyLinkId,omitempty"`
 	// ContextInstructions 是入口冻结的执行说明，随耐久队列保真，不进入用户消息或标题。
 	ContextInstructions []Instruction `json:"contextInstructions,omitempty"`
+}
+
+// 工作流引用
+type WorkflowReference struct {
+	// 工作流标识
+	ID string `json:"id"`
+	// 工作流版本
+	RevisionID string `json:"revisionId,omitempty"`
+	// 工作流名称
+	Name string `json:"name,omitempty"`
+}
+
+// SelectWorkflow 将用户发来的定义标识转换为尚未固定版本的选择。
+func SelectWorkflow(id string) *WorkflowReference {
+	if id == "" {
+		return nil
+	}
+	return &WorkflowReference{ID: id}
 }
 
 // Instruction 是由可信入口提供的中立执行上下文，不允许外部 API 直接提交。

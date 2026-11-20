@@ -71,6 +71,66 @@ func TestAttentionMultipleChats(t *testing.T) {
 	}
 }
 
+func TestExecutorAttentionExcludesWorkflowCreationChats(t *testing.T) {
+	ctx := t.Context()
+	db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "attention.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	chats := []models.Chat{
+		{ID: "ordinary", WakerID: "waker", UpdatedAt: 1},
+		{ID: "creation-running", WakerID: "waker", UpdatedAt: 2, HiddenFromWakerHistory: true, ActiveExecutionID: "running"},
+		{
+			ID: "creation-waiting", WakerID: "waker", UpdatedAt: 3, HiddenFromWakerHistory: true, ActiveExecutionID: "waiting",
+			WaitingApproval: true, PendingApprovals: []models.PendingApproval{{ApprovalID: "approve"}},
+		},
+	}
+	if err := db.DB.Create(&chats).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DB.Create(&models.WorkflowDefinition{ID: "workflow", Title: "创作工作流"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	sessions := []models.WorkflowCreationSession{
+		{ID: "session-running", DefinitionID: "workflow", ChatID: "creation-running"},
+		{ID: "session-waiting", DefinitionID: "workflow", ChatID: "creation-waiting"},
+	}
+	if err := db.DB.Create(&sessions).Error; err != nil {
+		t.Fatal(err)
+	}
+	reader := controllers.NewChatReadingController(db.DB)
+	for _, chat := range chats {
+		if err := reader.EnsureCursor(ctx, constants.LocalReaderID, chat.ID, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	q := Query{
+		Board:        controllers.NewWorkBoardController(db.DB),
+		Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(db.DB)),
+		Epoch:        func() string { return "core" },
+	}
+	summaries, complete, err := q.ExecutorSummaries(ctx, constants.LocalReaderID, []string{"waker"})
+	if err != nil || !complete.Complete || len(summaries) != 1 {
+		t.Fatalf("executor summaries = %+v, complete = %+v, err = %v", summaries, complete, err)
+	}
+	got := summaries[0]
+	if got.LatestChatID != "ordinary" || got.RunningChatCount != 0 || got.WaitingWorkCount != 0 || len(got.Chats) != 0 || len(got.Requests) != 0 {
+		t.Errorf("workflow creation leaked into partner navigation: %+v", got)
+	}
+	work := models.WorkRef{Kind: constants.WorkOwnerKindChat, ID: "creation-waiting"}
+	request, err := q.Board.FindPendingRequest(ctx, models.WorkBoardLiveEvent{
+		Work: work, ChatID: "creation-waiting", ExecutionID: "waiting", RequestKind: "approval", RequestID: "approve",
+	})
+	if err != nil || request.WorkflowID != "workflow" || request.RequestID != "approve" {
+		t.Errorf("workflow creation request lost its workflow target: %+v error=%v", request, err)
+	}
+}
+
 // attentionQueryTrace 记录工作区权威查询使用的实际 SQL 数量。
 type attentionQueryTrace struct {
 	// Interface 保留 GORM 其余日志方法。

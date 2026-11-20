@@ -5,19 +5,26 @@ import { fileURLToPath } from "node:url";
 import { botCoreLdflags } from "./go-ldflags.mjs";
 import { copyACPLicenses } from "./acp-licenses.mjs";
 import { copyBloubLicenses } from "./bloub-licenses.mjs";
-import "./builtin-skills.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const targets = {
   "darwin-arm64": ["darwin", "arm64"],
   "darwin-x64": ["darwin", "amd64"],
+  "linux-arm64": ["linux", "arm64"],
+  "linux-x64": ["linux", "amd64"],
   "win32-arm64": ["windows", "arm64"],
   "win32-x64": ["windows", "amd64"],
 };
-const targetName = process.argv[2] || `${process.platform}-${process.arch}`;
+const nativeTarget = `${process.platform}-${process.arch}`;
+const targetName = process.argv[2] || nativeTarget;
 const target = targets[targetName];
 if (!target) throw new Error(`不支持的 Web 目标：${targetName}`);
 const [goos, goarch] = target;
+if (goos === "linux" && targetName !== nativeTarget)
+  throw new Error(
+    `Linux Web 包须在对应的 Linux 平台与架构上构建：${targetName}`,
+  );
+await import("./builtin-skills.mjs");
 const output = path.join(root, "web/release", targetName);
 const run = (command, args, options = {}) =>
   execFileSync(command, args, {

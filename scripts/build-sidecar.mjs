@@ -8,7 +8,11 @@ import { copyBloubLicenses } from "./bloub-licenses.mjs";
 import "./builtin-skills.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const requested = process.argv[2];
+const args = process.argv.slice(2);
+const installBotCLI =
+  args.includes("--install-botcli") &&
+  process.env.NEUXBOT_SKIP_BOTCLI_INSTALL !== "1";
+const [requested] = args.filter((arg) => arg !== "--install-botcli");
 const nativeTarget = `${process.platform}-${process.arch}`;
 const targets = {
   "darwin-arm64": { goos: "darwin", goarch: "arm64", file: "bot-core" },
@@ -114,6 +118,17 @@ execFileSync(
 );
 if (target.goos !== "windows") await chmod(cliOutput, 0o755);
 console.log(`已生成软件能力 CLI: ${cliOutput}`);
+if (installBotCLI) {
+  try {
+    execFileSync(cliOutput, ["install"], {
+      stdio: "inherit",
+      timeout: 10000,
+      windowsHide: true,
+    });
+  } catch (error) {
+    console.warn(`botcli 安装失败，继续启动开发环境：${error.message}`);
+  }
+}
 
 // 许可随实际引用的模块版本交付，宿主不重复维护依赖许可正文。
 const knowledgeModule = JSON.parse(

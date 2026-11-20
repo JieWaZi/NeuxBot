@@ -475,6 +475,7 @@ func appendPendingWorkInput(
 		Role:         role,
 		Actor:        input.Actor,
 		Content:      input.Content,
+		Workflow:     input.Workflow,
 		CreatedAt:    createdAt,
 		UpdatedAt:    createdAt,
 	}

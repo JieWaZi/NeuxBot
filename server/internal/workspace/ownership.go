@@ -7,6 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 // ownerMarker 是受管目录删除和替换前必须核对的归属事实。
@@ -26,10 +27,12 @@ type ownerMarker struct {
 func writeJSON(path string, value interface{}, failure status_error.StatusError) error {
 	content, err := json.Marshal(value)
 	if err != nil {
+		logx.Errorf("encode workspace ownership marker failed: path=%q error=%v", path, err)
 		return failure
 	}
 	content = append(content, '\n')
 	if err := os.WriteFile(path, content, 0o600); err != nil {
+		logx.Errorf("write workspace ownership marker failed: path=%q error=%v", path, err)
 		return failure
 	}
 	return nil
@@ -49,10 +52,12 @@ func removeValidatedDirectory(path string) error {
 func validateOwner(directory, kind, chatID, messageID string) error {
 	content, err := os.ReadFile(filepath.Join(directory, constants.ChatContextOwnerFileName))
 	if err != nil {
+		logx.Errorf("read workspace ownership marker failed: directory=%q chat_id=%s message_id=%s error=%v", directory, chatID, messageID, err)
 		return status_error.ChatDirectoryOwnershipInvalid
 	}
 	var marker ownerMarker
 	if err := json.Unmarshal(content, &marker); err != nil {
+		logx.Errorf("decode workspace ownership marker failed: directory=%q chat_id=%s message_id=%s error=%v", directory, chatID, messageID, err)
 		return status_error.ChatDirectoryOwnershipInvalid
 	}
 	if marker.Kind != kind || marker.ChatID != chatID || marker.MessageID != messageID {
@@ -67,6 +72,7 @@ func directoryExists(path string) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
+		logx.Errorf("inspect workspace directory failed: path=%q error=%v", path, err)
 		return false, status_error.MessageAttachmentStorageError
 	}
 	if !info.IsDir() {
@@ -78,6 +84,7 @@ func directoryExists(path string) (bool, error) {
 func ensureManagedRoot(workingDirectory string, components ...string) (string, error) {
 	root, err := filepath.EvalSymlinks(workingDirectory)
 	if err != nil {
+		logx.Errorf("resolve managed workspace directory failed: directory=%q error=%v", workingDirectory, err)
 		return "", status_error.ManagedWorkspaceError
 	}
 	for _, component := range components {
@@ -88,11 +95,13 @@ func ensureManagedRoot(workingDirectory string, components ...string) (string, e
 		info, statErr := os.Lstat(next)
 		if os.IsNotExist(statErr) {
 			if err := os.Mkdir(next, 0o700); err != nil && !os.IsExist(err) {
+				logx.Errorf("create managed workspace directory failed: path=%q error=%v", next, err)
 				return "", status_error.MessageAttachmentStorageError
 			}
 			info, statErr = os.Lstat(next)
 		}
 		if statErr != nil {
+			logx.Errorf("inspect managed workspace directory failed: path=%q error=%v", next, statErr)
 			return "", status_error.MessageAttachmentStorageError
 		}
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {

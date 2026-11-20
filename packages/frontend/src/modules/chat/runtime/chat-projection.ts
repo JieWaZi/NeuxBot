@@ -405,15 +405,27 @@ export function applyChatEvent(
       ? matchedIndex
       : messages.findIndex((item) => sameSubmittedMessage(item, authoritative));
   const currentMessage = index >= 0 ? messages[index] : undefined;
+  const delivery =
+    event.type === "execution.delivery" &&
+    authoritative.role === "assistant" &&
+    isTerminalMessageStatus(authoritative.status);
+  if (
+    event.type === "execution.delivery" &&
+    (!currentMessage ||
+      (currentMessage.revision ?? -1) >= (authoritative.revision ?? -1))
+  )
+    return messages;
   if (
     currentMessage &&
     ["completed", "failed", "canceled"].includes(currentMessage.status ?? "") &&
+    !delivery &&
     !isTerminalEvent(event)
   )
     return messages;
   // 执行终态是已提交的权威边界，即使修订号落后也必须接管实时快照。
   if (
     currentMessage &&
+    !delivery &&
     !isTerminalEvent(event) &&
     contentRevision(currentMessage) > contentRevision(authoritative)
   ) {
@@ -426,9 +438,10 @@ export function applyChatEvent(
   // 已稳定消息的转换和渲染。
   const next = [...messages];
   if (currentMessage)
-    next[index] = isTerminalEvent(event)
-      ? authoritative
-      : mergeMessageCoverage(currentMessage, authoritative, false);
+    next[index] =
+      delivery || isTerminalEvent(event)
+        ? authoritative
+        : mergeMessageCoverage(currentMessage, authoritative, false);
   else next.push(authoritative);
   return next;
 }

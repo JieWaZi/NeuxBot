@@ -88,8 +88,8 @@ func TestResidentConnectionsKeepConcurrentChatScopesSeparate(t *testing.T) {
 	open := func(chat, operation, allowedFile string) (Connection, func()) {
 		t.Helper()
 		path, activate, finish, err := registry.PrepareConnection(root, chat, endpoint, GrantSpec{
-			ExecutionID: chat,
-			FilePaths:   []string{allowedFile},
+			ExecutionID: chat, SharedLocalToken: true,
+			FilePaths: []string{allowedFile},
 			Bindings: []Binding{{Operation: operation, Call: func(ctx context.Context, _ Request) (Result, error) {
 				return Result{Data: map[string]any{"files": FilePaths(ctx)}}, nil
 			}}},
@@ -109,20 +109,24 @@ func TestResidentConnectionsKeepConcurrentChatScopesSeparate(t *testing.T) {
 	defer finishFirst()
 	second, finishSecond := open("second-chat", "im.targets.list", "second-file")
 	defer finishSecond()
-	if first.Token == second.Token {
-		t.Fatal("independent chats shared a credential")
+	if first.Token != second.Token || first.GrantID == second.GrantID {
+		t.Fatal("local chats must share the Core credential and retain separate connection identities")
 	}
 	call := func(connection Connection, operation string) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(http.MethodPost, constants.AgentCLIPath+"/commands",
 			strings.NewReader(`{"operation":"`+operation+`","params":{}}`))
 		request.RemoteAddr = "127.0.0.1:12345"
 		request.Header.Set("Authorization", "Bearer "+connection.Token)
+		request.Header.Set(constants.AgentCLIConnectionHeader, connection.GrantID)
 		response := httptest.NewRecorder()
 		registry.ServeHTTP(response, request)
 		return response
 	}
 	if response := call(first, "im.targets.list"); response.Code != http.StatusForbidden {
 		t.Fatalf("first chat accessed second chat's operation: %d", response.Code)
+	}
+	if response := call(Connection{Token: first.Token}, "workflow.source.get"); response.Code != http.StatusUnauthorized {
+		t.Fatalf("Core credential alone did not require a connection identity: %d", response.Code)
 	}
 	finishFirst()
 	if response := call(first, "workflow.source.get"); response.Code != http.StatusUnauthorized {

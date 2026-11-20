@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"strings"
+	"sync"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -21,6 +22,16 @@ type ToolCapability struct {
 	Name string
 	// Bindings 是服务端冻结的领域操作；函数和凭据不参与序列化。
 	Bindings []agentcap.Binding `json:"-"`
+}
+
+// WorkflowTurnBinding 保存为当前接纳回合准备的工作流选择与受限能力。
+type WorkflowTurnBinding struct {
+	// Reference 是验证并固定后的用户选择，普通历史询问为空。
+	Reference *workinput.WorkflowReference
+	// Capability 是可用于本轮的工作流命令，声明为空时不注入工具。
+	Capability *ToolCapability
+	// Instruction 把本轮的已选版本和权限边界交给当前伙伴。
+	Instruction string
 }
 
 // AdmissionBoundary 让宿主在耐久接纳时校验仍然有效的提交来源。
@@ -158,6 +169,8 @@ type WorkOptions struct {
 	ParentExecutionID string
 	// ToolCapabilities 是调用入口为本次工作签发的短期内部工具能力。
 	ToolCapabilities []ToolCapability
+	// WorkflowCreationSessionID 提供创作页当前工作流的会话及保存记录归属。
+	WorkflowCreationSessionID string
 	// AllowedAgentDomains 限制默认软件能力领域；nil 使用普通对话范围，空列表不签发默认能力。
 	AllowedAgentDomains *[]string
 	// AllowedConnectorIDs 是入口冻结的 MCP 白名单；nil 继承伙伴，空白名单排除全部伙伴 MCP。
@@ -188,16 +201,17 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 	}
 
 	inputContext := ctx
+	intent.Chat.ChatID = strings.TrimSpace(intent.Chat.ChatID)
 	releaseTeam := func() {}
-	if m.acquireTeamChatInput != nil && strings.TrimSpace(intent.Chat.ChatID) != "" {
-		locked, release, err := m.acquireTeamChatInput(ctx, strings.TrimSpace(intent.Chat.ChatID), intent.Input.Actor == "" || intent.Input.Actor == string(constants.ChannelMessageActorUser))
+	if m.acquireTeamChatInput != nil && intent.Chat.ChatID != "" {
+		locked, release, err := m.acquireTeamChatInput(ctx, intent.Chat.ChatID, intent.Input.Actor == "" || intent.Input.Actor == string(constants.ChannelMessageActorUser))
 		if err != nil {
 			return AcceptedExecution{}, err
 		}
 		ctx = locked
-		releaseTeam = release
+		releaseTeam = sync.OnceFunc(release)
 	}
-	intent.Chat.ChatID = strings.TrimSpace(intent.Chat.ChatID)
+	defer releaseTeam()
 	wakerID := ""
 	if intent.Chat.Create != nil {
 		wakerID = strings.TrimSpace(intent.Chat.Create.WakerID)
@@ -205,16 +219,11 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 	if intent.Chat.ChatID != "" {
 		chat, err := m.journal.LoadExecutionChat(ctx, intent.Chat.ChatID)
 		if err != nil {
-			releaseTeam()
 			return AcceptedExecution{}, err
 		}
 		wakerID = chat.WakerID
 	}
 	releaseOperation, operationErr := chatstorage.AcquireAdmission(m.storage.Root(), wakerID, intent.Chat.ChatID)
-	// Chat 独占已接管续聊准备与删除互斥；本入口自己的团队锁不覆盖隐藏摘要和 Runtime 接纳等待。
-	// 上层持有的团队保护仍由上层释放，恢复原 Context 防止已释放锁的重入标记继续传播。
-	releaseTeam()
-	ctx = inputContext
 	if operationErr != nil {
 		return AcceptedExecution{}, operationErr
 	}
@@ -243,6 +252,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 			Text:             intent.Input.Content,
 			Attachments:      append([]AttachmentInput(nil), intent.Input.Attachments...),
 			CodeReferences:   append([]CodeReferenceInput(nil), intent.Input.CodeReferences...),
+			Workflow:         intent.Input.Workflow,
 			SkillIDs:         append([]string(nil), intent.Input.SkillIDs...),
 			ConnectorIDs:     append([]string(nil), intent.Input.ConnectorIDs...),
 			PluginIDs:        append([]string(nil), intent.Input.PluginIDs...),
@@ -263,13 +273,14 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 			SummaryModel:          intent.Options.SummaryModel,
 			SummaryReasoning:      intent.Options.SummaryReasoning,
 		},
-		parentExecutionID:       intent.Options.ParentExecutionID,
-		admission:               intent.Admission,
-		admissionBoundary:       intent.AdmissionBoundary,
-		toolCapabilities:        cloneToolCapabilities(intent.Options.ToolCapabilities),
-		allowedConnectorIDs:     cloneConnectorAllowlist(intent.Options.AllowedConnectorIDs),
-		allowedAgentDomains:     cloneConnectorAllowlist(intent.Options.AllowedAgentDomains),
-		historyMessageIDsToOmit: append([]string(nil), intent.Options.HistoryMessageIDsToOmit...),
+		parentExecutionID:         intent.Options.ParentExecutionID,
+		admission:                 intent.Admission,
+		admissionBoundary:         intent.AdmissionBoundary,
+		toolCapabilities:          cloneToolCapabilities(intent.Options.ToolCapabilities),
+		workflowCreationSessionID: intent.Options.WorkflowCreationSessionID,
+		allowedConnectorIDs:       cloneConnectorAllowlist(intent.Options.AllowedConnectorIDs),
+		allowedAgentDomains:       cloneConnectorAllowlist(intent.Options.AllowedAgentDomains),
+		historyMessageIDsToOmit:   append([]string(nil), intent.Options.HistoryMessageIDsToOmit...),
 		supplementalInstructions: append(
 			[]agentapi.Instruction(nil),
 			intent.Options.SupplementalInstructions...,
@@ -289,7 +300,8 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		request.contextInstructions = append(request.contextInstructions, agentapi.Instruction{Name: instruction.Name, Content: instruction.Content})
 	}
 	request.requestedAt = requestedAt
-	return m.startMessage(ctx, request, intent.ClaimAttachments)
+	// 只传入调用方的 Context，执行占位接管团队保护后不会继续携带本入口的重入标记。
+	return m.startMessage(inputContext, request, intent.ClaimAttachments, releaseTeam)
 }
 
 // cloneToolCapabilities 深拷贝内部能力，避免调用方在执行期间改变审批白名单。

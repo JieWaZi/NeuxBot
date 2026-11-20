@@ -10,6 +10,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/usage"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 )
 
 // MessageRuntimeEvent 是附着到 Assistant 消息的完整 Runtime 事件视图。
@@ -208,6 +209,8 @@ type Message struct {
 	Connectors []eventlog.MessageConnectorReference `json:"connectors,omitempty"`
 	// CodeReferences 是用户消息携带的有序整文件或代码片段引用。
 	CodeReferences []eventlog.CodeReference `json:"codeReferences,omitempty"`
+	// 工作流引用
+	Workflow *workinput.WorkflowReference `json:"workflow,omitempty"`
 	// RuntimeEvents 是仅供 Core 内部构建消息视图使用的有序完整 Runtime 事件。
 	RuntimeEvents []MessageRuntimeEvent `json:"-"`
 	// DisplayParts 是供聊天界面渲染的最小跨 Runtime 展示视图。

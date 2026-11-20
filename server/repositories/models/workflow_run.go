@@ -35,8 +35,50 @@ type WorkflowExecutionDefaults struct {
 	WorkspaceReadOnly bool `json:"workspaceReadOnly"`
 }
 
+// WorkflowChatFile 是聊天运行在成果确认时冻结的文件收据。
+type WorkflowChatFile struct {
+	// Name 是原成果名称，供来源消息展示。
+	Name string `json:"name"`
+	// Path 是受管快照目录内的相对路径。
+	Path string `json:"path,omitempty"`
+	// Digest 绑定确认时的 SHA-256 字节摘要。
+	Digest string `json:"digest,omitempty"`
+	// Error 表示确认或交付验证时无法取得可信的原始快照。
+	Error string `json:"error,omitempty"`
+	// Partial 标识已确认节点的部分结果。
+	Partial bool `json:"partial,omitempty"`
+}
+
 // WorkflowRun 固定版本、参数、执行配置和租约，不读取后续创作修改。
 type WorkflowRun struct {
+	// SourceChatID 标定位于当前对话时间线的用户调用。
+	SourceChatID string `gorm:"size:32;index:idx_workflow_chat_source,priority:1;index:idx_workflow_chat_visible_runs,priority:1;index:idx_workflow_thread_stop,priority:2,where:source_workbench = false" json:"-"`
+	// SourceExecutionID 定位发起及答复回合；分叉不改变原归属。
+	SourceExecutionID string `gorm:"size:32;index:idx_workflow_chat_source,priority:2;uniqueIndex:idx_workflow_chat_execution,where:source_execution_id <> '' AND source_workbench = false" json:"-"`
+	// SourceMessageID 是该执行最初的用户输入标识。
+	SourceMessageID string `gorm:"size:32" json:"-"`
+	// SourceName 是调用时供历史显示的工作流名称。
+	SourceName string `json:"-"`
+	// SourceRunID 关联由同一对话重新执行的原运行。
+	SourceRunID string `gorm:"size:32" json:"-"`
+	// SourceWorkbench 表示用户在原运行工作台内手动接纳，原聊天执行不拥有取消或交付权。
+	SourceWorkbench bool `gorm:"not null;default:false" json:"-"`
+	// WorkerPermissionsLimited 表示节点及后代所用权限受本次冻结 Defaults 限制。
+	WorkerPermissionsLimited bool `gorm:"not null;default:false" json:"-"`
+	// CaptureFilesForChatParent 记录子结果需要向聊天父链提供终态文件的接纳决定。
+	CaptureFilesForChatParent bool `gorm:"not null;default:false" json:"-"`
+	// ChatFiles 以结果字段或节点尝试和字段为键，绑定已确认的真实文件成果。
+	ChatFiles map[string]WorkflowChatFile `gorm:"serializer:json;type:text" json:"-"`
+	// ChatDeliveryFinishedAt 标记正式附件已经尝试交付，用户仍可重试失败项。
+	ChatDeliveryFinishedAt *int64 `json:"-"`
+	// ChatDeliveryError 是可尝试重新交付的会话副本失败码。
+	ChatDeliveryError string `gorm:"not null;default:''" json:"-"`
+	// ChatSummaryFinishedAt 标记用户要求的总结补写已经完成。
+	ChatSummaryFinishedAt *int64 `json:"-"`
+	// SourceThreadID 是团队成员所属的原线程；伙伴独立对话为空。
+	SourceThreadID string `gorm:"size:32;index:idx_workflow_thread_stop,priority:1,where:source_workbench = false" json:"-"`
+	// SourceWakerID 是发起执行的负责人或成员。
+	SourceWakerID string `gorm:"size:32" json:"-"`
 	// AutomaticRunID 是服务端传入的原自动运行，不能从用户或模型正文绑定。
 	AutomaticRunID string `json:"-"`
 	// WorkerConfigurations 按源码节点身份冻结接纳时解析的有效执行配置，不包含凭据。
@@ -44,7 +86,7 @@ type WorkflowRun struct {
 	// RootRunID 绑定调用树，统一限制全部后代的数量。
 	RootRunID string `gorm:"index;size:32" json:"rootRunId"`
 	// ID 是运行身份。
-	ID string `gorm:"type:varchar(32);primaryKey;index:idx_workflow_board_identity,priority:1;index:idx_workflow_board_activity,priority:3,sort:desc;index:idx_workflow_board_executor,priority:4,sort:desc" json:"id"`
+	ID string `gorm:"type:varchar(32);primaryKey;index:idx_workflow_board_identity,priority:1;index:idx_workflow_board_activity,priority:3,sort:desc;index:idx_workflow_board_executor,priority:4,sort:desc;index:idx_workflow_chat_visible_runs,priority:4,sort:desc;index:idx_workflow_chat_unsettled_delivery,where:source_chat_id <> '' AND source_workbench = false AND chat_delivery_finished_at IS NULL" json:"id"`
 	// DefinitionID 是所属定义。
 	DefinitionID string `gorm:"index:idx_workflow_board_identity,priority:2;type:varchar(32);not null;index;index:idx_workflow_board_executor,priority:1;index:idx_workflow_run_history,priority:1" json:"definitionId"`
 	// RevisionID 是本次不可变版本。
@@ -52,15 +94,19 @@ type WorkflowRun struct {
 	// RevisionOrdinal 是展示所需的冻结版本号。
 	RevisionOrdinal int64 `json:"revisionOrdinal"`
 	// Status 是持久运行生命周期。
-	Status constants.WorkflowRunStatus `gorm:"type:varchar(32);not null;index;index:idx_workflow_run_revision_status,priority:2" json:"status"`
+	Status constants.WorkflowRunStatus `gorm:"type:varchar(32);not null;index;index:idx_workflow_run_revision_status,priority:2;index:idx_workflow_thread_stop,priority:3,where:source_workbench = false" json:"status"`
 	// Args 是已填显式默认值并校验的运行输入。
 	Args any `gorm:"serializer:json;type:text" json:"args"`
+	// InputFileDigests 按冻结输入字段记录复制字节的 SHA-256，供重跑和重试核验来源副本。
+	InputFileDigests map[string]string `gorm:"serializer:json;type:text" json:"-"`
 	// Defaults 是本次执行配置快照。
 	Defaults WorkflowExecutionDefaults `gorm:"serializer:json;type:text;not null" json:"defaults"`
 	// Limits 是该不可变版本接纳时冻结的流程预算。
 	Limits workflowdsl.Limits `gorm:"serializer:json;type:text" json:"limits"`
 	// ScopeBinding 是接纳时批准的工作范围快照。
 	ScopeBinding WorkflowScopeBinding `gorm:"serializer:json;type:text;not null" json:"scopeBinding"`
+	// AdditionalWorkingDirectories 是来源聊天冻结的其余项目根目录。
+	AdditionalWorkingDirectories []string `gorm:"serializer:json;type:text" json:"-"`
 	// Context 是只读流程上下文，不包含账号密钥。
 	Context map[string]any `gorm:"serializer:json;type:text;not null" json:"flowContext"`
 	// RootFiberID 是主程序的执行帧。
@@ -90,9 +136,9 @@ type WorkflowRun struct {
 	// CompletedAt 是真实终态时间。
 	CompletedAt *int64 `json:"completedAt,omitempty"`
 	// HistoryDeletedAt 是移除历史入口的时间；运行事实继续支持幂等、子运行和交付关联。
-	HistoryDeletedAt *int64 `gorm:"index:idx_workflow_run_history,priority:2" json:"-"`
+	HistoryDeletedAt *int64 `gorm:"index:idx_workflow_run_history,priority:2;index:idx_workflow_chat_visible_runs,priority:2" json:"-"`
 	// CreatedAt 是接纳时间。
-	CreatedAt int64 `gorm:"autoCreateTime:milli" json:"createdAt"`
+	CreatedAt int64 `gorm:"autoCreateTime:milli;index:idx_workflow_chat_visible_runs,priority:3,sort:desc" json:"createdAt"`
 	// UpdatedAt 是最后提交时间。
 	UpdatedAt int64 `gorm:"autoUpdateTime:milli;index:idx_workflow_board_activity,priority:2,sort:desc;index:idx_workflow_board_executor,priority:3,sort:desc" json:"updatedAt"`
 }

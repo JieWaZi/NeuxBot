@@ -12,17 +12,27 @@ import {
 import {
   resolveApprovalMutation,
   resolveElicitationMutation,
+  getChatOptions,
+  getChatQueryKey,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
 import {
   localApiErrorMessage,
   withLocalErrorMutation,
+  withLocalErrorSurface,
 } from "@/shared/api/local-error-surface";
 import { WorkerReference } from "./worker-reference";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
-import { getWorkflowInstanceOptions } from "../api/workflow-queries";
+import {
+  getWorkflowInstanceOptions,
+  getWorkflowInstanceQueryKey,
+} from "../api/workflow-queries";
 import { SkipWorkerControl } from "./recovery-controls";
 import { record } from "../model/types";
-import { WorkflowLoadingState, WorkflowQueryError } from "./query-feedback";
+import {
+  WorkflowLoadingState,
+  WorkflowQueryError,
+  WorkflowRequestLoadingState,
+} from "./query-feedback";
 import { WorkflowFailure } from "./failure-details";
 import { RunJsonValue } from "./run-json-value";
 
@@ -75,53 +85,81 @@ export function WorkflowResult({
   );
 }
 
+type WorkerRequestView = {
+  id: string;
+  chatId?: string;
+  kind: "approval" | "elicitation";
+  active: boolean;
+  onSettled: () => void;
+};
+
 export function InstanceDetails({
   id,
   runId,
   instanceId,
   human,
+  request,
 }: {
   id: string;
   runId: string;
   instanceId: string;
   human?: HumanRequest;
+  request?: WorkerRequestView;
 }) {
   const { t, i18n } = useTranslation("workflow");
-  const active = useRouteSceneActive();
-  const query = useQuery({
-    ...getWorkflowInstanceOptions({ path: { id, runId, instanceId } }),
-    enabled: Boolean(instanceId),
+  const active = useRouteSceneActive() && (request?.active ?? true);
+  const instanceInput = { path: { id, runId, instanceId } };
+  const instanceKey = getWorkflowInstanceQueryKey(instanceInput);
+  const instanceQuery = useQuery({
+    ...getWorkflowInstanceOptions(withLocalErrorSurface(instanceInput)),
+    queryKey: instanceKey,
+    enabled: Boolean(instanceId) && (!request || (active && !request.chatId)),
   });
+  const workerInput = { path: { chatId: request?.chatId ?? "" } };
+  const workerKey = getChatQueryKey(workerInput);
+  const workerQuery = useQuery({
+    ...getChatOptions(withLocalErrorSurface(workerInput)),
+    queryKey: workerKey,
+    enabled: active && Boolean(request?.chatId),
+  });
+  const query = request?.chatId ? workerQuery : instanceQuery;
 
   useQueryEvents({
     topic: "workflow",
     resource: { kind: "workflow", id, parentId: runId },
-    queryKeys: [
-      getWorkflowInstanceOptions({ path: { id, runId, instanceId } }).queryKey,
-    ],
+    queryKeys: [instanceKey],
     active,
-    enabled: Boolean(id && runId),
+    enabled: Boolean(id && runId) && (!request || (active && !request.chatId)),
     eventTypes: ["workflow.run.changed", "workflow.worker.skip_requested"],
   });
   const workerChatId =
-    query.data?.chat?.chat?.id || query.data?.instance?.chatId || "";
+    request?.chatId ||
+    instanceQuery.data?.chat?.chat?.id ||
+    instanceQuery.data?.instance?.chatId ||
+    "";
   useQueryEvents({
     topic: "chat",
     resource: { kind: "chat", id: workerChatId },
-    queryKeys: [
-      getWorkflowInstanceOptions({ path: { id, runId, instanceId } }).queryKey,
-    ],
+    queryKeys: [request?.chatId ? workerKey : instanceKey],
     active,
-    enabled: Boolean(workerChatId),
+    enabled: Boolean(workerChatId) && (!request || active),
     eventTypes: ["execution.", "approval.", "elicitation."],
   });
-  const resolveApproval = useMutation(
-    withLocalErrorMutation(resolveApprovalMutation()),
-  );
-  const resolveElicitation = useMutation(
-    withLocalErrorMutation(resolveElicitationMutation()),
-  );
-  const data = query.data;
+  const settled = request
+    ? () => {
+        void query.refetch();
+        request.onSettled();
+      }
+    : undefined;
+  const resolveApproval = useMutation({
+    ...withLocalErrorMutation(resolveApprovalMutation()),
+    onSettled: settled,
+  });
+  const resolveElicitation = useMutation({
+    ...withLocalErrorMutation(resolveElicitationMutation()),
+    onSettled: settled,
+  });
+  const data = instanceQuery.data;
   const instance = data?.instance;
   const firstInput = instance?.input?.[0]?.data;
   const evaluatedOptions = record(
@@ -142,27 +180,106 @@ export function InstanceDetails({
           Object.hasOwn(resultEnvelope, "data")
         ? resultEnvelope.data
         : instance?.output;
-  const chat = data?.chat?.chat;
-  const currentExecution = Boolean(
-    instance?.executionId && chat?.activeExecutionId === instance.executionId,
-  );
-  const approval = currentExecution ? chat?.pendingApprovals?.[0] : undefined;
-  const elicitation = currentExecution
-    ? chat?.pendingElicitations?.[0]
-    : undefined;
+  const chat = request?.chatId ? workerQuery.data?.chat : data?.chat?.chat;
+  const currentExecution = request?.chatId
+    ? chat?.id === request.chatId && Boolean(chat.activeExecutionId)
+    : Boolean(
+        instance?.executionId &&
+        chat?.activeExecutionId === instance.executionId,
+      );
+  const approvals = currentExecution ? (chat?.pendingApprovals ?? []) : [];
+  const elicitations = currentExecution
+    ? (chat?.pendingElicitations ?? [])
+    : [];
+  const approval = request
+    ? approvals.find(
+        (item) => request.kind === "approval" && item.approvalId === request.id,
+      )
+    : approvals[0];
+  const elicitation = request
+    ? elicitations.find(
+        (item) =>
+          request.kind === "elicitation" && item.elicitationId === request.id,
+      )
+    : elicitations[0];
   const error =
     resolveApproval.error ?? resolveElicitation.error ?? query.error;
   const refresh = () => void query.refetch();
+  const controls =
+    active && !instance?.completedAt && chat?.id ? (
+      <>
+        {approval ? (
+          <div className="bg-surface-module rounded-lg">
+            <ChatApprovalCard
+              approval={approval}
+              current={approvals.indexOf(approval) + 1}
+              hotkeys={!request}
+              total={approvals.length}
+              submissionState={
+                resolveApproval.isPending ? "submitting" : "idle"
+              }
+              onResolve={(approvalId, optionId) =>
+                resolveApproval.mutate({
+                  path: { chatId: chat.id ?? "", approvalId },
+                  body: { optionId },
+                })
+              }
+            />
+          </div>
+        ) : null}
+        {elicitation ? (
+          <div className="bg-surface-module overflow-hidden rounded-lg">
+            <ChatElicitationCard
+              elicitation={elicitation}
+              submissionState={
+                resolveElicitation.isPending ? "submitting" : "idle"
+              }
+              onResolve={(elicitationId, content, declined) =>
+                resolveElicitation.mutate({
+                  path: { chatId: chat.id ?? "", elicitationId },
+                  body: { content, declined },
+                })
+              }
+            />
+          </div>
+        ) : null}
+      </>
+    ) : null;
+  const requestFeedback =
+    query.isPending && active ? (
+      request ? (
+        <WorkflowRequestLoadingState />
+      ) : (
+        <WorkflowLoadingState />
+      )
+    ) : query.isError ? (
+      <WorkflowQueryError
+        error={query.error}
+        retrying={query.isFetching}
+        onRetry={refresh}
+      />
+    ) : error ? (
+      <p role="alert" className="text-destructive type-body">
+        {localApiErrorMessage(error, t("error"))}
+      </p>
+    ) : null;
+  if (request) {
+    return (
+      <div className="grid gap-2">
+        {chat?.wakerId && (approval || elicitation) ? (
+          <WorkerReference
+            showModel={false}
+            resolve={{ wakerId: chat.wakerId }}
+          />
+        ) : null}
+        {requestFeedback}
+        {controls}
+      </div>
+    );
+  }
   return (
     <section className="grid min-w-0 gap-4">
-      {query.isPending ? <WorkflowLoadingState /> : null}
-      {query.isError ? (
-        <WorkflowQueryError
-          error={query.error}
-          retrying={query.isFetching}
-          onRetry={refresh}
-        />
-      ) : null}
+      {requestFeedback}
       {instance?.chatId ? (
         <div className="flex flex-wrap items-center gap-3">
           <Link
@@ -207,11 +324,6 @@ export function InstanceDetails({
           ) : null}
         </div>
       ) : null}
-      {error && !query.isError ? (
-        <p role="alert" className="text-destructive type-body">
-          {localApiErrorMessage(error, t("error"))}
-        </p>
-      ) : null}
       {instance?.id &&
       data?.effect &&
       instance.kind === "worker" &&
@@ -231,38 +343,7 @@ export function InstanceDetails({
           {t("uncertainFailureHelp")}
         </p>
       ) : null}
-      {active && !instance?.completedAt && approval && chat?.id ? (
-        <div className="bg-surface-module rounded-lg">
-          <ChatApprovalCard
-            approval={approval}
-            current={1}
-            total={chat.pendingApprovals?.length ?? 1}
-            submissionState={resolveApproval.isPending ? "submitting" : "idle"}
-            onResolve={(approvalId, optionId) =>
-              resolveApproval.mutate({
-                path: { chatId: chat.id ?? "", approvalId },
-                body: { optionId },
-              })
-            }
-          />
-        </div>
-      ) : null}
-      {active && !instance?.completedAt && elicitation && chat?.id ? (
-        <div className="bg-surface-module overflow-hidden rounded-lg">
-          <ChatElicitationCard
-            elicitation={elicitation}
-            submissionState={
-              resolveElicitation.isPending ? "submitting" : "idle"
-            }
-            onResolve={(elicitationId, content, declined) =>
-              resolveElicitation.mutate({
-                path: { chatId: chat.id ?? "", elicitationId },
-                body: { content, declined },
-              })
-            }
-          />
-        </div>
-      ) : null}
+      {controls}
       {instance ? (
         <>
           {businessInput !== undefined &&

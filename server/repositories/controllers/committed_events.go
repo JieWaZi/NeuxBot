@@ -90,14 +90,13 @@ func workBoardActivityResources(ctx context.Context, database *gorm.DB, resource
 			WakerID string
 			// HiddenFromWakerHistory 表示该会话从其他产品入口进入。
 			HiddenFromWakerHistory bool
-			// VisibleExternal 表示外部入口已绑定可见原工作。
+			// VisibleExternal 表示自动任务或 IM 已绑定伙伴可见会话。
 			VisibleExternal bool
 		}
 		projection := `id,waker_id,hidden_from_waker_history,
    CASE WHEN hidden_from_waker_history AND NOT EXISTS(SELECT 1 FROM workflow_effects WHERE chat_id=chats.id)
     AND (EXISTS(SELECT 1 FROM automatic_runs WHERE chat_id=chats.id AND thread_id='' AND admission='accepted')
-     OR EXISTS(SELECT 1 FROM im_conversation_links WHERE chat_id=chats.id AND thread_id='')
-     OR EXISTS(SELECT 1 FROM workflow_creation_sessions WHERE chat_id=chats.id)) THEN 1 ELSE 0 END AS visible_external`
+     OR EXISTS(SELECT 1 FROM im_conversation_links WHERE chat_id=chats.id AND thread_id='')) THEN 1 ELSE 0 END AS visible_external`
 		if err := db.Model(&models.Chat{}).Select(projection).Where("id=?", resource.ID).Find(&chat).Error; err != nil {
 			return nil, nil, err
 		}

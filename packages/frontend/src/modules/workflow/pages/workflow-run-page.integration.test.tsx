@@ -1,9 +1,24 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { Link, MemoryRouter, Route, Routes, useParams } from "react-router-dom";
+import {
+  Link,
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from "react-router-dom";
+import { useState } from "react";
 import {
   afterAll,
   afterEach,
@@ -16,6 +31,9 @@ import {
 import "@/shared/i18n";
 import { installCanvasDOM } from "../test/canvas-dom";
 import { client } from "@/shared/api/generated/client.gen";
+import { useErrorNotices } from "@/shared/api/error-notices";
+import { initializeApi } from "@/shared/api/runtime";
+import { configurePlatform, platform } from "@/shared/platform";
 import type { GlobalEventObserver } from "@/shared/api/global-events";
 import type {
   GetWorkflowRunResponse,
@@ -173,6 +191,10 @@ beforeEach(() => {
       HttpResponse.json({ id: "real-waker", name: "验收伙伴" }),
     ),
     http.get(`${api}/runs/run-1`, () => HttpResponse.json(snapshot)),
+    http.get(
+      "http://workflow.test/api/v1/runs/workflow_run/:runId/viewing",
+      () => HttpResponse.json({ complete: true, viewable: true, viewed: true }),
+    ),
     http.get(`${api}/events/history`, () =>
       HttpResponse.json({ resources: [] }),
     ),
@@ -250,6 +272,31 @@ function renderRun(search?: string) {
     </QueryClientProvider>,
   );
 }
+
+it("运行详情读取失败只在画布区域显示，并可重试", async () => {
+  configurePlatform({
+    ...platform(),
+    getConnection: async () => ({ baseUrl: "http://workflow.test" }),
+  });
+  await initializeApi();
+  let healthy = false;
+  snapshot.humanRequests = [];
+  snapshot.operationRequests = [];
+  server.use(
+    http.get(`${api}/runs/run-1`, () =>
+      healthy
+        ? HttpResponse.json(snapshot)
+        : HttpResponse.json({ message: "unavailable" }, { status: 500 }),
+    ),
+  );
+  const { result: notices } = renderHook(useErrorNotices);
+  renderRun();
+  expect(await screen.findByRole("alert")).toBeVisible();
+  expect(notices.current).toHaveLength(0);
+  healthy = true;
+  await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
+  expect(await screen.findByRole("button", { name: "输入参数" })).toBeVisible();
+});
 
 it("切换执行记录后，画布展示当前运行的冻结参数", async () => {
   snapshot.humanRequests = [];
@@ -349,6 +396,17 @@ it("执行输入节点使用冻结参数，弹窗只读且不读取保存输入�
       screen.queryByRole("dialog", { name: "运行输入" }),
     ).not.toBeInTheDocument(),
   );
+});
+
+it("已处理的旧请求链接直接打开运行画布", async () => {
+  renderRun("request=expired");
+  expect(
+    await screen.findByRole("button", { name: "选择 风险分析模板" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("requestGone")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: /backToBoard|返回.*看板/ }),
+  ).not.toBeInTheDocument();
 });
 
 it("后台查询失败保留运行画布与人工输入草稿，就近重试后继续使用原浮层", async () => {
@@ -647,6 +705,84 @@ it("失败运行提供此次运行的优化入口，不显示停止或人工对�
   expect(
     screen.queryByRole("button", { name: /停止运行|核对执行结果|再次停止/ }),
   ).not.toBeInTheDocument();
+});
+
+it("工作台运行视图在原聊天路由内选择具体执行节点", async () => {
+  function EmbeddedRun() {
+    const location = useLocation();
+    const [params, replace] = useState(() => new URLSearchParams());
+    return (
+      <>
+        <span data-testid="chat-location">
+          {location.pathname}
+          {location.search}
+        </span>
+        <WorkflowRunView
+          id="flow-1"
+          runId="run-1"
+          navigation={{ params, replace }}
+        />
+      </>
+    );
+  }
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter initialEntries={["/chats/chat-1?message=own-message"]}>
+        <TooltipProvider>
+          <EmbeddedRun />
+        </TooltipProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const user = userEvent.setup();
+  const node = await screen.findByText("风险分析模板");
+  expect(
+    screen.queryByRole("dialog", { name: "客户 A 风险分析" }),
+  ).not.toBeInTheDocument();
+  await user.click(node);
+  expect(
+    await screen.findByRole("dialog", { name: "客户 A 风险分析" }),
+  ).toBeVisible();
+  expect(screen.getByTestId("chat-location")).toHaveTextContent(
+    /^\/chats\/chat-1\?message=own-message$/,
+  );
+});
+
+it("工作台定位分页之外的精确实例", async () => {
+  snapshot.instances = [];
+  snapshot.nodeCounts = [
+    {
+      nodeId: "analyse",
+      instanceId: "other-instance",
+      status: "waiting",
+      count: 2,
+    },
+  ];
+  function EmbeddedRun() {
+    const [params, replace] = useState(
+      () => new URLSearchParams("instance=actual-1"),
+    );
+    return (
+      <WorkflowRunView
+        id="flow-1"
+        runId="run-1"
+        navigation={{ params, replace }}
+      />
+    );
+  }
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>
+        <TooltipProvider>
+          <EmbeddedRun />
+        </TooltipProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const details = await screen.findByRole("dialog", {
+    name: "客户 A 风险分析",
+  });
+  expect(within(details).getByText("是否批准客户 A 的风险？")).toBeVisible();
 });
 
 vi.mock("@/shared/api/global-events", () => ({

@@ -65,6 +65,7 @@ type ChatApprovalCardProps = {
   total: number;
   queuedApproval?: PendingApproval;
   submissionState: ApprovalSubmissionState;
+  hotkeys?: boolean;
   onResolve: (approvalId: string, optionId: string) => void;
 };
 
@@ -249,6 +250,7 @@ export function ChatApprovalCard({
   total,
   queuedApproval,
   submissionState,
+  hotkeys = true,
   onResolve,
 }: ChatApprovalCardProps) {
   const { t } = useTranslation("chat");
@@ -269,6 +271,7 @@ export function ChatApprovalCard({
   );
 
   useEffect(() => {
+    if (!hotkeys) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (pending || !approvalHotkeysAllowed(event)) return;
       const target = event.target;
@@ -290,7 +293,7 @@ export function ChatApprovalCard({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [allowOnce?.id, pending, rejectOnce?.id, resolve]);
+  }, [allowOnce?.id, hotkeys, pending, rejectOnce?.id, resolve]);
 
   return (
     <section

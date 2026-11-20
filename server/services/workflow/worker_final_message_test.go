@@ -13,6 +13,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -29,10 +30,12 @@ type workerDispatchExecution struct {
 	intent execution.WorkIntent
 	// status 可模拟幂等重放返回已经完成的首次执行。
 	status constants.ExecutionStatus
+	// validationError 模拟原工作接纳后执行环境发生变化。
+	validationError error
 }
 
-func (*workerDispatchExecution) ValidateConfiguration(context.Context, execution.ExecutionConfiguration) error {
-	return nil
+func (e *workerDispatchExecution) ValidateConfiguration(context.Context, execution.ExecutionConfiguration) error {
+	return e.validationError
 }
 
 func (e *workerDispatchExecution) Start(_ context.Context, intent execution.WorkIntent) (execution.AcceptedExecution, error) {
@@ -72,7 +75,7 @@ func TestWorkerConfigurationInheritsOnlyWithinTheSameSelection(t *testing.T) {
 			runtime: "claude", account: "other", model: "target-model", reasoning: "low"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			got := workerConfiguration(map[string]any{"resolve": test.resolve}, defaults)
+			got, _ := workerConfiguration(map[string]any{"resolve": test.resolve}, defaults)
 			want := models.WorkflowExecutionDefaults{
 				RuntimeID: test.runtime, AccountID: test.account, Model: test.model, Reasoning: test.reasoning,
 				Fast: test.fast, PermissionLevel: defaults.PermissionLevel, WorkspaceReadOnly: defaults.WorkspaceReadOnly,
@@ -92,7 +95,7 @@ func TestCoreWorkerDispatchAlignsStructuredPromptWithResultBindings(t *testing.T
 			options := map[string]any{"resolve": map[string]any{"wakerId": "fixture"}, "schema": map[string]any{"type": "object", "required": []any{"verified"}, "properties": map[string]any{"verified": map[string]any{"type": "boolean"}}}}
 			effect := models.WorkflowEffect{ID: "attempt", ExecutionID: "worker-execution", AuthToken: "attempt-token", Boundary: workflowdsl.EffectBoundary{NodeID: "review", Arguments: []workflowdsl.Value{workflowdsl.JSONValue("Verify the original evidence."), workflowdsl.JSONValue(options)}}}
 			owner := &Service{}
-			_, err := adapter.Dispatch(context.Background(), WorkerDispatch{Effect: effect, Run: workerTestRun(t, "review", runtimeID), ResultBindings: owner.AgentBindings(effect.ID, effect.AuthToken, constants.WorkflowCapabilityScopeResult)})
+			_, err := adapter.Dispatch(context.Background(), WorkerDispatch{Effect: effect, Run: workerTestRun(t, "review", runtimeID), ResultBindings: owner.AgentBindings(workflowtool.Scope{Key: effect.ID, Token: effect.AuthToken, Kind: constants.WorkflowCapabilityScopeResult})})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -159,6 +162,21 @@ func TestCoreWorkerDispatchPreservesFrozenFast(t *testing.T) {
 	}
 }
 
+func TestCoreWorkerDispatchRejectsUnenforceableConnectorPolicy(t *testing.T) {
+	port := &workerDispatchExecution{}
+	options := map[string]any{
+		"resolve":    map[string]any{"wakerId": "fixture"},
+		"toolPolicy": map[string]any{"connectors": map[string]any{"mode": "allowlist", "connectorIds": []any{}}},
+	}
+	effect := models.WorkflowEffect{ID: "attempt", ExecutionID: "first", Boundary: workflowdsl.EffectBoundary{
+		NodeID: "read", Arguments: []workflowdsl.Value{workflowdsl.JSONValue("read"), workflowdsl.JSONValue(options)},
+	}}
+	_, err := (CoreWorkerAdapter{Executions: port}).Dispatch(t.Context(), WorkerDispatch{Run: workerTestRun(t, "read", "codex"), Effect: effect})
+	if err == nil || port.intent.ClientRequestID != "" {
+		t.Fatalf("dispatch would start a worker without its requested restriction: %+v %v", port.intent, err)
+	}
+}
+
 func workerTestRun(t *testing.T, nodeID, runtimeID string) models.WorkflowRun {
 	t.Helper()
 	run := models.WorkflowRun{ID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", DefinitionID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", WorkerConfigurations: map[string]models.WorkflowExecutionDefaults{nodeID: {RuntimeID: runtimeID}}}
@@ -180,15 +198,24 @@ func TestCoreWorkerDispatchAddsInternalWorkspaceWithoutReplacingBusinessScope(t 
 	adapter := CoreWorkerAdapter{Executions: port}
 	effect := models.WorkflowEffect{ID: "workspace-attempt", ExecutionID: "workspace-execution", Boundary: workflowdsl.EffectBoundary{NodeID: "write", Arguments: []workflowdsl.Value{workflowdsl.JSONValue("保存本次成果"), workflowdsl.JSONValue(map[string]any{"resolve": map[string]any{"wakerId": "fixture"}})}}}
 	run := workerTestRun(t, "write", "codex")
-	run.ScopeBinding.WorkingDirectory = "/approved/business"
+	primary, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondary, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	run.ScopeBinding.WorkingDirectory = primary
+	run.AdditionalWorkingDirectories = []string{secondary}
 	workspace := run.Context["workspace"].(map[string]any)
 	if _, err := adapter.Dispatch(context.Background(), WorkerDispatch{Run: run, Effect: effect}); err != nil {
 		t.Fatal(err)
 	}
-	if port.intent.Chat.Create.WorkingDirectory != "/approved/business" || port.intent.Input.Content != "保存本次成果" {
+	if port.intent.Chat.Create.WorkingDirectory != primary || port.intent.Input.Content != "保存本次成果" {
 		t.Fatalf("workspace instructions replaced the frozen business scope or message: %+v", port.intent)
 	}
-	if !reflect.DeepEqual(port.intent.Chat.Create.AdditionalWorkingDirectories, []string{workspace["rootDirectory"].(string)}) {
+	if !reflect.DeepEqual(port.intent.Chat.Create.AdditionalWorkingDirectories, []string{workspace["rootDirectory"].(string), secondary}) {
 		t.Fatalf("worker scope omitted its host-frozen internal root: %+v", port.intent.Chat.Create)
 	}
 	if len(port.intent.Input.ContextInstructions) == 0 {
@@ -383,7 +410,7 @@ func TestUnconfirmedWorkerOutputCannotUseCandidateRepairOrRetry(t *testing.T) {
 }
 
 func TestCoreWorkerDispatchReplayedCompletionVerifiesOutcome(t *testing.T) {
-	port := &workerDispatchExecution{status: constants.ExecutionStatusCompleted}
+	port := &workerDispatchExecution{status: constants.ExecutionStatusCompleted, validationError: status_error.RuntimeUnavailable}
 	queries := &finalMessageChat{outcome: chat.ExecutionOutcome{TerminationReason: constants.RuntimeTerminationReasonTruncated}}
 	effect := models.WorkflowEffect{ID: "attempt", ExecutionID: "first", Boundary: workflowdsl.EffectBoundary{NodeID: "read", Arguments: []workflowdsl.Value{workflowdsl.JSONValue("read"), workflowdsl.JSONValue(map[string]any{"resolve": map[string]any{"wakerId": "fixture"}})}}}
 	receipt, err := (CoreWorkerAdapter{Executions: port, Chats: queries}).Dispatch(context.Background(), WorkerDispatch{Run: workerTestRun(t, "read", "codex"), Effect: effect})

@@ -73,6 +73,9 @@ const WorkflowFileDirectoryName = "WorkflowFiles"
 // WorkflowInputFileDirectoryName 隔离每次运行已冻结的输入副本。
 const WorkflowInputFileDirectoryName = "workflow-inputs"
 
+// WorkflowInputStagingDirectoryName 是 Core 在启动时清理的专用接纳暂存目录。
+const WorkflowInputStagingDirectoryName = ".workflow-input-staging"
+
 // ManagedFilesDirectoryName 是用户主目录下受管业务文件的默认根目录名。
 const ManagedFilesDirectoryName = ".neuxbot"
 
@@ -703,10 +706,16 @@ const (
 	WorkflowActionResultSubmit = "result.submit"
 	// WorkflowActionRunStart 接纳本次获准的工作流运行。
 	WorkflowActionRunStart = "run.start"
+	// WorkflowActionRunList 查询原对话可见的运行历史。
+	WorkflowActionRunList = "run.list"
+	// WorkflowActionRunRepeat 根据原终态选择完整重跑或重试计划。
+	WorkflowActionRunRepeat = "run.repeat"
 	// WorkflowActionRunGet 查询本能力接纳的运行。
 	WorkflowActionRunGet = "run.get"
 	// WorkflowActionRunCancel 停止本能力接纳的运行。
 	WorkflowActionRunCancel = "run.cancel"
+	// WorkflowFailureEffectOutcomeUnknown 记录尚无法确认是否发生的外部效果。
+	WorkflowFailureEffectOutcomeUnknown = "EFFECT_OUTCOME_UNKNOWN"
 	// WorkflowQueryAuthoring 按实际节点组合创作资料与当前版本。
 	WorkflowQueryAuthoring = "authoring"
 	// WorkflowQuerySDK 按主题查询原生 DSL 声明。

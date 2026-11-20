@@ -157,31 +157,50 @@ export function teamTimelineInfiniteOptions(
   threadId: string,
   scope: "pending" | "recovery" = "recovery",
 ) {
+  const queryKey = teamQueryKeys.timelinePages(channelId, threadId);
+  let refreshOlder = false;
   return infiniteQueryOptions({
-    queryKey: teamQueryKeys.timelinePages(channelId, threadId),
+    queryKey,
     initialPageParam: "",
     queryFn: async ({ pageParam, signal, client }) => {
-      const cached = client.getQueryData<TeamTimelineData>(
-        teamQueryKeys.timelinePages(channelId, threadId),
-      );
+      const readCache = () => client.getQueryData<TeamTimelineData>(queryKey);
+      const cached = readCache();
       const index = cached?.pageParams.indexOf(pageParam);
       const page =
         index !== undefined && index >= 0 ? cached?.pages[index] : undefined;
       if (
         pageParam &&
         page &&
+        !refreshOlder &&
         !page.resources?.some((item) => mutableTimelineItem(item, scope))
       )
         return page;
-      return readTeamTimelineWindow(
-        channelId,
-        threadId,
-        pageParam,
-        signal,
-        page,
-        pageParam ? undefined : cached,
-        scope,
-      );
+      const readWindow = () =>
+        readTeamTimelineWindow(
+          channelId,
+          threadId,
+          pageParam,
+          signal,
+          page,
+          pageParam ? undefined : cached,
+          scope,
+        );
+      let deliverySequence = cached?.deliverySequence ?? 0;
+      let data = await readWindow();
+      if (!pageParam && !signal.aborted) {
+        refreshOlder =
+          scope === "recovery" &&
+          (data.leadChatLatestSequence ?? 0) >
+            (page?.leadChatLatestSequence ?? 0);
+      }
+      // 团队旧页不返回主 Chat 游标，期间若收到交付就补读同一页。
+      while (pageParam && !signal.aborted) {
+        const latestDelivery = readCache()?.deliverySequence ?? 0;
+        if (latestDelivery <= deliverySequence) break;
+        deliverySequence = latestDelivery;
+        data = await readWindow();
+      }
+      return data;
     },
     structuralSharing: reconcileTeamTimeline,
     getNextPageParam: (lastPage) =>
@@ -218,7 +237,9 @@ export function teamWakersInfiniteOptions(query: string) {
   });
 }
 
-type TeamTimelineData = InfiniteData<ListChannelTimelineResponse, string>;
+type TeamTimelineData = InfiniteData<ListChannelTimelineResponse, string> & {
+  deliverySequence?: number;
+};
 
 function isTeamTimelineData(value: unknown): value is TeamTimelineData {
   return (
@@ -344,6 +365,8 @@ function reconcileTeamTimeline(current: unknown, incoming: unknown) {
   const currentHead = current.pages[0];
   const incomingHead = incoming.pages[0];
   if (!currentHead || !incomingHead) return replaceEqualDeep(current, incoming);
+  const deliverySequence =
+    incoming.deliverySequence ?? current.deliverySequence;
   const known = new Map(
     current.pages
       .flatMap((page) => page.resources ?? [])
@@ -401,6 +424,7 @@ function reconcileTeamTimeline(current: unknown, incoming: unknown) {
   )
     return replaceEqualDeep(current, {
       ...incoming,
+      deliverySequence,
       pages,
       pageParams: [
         ...incoming.pageParams,
@@ -423,6 +447,7 @@ function reconcileTeamTimeline(current: unknown, incoming: unknown) {
   );
   return replaceEqualDeep(current, {
     ...incoming,
+    deliverySequence,
     pageParams: [
       ...incoming.pageParams,
       ...current.pageParams.slice(incoming.pageParams.length),
@@ -452,6 +477,8 @@ export function commitTeamTimelineEvents(
   const head = current?.pages[0];
   if (!current || !head) return undefined;
   let sequence = head.leadChatLatestSequence ?? 0;
+  let deliverySequence = current.deliverySequence;
+  const appendable = new Set<string>();
   const updates = new Map<
     string,
     NonNullable<ListChannelTimelineResponse["resources"]>[number]
@@ -462,8 +489,9 @@ export function commitTeamTimelineEvents(
     if (!Number.isSafeInteger(next) || next === undefined || next <= 0)
       return undefined;
     if (next <= sequence) continue;
-    if (next !== sequence + 1) return undefined;
     sequence = next;
+    const delivery = event.type === "execution.delivery";
+    if (delivery) deliverySequence = next;
     if (event.fileChanges) {
       const id = event.fileChanges.messageId;
       const item =
@@ -497,6 +525,7 @@ export function commitTeamTimelineEvents(
       )
     )
       continue;
+    if (!delivery) appendable.add(message.id);
     updates.set(message.id, {
       chatId,
       coordinator: true,
@@ -510,12 +539,13 @@ export function commitTeamTimelineEvents(
     });
   }
   if (sequence === (head.leadChatLatestSequence ?? 0)) return sequence;
+  const added = new Map([...updates].filter(([id]) => appendable.has(id)));
+  const newOrActiveSnapshots = [...added.values()];
   const submissions = new Set(
-    [...updates.values()]
+    newOrActiveSnapshots
       .map((item) => item.message?.submissionId)
       .filter(Boolean),
   );
-  const added = new Map(updates);
   const pages = current.pages.map((page) => ({
     ...page,
     resources: page.resources
@@ -539,6 +569,7 @@ export function commitTeamTimelineEvents(
   }));
   queryClient.setQueryData<TeamTimelineData>(key, {
     ...current,
+    deliverySequence,
     pages: pages.map((page, index) =>
       index === 0
         ? {
@@ -551,7 +582,7 @@ export function commitTeamTimelineEvents(
         : page,
     ),
   });
-  const assistant = [...updates.values()]
+  const assistant = newOrActiveSnapshots
     .reverse()
     .find(
       (item) => item.message?.role === "assistant" && !item.message.question,

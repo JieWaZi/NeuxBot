@@ -1,5 +1,8 @@
 import { readChatDraftIntent } from "@/shared/lib/chat-draft-intent";
-import { getWakerRecentProjectOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
+import {
+  cancelFirstChatExecutionMutation,
+  getWakerRecentProjectOptions,
+} from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useInstalledPluginReferences } from "@/modules/plugin";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
 import type { ExecutionSelection } from "@/shared/hooks/use-execution-selection";
@@ -62,7 +65,12 @@ import {
 } from "../components/chat-workspace-surface";
 import { ChatThread } from "../components/chat-thread";
 import type { ChatComposerContextReference } from "../components/chat-composer-input";
-import { useChatWorkspaceHost } from "../components/chat-contributions";
+import {
+  useChatWorkflowPicker,
+  type ChatComposerDrafts,
+} from "../components/chat-workflow-reference";
+import { useChatWorkflowTimeline } from "../components/chat-workflow-timeline";
+import { useChatWorkspaceHost } from "../components/chat-workspace-host";
 import { useChatComposerControls } from "../components/chat-composer-controls";
 import {
   ChatSessionTransitionDialog,
@@ -100,6 +108,8 @@ import {
 import { listWakersOptions } from "@/modules/waker";
 import type { Waker } from "@/modules/waker";
 import { prepareFirstChatSubmission } from "../model/first-chat-submission";
+import { ApiError } from "@/shared/api/errors";
+import { applicationErrorKey } from "@/shared/api/error-presentation";
 import { resolveNewChatExecution } from "../model/new-chat-execution";
 import { selectDirectory } from "@/shared/platform";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
@@ -175,6 +185,7 @@ type ChatPageContentProps = {
 /** 呈现作用域拥有消息视图；接纳只绑定服务器 Chat，不重建同一草稿的视图。 */
 export function ChatPageContent(props: ChatPageContentProps) {
   const [searchParams] = useSearchParams();
+  const [workflowDrafts] = useState<ChatComposerDrafts>(() => new Map());
   const composerHost = useChatWorkspaceHost();
   const workspaceScopeKey =
     (props.boardDraft ? props.presentationScopeKey : undefined) ??
@@ -192,6 +203,7 @@ export function ChatPageContent(props: ChatPageContentProps) {
       key={JSON.stringify([props.presentationScopeKey, member?.id ?? null])}
       {...props}
       workspaceScopeKey={workspaceScopeKey}
+      workflowDrafts={workflowDrafts}
     />
   );
 }
@@ -206,7 +218,11 @@ function ChatView({
   presentationScopeKey,
   workspaceScopeKey,
   boardDraft,
-}: ChatPageContentProps & { workspaceScopeKey: string }) {
+  workflowDrafts,
+}: ChatPageContentProps & {
+  workspaceScopeKey: string;
+  workflowDrafts: ChatComposerDrafts;
+}) {
   const { t } = useTranslation("chat");
   const routeActive = useRouteSceneActive();
   const sceneActive =
@@ -324,6 +340,15 @@ function ChatView({
   );
   const activeMemberWakerId = activeMemberTab?.wakerId;
   const activeChatId = activeMemberTab?.chatId ?? chatId;
+  const {
+    workflow,
+    workflowOnly,
+    picker: workflowPicker,
+  } = useChatWorkflowPicker(
+    workflowDrafts,
+    JSON.stringify([presentationScopeKey, activeMemberTab?.id ?? "partner"]),
+    !entry && !boardDraft && presentation === "workspace",
+  );
   const currentChatKey = conversationKeyOf(workspaceScopeKey, activeChatId);
   const { accountId, selectAccount } = useChatAccountSelection(
     presentation === "composer"
@@ -878,6 +903,7 @@ function ChatView({
   const send = useMutation(sendMessageMutation());
   const create = useMutation(createChatMutation());
   const cancel = useMutation(cancelChatExecutionMutation());
+  const cancelFirst = useMutation(cancelFirstChatExecutionMutation());
   const resolveApproval = useMutation(resolveApprovalMutation());
   const resolveElicitation = useMutation(resolveElicitationMutation());
   const notifyApproval = useCallback(
@@ -949,6 +975,8 @@ function ChatView({
       connectorIds: selectedConnectorIDs,
       selectedConnectors,
       codeReferences: selectedCodeReferences,
+      workflow,
+      workflowOnly,
     },
     onMessageAccepted: () => {
       clearComposer();
@@ -996,6 +1024,7 @@ function ChatView({
       const message = {
         steerExecutionId: selection?.steerExecutionId,
         text,
+        workflowId: selection?.workflow?.id,
         accountId: selection?.accountId ?? "system",
         runtimeId: selection?.runtimeId ?? "",
         model: selection?.model ?? "",
@@ -1043,14 +1072,25 @@ function ChatView({
         const requestScope = `${workspaceScopeKey}:send:${targetChatId}`;
         const prepared = withStableCreateRequest(requestScope, body);
         const submissionId = prepared.clientRequestId;
+        const retire = () =>
+          clearStableCreateRequest(requestScope, submissionId);
         return {
           submissionId,
           confirmAccepted: () => {
-            clearStableCreateRequest(requestScope, submissionId);
+            retire();
             if (sessionTransition)
               setFreshSession((current) =>
                 current === freshSession ? null : current,
               );
+          },
+          confirmRejected: (error) => {
+            if (
+              !(error instanceof ApiError) ||
+              applicationErrorKey(error.code) !== "OperationCanceled"
+            )
+              return false;
+            retire();
+            return true;
           },
           accept: () =>
             send.mutateAsync({
@@ -1075,28 +1115,56 @@ function ChatView({
           workspaceScopeKey,
           createRequest.clientRequestId,
         );
+      const cancelSubmission = async () => {
+        await cancelFirst.mutateAsync({
+          query: {
+            wakerId: createRequest.wakerId,
+            clientRequestId: createRequest.clientRequestId,
+          },
+        });
+      };
       if (boardDraft || selection?.optimizeProfile) {
         setBoardModelPickerOpen(false);
-        return prepareFirstChatSubmission(
-          createRequest,
-          (body) => create.mutateAsync({ body }),
-          finish,
-        );
+        return {
+          ...prepareFirstChatSubmission(
+            createRequest,
+            (body) => create.mutateAsync({ body }),
+            finish,
+          ),
+          cancel: cancelSubmission,
+        };
       }
       return {
         submissionId: createRequest.clientRequestId,
         confirmAccepted: finish,
+        confirmRejected: (error) => {
+          if (
+            !(error instanceof ApiError) ||
+            applicationErrorKey(error.code) !== "OperationCanceled"
+          )
+            return false;
+          finish();
+          return true;
+        },
+        cancel: cancelSubmission,
         accept: () => create.mutateAsync({ body: createRequest }),
       };
     },
-    cancel: async () => {
+    cancel: async (target) => {
       const invocation = chatInvocationGuard.capture(
         activeChatId,
         runtimeQueueKey,
       );
-      if (!invocation.chatId || !chatInvocationGuard.isCurrent(invocation))
+      if (
+        !target ||
+        !invocation.chatId ||
+        !chatInvocationGuard.isCurrent(invocation)
+      )
         return;
-      await cancel.mutateAsync({ path: { chatId: invocation.chatId } });
+      await cancel.mutateAsync({
+        path: { chatId: invocation.chatId },
+        query: target,
+      });
     },
     onSettled: (result, invocation) => {
       const hasSnapshot = commitAcceptedChat(queryClient, result.chat);
@@ -1361,11 +1429,17 @@ function ChatView({
       else setChatRightPanel("workspace");
     },
   });
+  const workflowTimeline = useChatWorkflowTimeline({
+    chatId: activeChatId,
+    scopeKey: workspaceScopeKey,
+    active: sceneActive,
+    enabled: Boolean(workflowPicker),
+    messages: chatRuntime.messages,
+    onOpenWorkbench: () => setChatRightPanel("workspace"),
+  });
   const chatAdapter: ChatWorkspaceAdapter = {
     identity: {
       chatId: activeChatId,
-      messageContributions:
-        Boolean(detailQuery.data?.chat?.hiddenFromWakerHistory) && !entry,
       key: currentChatKey,
       scopeKey: workspaceScopeKey,
       terminalWorkingDirectory,
@@ -1404,6 +1478,8 @@ function ChatView({
         : undefined,
       runtime: chatRuntime.runtime,
       messages: chatRuntime.messages,
+      timelineEvents: workflowTimeline.events,
+      workflowInvocation: workflowTimeline.workflowInvocation,
       activityStatus: retryFirstSubmission ? (
         <div
           role="status"
@@ -1470,6 +1546,7 @@ function ChatView({
       composerSkillsError: skillsQuery.isError,
       composerPlugins: enabledPlugins,
       composerPluginsError: pluginsQuery.isError,
+      composerWorkflowPicker: workflowPicker,
       selectedPluginIds: selectedPluginIDs,
       onPluginSelectionChange: setSelectedPluginIDs,
       composerConnectors: enabledConnectors,

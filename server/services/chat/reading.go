@@ -23,8 +23,10 @@ type readingChanges struct {
 	inheritedThrough int64
 }
 
+var errReadingCheckpointSuperseded = errors.New("reading checkpoint superseded")
+
 // prepareReading reads only message identities affected by the frozen tail.
-func (p *queryIndexStore) prepareReading(ctx context.Context, chatID string, tail []eventlog.Record, through int64) (readingChanges, error) {
+func (p *queryIndexStore) prepareReading(ctx context.Context, chatID string, tail []eventlog.Record, after, through int64) (readingChanges, error) {
 	var changes readingChanges
 	if p.reading == nil || len(tail) == 0 {
 		return changes, nil
@@ -35,7 +37,7 @@ func (p *queryIndexStore) prepareReading(ctx context.Context, chatID string, tai
 		case constants.ChatEventTypeMessageInherited, constants.ChatEventTypeUserMessageCreated:
 			affected[row.MessageID] = true
 		case constants.ChatEventTypeAssistantMessage, constants.ChatEventTypeRuntimeEvent, constants.ChatEventTypeExecutionFailed,
-			constants.ChatEventTypeExecutionCompleted, constants.ChatEventTypeExecutionCanceled:
+			constants.ChatEventTypeExecutionCompleted, constants.ChatEventTypeExecutionCanceled, constants.ChatEventTypeExecutionDelivery:
 			id := row.MessageID
 			if id == "" {
 				id = row.ExecutionID
@@ -53,6 +55,14 @@ func (p *queryIndexStore) prepareReading(ctx context.Context, chatID string, tai
 			return changes, chatContextStatus(err)
 		}
 		message, err := p.readPublicMessageThrough(ctx, chatID, id, through)
+		if errors.Is(err, errReadingCheckpointSuperseded) {
+			if after == 0 {
+				// 全量重建会替换阅读索引，需要每条原消息都完成投影。
+				return changes, status_error.ReadingProjectionIncomplete
+			}
+			// 后续检查点会重新纳入同一消息，本窗口保留此前已提交的阅读行。
+			continue
+		}
 		if err != nil {
 			return changes, err
 		}
@@ -95,12 +105,12 @@ func (p *queryIndexStore) readPublicMessageThrough(ctx context.Context, chatID, 
 		stamp = r.RecordedAt
 	}
 	if journal, ok := p.logStore.(*conversationJournal); ok {
-		stored, cursor, err := journal.ReadMessageCheckpoint(ctx, chatID, messageID, 0)
+		stored, cursor, err := journal.ReadCurrentMessageCheckpointThrough(ctx, chatID, messageID, through)
 		if err != nil && !errors.Is(err, status_error.ChatMessageNotFound) {
 			return nil, err
 		}
 		if cursor > through {
-			return nil, status_error.ReadingProjectionIncomplete
+			return nil, errReadingCheckpointSuperseded
 		}
 		if cursor > 0 {
 			if err := builder.ReplaceStoredContent(stored, cursor, stamp); err != nil {
@@ -151,7 +161,11 @@ func (m *service) PublicReadingMessage(ctx context.Context, chatID, messageID st
 	if err != nil {
 		return nil, err
 	}
-	return m.queryIndexes.readPublicMessageThrough(ctx, chatID, messageID, through)
+	message, err := m.queryIndexes.readPublicMessageThrough(ctx, chatID, messageID, through)
+	if errors.Is(err, errReadingCheckpointSuperseded) {
+		return nil, status_error.ReadingProjectionIncomplete
+	}
+	return message, err
 }
 
 // appendInterruptedRecovery 先关闭未答问题，再记录 Core 重启中断的执行结果。

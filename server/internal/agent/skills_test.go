@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -60,7 +61,7 @@ func TestPublishedSkillDeclarationNeedsNoSourceIOAndColdPublishChecksContent(t *
 	}
 }
 
-func TestManagedSkillsPreserveWorkspaceFilesAndCopySources(t *testing.T) {
+func TestManagedSkillsPreserveWorkspaceFilesAndIsolateSources(t *testing.T) {
 	root, source := t.TempDir(), t.TempDir()
 	for _, name := range []string{"AGENTS.md", "CLAUDE.md", "TEAM.md"} {
 		if err := os.WriteFile(filepath.Join(root, name), []byte("user instructions"), 0600); err != nil {
@@ -96,8 +97,8 @@ func TestManagedSkillsPreserveWorkspaceFilesAndCopySources(t *testing.T) {
 	}
 	target := filepath.Join(root, ".claude", "skills", "managed")
 	info, err := os.Lstat(target)
-	if err != nil || info.Mode()&os.ModeSymlink != 0 {
-		t.Fatalf("skill must be a copy: %v %v", info, err)
+	if err != nil || (runtime.GOOS != "windows" && info.Mode()&os.ModeSymlink == 0) {
+		t.Fatalf("skill projection is missing: %v %v", info, err)
 	}
 	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("version two"), 0600); err != nil {
 		t.Fatal(err)
@@ -175,6 +176,24 @@ func TestManagedSkillsSwitchRuntimeAndRejectLinkedRoots(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, ".claude", "skills", "demo")); err != nil {
 		t.Fatalf("independent target was removed: %v", err)
 	}
+	if runtime.GOOS != "windows" {
+		claude, err := filepath.EvalSymlinks(filepath.Join(root, ".claude", "skills", "demo"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		agents, err := filepath.EvalSymlinks(filepath.Join(root, ".agents", "skills", "demo"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		canonicalRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join(canonicalRoot, ".neuxbot", "skills", skills[0].Digest)
+		if claude != want || agents != want {
+			t.Fatalf("native targets must reuse workspace snapshot %q, got %q and %q", want, claude, agents)
+		}
+	}
 	if err := os.RemoveAll(filepath.Join(root, ".claude")); err != nil {
 		t.Fatal(err)
 	}
@@ -193,6 +212,125 @@ func TestManagedSkillsSwitchRuntimeAndRejectLinkedRoots(t *testing.T) {
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("prepare wrote outside workspace: %v %v", entries, err)
 	}
+}
+
+func TestManagedSystemSkillProjectsReferencesWithoutExecutable(t *testing.T) {
+	root, source := t.TempDir(), t.TempDir()
+	for name, value := range map[string]string{
+		"SKILL.md":                       "system skill",
+		"references/guide.md":            "system reference",
+		"references/example.workflow.js": "system example",
+		"scripts/botcli":                 "canonical executable bytes",
+		"scripts/botcli.exe":             "canonical Windows executable bytes",
+	} {
+		path := filepath.Join(source, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(value), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	detection := DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: ".agents"}}
+	workspace := Workspace{Path: root, Managed: true}
+	if err := prepareTestSkills(detection, workspace, []Skill{{Name: "bot", Path: source}}); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, ".agents", "skills", "bot")
+	for name, want := range map[string]string{"SKILL.md": "system skill", "references/guide.md": "system reference", "references/example.workflow.js": "system example"} {
+		body, err := os.ReadFile(filepath.Join(target, filepath.FromSlash(name)))
+		if err != nil || string(body) != want {
+			t.Fatalf("system document %s = %q, %v", name, body, err)
+		}
+	}
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr == nil && (entry.Name() == "botcli" || entry.Name() == "botcli.exe") {
+			t.Errorf("workspace contains a system executable at %s", path)
+		}
+		return walkErr
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "scripts")); !os.IsNotExist(err) {
+		t.Fatalf("native system skill exposes scripts: %v", err)
+	}
+	if err := prepareTestSkills(detection, workspace, nil); err != nil {
+		t.Fatalf("manifest did not recognize the docs-only installation: %v", err)
+	}
+}
+
+func TestManagedSkillsMigrateLegacyCopiesInPreparedTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows may retain a copy when directory links are unavailable")
+	}
+	root, source := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("version one"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := managedskills.Digest(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, ".agents", "skills", "demo")
+	if err := managedskills.CopyDirectory(source, target); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"version":1,"targets":{".agents/skills":{"demo":"` + digest + `"}}}`
+	if err := os.WriteFile(filepath.Join(root, managedskills.MaterializationManifestName), []byte(manifest), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareTestSkills(DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: ".agents"}}, Workspace{Path: root, Managed: true}, []Skill{{Name: "demo", Path: source}}); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(target); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("verified legacy copy was not replaced with a link: %v %v", info, err)
+	}
+}
+
+func TestManagedSkillSnapshotsRetainOtherRuntimeVersion(t *testing.T) {
+	root, source := t.TempDir(), t.TempDir()
+	workspace := Workspace{Path: root, Managed: true}
+	put := func(body, discovery string) string {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		skills := []Skill{{Name: "demo", Path: source}}
+		if err := prepareTestSkills(DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: discovery}}, workspace, skills); err != nil {
+			t.Fatal(err)
+		}
+		return skills[0].Digest
+	}
+	first := put("version one", ".agents")
+	put("version one", ".claude")
+	snapshot := filepath.Join(root, skillSnapshotPath(first))
+	copyTarget := filepath.Join(root, ".claude", "skills", "demo")
+	info, err := os.Lstat(copyTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Exercise the directory-copy projection used when native links are unavailable.
+	if info.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(copyTarget); err != nil {
+			t.Fatal(err)
+		}
+		if err := managedskills.CopyDirectory(snapshot, copyTarget); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("version two", ".agents")
+	skillTestBytes(t, root, ".agents", "version two")
+	skillTestBytes(t, root, ".claude", "version one")
+	if _, err := os.Stat(snapshot); err != nil {
+		t.Fatalf("snapshot still referenced by a copy was removed: %v", err)
+	}
+	if err := prepareTestSkills(DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: ".claude"}}, workspace, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(snapshot); !os.IsNotExist(err) {
+		t.Fatalf("unreferenced snapshot still present: %v", err)
+	}
+	skillTestBytes(t, root, ".agents", "version two")
 }
 
 func TestManagedSkillsFailedSourcePreservesPreviousVersion(t *testing.T) {
@@ -253,6 +391,38 @@ func TestManagedSkillsPreserveUnownedLinks(t *testing.T) {
 	}
 	if actual, err := os.Readlink(target); err != nil || actual != source {
 		t.Fatalf("unowned link changed: %q %v", actual, err)
+	}
+}
+
+func TestManagedSkillSnapshotRejectsEscapingResourceLink(t *testing.T) {
+	root, source, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	for _, directory := range []string{source, outside} {
+		if err := os.WriteFile(filepath.Join(directory, "SKILL.md"), []byte("notes"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(source, "reference.md")
+	if err := os.Symlink(filepath.Join(outside, "SKILL.md"), link); err != nil {
+		t.Skip(err)
+	}
+	detection := DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: ".agents"}}
+	workspace := Workspace{Path: root, Managed: true}
+	skills := []Skill{{Name: "demo", Path: source}}
+	if err := prepareTestSkills(detection, workspace, skills); !errors.Is(err, status_error.SkillContentInvalid) {
+		t.Fatalf("resource link outside the snapshot accepted: %v", err)
+	}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("SKILL.md", link); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareTestSkills(detection, workspace, skills); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, ".agents", "skills", "demo", "reference.md"))
+	if err != nil || string(body) != "notes" {
+		t.Fatalf("internal resource link no longer resolves: %q, %v", body, err)
 	}
 }
 

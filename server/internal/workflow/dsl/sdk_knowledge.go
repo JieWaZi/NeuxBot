@@ -282,11 +282,9 @@ func sdkDeclarations() []sdkDeclaration {
 				"'default'|'auto'|'full-access' }",
 		},
 		{
-			name:   "ToolPolicy",
-			topics: []string{"worker"},
-			content: "interface ToolPolicy { connectors?: {mode:'inherit'} | " +
-				"{mode:'allowlist';connectorIds:string[]}; nativeTools?: {mode:'inherit'} | " +
-				"{mode:'allowlist';capabilityIds:string[]} }",
+			name:    "ToolPolicy",
+			topics:  []string{"worker"},
+			content: "interface ToolPolicy { connectors?: {mode:'inherit'}; nativeTools?: {mode:'inherit'} }",
 		},
 		{
 			name:   "WorkerOptions",

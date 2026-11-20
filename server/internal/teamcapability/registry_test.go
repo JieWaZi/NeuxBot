@@ -21,6 +21,11 @@ func TestRegistrySupportsParallelLeaseScopedCapabilities(t *testing.T) {
 	if !exists || second.ExecutionID != "execution-2" || second.Fence <= first.Fence {
 		t.Fatalf("old lease revoked current scope: %+v, exists=%t", second, exists)
 	}
+	registry.MarkListed("thread", firstLease)
+	second, _ = registry.Resolve("thread")
+	if second.Listed {
+		t.Fatal("old lease marked the new turn's task board as read")
+	}
 	memberLease, err := registry.MintMember(
 		"thread", "member", "execution-3", "task", "attempt",
 	)

@@ -2,9 +2,11 @@ package channel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -12,6 +14,7 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -34,11 +37,13 @@ func (s *service) CreateTask(
 		(input.DirectDelivery && (input.RequiresHumanReview || len(input.DependencyTaskIDs) > 0)) {
 		return TaskResult{}, status_error.BadRequest
 	}
-	locked, release, lockErr := s.acquireThreadOperation(ctx, input.ThreadID)
+	inputContext := ctx
+	locked, releaseTeam, lockErr := s.acquireThreadOperation(ctx, input.ThreadID)
 	if lockErr != nil {
 		return TaskResult{}, lockErr
 	}
 	ctx = locked
+	release := sync.OnceFunc(releaseTeam)
 	defer release()
 	if err := s.freezeBeforeUserInput(ctx, input.ThreadID); err != nil {
 		return TaskResult{}, err
@@ -113,6 +118,11 @@ func (s *service) CreateTask(
 		if writableErr := s.ensureThreadWritable(transactionContext, thread); writableErr != nil {
 			return writableErr
 		}
+		if directInput != nil {
+			if err := s.checkStoppedThreadSubmission(thread, directInput.SubmissionID); err != nil {
+				return err
+			}
+		}
 		reserved, reserveErr := s.threads.ReserveTaskSlot(transactionContext, thread.ID)
 		if reserveErr != nil {
 			return reserveErr
@@ -135,6 +145,8 @@ func (s *service) CreateTask(
 	if input.DeferDispatch {
 		return TaskResult{Task: task}, nil
 	}
+	release()
+	ctx = inputContext
 	executions, err := s.schedule(ctx, thread.ID)
 	if err != nil {
 		return TaskResult{Task: task}, err
@@ -243,51 +255,32 @@ func (s *service) schedule(
 	ctx context.Context,
 	threadID string,
 ) (map[string]*models.Execution, error) {
-	locked, release, lockErr := s.acquireThreadOperation(ctx, threadID)
-	if lockErr != nil {
-		return nil, lockErr
-	}
-	ctx = locked
-	defer release()
 	result := make(map[string]*models.Execution)
-	var thread models.ChannelThread
-	var snapshot controllers.ChannelDispatchSnapshot
-	if err := func() error {
-		releaseSchedule := s.acquireScheduleLock(threadID)
-		defer releaseSchedule()
-		var err error
-		thread, err = s.threads.Get(ctx, threadID)
-		if err != nil {
-			return err
-		}
-		if err := s.ensureThreadWritable(ctx, thread); err != nil {
-			return err
-		}
-		snapshot, err = s.tasks.LoadDispatchSnapshot(ctx, threadID)
-		if err != nil {
-			return err
-		}
-		sort.SliceStable(snapshot.Tasks, func(i, j int) bool {
-			if snapshot.Tasks[i].Priority != snapshot.Tasks[j].Priority {
-				return snapshot.Tasks[i].Priority > snapshot.Tasks[j].Priority
-			}
-			if snapshot.Tasks[i].CreatedAt != snapshot.Tasks[j].CreatedAt {
-				return snapshot.Tasks[i].CreatedAt < snapshot.Tasks[j].CreatedAt
-			}
-			return snapshot.Tasks[i].ID < snapshot.Tasks[j].ID
-		})
-		return nil
-	}(); err != nil {
+	thread, err := s.threads.Get(ctx, threadID)
+	if err != nil {
 		return result, err
 	}
-	// 从这里开始只使用不可变快照；领取与配额由 ClaimForDispatch 的数据库 CAS 决定，
-	// 因而 Runtime/Chat 外部调用不会占用 thread 调度锁。
-	active := snapshot.ActiveCount
-	activeAssignees := snapshot.ActiveAssigneeWakerIDs
+	if err := s.ensureThreadWritable(ctx, thread); err != nil {
+		return result, err
+	}
+	snapshot, err := s.tasks.LoadDispatchSnapshot(ctx, threadID)
+	if err != nil {
+		return result, err
+	}
+	sort.SliceStable(snapshot.Tasks, func(i, j int) bool {
+		if snapshot.Tasks[i].Priority != snapshot.Tasks[j].Priority {
+			return snapshot.Tasks[i].Priority > snapshot.Tasks[j].Priority
+		}
+		if snapshot.Tasks[i].CreatedAt != snapshot.Tasks[j].CreatedAt {
+			return snapshot.Tasks[i].CreatedAt < snapshot.Tasks[j].CreatedAt
+		}
+		return snapshot.Tasks[i].ID < snapshot.Tasks[j].ID
+	})
+	// 快照只筛选候选，实际派发配额与成员占用由 ClaimForDispatch 原子确认。
 	leadIdleKnown := false
 	leadIdle := false
 	for _, task := range snapshot.Tasks {
-		if task.Status != constants.ChannelTaskStatusPending || active >= int64(thread.MaxParallel) {
+		if !dispatchableTask(thread, snapshot, task) {
 			continue
 		}
 		if task.DeferUntilLeadIdle {
@@ -310,24 +303,25 @@ func (s *service) schedule(
 			}
 			task.DeferUntilLeadIdle = false
 		}
-		dependencies := snapshot.DependenciesByTaskID[task.ID]
-		if !allDependenciesTerminal(dependencies) {
-			continue
-		}
-		if _, assigneeActive := activeAssignees[task.AssigneeWakerID]; assigneeActive {
-			continue
-		}
-		accepted, err := s.dispatchTask(ctx, thread, task, dependencies)
+		accepted, err := s.dispatchTask(ctx, thread, task, snapshot.DependenciesByTaskID[task.ID])
 		if err != nil {
 			return result, err
 		}
 		if accepted != nil {
 			result[task.ID] = accepted
-			active++
-			activeAssignees[task.AssigneeWakerID] = struct{}{}
+			snapshot.ActiveCount++
+			snapshot.ActiveAssigneeWakerIDs[task.AssigneeWakerID] = struct{}{}
 		}
 	}
 	return result, nil
+}
+
+func dispatchableTask(thread models.ChannelThread, snapshot controllers.ChannelDispatchSnapshot, task models.ChannelTask) bool {
+	_, assigneeActive := snapshot.ActiveAssigneeWakerIDs[task.AssigneeWakerID]
+	return task.Status == constants.ChannelTaskStatusPending &&
+		snapshot.ActiveCount < int64(thread.MaxParallel) &&
+		!assigneeActive &&
+		allDependenciesTerminal(snapshot.DependenciesByTaskID[task.ID])
 }
 
 func (s *service) dispatchTask(
@@ -345,6 +339,7 @@ func (s *service) dispatchTask(
 		return nil, err
 	}
 	if summary.Chat.ActiveExecutionID != "" {
+		s.watchRecoveryDrain(thread.ID)
 		return nil, nil
 	}
 	automaticRunID, err := s.automaticWorkSource(ctx, thread)
@@ -415,6 +410,11 @@ func (s *service) dispatchTask(
 		}
 		return s.tasks.MarkFollowUpsDelivered(transactionContext, ids, attempt.ID, now)
 	}); err != nil {
+		// 精确撤回补充可使派发快照过期。领取事务已回滚，继续处理剩余队列。
+		if errors.Is(err, status_error.ChannelTaskStateConflict) {
+			s.watchRecoveryDrain(thread.ID)
+			return nil, nil
+		}
 		return nil, err
 	}
 	if !claimed {
@@ -425,24 +425,12 @@ func (s *service) dispatchTask(
 	if task.AssigneeWakerID != thread.LeadWakerID {
 		capability, token, capabilityErr := s.mintMemberCapability(thread, attempt)
 		if capabilityErr != nil {
-			if releaseErr := s.releaseUnstartedAttempt(ctx, attempt); releaseErr != nil {
-				logx.Errorf(
-					"release channel task attempt after member capability failure failed: thread_id=%s task_id=%s attempt_id=%s execution_id=%s chat_id=%s fence=%d error=%v",
-					thread.ID,
-					task.ID,
-					attempt.ID,
-					attempt.ExecutionID,
-					member.ChatID,
-					attempt.Fence,
-					releaseErr,
-				)
-			}
-			return nil, capabilityErr
+			return nil, s.rejectTaskDispatch(ctx, thread, attempt, capabilityErr)
 		}
 		toolCapabilities = append(toolCapabilities, capability)
 		capabilityToken = token
 	}
-	accepted, err := s.executions.Start(ctx, execution.WorkIntent{AutomaticRunID: automaticRunID,
+	accepted, err := s.startThreadExecution(ctx, thread, execution.WorkIntent{AutomaticRunID: automaticRunID,
 		ExecutionID: attempt.ExecutionID,
 		Chat:        execution.ChatTarget{ChatID: member.ChatID},
 		Input:       workInput,
@@ -461,36 +449,31 @@ func (s *service) dispatchTask(
 			},
 		},
 		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
+		AdmissionBoundary: func(ctx context.Context, commit func(context.Context) error) error {
+			current, err := s.tasks.Get(ctx, task.ID)
+			if err != nil {
+				return err
+			}
+			if current.Status != constants.ChannelTaskStatusInProgress || current.CurrentFence != attempt.Fence {
+				return status_error.ChannelTaskAttemptStale
+			}
+			if taskCancellationRequested(current, attempt.Fence) {
+				return status_error.OperationCanceled
+			}
+			return commit(ctx)
+		},
 	})
 	if err != nil {
 		s.capabilities.Revoke(capabilityToken)
-		if releaseErr := s.releaseUnstartedAttempt(ctx, attempt); releaseErr != nil {
-			logx.Errorf(
-				"release unstarted channel task attempt failed: thread_id=%s task_id=%s attempt_id=%s execution_id=%s chat_id=%s fence=%d error=%v",
-				thread.ID,
-				task.ID,
-				attempt.ID,
-				attempt.ExecutionID,
-				member.ChatID,
-				attempt.Fence,
-				releaseErr,
-			)
-		}
-		if isChatBusy(err) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, s.rejectTaskDispatch(ctx, thread, attempt, err)
 	}
 	acceptedAt := time.Now().UnixMilli()
 	if accepted.Execution.ID != attempt.ExecutionID {
 		s.capabilities.Revoke(capabilityToken)
-		if cancelErr := s.executions.CancelAndWait(ctx, member.ChatID); cancelErr != nil {
+		if cancelErr := s.executions.CancelNativeExecutionAndWait(ctx, member.ChatID, accepted.Execution.ID); cancelErr != nil {
 			logx.Errorf("cancel mismatched channel task execution failed: thread_id=%s task_id=%s attempt_id=%s expected_execution_id=%s actual_execution_id=%s chat_id=%s error=%v", thread.ID, task.ID, attempt.ID, attempt.ExecutionID, accepted.Execution.ID, member.ChatID, cancelErr)
 		}
-		if releaseErr := s.releaseUnstartedAttempt(ctx, attempt); releaseErr != nil {
-			logx.Errorf("release mismatched channel task attempt failed: thread_id=%s task_id=%s attempt_id=%s execution_id=%s chat_id=%s fence=%d error=%v", thread.ID, task.ID, attempt.ID, attempt.ExecutionID, member.ChatID, attempt.Fence, releaseErr)
-		}
-		return nil, status_error.ChannelTaskAttemptStale
+		return nil, s.rejectTaskDispatch(ctx, thread, attempt, status_error.ChannelTaskAttemptStale)
 	}
 	attempt.StartedAt = &acceptedAt
 	err = s.transaction(ctx, func(transactionContext context.Context) error {
@@ -523,25 +506,33 @@ func (s *service) dispatchTask(
 	})
 	if err != nil {
 		s.capabilities.Revoke(capabilityToken)
-		if cancelErr := s.executions.CancelAndWait(ctx, member.ChatID); cancelErr != nil {
+		if cancelErr := s.executions.CancelNativeExecutionAndWait(ctx, member.ChatID, attempt.ExecutionID); cancelErr != nil {
 			logx.Errorf("cancel uncommitted channel task execution failed: thread_id=%s task_id=%s attempt_id=%s execution_id=%s chat_id=%s error=%v", thread.ID, task.ID, attempt.ID, attempt.ExecutionID, member.ChatID, cancelErr)
 		}
-		if releaseErr := s.releaseUnstartedAttempt(ctx, attempt); releaseErr != nil {
-			logx.Errorf(
-				"release unbound channel task attempt failed: thread_id=%s task_id=%s attempt_id=%s execution_id=%s chat_id=%s fence=%d error=%v",
-				thread.ID,
-				task.ID,
-				attempt.ID,
-				attempt.ExecutionID,
-				member.ChatID,
-				attempt.Fence,
-				releaseErr,
-			)
-		}
-		return nil, err
+		return nil, s.rejectTaskDispatch(ctx, thread, attempt, err)
 	}
 	s.watchAttempt(attempt, task.ThreadID, capabilityToken)
 	return &accepted.Execution, nil
+}
+
+// rejectTaskDispatch 释放未绑定的尝试，并与恢复监听的退出使用同一团队保护。
+func (s *service) rejectTaskDispatch(ctx context.Context, thread models.ChannelThread, attempt models.ChannelTaskAttempt, cause error) error {
+	locked, release, err := teamwork.Acquire(context.WithoutCancel(ctx), thread.ChannelID)
+	if err != nil {
+		return err
+	}
+	defer release()
+	stopped, err := s.releaseUnstartedAttempt(locked, attempt)
+	if err != nil {
+		logx.Errorf("release unstarted channel task attempt failed: thread_id=%s task_id=%s attempt_id=%s execution_id=%s chat_id=%s fence=%d error=%v",
+			thread.ID, attempt.TaskID, attempt.ID, attempt.ExecutionID, attempt.ChatID, attempt.Fence, err)
+		return cause
+	}
+	if stopped || isChatBusy(cause) || errors.Is(cause, agentapi.ErrTurnAdmissionBusy) {
+		s.watchRecoveryDrain(thread.ID)
+		return nil
+	}
+	return cause
 }
 
 // taskAttemptReason 区分同成员补充与真实改派，后续委派投影无需扫描全部补充历史。
@@ -572,22 +563,53 @@ func (s *service) taskAttemptReason(ctx context.Context, task models.ChannelTask
 func (s *service) releaseUnstartedAttempt(
 	ctx context.Context,
 	attempt models.ChannelTaskAttempt,
-) error {
-	return s.transaction(ctx, func(transactionContext context.Context) error {
+) (bool, error) {
+	stopped := false
+	err := s.transaction(ctx, func(transactionContext context.Context) error {
+		current, err := s.tasks.Get(transactionContext, attempt.TaskID)
+		if err != nil {
+			return err
+		}
+		stopped = false
+		if current.Status != constants.ChannelTaskStatusInProgress || current.CurrentFence != attempt.Fence {
+			return nil
+		}
+		taskStatus := constants.ChannelTaskStatusPending
+		if taskCancellationRequested(current, attempt.Fence) {
+			taskStatus = constants.ChannelTaskStatusCancelled
+		}
 		released, err := s.tasks.ReleaseDispatchClaim(
 			transactionContext,
 			attempt.TaskID,
 			attempt.ID,
 			attempt.Fence,
 			constants.ExecutionStatusCanceled,
+			taskStatus,
 			"task execution was not started",
 			time.Now().UnixMilli(),
 		)
 		if err != nil || !released {
 			return err
 		}
-		return s.tasks.ReleaseAttemptFollowUps(transactionContext, attempt.ID)
+		if err := s.tasks.ReleaseAttemptFollowUps(transactionContext, attempt.ID); err != nil {
+			return err
+		}
+		stopped = taskStatus == constants.ChannelTaskStatusCancelled
+		if !stopped {
+			return nil
+		}
+		thread, err := s.threads.Get(transactionContext, current.ThreadID)
+		if err != nil {
+			return err
+		}
+		_, err = s.appendEvent(transactionContext, thread.ChannelID, thread.ID, constants.ChannelEventTaskCancelled, map[string]interface{}{"taskId": current.ID})
+		return err
 	})
+	return stopped && err == nil, err
+}
+
+func taskCancellationRequested(task models.ChannelTask, fence int) bool {
+	return task.CancelRequestedAt != nil && task.CancelRequestedFence == fence
 }
 
 // dispatchTaskContent 按任务上下文组装成员任务正文：标题、说明与上游结果。

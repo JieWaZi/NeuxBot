@@ -3,6 +3,10 @@ import type * as GeneratedSDK from "@/shared/api/generated/sdk.gen";
 import type * as GeneratedQueries from "@/shared/api/generated/@tanstack/react-query.gen";
 import type * as ChatQueries from "../api/chat-queries";
 import type {
+  GetWorkflowRunResponse,
+  ListChatWorkflowRunsResponse,
+} from "@/shared/api/generated/types.gen";
+import type {
   GlobalEventObserver,
   GlobalEventResource,
 } from "@/shared/api/global-events";
@@ -49,6 +53,7 @@ import {
 
 import "@/shared/i18n";
 import { ApiError } from "@/shared/api/errors";
+import { getWorkflowRunQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
 import type { TeamChatContext } from "@/modules/team";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import {
@@ -77,6 +82,20 @@ import { observeRenderedState } from "@/test/observe-rendered-state";
 const automaticWorkChatId = "c".repeat(32);
 const privateWorkChatId = "d".repeat(32);
 const hiddenWorkChatIds = [automaticWorkChatId, privateWorkChatId];
+const workspaceWorkflow = vi.hoisted(() => ({
+  definitions: [] as {
+    id: string;
+    title: string;
+    currentRevisionId?: string;
+  }[],
+  summaries: [] as NonNullable<ListChatWorkflowRunsResponse["resources"]>,
+  details: new Map<string, GetWorkflowRunResponse>(),
+  readGates: new Map<string, Promise<void>>(),
+  reads: vi.fn(),
+  cancel: vi.fn(async () => undefined),
+  retryDelivery: vi.fn(async () => undefined),
+  pendingElicitations: [] as Record<string, unknown>[],
+}));
 
 const render = (ui: Parameters<typeof renderUI>[0]) =>
   renderUI(ui, { wrapper: WorkbenchProvider });
@@ -127,6 +146,7 @@ function TeamChatPageContent(
 const {
   historyMessageContent,
   historyMessages,
+  olderHistoryMessages,
   memberHistoryMessages,
   forkSourceChatId,
   sourceChatAvailable,
@@ -171,6 +191,9 @@ const {
   historyMessageContent: { current: "直接进入也应显示的历史消息" },
   historyMessages: {
     current: undefined as Array<Record<string, unknown>> | undefined,
+  },
+  olderHistoryMessages: {
+    current: [] as Array<Record<string, unknown>>,
   },
   memberHistoryMessages: {
     current: undefined as Array<Record<string, unknown>> | undefined,
@@ -418,7 +441,13 @@ vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
       },
     };
   },
-  listChatMessages: async ({ path }: { path: { chatId: string } }) => {
+  listChatMessages: async ({
+    path,
+    query,
+  }: {
+    path: { chatId: string };
+    query?: { beforeSequence?: number };
+  }) => {
     const { chatId } = path;
     const hiddenWorkChat = hiddenWorkChatIds.includes(chatId);
     const assistant =
@@ -434,7 +463,9 @@ vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
           chatId === "empty-member-chat"
             ? []
             : chatId === "chat-1" && historyMessages.current
-              ? historyMessages.current
+              ? query?.beforeSequence
+                ? olderHistoryMessages.current
+                : historyMessages.current
               : chatId === "member-chat" && memberHistoryMessages.current
                 ? memberHistoryMessages.current
                 : [
@@ -464,7 +495,16 @@ vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
                       sequence: 1,
                     },
                   ],
-        hasMore: false,
+        hasMore:
+          chatId === "chat-1" &&
+          !query?.beforeSequence &&
+          olderHistoryMessages.current.length > 0,
+        nextBeforeSequence:
+          chatId === "chat-1" &&
+          !query?.beforeSequence &&
+          olderHistoryMessages.current.length > 0
+            ? 3
+            : undefined,
         latestSequence: chatLatestSequence.current,
       },
     };
@@ -519,52 +559,102 @@ vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
 }));
 vi.mock(
   "@/shared/api/generated/@tanstack/react-query.gen",
-  async (importOriginal) => ({
-    ...(await importOriginal<typeof GeneratedQueries>()),
-    getWakerRecentProjectOptions: ({
-      path,
-    }: {
-      path: { wakerId: string };
-    }) => ({
-      queryKey: ["recent-project", path.wakerId],
-      queryFn: async () => {
-        recentProjectReads();
-        return { projectId: recentProjectID.current };
-      },
-    }),
-    getChatQueryKey: ({ path }: { path: { chatId: string } }) => [
-      "chat",
-      path.chatId,
-    ],
-    getWorkResultOptions: ({
-      path,
-    }: {
-      path: { ownerKind: string; ownerId: string };
-    }) => ({
-      queryKey: ["work-result", path.ownerKind, path.ownerId],
-      queryFn: async () => ({}),
-    }),
-    listAiAccountsOptions: () => ({
-      queryKey: ["accounts"],
-      queryFn: async () => ({
-        resources: ["A", "B", "C"].map((id) => ({
-          id,
-          name: `账号 ${id}`,
-          runtimeId: "codex",
-          authMode: "api-key",
-          hasCredential: true,
-          endpoint: {
-            protocol: "openai-responses",
-            baseUrl: "https://api.openai.com/v1",
-          },
-          selectedModels:
-            id === "C" && accountCIncludesOldModel.current
-              ? ["c-model", "b-model"]
-              : [`${id.toLowerCase()}-model`],
-        })),
+  async (importOriginal) => {
+    const original = await importOriginal<typeof GeneratedQueries>();
+    return {
+      ...original,
+      listWorkflowsOptions: ({
+        query,
+      }: { query?: { search?: string } } = {}) => ({
+        queryKey: ["workflows", query?.search],
+        queryFn: async () => ({
+          items: workspaceWorkflow.definitions.filter((item) =>
+            [item.id, item.title].some((value) =>
+              value.includes(query?.search ?? ""),
+            ),
+          ),
+        }),
       }),
-    }),
-  }),
+      listChatWorkflowRunsOptions: ({
+        path,
+        query,
+      }: {
+        path: { chatId: string };
+        query: { executionIds: string };
+      }) => ({
+        queryKey: original.listChatWorkflowRunsQueryKey({ path, query }),
+        queryFn: async () => {
+          workspaceWorkflow.reads(path.chatId, query.executionIds);
+          await workspaceWorkflow.readGates.get(query.executionIds);
+          const ids = query.executionIds.split(",");
+          return {
+            resources: workspaceWorkflow.summaries.filter(
+              (run) => run.executionId && ids.includes(run.executionId),
+            ),
+          };
+        },
+      }),
+      getWorkflowRunOptions: ({
+        path,
+        query,
+      }: {
+        path: { id: string; runId: string };
+        query?: { offset?: number };
+      }) => ({
+        queryKey: original.getWorkflowRunQueryKey({ path, query }),
+        queryFn: async () => workspaceWorkflow.details.get(path.runId) ?? {},
+      }),
+      cancelChatExecutionMutation: () => ({
+        mutationFn: workspaceWorkflow.cancel,
+      }),
+      retryChatWorkflowDeliveryMutation: () => ({
+        mutationFn: workspaceWorkflow.retryDelivery,
+      }),
+      getWakerRecentProjectOptions: ({
+        path,
+      }: {
+        path: { wakerId: string };
+      }) => ({
+        queryKey: ["recent-project", path.wakerId],
+        queryFn: async () => {
+          recentProjectReads();
+          return { projectId: recentProjectID.current };
+        },
+      }),
+      getChatQueryKey: ({ path }: { path: { chatId: string } }) => [
+        "chat",
+        path.chatId,
+      ],
+      getWorkResultOptions: ({
+        path,
+      }: {
+        path: { ownerKind: string; ownerId: string };
+      }) => ({
+        queryKey: ["work-result", path.ownerKind, path.ownerId],
+        queryFn: async () => ({}),
+      }),
+      listAiAccountsOptions: () => ({
+        queryKey: ["accounts"],
+        queryFn: async () => ({
+          resources: ["A", "B", "C"].map((id) => ({
+            id,
+            name: `账号 ${id}`,
+            runtimeId: "codex",
+            authMode: "api-key",
+            hasCredential: true,
+            endpoint: {
+              protocol: "openai-responses",
+              baseUrl: "https://api.openai.com/v1",
+            },
+            selectedModels:
+              id === "C" && accountCIncludesOldModel.current
+                ? ["c-model", "b-model"]
+                : [`${id.toLowerCase()}-model`],
+          })),
+        }),
+      }),
+    };
+  },
 );
 
 vi.mock("@/modules/waker", () => ({
@@ -602,6 +692,8 @@ vi.mock("@/modules/connector", async (original) => ({
 vi.mock("@/shared/platform", () => ({
   isDesktopRuntime: () => false,
   hasPlatformService: () => false,
+  stageAttachment: async (file: File) => `/tmp/uploads/staged-${file.name}`,
+  discardAttachment: async () => undefined,
   normalizeBrowserURL: (url: string) => url || null,
   resolveFileReferencePath: async (request: {
     path: string;
@@ -653,7 +745,7 @@ vi.mock("../api/chat-queries", async (importOriginal) => ({
   ...(await importOriginal<typeof ChatQueries>()),
   useChatHistoryVisibility: () => undefined,
   cancelChatExecutionMutation: () => ({
-    mutationFn: async () => undefined,
+    mutationFn: workspaceWorkflow.cancel,
   }),
   createChatMutation: () => ({ mutationFn: createChat }),
   chatListInfiniteOptions: (wakerId: string) => ({
@@ -700,6 +792,7 @@ vi.mock("../api/chat-queries", async (importOriginal) => ({
           lastModel:
             path.chatId === "member-chat" ? "b-model" : chatLastModel.current,
           pendingApprovals: chatPendingApprovals.current,
+          pendingElicitations: workspaceWorkflow.pendingElicitations,
         },
       };
     },
@@ -769,8 +862,17 @@ beforeEach(() => {
   });
 
   wakerPlugins.current = [];
+  workspaceWorkflow.definitions = [];
+  workspaceWorkflow.summaries = [];
+  workspaceWorkflow.details.clear();
+  workspaceWorkflow.readGates.clear();
+  workspaceWorkflow.reads.mockClear();
+  workspaceWorkflow.cancel.mockClear();
+  workspaceWorkflow.retryDelivery.mockClear();
+  workspaceWorkflow.pendingElicitations = [];
   historyMessageContent.current = "直接进入也应显示的历史消息";
   historyMessages.current = undefined;
+  olderHistoryMessages.current = [];
   memberHistoryMessages.current = undefined;
   forkSourceChatId.current = "";
   sourceChatAvailable.current = true;
@@ -947,6 +1049,612 @@ function renderProfileOptimizationDraft(optimizeProfile = true) {
 }
 
 describe("ChatPage", () => {
+  it("伙伴首发通过 # 仅提交保存过的工作流定义，选择可单独发送", async () => {
+    workspaceWorkflow.definitions = [
+      { id: "review", title: "代码评审", currentRevisionId: "revision-1" },
+      { id: "draft", title: "草稿工作流" },
+    ];
+    const { client, view } = renderProfileOptimizationDraft(false);
+    const user = userEvent.setup();
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    expect(
+      screen.queryByRole("button", { name: "使用工作流" }),
+    ).not.toBeInTheDocument();
+    expect(input).toHaveAccessibleDescription("# 引用 MCP 和工作流");
+    expect(input.querySelector(".is-editor-empty")).toHaveAttribute(
+      "data-placeholder",
+      expect.stringContaining("# 引用 MCP 和工作流"),
+    );
+    await user.type(input, "#草稿");
+    expect(await screen.findByText("没有匹配的资源")).toBeVisible();
+    await user.clear(input);
+    await user.type(input, "#代码");
+    await user.click(await screen.findByRole("option", { name: "代码评审" }));
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(createChat).toHaveBeenCalledOnce());
+    expect(createChat.mock.calls[0]?.[0]).toMatchObject({
+      body: { workflowId: "review", text: "" },
+    });
+    expect(createChat.mock.calls[0]?.[0]).not.toMatchObject({
+      body: { workflowRevisionId: expect.anything() },
+    });
+    view.unmount();
+    client.clear();
+  });
+
+  it("伙伴首发被拒后恢复工作流草稿，移除引用后可以正常发送", async () => {
+    workspaceWorkflow.definitions = [
+      { id: "review", title: "代码评审", currentRevisionId: "revision-1" },
+    ];
+    createChat.mockRejectedValueOnce(
+      new ApiError("版本已失效", "WorkflowStateConflict", 409),
+    );
+    const { client, view } = renderProfileOptimizationDraft(false);
+    const user = userEvent.setup();
+    const input = await screen.findByRole("textbox", { name: "输入消息" });
+    await user.type(input, "评审变更 #代码");
+    await user.click(await screen.findByRole("option", { name: "代码评审" }));
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(createChat).toHaveBeenCalledOnce());
+    await waitFor(() => {
+      expect(input).toHaveTextContent("代码评审");
+      expect(input).toHaveValue("评审变更 ");
+    });
+    await user.click(input);
+    const reference = input.querySelector(
+      '[data-chat-composer-reference-type="workflow"]',
+    );
+    if (!reference) throw new Error("missing workflow reference");
+    const caret = document.createRange();
+    caret.setStartAfter(reference);
+    caret.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(caret);
+    fireEvent(document, new Event("selectionchange"));
+    await user.keyboard("{Backspace}");
+    expect(input).not.toHaveTextContent("代码评审");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(createChat).toHaveBeenCalledTimes(2));
+    expect(createChat.mock.calls[1]?.[0]).toMatchObject({
+      body: { text: "评审变更", workflowId: undefined },
+    });
+    view.unmount();
+    client.clear();
+  });
+
+  it("同名工作流历史使用各自的精确运行与版本，并复用右侧工作台标签", async () => {
+    historyMessages.current = [
+      {
+        id: "input-10",
+        role: "user",
+        content: "执行第十次",
+        executionId: "exec-10",
+        sequence: 1,
+        createdAt: 10,
+      },
+      {
+        id: "reply-10",
+        role: "assistant",
+        content: "第十次结果",
+        displayParts: [{ type: "text", text: "第十次结果" }],
+        executionId: "exec-10",
+        sequence: 2,
+        createdAt: 11,
+        status: "completed",
+      },
+      {
+        id: "input-11",
+        role: "user",
+        content: "再执行一次",
+        executionId: "exec-11",
+        sequence: 3,
+        createdAt: 20,
+      },
+      {
+        id: "reply-11",
+        role: "assistant",
+        content: "第十一次结果",
+        displayParts: [{ type: "text", text: "第十一次结果" }],
+        executionId: "exec-11",
+        sequence: 4,
+        createdAt: 21,
+        status: "completed",
+        runMetrics: { startedAt: 20, durationMs: 1 },
+      },
+    ];
+    chatLatestSequence.current = 4;
+    workspaceWorkflow.summaries = [
+      {
+        id: "run-10",
+        definitionId: "review",
+        revisionId: "revision-1",
+        name: "代码评审",
+        status: "failed",
+        executionId: "exec-10",
+        inputMessageId: "input-10",
+        createdAt: 10,
+      },
+      {
+        id: "run-11",
+        definitionId: "review",
+        revisionId: "revision-1",
+        name: "代码评审",
+        status: "running",
+        executionId: "exec-11",
+        inputMessageId: "input-11",
+        createdAt: 20,
+      },
+    ];
+    for (const [id, label] of [
+      ["run-10", "第十次冻结执行路径"],
+      ["run-11", "第十一次冻结执行路径"],
+    ] as const) {
+      workspaceWorkflow.details.set(id, {
+        run: { id, revisionId: "revision-1", status: "succeeded" },
+        manifest: {
+          sdk: "bot.workflow",
+          title: label,
+          description: "",
+          controls: [],
+          phases: [],
+          scripts: [],
+          nodes: [
+            {
+              id: "confirm",
+              kind: "worker",
+              label,
+              inputs: [],
+              execution: { resolve: { kind: "waker", wakerId: "waker-1" } },
+            },
+          ],
+          edges: [],
+        },
+      });
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter initialEntries={["/chats/chat-1"]}>
+              <Routes>
+                <Route element={<ChatLayout workspaceOpen />}>
+                  <Route path="/chats/:chatId" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    const first = await screen.findByRole("button", {
+      name: "代码评审 · 失败",
+    });
+    const second = screen.getByRole("button", { name: "代码评审 · 执行中" });
+    expect(first).toHaveTextContent(/^代码评审\s*失败$/);
+    expect(second).toHaveTextContent(/^代码评审\s*执行中$/);
+    expect(workspaceWorkflow.reads).toHaveBeenCalledWith(
+      "chat-1",
+      "exec-10,exec-11",
+    );
+    expect(
+      screen.getByText("执行第十次").compareDocumentPosition(first) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      first.compareDocumentPosition(screen.getByText("第十次结果")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await user.click(first);
+    await waitFor(() =>
+      expect(
+        client.getQueryData(
+          getWorkflowRunQueryKey({
+            path: { id: "review", runId: "run-10" },
+            query: { offset: 0 },
+          }),
+        ),
+      ).toBeDefined(),
+    );
+    await user.click(second);
+    await waitFor(() =>
+      expect(
+        client.getQueryData(
+          getWorkflowRunQueryKey({
+            path: { id: "review", runId: "run-11" },
+            query: { offset: 0 },
+          }),
+        ),
+      ).toBeDefined(),
+    );
+    await user.click(first);
+    const tabs = screen.getAllByRole("tab", { name: "代码评审" });
+    expect(tabs).toHaveLength(2);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    workspaceWorkflow.summaries = workspaceWorkflow.summaries.map((run) =>
+      run.id === "run-11"
+        ? {
+            ...run,
+            status: "succeeded",
+            completedAt: 22,
+            deliveryError: "MessageAttachmentStorageError",
+          }
+        : { ...run, deliveryError: "MessageAttachmentStorageError" },
+    );
+    const publishWorkflowChange = (sequence: number, eventId: string) => {
+      for (const [observer, { topic, resource }] of eventObservers) {
+        if (
+          topic !== "workflow" ||
+          resource.kind !== "chat" ||
+          resource.id !== "chat-1"
+        )
+          continue;
+        observer.onEvent({
+          protocolVersion: 1,
+          epoch: "test",
+          connectionId: "test",
+          deliverySequence: sequence,
+          eventId,
+          topic,
+          resource,
+          type: "workflow.changed",
+          payload: {},
+        });
+      }
+    };
+    act(() => publishWorkflowChange(1, "completed-run-11"));
+    const completed = await screen.findByRole("button", {
+      name: "代码评审 · 已完成",
+    });
+    expect(completed).toBeVisible();
+    expect(completed).toHaveTextContent(/^代码评审\s*已完成$/);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    const readsBeforeRetry = workspaceWorkflow.reads.mock.calls.length;
+    workspaceWorkflow.retryDelivery
+      .mockImplementationOnce(async () => {
+        workspaceWorkflow.summaries = workspaceWorkflow.summaries.map((run) =>
+          run.id === "run-10" ? { ...run, deliveryError: undefined } : run,
+        );
+        publishWorkflowChange(2, "retried-attachments-run-10");
+      })
+      .mockImplementationOnce(async () => {
+        workspaceWorkflow.summaries = workspaceWorkflow.summaries.map((run) =>
+          run.id === "run-11" ? { ...run, summaryFinishedAt: 23 } : run,
+        );
+        publishWorkflowChange(3, "retried-summary-run-11");
+      });
+    const [firstAttachmentRetry] = screen.getAllByRole("button", {
+      name: "补交附件",
+    });
+    if (!firstAttachmentRetry) throw new Error("missing attachment retry");
+    act(() => {
+      fireEvent.click(firstAttachmentRetry);
+      fireEvent.click(screen.getByRole("button", { name: "补写总结" }));
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "补写总结" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(workspaceWorkflow.retryDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { chatId: "chat-1", runId: "run-11" },
+        body: { summary: true },
+      }),
+      expect.anything(),
+    );
+    expect(workspaceWorkflow.retryDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { chatId: "chat-1", runId: "run-10" },
+        body: { summary: false },
+      }),
+      expect.anything(),
+    );
+    await act(() => new Promise((resolve) => setTimeout(resolve, 300)));
+    expect(workspaceWorkflow.reads).toHaveBeenCalledTimes(readsBeforeRetry + 1);
+    expect(screen.getByRole("button", { name: "补交附件" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "代码评审 · 已完成" }),
+    ).toBeVisible();
+    view.unmount();
+    client.clear();
+  });
+
+  it.each(["读取成功", "读取中", "读取失败", "确认已启动"])(
+    "运行记录%s时，提问旁按实际状态提供停止操作",
+    async (readState) => {
+      historyMessages.current = [
+        {
+          id: "workflow-input",
+          role: "user",
+          content: "执行评审",
+          executionId: "workflow-execution",
+          workflow: {
+            id: "review",
+            name: "代码评审",
+            revisionId: "revision-1",
+          },
+          sequence: 1,
+        },
+        {
+          id: "workflow-reply",
+          role: "assistant",
+          status: "running",
+          executionId: "workflow-execution",
+          sequence: 2,
+        },
+      ];
+      chatLatestSequence.current = 2;
+      chatActiveExecutionID.current = "workflow-execution";
+      workspaceWorkflow.pendingElicitations = [
+        {
+          elicitationId: "need-baseline",
+          message: "和哪个分支比较？",
+          mode: "form",
+          requestedSchema: {
+            type: "object",
+            properties: { branch: { type: "string", title: "比较分支" } },
+            required: ["branch"],
+          },
+        },
+      ];
+      let finishRead!: () => void;
+      let failRead!: (reason: Error) => void;
+      if (readState === "确认已启动") {
+        workspaceWorkflow.summaries = [
+          {
+            id: "accepted-review",
+            definitionId: "review",
+            executionId: "workflow-execution",
+            name: "代码评审",
+            status: "running",
+          },
+        ];
+      }
+      if (readState === "读取中" || readState === "读取失败") {
+        workspaceWorkflow.readGates.set(
+          "workflow-execution",
+          new Promise<void>((resolve, reject) => {
+            finishRead = resolve;
+            failRead = reject;
+          }),
+        );
+      }
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const view = render(
+        <QueryClientProvider client={client}>
+          <ChatQueueProvider>
+            <TooltipProvider>
+              <MemoryRouter initialEntries={["/chats/chat-1"]}>
+                <Routes>
+                  <Route element={<ChatLayout />}>
+                    <Route path="/chats/:chatId" element={<ChatPage />} />
+                  </Route>
+                </Routes>
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </QueryClientProvider>,
+      );
+      expect(await screen.findByText("和哪个分支比较？")).toBeVisible();
+      if (readState === "读取中") {
+        expect(
+          await screen.findByRole("status", {
+            name: "正在读取工作流运行记录…",
+          }),
+        ).toHaveAttribute("aria-busy", "true");
+      }
+      if (readState === "读取失败") {
+        await waitFor(() =>
+          expect(workspaceWorkflow.reads).toHaveBeenCalledWith(
+            "chat-1",
+            "workflow-execution",
+          ),
+        );
+        await act(async () =>
+          failRead(new Error("run history is unavailable")),
+        );
+        expect(
+          await screen.findByText("无法读取工作流运行记录。"),
+        ).toBeVisible();
+        expect(screen.getByRole("button", { name: "重试" })).toBeVisible();
+      }
+      if (readState === "确认已启动") {
+        expect(
+          await screen.findByRole("button", { name: "代码评审 · 执行中" }),
+        ).toBeVisible();
+        expect(
+          screen.queryByRole("button", { name: /取消本次调用|停止本轮/ }),
+        ).toBeNull();
+      } else {
+        const action = readState === "读取成功" ? "取消本次调用" : "停止本轮";
+        const trigger = await screen.findByRole("button", { name: action });
+        await userEvent.click(trigger);
+        expect(workspaceWorkflow.cancel).not.toHaveBeenCalled();
+        const dialog = await screen.findByRole("dialog");
+        await userEvent.click(
+          within(dialog).getByRole("button", { name: "取消" }),
+        );
+        expect(workspaceWorkflow.cancel).not.toHaveBeenCalled();
+        await waitFor(() => expect(trigger).toHaveFocus());
+        await userEvent.click(trigger);
+        await userEvent.click(
+          within(await screen.findByRole("dialog")).getByRole("button", {
+            name: action,
+          }),
+        );
+        await waitFor(() =>
+          expect(workspaceWorkflow.cancel).toHaveBeenCalledWith(
+            expect.objectContaining({
+              path: { chatId: "chat-1" },
+              query: { executionId: "workflow-execution" },
+            }),
+            expect.anything(),
+          ),
+        );
+      }
+      if (readState === "读取失败") {
+        workspaceWorkflow.readGates.delete("workflow-execution");
+        await userEvent.click(screen.getByRole("button", { name: "重试" }));
+        await waitFor(() =>
+          expect(screen.queryByText("无法读取工作流运行记录。")).toBeNull(),
+        );
+      }
+      if (readState === "读取中") await act(async () => finishRead());
+      view.unmount();
+      client.clear();
+    },
+  );
+
+  it.each(["加载更早消息", "收到新的执行", "读取新增消息的运行记录失败"])(
+    "%s时保留正在输入的工作流问题",
+    async (change) => {
+      let resolveGate!: () => void;
+      let rejectGate!: (reason: Error) => void;
+      const gate = new Promise<void>((resolve, reject) => {
+        resolveGate = resolve;
+        rejectGate = reject;
+      });
+      const human = {
+        id: "workflow-question",
+        status: "waiting" as const,
+        snapshotDigest: "frozen",
+        prompt: "补充归档备注",
+        options: { kind: "text" as const },
+      };
+      historyMessages.current = [
+        {
+          id: "current-input",
+          role: "user",
+          content: "开始归档",
+          executionId: "current",
+          sequence: 3,
+          status: "completed",
+        },
+        {
+          id: "current-output",
+          role: "assistant",
+          executionId: "current",
+          sequence: 4,
+          status: "running",
+        },
+      ];
+      chatLatestSequence.current = 4;
+      chatActiveExecutionID.current = "current";
+      workspaceWorkflow.summaries = [
+        {
+          id: "archive-run",
+          definitionId: "archive",
+          name: "归档",
+          executionId: "current",
+          inputMessageId: "current-input",
+          status: "running",
+          activeRequests: [
+            {
+              kind: "human",
+              definitionId: "archive",
+              runId: "archive-run",
+              requestId: "workflow-question",
+              human,
+            },
+          ],
+        },
+      ];
+      const earlier = change === "加载更早消息";
+      const extra = {
+        id: "additional-input",
+        role: "user",
+        content: "另一轮消息",
+        executionId: "extra",
+        sequence: earlier ? 1 : 5,
+        status: "completed",
+      };
+      if (earlier) olderHistoryMessages.current = [extra];
+      workspaceWorkflow.readGates.set("current,extra", gate);
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const view = render(
+        <QueryClientProvider client={client}>
+          <ChatQueueProvider>
+            <TooltipProvider>
+              <MemoryRouter initialEntries={["/chats/chat-1"]}>
+                <Routes>
+                  <Route element={<ChatLayout />}>
+                    <Route path="/chats/:chatId" element={<ChatPage />} />
+                  </Route>
+                </Routes>
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </QueryClientProvider>,
+      );
+      const user = userEvent.setup();
+      const question = await screen.findByPlaceholderText("填写你的回答…");
+      await user.type(question, "请留存第 2 版");
+      if (earlier) {
+        await user.click(screen.getByRole("button", { name: "加载更早消息" }));
+      } else {
+        await waitFor(() =>
+          expect(
+            [...eventObservers.keys()].some((observer) => observer.after === 4),
+          ).toBe(true),
+        );
+        act(() => {
+          for (const [observer, { topic, resource }] of eventObservers) {
+            if (topic !== "chat" || resource.id !== "chat-1") continue;
+            observer.onEvent({
+              protocolVersion: 1,
+              epoch: "test",
+              connectionId: "test",
+              deliverySequence: 1,
+              eventId: "new-turn",
+              topic,
+              resource,
+              type: "chat.event",
+              payload: {
+                sequence: 5,
+                type: "message.user_created",
+                message: extra,
+              },
+            });
+          }
+        });
+      }
+      expect(await screen.findByText("另一轮消息")).toBeVisible();
+      await waitFor(() =>
+        expect(workspaceWorkflow.reads).toHaveBeenCalledWith(
+          "chat-1",
+          "current,extra",
+        ),
+      );
+      expect(screen.getByPlaceholderText("填写你的回答…")).toBe(question);
+      expect(question).toHaveValue("请留存第 2 版");
+      if (change === "读取新增消息的运行记录失败") {
+        await act(async () => rejectGate(new Error("batch unavailable")));
+        expect(
+          await screen.findByText("工作流运行记录未能刷新。"),
+        ).toBeVisible();
+        expect(screen.getByPlaceholderText("填写你的回答…")).toBe(question);
+        expect(question).toHaveValue("请留存第 2 版");
+        workspaceWorkflow.readGates.delete("current,extra");
+        workspaceWorkflow.summaries = [];
+        await user.click(screen.getByRole("button", { name: "重试" }));
+      } else {
+        workspaceWorkflow.summaries = [];
+        await act(async () => resolveGate());
+      }
+      await waitFor(() => expect(question).not.toBeInTheDocument());
+      view.unmount();
+      client.clear();
+    },
+  );
+
   it("伙伴档案优化在输入框显示标签并只向首发提交修改意图，接纳后进入普通对话", async () => {
     const { client, view } = renderProfileOptimizationDraft();
     const user = userEvent.setup();
@@ -2082,6 +2790,7 @@ describe("ChatPage", () => {
   });
   it("团队聚合消息隐藏空态，点击工作成员头像载入该成员完整 Chat 历史", async () => {
     const user = userEvent.setup();
+    const stopTeam = vi.fn(async () => {});
     memberHistoryMessages.current = [
       {
         id: "member-input",
@@ -2100,6 +2809,13 @@ describe("ChatPage", () => {
         displayParts: [
           { id: "member-text", type: "text", text: "历史消息：member-chat" },
         ],
+      },
+      {
+        id: "member-execution",
+        role: "assistant",
+        executionId: "member-execution",
+        status: "running",
+        createdAt: 2100,
       },
     ];
     wakerResources.current = [
@@ -2380,7 +3096,7 @@ describe("ChatPage", () => {
                               onLoadEarlierTimelineMessages: vi.fn(),
                               onCreateThread: vi.fn(),
                               onSendMessage: vi.fn(),
-                              onStopWork: vi.fn(),
+                              onStopWork: stopTeam,
                               onThreadCreated: vi.fn(),
                               onUpdateMemberConfigs: vi.fn(),
                               renderTaskBoard: () => <div>任务板详情</div>,
@@ -2413,7 +3129,9 @@ describe("ChatPage", () => {
     expect(
       screen.queryByText("执行成员正在处理“汇总科技动态”"),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "停止执行" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "停止执行" }));
+    expect(stopTeam).toHaveBeenCalledOnce();
+    expect(workspaceWorkflow.cancel).not.toHaveBeenCalled();
     expect(screen.queryByText("成员结构化报告")).not.toBeInTheDocument();
     expect(screen.getByText(/收到来自.*的消息/)).toBeVisible();
     await user.click(
@@ -2498,6 +3216,17 @@ describe("ChatPage", () => {
     ).not.toBeInTheDocument();
     await user.click(workingMember);
     expect(await screen.findByText("历史消息：member-chat")).toBeVisible();
+    await user.click(await screen.findByRole("button", { name: "停止执行" }));
+    await waitFor(() =>
+      expect(workspaceWorkflow.cancel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: { chatId: "member-chat" },
+          query: { executionId: "member-execution" },
+        }),
+        expect.anything(),
+      ),
+    );
+    expect(stopTeam).toHaveBeenCalledOnce();
     const memberInput = screen.getByRole("textbox", { name: "输入消息" });
     expect(memberInput).not.toBe(input);
     expect(memberInput).toHaveTextContent("");
@@ -2531,30 +3260,131 @@ describe("ChatPage", () => {
     expect(await screen.findByText("负责人最终汇总")).toBeVisible();
   });
 
-  it.each(["gpt-5", ""])(
-    "成员 Tab 保留已保存模型 %s 直连成员 Chat，不触发 Channel 委派",
-    async (savedModel) => {
+  it.each([
+    { scene: "成员", savedModel: "gpt-5", selected: false, transfer: false },
+    { scene: "成员", savedModel: "", selected: false, transfer: false },
+    { scene: "成员", savedModel: "gpt-5", selected: true, transfer: false },
+    { scene: "主聊", savedModel: "gpt-5", selected: true, transfer: false },
+    {
+      scene: "主聊",
+      savedModel: "gpt-5",
+      selected: true,
+      transfer: false,
+      rejectSend: "恢复负责人草稿",
+    },
+    {
+      scene: "主聊",
+      savedModel: "gpt-5",
+      selected: false,
+      transfer: false,
+      rejectSend: "恢复负责人普通草稿",
+    },
+    {
+      scene: "成员",
+      savedModel: "gpt-5",
+      selected: true,
+      transfer: false,
+      rejectSend: "恢复切回的成员草稿",
+    },
+    {
+      scene: "成员",
+      savedModel: "gpt-5",
+      selected: true,
+      transfer: false,
+      rejectSend: "保留成员新草稿",
+    },
+    {
+      scene: "成员",
+      savedModel: "gpt-5",
+      selected: true,
+      transfer: false,
+      rejectSend: "响应丢失不回填",
+    },
+    {
+      scene: "成员",
+      savedModel: "gpt-5",
+      selected: true,
+      transfer: false,
+      rejectSend: "原请求仍在结算不回填",
+    },
+    {
+      scene: "成员",
+      savedModel: "gpt-5",
+      selected: true,
+      transfer: "附件移交",
+    },
+    {
+      scene: "成员",
+      savedModel: "gpt-5",
+      selected: true,
+      transfer: "已有文字",
+    },
+    {
+      scene: "成员",
+      savedModel: "gpt-5",
+      selected: true,
+      transfer: "已有附件",
+    },
+  ])(
+    "团队$scene保留预期发送入口（模型 $savedModel，工作流 $selected，移交 $transfer，拒绝 $rejectSend）",
+    async ({ scene, savedModel, selected, transfer, rejectSend }) => {
+      const memberScene = scene === "成员";
+      const occupied = transfer === "已有文字" || transfer === "已有附件";
+      if (selected)
+        workspaceWorkflow.definitions = [
+          { id: "review", title: "代码评审", currentRevisionId: "revision-1" },
+        ];
       chatLastPermissionLevel.current = "full-access";
-      sendMessage.mockResolvedValueOnce({
-        chat: {
-          id: "member-chat",
-          wakerId: "waker-2",
-          latestSequence: 4,
-          activeExecutionId: "member-execution",
-        },
-        execution: {
-          id: "member-execution",
-          userMessageId: "message-2",
-          status: "running",
-        },
+      let rejectSubmission!: (reason: Error) => void;
+      const delayedRejection = new Promise<AcceptedExecution>((_, reject) => {
+        rejectSubmission = reject;
       });
+      if (memberScene && rejectSend) {
+        sendMessage.mockReturnValueOnce(delayedRejection);
+      } else if (memberScene && !occupied) {
+        sendMessage.mockResolvedValueOnce({
+          chat: {
+            id: "member-chat",
+            wakerId: "waker-2",
+            latestSequence: 4,
+            activeExecutionId: "member-execution",
+          },
+          execution: {
+            id: "member-execution",
+            userMessageId: "message-2",
+            status: "running",
+          },
+        });
+      }
       wakerResources.current = [
         { id: "waker-1", name: "团队负责人" },
         { id: "waker-2", name: "执行成员" },
       ];
-      const onSendMessage = vi.fn(async () => ({
-        execution: { id: "channel-execution", status: "running" as const },
-      }));
+      const rejection =
+        rejectSend === "恢复负责人草稿"
+          ? new ApiError("运行时不支持该权限", "RuntimePolicyUnsupported", 500)
+          : rejectSend === "恢复切回的成员草稿"
+            ? new ApiError("运行时配置无效", "RuntimeConfigurationInvalid", 500)
+            : selected
+              ? new ApiError("工作流不可用", "WorkflowNotFound", 404)
+              : new ApiError("团队对话不可用", "ChannelThreadNotFound", 404);
+      let rejectedSubmissionId: string | undefined;
+      const onSendMessage = vi.fn<TeamChatFixtureContext["onSendMessage"]>(
+        async (request) => {
+          if (
+            rejectedSubmissionId &&
+            request.submissionId === rejectedSubmissionId
+          )
+            throw rejection;
+          return { execution: { id: "channel-execution", status: "running" } };
+        },
+      );
+      if (!memberScene && rejectSend) {
+        onSendMessage.mockImplementationOnce((request) => {
+          rejectedSubmissionId = request.submissionId;
+          return delayedRejection;
+        });
+      }
       const user = userEvent.setup();
       const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false } },
@@ -2572,6 +3402,7 @@ describe("ChatPage", () => {
                         element={
                           <>
                             <TeamMemberTabControls
+                              leadControl={Boolean(transfer || rejectSend)}
                               members={[
                                 {
                                   chatId: "member-chat",
@@ -2584,6 +3415,9 @@ describe("ChatPage", () => {
                               chatId="team-lead-chat"
                               teamContext={{
                                 channelId: "team-1",
+                                leadActiveExecutionId: memberScene
+                                  ? undefined
+                                  : "lead-active",
                                 leadProcessing: false,
                                 leadWakerId: "waker-1",
                                 members: [
@@ -2642,20 +3476,178 @@ describe("ChatPage", () => {
         </QueryClientProvider>,
       );
 
-      fireEvent.click(
-        await screen.findByRole("button", {
-          name: "测试打开执行成员会话",
+      const byInput = () => screen.getByRole("textbox", { name: "输入消息" });
+      const openLead = () =>
+        user.click(screen.getByRole("button", { name: "测试打开主聊" }));
+      const openMember = () =>
+        user.click(
+          screen.getByRole("button", { name: "测试打开执行成员会话" }),
+        );
+      const addAttachment = async (filename: string) => {
+        fireEvent.paste(byInput(), {
+          clipboardData: {
+            files: [new File(["评审文件"], filename, { type: "text/plain" })],
+          },
+        });
+        expect(await screen.findByText(filename)).toBeVisible();
+      };
+      if (occupied) {
+        await openMember();
+        await screen.findByText("历史消息：member-chat");
+        if (transfer === "已有文字") await user.type(byInput(), "成员独立草稿");
+        else await addAttachment("member.txt");
+        await openLead();
+      }
+      if (memberScene && !transfer) {
+        fireEvent.click(
+          await screen.findByRole("button", {
+            name: "测试打开执行成员会话",
+          }),
+        );
+        await screen.findByText("历史消息：member-chat");
+        expect(
+          screen.getByRole("button", { name: "执行权限：自动审批" }),
+        ).toBeVisible();
+        expect(chatMessageReads.current["member-chat"]).toBe(1);
+      }
+      const input = byInput();
+      if (transfer) {
+        await user.type(input, "@执行");
+        await user.click(
+          await screen.findByRole("option", { name: /执行成员/ }),
+        );
+      }
+      if (selected) {
+        expect(
+          screen.queryByRole("button", { name: "使用工作流" }),
+        ).not.toBeInTheDocument();
+        await user.type(input, "#代码");
+        await user.click(
+          await screen.findByRole("option", { name: "代码评审" }),
+        );
+      }
+      const message = memberScene ? "和成员直接聊聊" : "排队评审当前分支";
+      await user.type(input, message);
+      if (rejectSend) await addAttachment("rejected.txt");
+      if (transfer) {
+        await addAttachment("lead.txt");
+        if (occupied) {
+          expect(
+            screen.getByText("成员对话有未发送的草稿。处理后再移交这份草稿。"),
+          ).toBeVisible();
+          expect(
+            screen.queryByRole("button", { name: "带草稿打开成员对话" }),
+          ).not.toBeInTheDocument();
+          await openMember();
+          if (transfer === "已有文字")
+            expect(byInput()).toHaveTextContent("成员独立草稿");
+          else expect(await screen.findByText("member.txt")).toBeVisible();
+          expect(byInput()).not.toHaveTextContent(message);
+          expect(screen.queryByText("lead.txt")).not.toBeInTheDocument();
+          expect(sendMessage).not.toHaveBeenCalled();
+          expect(onSendMessage).not.toHaveBeenCalled();
+          await openLead();
+          expect(byInput()).toHaveTextContent(message);
+          expect(await screen.findByText("lead.txt")).toBeVisible();
+          return;
+        }
+        await user.click(
+          await screen.findByRole("button", { name: "带草稿打开成员对话" }),
+        );
+        expect(await screen.findByText("lead.txt")).toBeVisible();
+        expect(byInput()).not.toHaveTextContent("@执行成员");
+        await openLead();
+        expect(byInput()).not.toHaveTextContent(message);
+        expect(screen.queryByText("lead.txt")).not.toBeInTheDocument();
+        await openMember();
+        expect(await screen.findByText("lead.txt")).toBeVisible();
+      }
+      const memberDetailReadsBeforeSend =
+        chatDetailReads.current["member-chat"];
+      await user.click(
+        screen.getByRole("button", {
+          name: memberScene ? "发送消息" : "加入发送队列",
         }),
       );
-      await screen.findByText("历史消息：member-chat");
-      expect(
-        screen.getByRole("button", { name: "执行权限：自动审批" }),
-      ).toBeVisible();
-      expect(chatMessageReads.current["member-chat"]).toBe(1);
-      const input = screen.getByRole("textbox", { name: "输入消息" });
-      await user.type(input, "和成员直接聊聊");
-      await user.click(screen.getByRole("button", { name: "发送消息" }));
 
+      if (rejectSend) {
+        const send = memberScene ? sendMessage : onSendMessage;
+        await waitFor(() => expect(send).toHaveBeenCalledOnce());
+        await waitFor(() => expect(byInput()).not.toHaveTextContent(message));
+        await (memberScene ? openLead() : openMember());
+        const otherDraft = "另一个页签的草稿";
+        await user.type(byInput(), otherDraft);
+        if (memberScene) {
+          await openMember();
+          if (rejectSend === "保留成员新草稿")
+            await user.type(byInput(), "成员的新草稿");
+        }
+        await act(async () =>
+          rejectSubmission(
+            rejectSend === "响应丢失不回填"
+              ? new ApiError("连接中断", "NETWORK")
+              : rejectSend === "原请求仍在结算不回填"
+                ? new ApiError(
+                    "创建请求仍在进行",
+                    "CreateRequestInProgress",
+                    409,
+                  )
+                : rejection,
+          ),
+        );
+        if (!memberScene) {
+          expect(byInput()).toHaveTextContent(otherDraft);
+          await openLead();
+        }
+        if (
+          rejectSend === "恢复负责人草稿" ||
+          rejectSend === "恢复负责人普通草稿" ||
+          rejectSend === "恢复切回的成员草稿"
+        ) {
+          expect(byInput()).toHaveTextContent(message);
+          if (selected) expect(byInput()).toHaveTextContent("代码评审");
+          expect(await screen.findByText("rejected.txt")).toBeVisible();
+          if (!memberScene) {
+            await user.click(
+              screen.getByRole("button", { name: "加入发送队列" }),
+            );
+            await waitFor(() => expect(onSendMessage).toHaveBeenCalledTimes(2));
+            const first = onSendMessage.mock.calls[0]?.[0];
+            const retried = onSendMessage.mock.calls[1]?.[0];
+            expect(first?.submissionId).toEqual(expect.any(String));
+            expect(retried?.submissionId).toEqual(expect.any(String));
+            expect(retried?.submissionId).not.toBe(first?.submissionId);
+            expect(retried).toEqual({
+              ...first,
+              submissionId: retried?.submissionId,
+            });
+            await waitFor(() =>
+              expect(byInput()).not.toHaveTextContent(message),
+            );
+          }
+        } else {
+          expect(byInput()).toHaveTextContent(
+            rejectSend === "保留成员新草稿" ? "成员的新草稿" : /^$/,
+          );
+          expect(byInput()).not.toHaveTextContent(message);
+          expect(byInput()).not.toHaveTextContent("代码评审");
+          expect(screen.queryByText("rejected.txt")).not.toBeInTheDocument();
+          expect(send).toHaveBeenCalledOnce();
+        }
+        return;
+      }
+
+      if (!memberScene) {
+        await waitFor(() => expect(onSendMessage).toHaveBeenCalledOnce());
+        expect(onSendMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: message,
+            workflowId: "review",
+          }),
+        );
+        expect(sendMessage).not.toHaveBeenCalled();
+        return;
+      }
       await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
       await act(async () => {
         await new Promise((resolve) => window.setTimeout(resolve, 100));
@@ -2666,15 +3658,23 @@ describe("ChatPage", () => {
         expect.objectContaining({
           path: { chatId: "member-chat" },
           body: expect.objectContaining({
-            text: "和成员直接聊聊",
+            text: message,
             model: savedModel,
             reasoning: "",
             accountId: "system",
+            ...(selected ? { workflowId: "review" } : {}),
+            ...(transfer
+              ? {
+                  attachments: [{ sourcePath: "/tmp/uploads/staged-lead.txt" }],
+                }
+              : {}),
           }),
         }),
       );
       expect(onSendMessage).not.toHaveBeenCalled();
-      expect(chatDetailReads.current["member-chat"]).toBe(1);
+      expect(chatDetailReads.current["member-chat"]).toBe(
+        transfer ? memberDetailReadsBeforeSend : 1,
+      );
     },
   );
 
@@ -3094,7 +4094,7 @@ describe("ChatPage", () => {
     },
   );
 
-  it("直接打开运行中的聊天时只读取原消息窗口", async () => {
+  it("打开运行中的聊天只读取原消息窗口并精确停止该回合", async () => {
     chatActiveExecutionID.current = "execution-2";
     historyMessages.current = [
       {
@@ -3127,6 +4127,18 @@ describe("ChatPage", () => {
       expect(
         queryClient.getQueryData(["chats", "messages", "chat-1"]),
       ).toBeDefined(),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "停止执行" }),
+    );
+    await waitFor(() =>
+      expect(workspaceWorkflow.cancel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: { chatId: "chat-1" },
+          query: { executionId: "execution-2" },
+        }),
+        expect.anything(),
+      ),
     );
     view.unmount();
     queryClient.clear();
@@ -4688,7 +5700,7 @@ describe("ChatPage", () => {
     const input = await screen.findByRole("textbox", { name: "输入消息" });
     expect(input.querySelector("[data-placeholder]")).toHaveAttribute(
       "data-placeholder",
-      "输入消息…（@ 引用文件，/ 调用 Skill，# 使用 MCP；Enter 发送）",
+      "输入消息…（@ 引用文件，/ 调用 Skill，# 引用 MCP 和工作流，Enter 发送）",
     );
     vi.spyOn(input, "getBoundingClientRect").mockReturnValue({
       x: 120,
@@ -5586,30 +6598,50 @@ function TransitionChatButton() {
 
 function TeamMemberTabControls({
   members,
+  leadControl,
   scopeKey = "team:team-1:thread-1",
 }: {
   members: Array<{ chatId?: string; name: string; wakerId: string }>;
+  leadControl?: boolean;
   scopeKey?: string;
 }) {
   const workspaceScopeKey = scopeKey;
   const workspace = useSceneWorkspace(workspaceScopeKey);
-  return members.map((member) => (
-    <button
-      key={member.wakerId}
-      type="button"
-      aria-label={`测试打开${member.name}会话`}
-      onClick={() =>
-        workspace.dispatch({
-          type: "open-member",
-          member: {
-            chatId: member.chatId,
-            label: member.name,
-            wakerId: member.wakerId,
-          },
-        })
-      }
-    />
-  ));
+  return (
+    <>
+      {leadControl ? (
+        <button
+          type="button"
+          onClick={() => {
+            const lead = workspace.snapshot.tabs.find(
+              (tab) => tab.kind === "chat",
+            );
+            if (lead)
+              workspace.dispatch({ type: "select-tab", tabId: lead.id });
+          }}
+        >
+          测试打开主聊
+        </button>
+      ) : null}
+      {members.map((member) => (
+        <button
+          key={member.wakerId}
+          type="button"
+          aria-label={`测试打开${member.name}会话`}
+          onClick={() =>
+            workspace.dispatch({
+              type: "open-member",
+              member: {
+                chatId: member.chatId,
+                label: member.name,
+                wakerId: member.wakerId,
+              },
+            })
+          }
+        />
+      ))}
+    </>
+  );
 }
 
 function ChatLayout({

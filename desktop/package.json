@@ -174,7 +174,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "include": "resources/installer.nsh"
     },
     "compression": "maximum",
     "electronLanguages": [

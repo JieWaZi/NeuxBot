@@ -3,12 +3,81 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"slices"
+	"strings"
+
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
-	"strings"
 )
+
+// RetryConflictInstances 将原运行和实际 joined 分支中的未确认效果关联到画布节点。
+func RetryConflictInstances(state controllers.WorkflowRunState, blockedBranches []string) map[string]bool {
+	unknown := make(map[string]bool)
+	for _, instance := range state.Instances {
+		if instance.Status == constants.WorkflowStepStatusUnknown {
+			unknown[instance.ID] = true
+		}
+	}
+	effectInstances := make(map[string]string, len(state.Effects))
+	for _, effect := range state.Effects {
+		effectInstances[effect.ID] = effect.InstanceID
+		// 等待子流程的效果也可能保存子流程失败证据，涵盖已不存在关联行的历史。
+		propagated := false
+		if effect.ChildRunID != "" && effect.Failure != nil {
+			failure, _ := effect.Failure.Data.(map[string]any)
+			propagated = failure["code"] == constants.WorkflowFailureEffectOutcomeUnknown
+		}
+		if effect.Status == constants.WorkflowStepStatusUnknown || propagated || slices.Contains(blockedBranches, effect.ChildRunID) {
+			unknown[effect.InstanceID] = true
+		}
+	}
+	for _, call := range state.ActionCalls {
+		if call.Status == constants.WorkflowStepStatusUnknown {
+			unknown[effectInstances[call.EffectID]] = true
+		}
+	}
+	if len(blockedBranches) != 0 && len(unknown) == 0 {
+		// 子流程关系仍能阻止重试，即使根运行缺少关联画布节点。
+		unknown[""] = true
+	}
+	return unknown
+}
+
+func (s *Service) validateReexecution(ctx context.Context, command StartRunCommand, revisionID string) error {
+	sourceID := command.RetrySourceRunID
+	if sourceID == "" {
+		sourceID = command.ReplaySourceRunID
+	}
+	if sourceID == "" {
+		return nil
+	}
+	state, err := s.runs.LoadRunState(ctx, sourceID)
+	if err != nil {
+		return err
+	}
+	if state.Run.DefinitionID != command.DefinitionID || state.Run.RevisionID != revisionID ||
+		state.Run.Version != command.ExpectedSourceVersion {
+		return status_error.WorkflowStateConflict
+	}
+	if command.ReplaySourceRunID != "" {
+		if state.Run.Status != constants.WorkflowRunStatusSucceeded {
+			return status_error.WorkflowStateConflict
+		}
+	} else if state.Run.Status != constants.WorkflowRunStatusFailed && state.Run.Status != constants.WorkflowRunStatusCancelled {
+		return status_error.WorkflowStateConflict
+	}
+	branches, err := s.runs.ListJoinedRetryConflicts(ctx, state.Run)
+	if err != nil {
+		return err
+	}
+	if len(RetryConflictInstances(state, branches)) != 0 {
+		return status_error.WorkflowStateConflict.WithField("reason", "optimize_uncertain_run")
+	}
+	return nil
+}
 
 // reuseRetryResult 只在同版本、输入及配置完全相同时复用成功伙伴结果或业务答案。
 func (s *Service) reuseRetryResult(ctx context.Context, state *controllers.WorkflowRunState) error {
@@ -24,7 +93,9 @@ func (s *Service) reuseRetryResult(ctx context.Context, state *controllers.Workf
 	if err != nil {
 		return err
 	}
-	if original.Run.RevisionID != state.Run.RevisionID || workflowstate.Digest(original.Run.ScopeBinding) != workflowstate.Digest(state.Run.ScopeBinding) || workflowstate.Digest(original.Run.WorkerConfigurations) != workflowstate.Digest(state.Run.WorkerConfigurations) {
+	if original.Run.RevisionID != state.Run.RevisionID || original.Run.ScopeBinding != state.Run.ScopeBinding ||
+		!slices.Equal(original.Run.AdditionalWorkingDirectories, state.Run.AdditionalWorkingDirectories) ||
+		workflowstate.Digest(original.Run.WorkerConfigurations) != workflowstate.Digest(state.Run.WorkerConfigurations) {
 		return nil
 	}
 	for _, previous := range original.Effects {

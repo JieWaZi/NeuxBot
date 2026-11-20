@@ -102,6 +102,8 @@ type Service interface {
 
 // Module 是组合根同时交给查询入口和 Execution Core 的完整 Chat 模块。
 type Module interface {
+	// PublishExecutionDelivery 将领域已确认的结果交付给原答复。
+	PublishExecutionDelivery(context.Context, ExecutionDelivery) error
 	// CheckOccupiedWorkspace 拒绝修改仍有执行或文件收尾所有者的伙伴空间。
 	CheckOccupiedWorkspace(ctx context.Context, wakerID string, occupied []string) error
 	// InheritedAttachmentPaths 返回旧分叉已由权威继承事实确认的受管附件路径。

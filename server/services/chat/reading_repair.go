@@ -305,7 +305,7 @@ func (m *service) repairExistingReading(ctx context.Context, chatID string, hasC
 	if err != nil {
 		return err
 	}
-	changes, err := m.queryIndexes.prepareReading(ctx, chatID, rows, latest)
+	changes, err := m.queryIndexes.prepareReading(ctx, chatID, rows, 0, latest)
 	if err != nil {
 		return err
 	}

@@ -144,11 +144,11 @@ func (r *Registry) Resolve(endpointKey string) (Scope, bool) {
 }
 
 // MarkListed 记录当前负责人执行已经读取任务板。
-func (r *Registry) MarkListed(endpointKey string) {
+func (r *Registry) MarkListed(endpointKey, leaseID string) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	scope, exists := r.byEndpoint[endpointKey]
-	if !exists || !scope.ExpiresAt.After(time.Now()) {
+	if !exists || scope.LeaseID != leaseID || !scope.ExpiresAt.After(time.Now()) {
 		return
 	}
 	scope.Listed = true

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -270,7 +271,7 @@ func testNativeProductHostConnection(t *testing.T, filtered bool) {
 	t.Setenv("NEUX_EXECUTION_FIXTURE_CHECK_GRANT", "1")
 	if filtered {
 		home := t.TempDir()
-		config := "[shell_environment_policy]\ninclude_only = ['USER_*']\n[shell_environment_policy.set]\nUSER_MARKER = 'preserved'\n"
+		config := "[shell_environment_policy]\ninclude_only = ['USER_*', 'PATH']\n[shell_environment_policy.set]\nUSER_MARKER = 'preserved'\n"
 		if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -292,8 +293,12 @@ func testNativeProductHostConnection(t *testing.T, filtered bool) {
 	}
 	skill := publishedTestSystemSkill(t, fixture.root, binary)
 	bundledCLI := builtinskills.CLIPath(skill)
+	var inheritedPath string
 	if filtered {
 		t.Setenv("NEUX_EXECUTION_FIXTURE_BOTCLI", bundledCLI)
+		// 放入同名 CLI，证明原生进程优先选择系统技能随附的版本。
+		inheritedPath = strings.Join([]string{filepath.Dir(binary), os.Getenv("PATH")}, string(filepath.ListSeparator))
+		t.Setenv("PATH", inheritedPath)
 	} else {
 		contextRoot := filepath.Join(fixture.root, constants.AgentCLIContextDirectory)
 		if err := os.MkdirAll(contextRoot, 0700); err != nil {
@@ -384,7 +389,13 @@ func testNativeProductHostConnection(t *testing.T, filtered bool) {
 		t.Fatalf("heated continuation did not reuse the process and connection: grants=%d launches=%d", len(grants), fixture.accounts.Load())
 	}
 	if filtered && strings.Count(string(trace), "filtered botcli succeeded\n") != wantTurns {
-		t.Fatalf("各回合的受限 Shell 都应能调用原有工具: %s", trace)
+		t.Fatalf("各回合的受限 Shell 都应能直接调用随附命令: %s", trace)
+	}
+	if filtered && strings.Count(string(trace), "filtered executable fallback succeeded\n") != wantTurns {
+		t.Fatalf("Shell 移除 PATH 时仍应能调用随附命令: %s", trace)
+	}
+	if filtered && os.Getenv("PATH") != inheritedPath {
+		t.Fatal("原生执行修改了宿主进程的 PATH")
 	}
 }
 
@@ -443,6 +454,79 @@ func TestNativeProductWorkflowResumesAfterToolConnectionChanges(t *testing.T) {
 	_, changed := run(core, store, intent)
 	if changed == resumed {
 		t.Fatal("Codex reused a native session with a different tool catalog")
+	}
+}
+
+func TestNativeWorkflowTurnGrantsOnlyItsUploadedFileWithoutASelection(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	core, chats, _, closeRuntime := fixture.open()
+	defer closeRuntime()
+	registry := capability.New(nil)
+	defer registry.Close()
+	binary := filepath.Join(t.TempDir(), "botcli")
+	if err := os.WriteFile(binary, []byte("CLI fixture"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manager := core.(*service)
+	manager.agent, manager.agentEndpoint = registry, "http://127.0.0.1:18080"+constants.AgentCLIPath
+	manager.systemSkillDirectory = publishedTestSystemSkill(t, fixture.root, binary)
+	upload := filepath.Join(t.TempDir(), "report.csv")
+	if err := os.WriteFile(upload, []byte("actual upload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var paths, roots []string
+	start := agentPreparationBinding(t, "workflow.runs.start")
+	start.Call = func(ctx context.Context, _ capability.Request) (capability.Result, error) {
+		paths, roots = capability.FilePaths(ctx), capability.FileRoots(ctx)
+		return capability.Result{}, status_error.AgentOperationForbidden
+	}
+	accepted, err := core.Start(ctx, WorkIntent{
+		ClientRequestID: "named-workflow-upload",
+		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}},
+		Input:           WorkInput{Actor: "user", Content: "hold-for-stream", Attachments: []AttachmentInput{{SourcePath: upload}}},
+		Options: WorkOptions{RuntimeID: "codex", Model: "fixture-model", PermissionLevel: constants.PermissionLevelAuto,
+			ToolCapabilities: []ToolCapability{{ID: "workflow.local", Name: "Workflow", Bindings: []capability.Binding{start}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitNativeProductLive(t, ctx, chats, accepted, "fixture partial")
+	defer func() {
+		if err := core.CancelExecutionAndWait(ctx, accepted.Chat.ID, accepted.Execution.ID); err != nil {
+			t.Error(err)
+		}
+	}()
+	contextRoot := filepath.Join(filepath.Dir(filepath.Dir(manager.systemSkillDirectory)), constants.AgentCLIContextDirectory)
+	connections, err := filepath.Glob(filepath.Join(contextRoot, "*", "*", "connection.json"))
+	if err != nil || len(connections) != 1 {
+		t.Fatalf("expected one native tool connection: %v %v", connections, err)
+	}
+	connection, err := capability.ReadConnection(connections[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.NewReader(`{"operation":"workflow.runs.start","requestId":"named-workflow","params":{"definitionId":"workflow","revisionId":"revision","args":{}}}`)
+	request := httptest.NewRequest(http.MethodPost, constants.AgentCLIPath+"/commands", body)
+	request.RemoteAddr = "127.0.0.1:12345"
+	request.Header.Set("Authorization", "Bearer "+connection.Token)
+	request.Header.Set(constants.AgentCLIConnectionHeader, connection.GrantID)
+	request.Header.Set(constants.AgentCLIExecutionHeader, accepted.Execution.ID)
+	response := httptest.NewRecorder()
+	registry.ServeHTTP(response, request)
+	if len(paths) != 1 || paths[0] == upload || filepath.Base(paths[0]) != filepath.Base(upload) {
+		t.Fatalf("expected the one materialized upload path, got %v; tool response %s", paths, response.Body)
+	}
+	content, err := os.ReadFile(paths[0])
+	if err != nil || string(content) != "actual upload" {
+		t.Fatalf("granted path did not match uploaded bytes: %q %v", content, err)
+	}
+	for _, root := range roots {
+		relative, err := filepath.Rel(root, paths[0])
+		if err == nil && filepath.IsLocal(relative) {
+			t.Fatalf("upload parent is accessible through granted directory %q", root)
+		}
 	}
 }
 
@@ -1214,17 +1298,31 @@ func checkFilteredCodexCLI(ctx context.Context, trace *os.File, binary, thread s
 		_, _ = fmt.Fprintln(trace, "filtered botcli fixture unexpectedly bypassed the shell allowlist")
 		return
 	}
-	command := exec.CommandContext(ctx, binary, "capabilities")
-	for name, value := range environment {
-		command.Env = append(command.Env, name+"="+value)
-	}
-	output, err := command.CombinedOutput()
-	var response capability.Response
-	if err != nil || json.Unmarshal(output, &response) != nil || !response.OK || response.Operation != "capabilities" {
-		_, _ = fmt.Fprintf(trace, "filtered botcli failed: %v %s\n", err, output)
+	if environment["PATH"] == "" || environment["PATH"] != os.Getenv("PATH") {
+		_, _ = fmt.Fprintln(trace, "filtered botcli fixture did not retain native PATH")
 		return
 	}
-	_, _ = fmt.Fprintln(trace, "filtered botcli succeeded")
+	// PATH 保留原生进程的值，Go 在创建命令时使用该值解析程序。
+	command := exec.CommandContext(ctx, constants.AgentCLIBinaryName, "capabilities")
+	if command.Path != binary {
+		_, _ = fmt.Fprintf(trace, "filtered botcli resolved to %q instead of %q\n", command.Path, binary)
+		return
+	}
+	run := func(command *exec.Cmd, label string) {
+		for name, value := range environment {
+			command.Env = append(command.Env, name+"="+value)
+		}
+		output, err := command.CombinedOutput()
+		var response capability.Response
+		if err != nil || json.Unmarshal(output, &response) != nil || !response.OK || response.Operation != "capabilities" {
+			_, _ = fmt.Fprintf(trace, "%s failed: %v %s\n", label, err, output)
+			return
+		}
+		_, _ = fmt.Fprintln(trace, label+" succeeded")
+	}
+	run(command, "filtered botcli")
+	delete(environment, "PATH")
+	run(exec.CommandContext(ctx, binary, "capabilities"), "filtered executable fallback")
 }
 
 func TestNativeExecutionClaudeCursorChild(t *testing.T) {

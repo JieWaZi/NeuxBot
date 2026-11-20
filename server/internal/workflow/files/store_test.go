@@ -84,14 +84,14 @@ func TestUploadOwnershipAndIndependentRunFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(first, []byte("modified"), 0600); err != nil {
+	if err := os.WriteFile(first.Path, []byte("modified"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	second, err := Materialize(ctx, data, definition, task, util.New(), scope, upload.Reference)
-	if err != nil || first == second {
-		t.Fatalf("independent copies: %s %v", second, err)
+	if err != nil || first.Path == second.Path || second.Digest != upload.Digest {
+		t.Fatalf("independent copies: %+v %v", second, err)
 	}
-	file, err := OpenScopeFile(scope, second)
+	file, err := OpenScopeFile(scope, second.Path)
 	if err != nil {
 		t.Fatal(err)
 	}

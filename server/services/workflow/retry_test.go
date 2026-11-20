@@ -143,7 +143,7 @@ func TestAuthoringRetryPreflightRejectsBeforeSaving(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			call := authoringTestCLI(t, s, models.WorkflowCreationSession{ID: "creation", DefinitionID: definition.ID, ActiveExecutionID: "authoring", AuthToken: "private", Defaults: models.WorkflowExecutionDefaults{WorkspaceReadOnly: tc.readonly}})
+			call := authoringTestCLI(t, s, models.WorkflowCreationSession{ID: "creation", DefinitionID: definition.ID, ActiveExecutionID: "authoring", Defaults: models.WorkflowExecutionDefaults{WorkspaceReadOnly: tc.readonly}})
 			source := retryPolicySource(tc.safety)
 			code, checked := call([]string{"workflow", "source", "validate", "--input", "-"}, map[string]any{"source": source})
 			if code != 0 {
@@ -193,7 +193,7 @@ func TestAuthoringPreparationReportsRetryCompatibility(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			call := authoringTestCLI(t, s, models.WorkflowCreationSession{ID: "creation", DefinitionID: definition.ID, ActiveExecutionID: "authoring", AuthToken: "private", Defaults: models.WorkflowExecutionDefaults{WorkspaceReadOnly: readonly}})
+			call := authoringTestCLI(t, s, models.WorkflowCreationSession{ID: "creation", DefinitionID: definition.ID, ActiveExecutionID: "authoring", Defaults: models.WorkflowExecutionDefaults{WorkspaceReadOnly: readonly}})
 			code, response := call([]string{"workflow", "authoring", "prepare", "--primitives", "worker"}, nil)
 			if code != 0 {
 				t.Fatalf("prepare failed: %+v", response)
@@ -290,8 +290,8 @@ func TestAuthoringRetrySaveReplaySurvivesConfigurationChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	authoringTestCLI(t, s, models.WorkflowCreationSession{ID: "creation", DefinitionID: definition.ID, ActiveExecutionID: "authoring", AuthToken: "private", Defaults: models.WorkflowExecutionDefaults{WorkspaceReadOnly: true}})
-	command := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "saved", Source: retryPolicySource("pure"), SDK: constants.WorkflowSDKIdentifier, CreationSessionID: "creation", CreationExecutionID: "authoring", CreationToken: "private"}
+	authoringTestCLI(t, s, models.WorkflowCreationSession{ID: "creation", DefinitionID: definition.ID, ActiveExecutionID: "authoring", Defaults: models.WorkflowExecutionDefaults{WorkspaceReadOnly: true}})
+	command := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "saved", Source: retryPolicySource("pure"), SDK: constants.WorkflowSDKIdentifier, CreationSessionID: "creation", ExecutionID: "authoring"}
 	saved, _, err := s.SaveSource(ctx, command)
 	if err != nil {
 		t.Fatalf("compatible source did not save: %v", err)

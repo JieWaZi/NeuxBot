@@ -8,6 +8,51 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
+// HasDeclaredFileFields 判断输出契约及其引用是否声明文件字段。
+func HasDeclaredFileFields(schema map[string]any) bool {
+	if len(schema) == 0 {
+		return false
+	}
+	inspection := newSchemaInspection(schema)
+	seen := make(map[string]bool)
+	var visit func(string) bool
+	visit = func(path string) bool {
+		if seen[path] {
+			return false
+		}
+		seen[path] = true
+		current := inspection.schema(path)
+		if current == nil {
+			return false
+		}
+		if current["format"] == constants.WorkflowFileFormat {
+			return true
+		}
+		if ref, ok := current["$ref"].(string); ok && strings.HasPrefix(ref, "#/") && visit(ref[1:]) {
+			return true
+		}
+		properties, _ := current["properties"].(map[string]any)
+		for key := range properties {
+			if visit(path + "/properties/" + pointerKey(key)) {
+				return true
+			}
+		}
+		if visit(path+"/items") || visit(path+"/additionalProperties") {
+			return true
+		}
+		for _, keyword := range []string{"allOf", "oneOf", "anyOf", "prefixItems"} {
+			branches, _ := current[keyword].([]any)
+			for index := range branches {
+				if visit(path + "/" + keyword + "/" + strconv.Itoa(index)) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return visit("")
+}
+
 // FileValues 返回当前 JSON 中由 schema 明确声明的文件字段，键为 JSON Pointer。
 func FileValues(schema map[string]any, value any) map[string]string {
 	s := newSchemaInspection(schema)

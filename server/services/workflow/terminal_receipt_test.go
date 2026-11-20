@@ -43,11 +43,15 @@ func TestCreationEvidenceIncludesPersistedToolFailureAndOriginalIdentity(t *test
 		actual:  models.Execution{ID: "authoring", ChatID: "authoring-chat", Status: constants.ExecutionStatusRunning},
 		summary: chat.ChatSummary{Chat: models.Chat{ID: "authoring-chat", ActiveExecutionID: "authoring"}},
 	}
-	session := models.WorkflowCreationSession{ID: "creation", ChatID: "authoring-chat", ActiveExecutionID: "authoring", DefinitionID: d.ID, AuthToken: "private"}
+	session := models.WorkflowCreationSession{ID: "creation", ChatID: "authoring-chat", ActiveExecutionID: "authoring", DefinitionID: d.ID}
 	if err := s.creationSessions.CreateCreationSession(ctx, session); err != nil {
 		t.Fatal(err)
 	}
-	bindings := s.AgentBindings(session.ID, session.AuthToken, constants.WorkflowCapabilityScopeCreation)
+	bound, err := s.BindLocalWorkflowTurn(ctx, models.Chat{ID: session.ChatID}, session.ActiveExecutionID, nil, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings := bound.Capability.Bindings
 	const operation = "workflow.evidence.list"
 	index := slices.IndexFunc(bindings, func(binding capability.Binding) bool { return binding.Operation == operation })
 	if index < 0 {
@@ -112,7 +116,7 @@ func TestLateDeterministicReceiptCannotChangeConfirmedTerminalResult(t *testing.
 		t.Fatalf("confirmed receipt did not complete original checkpoint: %+v", confirmed)
 	}
 	// 使用原效果身份交付迟到失败，不能改写已有成功收据或运行终态。
-	s.completeDeterministic(ctx, effect, nil, status_error.WorkflowEffectFailed)
+	s.completeDeterministic(ctx, effect, nil, status_error.WorkflowEffectFailed, nil)
 	final, err := s.runs.LoadRunState(ctx, run.ID)
 	if err != nil {
 		t.Fatal(err)

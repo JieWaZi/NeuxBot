@@ -16,6 +16,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -119,6 +120,55 @@ func TestLeadInputWaitsForTemporaryNativeAdmissionContention(t *testing.T) {
 	queued, found, err := sut.threads.GetLeadInput(ctx, result.QueuedInput.ID)
 	if err != nil || !found || queued.LeadExecutionID == "" || queued.ErrorCode != "" || captured.startCount() != 1 {
 		t.Fatalf("占用解除后没有派发原输入: %+v found=%t starts=%d error=%v", queued, found, captured.startCount(), err)
+	}
+}
+
+func TestLeadWorkflowQueueDispatchesTheOriginallySelectedRevision(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, captured := newDelegationDispatchService(t)
+	sut.Close()
+	chats.summaries[thread.LeadChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: thread.LeadChatID, ActiveExecutionID: "busy"}}
+	currentRevision := "original"
+	sut.freezeWorkflowSelection = func(_ context.Context, selected *workinput.WorkflowReference) (*workinput.WorkflowReference, error) {
+		return &workinput.WorkflowReference{ID: selected.ID, RevisionID: currentRevision, Name: "Flow"}, nil
+	}
+	request := SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{SubmissionID: "same-input", Workflow: workinput.SelectWorkflow("flow")}}
+	initial, err := sut.sendMessage(ctx, request)
+	if err != nil || initial.QueuedInput == nil || initial.Execution != nil {
+		t.Fatalf("busy lead should accept the workflow into its queue: %+v %v", initial, err)
+	}
+	currentRevision = "newer"
+	replayed, err := sut.sendMessage(ctx, request)
+	if err != nil || replayed.QueuedInput == nil || replayed.QueuedInput.ID != initial.QueuedInput.ID {
+		t.Fatalf("new revision changed the original queue receipt: %+v %v", replayed, err)
+	}
+	chats.summaries[thread.LeadChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: thread.LeadChatID}}
+	if err := sut.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if captured.startCount() != 1 {
+		t.Fatalf("dispatched %d executions", captured.startCount())
+	}
+	actual := captured.firstStart()
+	if actual.Chat.ChatID != thread.LeadChatID || actual.Input.Workflow == nil || actual.Input.Workflow.RevisionID != "original" || actual.Input.Content != "" {
+		t.Fatalf("queue changed origin, selection or user text: %+v", actual)
+	}
+}
+
+func TestWorkflowOnlyTeamFirstSendUsesTheSelectedName(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, captured := newDelegationDispatchService(t)
+	sut.chatGroups = &leaderTurnChatGroupFake{chats: chats}
+	sut.freezeWorkflowSelection = func(_ context.Context, selected *workinput.WorkflowReference) (*workinput.WorkflowReference, error) {
+		return &workinput.WorkflowReference{ID: selected.ID, RevisionID: "published", Name: "独立检查流程"}, nil
+	}
+	result, err := sut.createThread(ctx, CreateThreadInput{ChannelID: thread.ChannelID, ClientRequestID: "new-workflow-thread", Input: execution.WorkInput{Workflow: workinput.SelectWorkflow("flow")}})
+	if err != nil || result.Thread.Title != "独立检查流程" || result.LeadExecution == nil || len(result.Tasks) != 0 {
+		t.Fatalf("workflow-only first send did not establish the named lead conversation: %+v %v", result, err)
+	}
+	actual := captured.firstStart()
+	if actual.Chat.ChatID != result.Thread.LeadChatID || actual.Input.Workflow == nil || actual.Input.Workflow.RevisionID != "published" || actual.Input.Content != "" {
+		t.Fatalf("lead first turn did not preserve the original workflow-only input: %+v", actual)
 	}
 }
 

@@ -54,6 +54,10 @@ func validateResource(ctx context.Context, command control) error {
 			err = status_error.ChannelThreadNotFound
 		}
 	case "workflow":
+		if resource.Kind == "chat" {
+			_, err = global.ChatControllerManager.Get(ctx, resource.ID)
+			break
+		}
 		_, err = global.WorkflowControllerManager.GetDefinition(ctx, resource.ID)
 		if err == nil && resource.ParentID != "" {
 			run, readErr := global.WorkflowRunControllerManager.GetRun(ctx, resource.ParentID)
@@ -110,6 +114,9 @@ func newSource(ctx context.Context, command control) (source, error) {
 	case "team":
 		return teamSource(ctx, command)
 	case "workflow":
+		if command.Resource.Kind == "chat" {
+			return stateSource(ctx, command)
+		}
 		return workflowSource(ctx, command)
 	default:
 		return stateSource(ctx, command)

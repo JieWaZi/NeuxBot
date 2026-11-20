@@ -8,10 +8,90 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
+
+func TestChannelLeadInputsKeepEnqueueOrderAtTheSameTimestamp(t *testing.T) {
+	ctx := t.Context()
+	threads := NewChannelThreadController(newTestDB(t))
+	for _, id := range []string{"z-first", "a-second"} {
+		if err := threads.CreateLeadInput(ctx, models.ChannelLeadInput{
+			ID: id, ThreadID: "thread", Status: constants.ChannelInputStatusPending,
+			Payload: workinput.Input{Content: id}, CreatedAt: 1234,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inputs, err := threads.ListLeadInputs(ctx, "thread", []constants.ChannelInputStatus{constants.ChannelInputStatusPending}, 1)
+	if err != nil || len(inputs) != 1 || inputs[0].ID != "z-first" {
+		t.Fatalf("queue head = %+v, error = %v", inputs, err)
+	}
+}
+
+func TestTeamDeletionCountsOnlyActiveChatWorkflowRuns(t *testing.T) {
+	ctx := t.Context()
+	database := newTestDB(t)
+	threads := NewChannelThreadController(database)
+	channels := NewChannelController(database)
+	for _, status := range []constants.WorkflowRunStatus{
+		constants.WorkflowRunStatusWaiting, constants.WorkflowRunStatusCancelling, constants.WorkflowRunStatusSucceeded,
+	} {
+		t.Run(status.String(), func(t *testing.T) {
+			threadID, channelID, chatID := util.New(), util.New(), util.New()
+			now := time.Now().UnixMilli()
+			if err := threads.Create(ctx, models.ChannelThread{
+				ID: threadID, ChannelID: channelID, Title: "团队", LeadWakerID: "lead", LeadChatID: chatID, ReadyAt: &now,
+			}, []models.ChannelThreadMember{{ThreadID: threadID, WakerID: "lead", ChatID: chatID, IsLead: true}}); err != nil {
+				t.Fatal(err)
+			}
+			for _, run := range []models.WorkflowRun{
+				{ID: util.New(), DefinitionID: util.New(), RevisionID: util.New(), SourceThreadID: threadID,
+					SourceChatID: chatID, SourceExecutionID: util.New(), Status: status},
+				{ID: util.New(), DefinitionID: util.New(), RevisionID: util.New(), SourceThreadID: threadID,
+					SourceChatID: chatID, SourceExecutionID: util.New(), Status: constants.WorkflowRunStatusWaiting, SourceWorkbench: true},
+			} {
+				if err := database.Create(&run).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			want := int64(1)
+			if status == constants.WorkflowRunStatusSucceeded {
+				want = 0
+			}
+			threadCount, threadErr := threads.CountActiveWork(ctx, threadID)
+			channelCount, channelErr := channels.CountActiveWork(ctx, channelID)
+			if threadErr != nil || channelErr != nil || threadCount != want || channelCount != want {
+				t.Fatalf("active work for workflow %s = thread %d (%v), team %d (%v), want %d",
+					status, threadCount, threadErr, channelCount, channelErr, want)
+			}
+		})
+	}
+}
+
+func TestTeamDeletionCountsUndeliveredReport(t *testing.T) {
+	ctx := t.Context()
+	database := newTestDB(t)
+	threads := NewChannelThreadController(database)
+	channels := NewChannelController(database)
+	thread := models.ChannelThread{ID: util.New(), ChannelID: util.New()}
+	if err := database.Create(&thread).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&models.ChannelLeadNotification{
+		ID: util.New(), ThreadID: thread.ID, TaskID: util.New(), AttemptID: util.New(),
+		Status: constants.ChannelNotificationStatusPending, Payload: "成员结果",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	threadCount, threadErr := threads.CountActiveWork(ctx, thread.ID)
+	channelCount, channelErr := channels.CountActiveWork(ctx, thread.ChannelID)
+	if threadErr != nil || channelErr != nil || threadCount != 1 || channelCount != 1 {
+		t.Fatalf("active report work = thread %d (%v), team %d (%v)", threadCount, threadErr, channelCount, channelErr)
+	}
+}
 
 func TestChannelThreadControllerUpdatesOnlyFutureExecutionConfig(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{

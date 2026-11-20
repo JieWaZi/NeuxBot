@@ -41,6 +41,8 @@ const (
 	ChatEventTypeToolMessage ChatEventType = "tool.message"
 	// ChatEventTypeFileChanges 表示独立工作区采集结果及其不可变内容已经提交。
 	ChatEventTypeFileChanges ChatEventType = "workspace.changes"
+	// ChatEventTypeExecutionDelivery 附上已确认的领域产出或补写摘要，原执行结果由原生终态保有。
+	ChatEventTypeExecutionDelivery ChatEventType = "execution.delivery"
 	// ChatEventTypeExecutionCompleted 表示一次执行已经成功结束。
 	ChatEventTypeExecutionCompleted ChatEventType = "execution.completed"
 	// ChatEventTypeExecutionFailed 表示一次执行因错误结束。

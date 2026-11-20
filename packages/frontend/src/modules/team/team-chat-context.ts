@@ -60,7 +60,7 @@ export type TeamChatContext = {
   onSendMessage: (
     request: SendChannelMessageRequest,
   ) => Promise<SendChannelMessageResponse>;
-  onStopWork: () => Promise<void>;
+  onStopWork: (submissionId?: string) => Promise<void>;
   onUpdateMemberConfigs: (
     members: Array<{
       accountId?: string;

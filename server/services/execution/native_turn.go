@@ -245,7 +245,7 @@ func (m *service) startNativeExecution(
 	message := nativeMessage(request, files)
 	message.Text += pluginSelectionHint(frozen.selected)
 	instructions := nativeInstructions(request, files)
-	grant, err := m.prepareAgent(ctx, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles)
+	grant, err := m.prepareAgent(ctx, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles, files.attachments.RuntimePaths)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
@@ -290,6 +290,7 @@ func (m *service) startNativeExecution(
 	key := sessionResourceKey(frozen.key, string(metadata), enabledConnectors)
 	thread := nativeThreadRequest(state.chat.ID, workspace, instructions, request, environment, selection, key)
 	thread.Connection.Launch.BotCLIContextFile = grant.cliContextFile
+	thread.Connection.Launch.BotCLIExecutable = grant.cliExecutable
 	thread.Connection.Account, err = m.resolveAccount(ctx, thread.Connection.Account, thread.Connection.Launch.ConfigHome)
 	if err != nil {
 		return AcceptedExecution{}, err
@@ -372,7 +373,7 @@ func (m *service) startNativeExecution(
 	case result := <-work.started:
 		return AcceptedExecution{Chat: result.chat, Execution: result.execution}, result.err
 	case <-ctx.Done():
-		m.executions.cancel(state.chat.ID)
+		m.executions.cancelNativeExecution(state.chat.ID, executionID)
 		result := <-work.started
 		return AcceptedExecution{Chat: result.chat, Execution: result.execution}, result.err
 	}

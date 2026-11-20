@@ -80,42 +80,46 @@ func leaderWorkOptions(
 	}
 }
 
+type authorizedTeamTool struct {
+	// scope 是绑定到原执行的本轮团队授权。
+	scope channeltool.Scope
+	// thread 是此次调用的团队对话。
+	thread models.ChannelThread
+	// member 是该授权对应的对话成员。
+	member models.ChannelThreadMember
+}
+
+func (a authorizedTeamTool) commandOwner() string {
+	owner := "team:" + a.thread.ID + ":" + a.scope.CallerWakerID
+	if a.scope.Role == constants.ChannelCapabilityRoleMember {
+		owner += ":" + a.scope.AttemptID
+	}
+	return owner
+}
+
+// authorizeTeamTool 复核团队授权及成员角色，原生执行占位由 Core 能力入口校验。
+func (s *service) authorizeTeamTool(ctx context.Context, endpoint, leaseID string) (authorizedTeamTool, error) {
+	scope, exists := s.capabilities.Resolve(endpoint)
+	if !exists || scope.LeaseID != leaseID {
+		return authorizedTeamTool{}, status_error.AgentContextUnauthorized
+	}
+	thread, err := s.threads.Get(ctx, scope.ThreadID)
+	if err != nil {
+		return authorizedTeamTool{}, err
+	}
+	member, err := s.threads.GetMember(ctx, thread.ID, scope.CallerWakerID)
+	if err != nil {
+		return authorizedTeamTool{}, err
+	}
+	if (scope.Role == constants.ChannelCapabilityRoleLead) != (thread.LeadWakerID == member.WakerID) {
+		return authorizedTeamTool{}, status_error.AgentOperationForbidden
+	}
+	return authorizedTeamTool{scope: scope, thread: thread, member: member}, nil
+}
+
 // toolChannelTasks 执行当前团队角色在短期能力范围内允许的协作操作。
-func (s *service) toolChannelTasks(
-	ctx context.Context,
-	endpointKey string,
-	input channeltool.TaskInput,
-) (channeltool.TaskOutput, error) {
-	capability, exists := s.capabilities.Resolve(endpointKey)
-	if !exists {
-		return channelToolError(status_error.AgentContextUnauthorized, "The channel task capability is invalid or expired.")
-	}
-	thread, err := s.threads.Get(ctx, capability.ThreadID)
-	if err != nil {
-		logChannelToolFailure(capability, input.Action, input.TaskID, err)
-		return channelToolError(err, "The current channel thread is unavailable.")
-	}
-	member, err := s.threads.GetMember(ctx, thread.ID, capability.CallerWakerID)
-	if err != nil {
-		logChannelToolFailure(capability, input.Action, input.TaskID, err)
-		return channelToolError(err, "The current caller is not a member of this channel thread.")
-	}
-	if capability.Role == constants.ChannelCapabilityRoleLead &&
-		thread.LeadWakerID != capability.CallerWakerID {
-		return channelToolError(status_error.AgentOperationForbidden, "The current caller is not the lead of this channel thread.")
-	}
-	if capability.Role == constants.ChannelCapabilityRoleMember &&
-		thread.LeadWakerID == capability.CallerWakerID {
-		return channelToolError(status_error.AgentOperationForbidden, "The current capability is not a member report capability.")
-	}
-	summary, err := s.chats.GetChatSummary(ctx, member.ChatID)
-	if err != nil {
-		logChannelToolFailure(capability, input.Action, input.TaskID, err)
-		return channelToolError(err, "The channel collaboration capability does not belong to the active execution.")
-	}
-	if summary.Chat.ActiveExecutionID != capability.ExecutionID {
-		return channelToolError(status_error.AgentContextUnauthorized, "The channel collaboration capability does not belong to the active execution.")
-	}
+func (s *service) toolChannelTasks(ctx context.Context, authorized authorizedTeamTool, input channeltool.TaskInput) (channeltool.TaskOutput, error) {
+	capability, thread, member := authorized.scope, authorized.thread, authorized.member
 	action := constants.ChannelTaskToolAction(strings.TrimSpace(string(input.Action)))
 	if !channeltool.Allows(action, capability.Role, capability.AllowMutations) {
 		if capability.Role == constants.ChannelCapabilityRoleMember {
@@ -140,7 +144,7 @@ func (s *service) toolChannelTasks(
 			logChannelToolFailure(capability, action, input.TaskID, listErr)
 			return channelToolError(listErr, "The task board is temporarily unavailable.")
 		}
-		s.capabilities.MarkListed(endpointKey)
+		s.capabilities.MarkListed(thread.ID, capability.LeaseID)
 		if action == constants.ChannelTaskToolActionSearch {
 			query := strings.ToLower(strings.TrimSpace(input.Query))
 			if query == "" {

@@ -20,6 +20,8 @@ type AttachmentInput struct {
 
 // AttachmentReference 是可以安全写入 Chat JSONL 的文件引用。
 type AttachmentReference struct {
+	// Partial 标记失败或停止时仍然有效的部分成果。
+	Partial bool `json:"partial,omitempty"`
 	// Name 是向用户和 Agent 展示的原始文件名。
 	Name string `json:"name"`
 	// Path 是相对 Conversation 私有文件目录的稳定路径。

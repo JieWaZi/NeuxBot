@@ -171,23 +171,26 @@ func catalog() []Operation {
 		operation("im.targets.list", "Discover authorized message recipients.", read, immediate, "im.delivery", page...),
 		operation("im.deliveries.create", "Register a durable delivery. Omit targetId for files replying to the current IM chat. Acceptance is not platform confirmation.", external, accepted, "im.delivery", text("targetId", false), text("content", false), list("files")),
 		operation("im.deliveries.get", "Read the actual state of an authorized delivery.", read, immediate, "im.delivery", text("deliveryId", true)),
-		operation("workflow.source.get", "Read source for the bound workflow.", read, immediate, "workflow.authoring", text("revisionId", false), text("workflowId", false)),
+		operation("workflow.source.get", "Read workflow source at the specified revision or current head. Use the conversation's default workflow or supply workflowId.", read, immediate, "workflow.authoring", text("revisionId", false), text("workflowId", false)),
 		operation("workflow.authoring.prepare", "Prepare minimal authoring guidance, current source, pending annotations, needed resource pages, execution defaults, retry compatibility and save contracts in one read. Select actual DSL primitives; no separate SDK discovery is needed.", read, immediate, "workflow.authoring",
 			choices("primitives", workflowcatalog.Primitives(), true),
 			choices("features", workflowcatalog.Features(), false),
+			text("workflowId", false),
 			choice("language", []string{"javascript", "python"}, false)),
-		operation("workflow.source.validate", "Optional preflight of source and current authoring retry configuration; returns node diagnostics and a compact summary. Request includeManifest only when the full projection is needed.", read, immediate, "workflow.authoring", text("source", true), scalar("includeManifest", "boolean", false)),
+		operation("workflow.source.validate", "Optional preflight of source and current authoring retry configuration; returns node diagnostics and a compact summary. Request includeManifest only when the full projection is needed.", read, immediate, "workflow.authoring", text("source", true), text("workflowId", false), scalar("includeManifest", "boolean", false)),
 		operation("workflow.source.save", "Compile, validate and CAS-save source or exact patches as a new revision. Same requestId replays its receipt. A successful saved receipt is final; no separate commit is needed.", mutation, immediate, "workflow.authoring", text("source", false), text("expectedRevisionId", true), text("sdk", false), text("workflowId", false), text("baseSourceDigest", false), Field{Name: "patches", Schema: map[string]any{"type": "array", "minItems": 1, "maxItems": 100, "items": map[string]any{"type": "object", "properties": map[string]any{"search": map[string]any{"type": "string", "minLength": 1}, "replace": map[string]any{"type": "string"}}, "required": []string{"search", "replace"}, "additionalProperties": false}}}, list("resolvedAnnotationIds")),
 		operation("workflow.sdk.get", "Read one authorized SDK topic or example; discovery lists exact names and primitive mappings.", read, immediate, "workflow.authoring",
 			choice("topic", append(workflowcatalog.TopicNames(), workflowcatalog.Examples()...), true),
 			Field{Name: "kind", Schema: map[string]any{
 				"type": "string", "enum": []string{"sdk", "example"}, "default": "sdk",
 			}}),
-		operation("workflow.resources.list", "Discover one bounded page of authoring resources.", read, immediate, "workflow.authoring", choice("kind", workflowcatalog.ResourceKinds(), true), text("cursor", false)),
-		operation("workflow.annotations.list", "Read authoring annotations for the bound workflow.", read, immediate, "workflow.authoring", append([]Field{text("status", false), text("baseRevisionId", false)}, page...)...),
+		operation("workflow.resources.list", "Discover one bounded page of authoring resources.", read, immediate, "workflow.authoring", choice("kind", workflowcatalog.ResourceKinds(), true), text("cursor", false), text("workflowId", false)),
+		operation("workflow.annotations.list", "Read authoring annotations for the target workflow.", read, immediate, "workflow.authoring", append([]Field{text("status", false), text("baseRevisionId", false), text("workflowId", false)}, page...)...),
 		operation("workflow.definitions.list", "Discover workflows authorized for this execution.", read, immediate, "workflow.execution", append([]Field{text("search", false)}, page...)...),
-		operation("workflow.definitions.describe", "Read one authorized workflow's input and output contract.", read, immediate, "workflow.execution", text("definitionId", true)),
+		operation("workflow.definitions.describe", "Read the authorized immutable workflow's input and output contract.", read, immediate, "workflow.execution", text("definitionId", true), text("revisionId", false)),
 		operation("workflow.runs.start", "Accept an authorized workflow run with frozen inputs.", external, accepted, "workflow.execution", text("definitionId", true), text("revisionId", true), Field{Name: "args", Schema: map[string]any{}, Required: true}),
+		operation("workflow.runs.list", "List workflow runs launched in the current conversation.", read, immediate, "workflow.execution", page...),
+		operation("workflow.runs.repeat", "Run a uniquely identified previous run again at the user's request, preserving the original inputs and revision.", external, accepted, "workflow.execution", text("runId", true)),
 		operation("workflow.runs.get", "Read an authorized workflow run.", read, immediate, "workflow.execution", text("runId", true)),
 		operation("workflow.runs.cancel", "Request cancellation without undoing completed external effects.", mutation, accepted, "workflow.execution", text("runId", true)),
 		operation("workflow.evidence.list", "Read original execution and external-effect evidence.", read, immediate, "workflow.authoring", text("runId", true), text("cursor", false)),
@@ -364,7 +367,7 @@ func outputSchema(id string) map[string]any {
 		schema["properties"].(map[string]any)["workflow"] = outputSchema("workflow.source.get")
 		schema["required"] = []string{"workflow"}
 		return schema
-	case "im.targets.list", "team.tasks.list", "workflow.annotations.list", "workflow.definitions.list":
+	case "im.targets.list", "team.tasks.list", "workflow.annotations.list", "workflow.definitions.list", "workflow.runs.list":
 		return object("items", "total", "pageNum", "pageSize", "nextCursor")
 	case "im.deliveries.create", "im.deliveries.get":
 		return object("deliveryId", "state", "errorCode", "partsSent", "createdAt")
@@ -428,12 +431,12 @@ func outputSchema(id string) map[string]any {
 		return object("kind", "items", "nextCursor", "toolPolicyCapabilities")
 	case "workflow.definitions.describe":
 		return object("id", "name", "description", "whenToUse", "revisionId", "runnable", "inputSchema", "outputSchema")
-	case "workflow.runs.start":
+	case "workflow.runs.start", "workflow.runs.repeat":
 		return object("runId", "definitionId", "revisionId")
 	case "workflow.runs.cancel":
 		return object("runId", "definitionId", "cancellationRequested")
 	case "workflow.runs.get":
-		return object("run", "humanRequests", "operationRequests")
+		return object("run", "humanRequests", "operationRequests", "outputFiles")
 	case "workflow.evidence.list":
 		return object("run", "instances", "actionCalls", "humanRequests", "operations", "totalInstances", "nextCursor")
 	case "workflow.results.schema":
@@ -486,7 +489,7 @@ func (o Operation) DisplayLabel() string {
 		"knowledge.libraries.list": "查看可用知识库", "knowledge.pages.search": "搜索知识", "knowledge.pages.get": "读取知识页面", "knowledge.sources.get": "查看原件版本", "workflow.authoring.prepare": "准备工作流创作",
 		"im.targets.list": "查看可发送聊天", "im.deliveries.create": "提交消息交付", "im.deliveries.get": "查看交付状态", "im.deliveries.wait": "等待消息交付",
 		"workflow.source.get": "读取工作流", "workflow.source.validate": "检查工作流", "workflow.source.save": "保存工作流", "workflow.sdk.get": "了解工作流能力", "workflow.resources.list": "查看可用伙伴与资源", "workflow.annotations.list": "查看修改要求", "workflow.evidence.list": "查看执行记录",
-		"workflow.definitions.list": "查看可用工作流", "workflow.definitions.describe": "查看工作流参数", "workflow.runs.start": "提交工作流运行", "workflow.runs.get": "查看执行进度", "workflow.runs.cancel": "请求停止工作流", "workflow.runs.wait": "等待工作流运行", "workflow.results.schema": "查看步骤结果格式", "workflow.results.submit": "提交步骤候选结果",
+		"workflow.definitions.list": "查看可用工作流", "workflow.definitions.describe": "查看工作流参数", "workflow.runs.start": "提交工作流运行", "workflow.runs.list": "查看对话中的运行", "workflow.runs.repeat": "再次执行原运行", "workflow.runs.get": "查看执行进度", "workflow.runs.cancel": "请求停止工作流", "workflow.runs.wait": "等待工作流运行", "workflow.results.schema": "查看步骤结果格式", "workflow.results.submit": "提交步骤候选结果",
 		"team.members.list": "查看团队成员", "team.tasks.list": "查看团队任务", "team.tasks.get": "查看任务详情", "team.tasks.create": "分配团队任务", "team.tasks.update": "更新团队任务", "team.tasks.follow-up": "补充团队任务", "team.tasks.retry": "请求重试任务", "team.tasks.cancel": "请求停止任务", "team.reports.submit": "提交工作报告",
 		"memory.entries.search": "搜索记忆", "memory.entries.get": "查看记忆", "memory.entries.create": "保存记忆", "memory.entries.update": "更新记忆", "memory.entries.forget": "遗忘记忆",
 		constants.WakerProfileInterviewOperation: "提出伙伴建档问题",

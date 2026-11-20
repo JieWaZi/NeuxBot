@@ -15,7 +15,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
@@ -57,6 +59,25 @@ func (c *consumerChatBoundary) GetChatSummary(_ context.Context, chatID string) 
 	return c.summary, nil
 }
 
+func TestConsumerDescribesAdmissionRevisionAfterHeadChanges(t *testing.T) {
+	ctx := t.Context()
+	s, _ := workflowTestService(t)
+	definition := savedTestWorkflow(t, s, workflowTestSource(t))
+	conversation := consumerFixtureChat(t, "chat")
+	actual, lease := bindConsumerFixture(t, s, conversation, definition.ID, "selection", "user-message")
+	if _, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: definition.ID, RequestID: "publish-next", ExpectedRevisionID: definition.CurrentRevisionID, SDK: constants.WorkflowSDKIdentifier, Source: strings.Replace(workflowTestSource(t), "纯计算验收", "新版工作流", 1)}); err != nil {
+		t.Fatal(err)
+	}
+	value, err := s.handleConsumerTool(ctx, lease, actual, conversation, workflowtool.Input{Action: constants.WorkflowActionQuery, Type: constants.WorkflowQueryWorkflows})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, _ := unwrapWorkflow(value)["items"].([]map[string]any)
+	if len(items) != 1 || items[0]["revisionId"] != definition.CurrentRevisionID {
+		t.Fatalf("contract drifted from the admission revision %s: %+v", definition.CurrentRevisionID, items)
+	}
+}
+
 func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 	ctx := context.Background()
 	s, _ := workflowTestService(t)
@@ -71,26 +92,19 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 	}
 	other.CurrentRevisionID = receipt.RevisionID
 	s.executions = consumerExecutionBoundary{}
-	queries := &consumerChatBoundary{}
+	conversation := consumerFixtureChat(t, "chat")
+	_, lease := bindConsumerFixture(t, s, conversation, definition.ID, "consumer-execution", "user-message")
+	again, err := s.BindWorkflowTurn(ctx, conversation, lease.ID, workinput.SelectWorkflow(definition.ID))
+	if err != nil || again.Reference == nil || again.Reference.RevisionID != lease.Selection.RevisionID {
+		t.Fatalf("capability replay changed selection: %+v %v", again, err)
+	}
+	if _, err := s.BindWorkflowTurn(ctx, conversation, lease.ID, workinput.SelectWorkflow(other.ID)); !errors.Is(err, status_error.WorkflowRequestConflict) {
+		t.Fatalf("replay expanded selection: %v", err)
+	}
+	queries := &consumerChatBoundary{
+		actual: models.Execution{ID: lease.ID, ChatID: lease.ChatID, UserMessageID: "user-message", Status: constants.ExecutionStatusRunning, RuntimeID: "actual-runtime", AccountID: "actual-account", Model: "actual-model", Reasoning: "actual-reasoning", PermissionLevel: constants.PermissionLevelDefault, WorkspaceReadOnly: true},
+	}
 	s.chats = queries
-	s.state.AgentBindings = s.AgentBindings
-	intent := execution.WorkIntent{ClientRequestID: "consumer-create", Chat: execution.ChatTarget{Create: &execution.CreateChatSpec{WakerID: "fixture", WorkingDirectory: t.TempDir()}}, Input: execution.WorkInput{Content: "调用选中的流程"}, Options: execution.WorkOptions{RuntimeID: "runtime", AccountID: "system", Model: "selected", PermissionLevel: constants.PermissionLevelDefault, WorkspaceReadOnly: true}}
-	bound, err := s.BindConsumer(ctx, intent, []string{definition.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	lease, err := s.consumers.GetConsumer(ctx, bound.ExecutionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	again, err := s.BindConsumer(ctx, intent, []string{definition.ID})
-	if err != nil || again.ExecutionID != bound.ExecutionID || len(again.Options.ToolCapabilities[0].Bindings) != len(bound.Options.ToolCapabilities[0].Bindings) {
-		t.Fatalf("capability replay changed identity: %+v %v", again, err)
-	}
-	if _, err := s.BindConsumer(ctx, intent, []string{definition.ID, other.ID}); !errors.Is(err, status_error.WorkflowRequestConflict) {
-		t.Fatalf("replay expanded whitelist: %v", err)
-	}
-	queries.actual = models.Execution{ID: lease.ID, ChatID: lease.ChatID, Status: constants.ExecutionStatusRunning, RuntimeID: "actual-runtime", AccountID: "actual-account", Model: "actual-model", Reasoning: "actual-reasoning", PermissionLevel: constants.PermissionLevelDefault, WorkspaceReadOnly: true}
 	approvedDirectory := t.TempDir()
 	approvedDirectory, err = workflowfiles.EnsureScopeDirectory(approvedDirectory)
 	if err != nil {
@@ -98,7 +112,7 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 	}
 	queries.summary = chat.ChatSummary{Chat: models.Chat{ID: lease.ChatID, ActiveExecutionID: lease.ID, AdditionalWorkingDirectories: []string{approvedDirectory}}}
 	registry := capability.New(nil)
-	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: lease.ID, Bindings: s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer), Validate: func(context.Context) error { return nil }})
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: lease.ID, Bindings: s.consumerAgentBindings(lease), Validate: func(context.Context) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}

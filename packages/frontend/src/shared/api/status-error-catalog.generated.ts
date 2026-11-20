@@ -481,6 +481,32 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  BotCLIInstallationConflict: {
+    code: 40900009003,
+    en: [
+      {
+        text: "another file already occupies the botcli installation path",
+      },
+    ],
+    zh: [
+      {
+        text: "botcli 安装路径已被其他文件占用",
+      },
+    ],
+  },
+  BotCLIInstallationFailed: {
+    code: 50000009002,
+    en: [
+      {
+        text: "botcli could not be installed for the current user",
+      },
+    ],
+    zh: [
+      {
+        text: "无法为当前用户安装 botcli",
+      },
+    ],
+  },
   BuiltInMCPConnectorCannotDelete: {
     code: 40900000011,
     en: [

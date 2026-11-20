@@ -68,7 +68,7 @@ func (r *Registry) BindCodexShellConnection(path, executionID, threadID string) 
 			return status_error.AgentContextStorageError
 		}
 		if previous.CoreEpoch == r.epoch {
-			oldKey = tokenKey(previous.Token)
+			oldKey = r.connectionKey(previous.Token, previous.GrantID)
 			if r.codexShellAliases[oldKey] != alias || r.leases[oldKey] != nil {
 				return status_error.AgentContextUnauthorized
 			}
@@ -77,7 +77,7 @@ func (r *Registry) BindCodexShellConnection(path, executionID, threadID string) 
 		return status_error.AgentContextStorageError
 	}
 	connection, err := ReadConnection(path)
-	if err != nil || connection.CoreEpoch != r.epoch || tokenKey(connection.Token) != key {
+	if err != nil || connection.CoreEpoch != r.epoch || r.connectionKey(connection.Token, connection.GrantID) != key {
 		return status_error.AgentContextStorageError
 	}
 	if err := prepareConnectionDirectory(filepath.Dir(alias)); err != nil {

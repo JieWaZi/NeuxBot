@@ -145,12 +145,11 @@ func open(dataDirectory, definitionID, taskID, reference string, allowManaged bo
 		return nil, storedUpload{}, status_error.WorkflowFileNotFound
 	}
 	defer root.Close()
-	metadata, err := root.ReadFile(filepath.Join(id, "metadata.json"))
+	upload, err := readStoredUpload(root, id, reference)
 	if err != nil {
-		return nil, storedUpload{}, status_error.WorkflowFileNotFound
+		return nil, storedUpload{}, err
 	}
-	var upload storedUpload
-	if json.Unmarshal(metadata, &upload) != nil || upload.Reference != reference || (upload.TaskID != taskID && !(allowManaged && upload.TaskID == "")) {
+	if upload.TaskID != taskID && !(allowManaged && upload.TaskID == "") {
 		return nil, storedUpload{}, status_error.WorkflowFileInvalid
 	}
 	owner := upload.OwnerKeyID
@@ -169,6 +168,18 @@ func open(dataDirectory, definitionID, taskID, reference string, allowManaged bo
 	return file, upload, nil
 }
 
+func readStoredUpload(root *os.Root, id, reference string) (storedUpload, error) {
+	metadata, err := root.ReadFile(filepath.Join(id, "metadata.json"))
+	if err != nil {
+		return storedUpload{}, status_error.WorkflowFileNotFound
+	}
+	var upload storedUpload
+	if json.Unmarshal(metadata, &upload) != nil || upload.Reference != reference {
+		return storedUpload{}, status_error.WorkflowFileInvalid
+	}
+	return upload, nil
+}
+
 // ValidateReference 校验上传原件的归属，不允许 API 引用本地路径或其他任务的文件。
 func ValidateReference(dataDirectory, definitionID, taskID, reference string, allowManaged bool, ownerKeyIDs ...string) error {
 	file, _, err := open(dataDirectory, definitionID, taskID, reference, allowManaged, ownerKeyIDs...)
@@ -179,48 +190,48 @@ func ValidateReference(dataDirectory, definitionID, taskID, reference string, al
 }
 
 // Materialize 将原件复制到本次冻结范围，真实路径供全部工作流节点读取。
-func Materialize(ctx context.Context, dataDirectory, definitionID, taskID, runID, workingDirectory, reference string, ownerKeyIDs ...string) (string, error) {
+func Materialize(ctx context.Context, dataDirectory, definitionID, taskID, runID, workingDirectory, reference string, ownerKeyIDs ...string) (LocalInput, error) {
 	file, upload, err := open(dataDirectory, definitionID, taskID, reference, true, ownerKeyIDs...)
 	if err != nil {
-		return "", err
+		return LocalInput{}, err
 	}
 	defer file.Close()
 	id, name, _ := referenceParts(reference)
 	root, err := os.OpenRoot(workingDirectory)
 	if err != nil {
-		return "", storageError("workspace", err)
+		return LocalInput{}, storageError("workspace", err)
 	}
 	defer root.Close()
 	directory := filepath.Join(constants.WorkflowInputFileDirectoryName, runID, id)
 	if err := root.MkdirAll(directory, 0700); err != nil {
-		return "", storageError("input_directory", err)
+		return LocalInput{}, storageError("input_directory", err)
 	}
 	tempName := filepath.Join(directory, util.New()+".tmp")
 	temporary, err := root.OpenFile(tempName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
-		return "", storageError("input_create", err)
+		return LocalInput{}, storageError("input_create", err)
 	}
 	defer root.Remove(tempName)
 	digest := sha256.New()
 	size, copyErr := io.Copy(io.MultiWriter(temporary, digest), io.LimitReader(file, constants.WorkflowFileMaximumBytes+1))
 	closeErr := temporary.Close()
 	if copyErr != nil {
-		return "", storageError("input_copy", copyErr)
+		return LocalInput{}, storageError("input_copy", copyErr)
 	}
 	if closeErr != nil {
-		return "", storageError("input_close", closeErr)
+		return LocalInput{}, storageError("input_close", closeErr)
 	}
 	if ctx.Err() != nil {
-		return "", status_error.WorkflowCancelled
+		return LocalInput{}, status_error.WorkflowCancelled
 	}
 	if size != upload.Size || hex.EncodeToString(digest.Sum(nil)) != upload.Digest {
-		return "", status_error.WorkflowFileInvalid
+		return LocalInput{}, status_error.WorkflowFileInvalid
 	}
 	target := filepath.Join(directory, name)
 	if err := root.Rename(tempName, target); err != nil {
-		return "", storageError("input_commit", err)
+		return LocalInput{}, storageError("input_commit", err)
 	}
-	return filepath.Join(workingDirectory, target), nil
+	return LocalInput{Path: filepath.Join(workingDirectory, target), Digest: upload.Digest}, nil
 }
 
 // EnsureScopeDirectory 解析工作范围的真实绝对目录并拒绝不可用位置。

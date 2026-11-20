@@ -33,14 +33,27 @@ import {
   useQueryEvents,
 } from "@/shared/api/use-query-events";
 import { listWorkflowEvents } from "@/shared/api/generated/sdk.gen";
+import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import {
   getWorkflowQueryKey,
+  getWorkflowRunOptions,
+  getWorkflowRunQueryKey,
   getWorkflowSourceQueryKey,
   listWorkflowRevisionsQueryKey,
   listWorkflowRunsQueryKey,
   listWorkflowsQueryKey,
   listWorkflowEventsQueryKey,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
+
+/** 画布与决策恢复共用原运行缓存，局部反馈标记只用于请求。 */
+export function workflowRunDetailsOptions(
+  input: Parameters<typeof getWorkflowRunOptions>[0],
+) {
+  return {
+    ...getWorkflowRunOptions(withLocalErrorSurface(input)),
+    queryKey: getWorkflowRunQueryKey(input),
+  };
+}
 
 function workflowRevisionQueryKeys(id: string) {
   const path = { id };

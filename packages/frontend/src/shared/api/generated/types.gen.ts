@@ -469,6 +469,10 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberInput = {
  */
 export type GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail = {
     /**
+     * 关联工作流尚未结算
+     */
+    activeWorkflows?: boolean;
+    /**
      * 已交付委派
      */
     delegations?: Array<GithubComJieWaZiNeuxBotServerApisChannelsChannelDelegation>;
@@ -556,7 +560,11 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput = {
     /**
      * 消息正文
      */
-    text: string;
+    text?: string;
+    /**
+     * 所选工作流
+     */
+    workflowId?: string;
 };
 
 /**
@@ -736,6 +744,87 @@ export type GithubComJieWaZiNeuxBotServerApisChatReadingMarkChatUnreadRequest = 
      * ObservedUnreadGeneration 是客户端观察到的手动未读代次。
      */
     observedUnreadGeneration?: number;
+};
+
+/**
+ * ChatWorkflowRun 是原消息链接使用的运行摘要。
+ */
+export type GithubComJieWaZiNeuxBotServerApisChatsChatWorkflowRun = {
+    /**
+     * 待处理请求
+     */
+    activeRequests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesControllersWorkflowChatRequest>;
+    /**
+     * 历史请求
+     */
+    answeredRequests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesControllersWorkflowChatRequest>;
+    /**
+     * 运行结束时间
+     */
+    completedAt?: number;
+    /**
+     * 接纳时间
+     */
+    createdAt?: number;
+    /**
+     * 工作流标识
+     */
+    definitionId?: string;
+    /**
+     * 成果交付错误
+     */
+    deliveryError?: string;
+    /**
+     * 发起回合
+     */
+    executionId?: string;
+    /**
+     * 运行标识
+     */
+    id?: string;
+    /**
+     * 发起消息
+     */
+    inputMessageId?: string;
+    /**
+     * 调用时名称
+     */
+    name?: string;
+    /**
+     * 历史已移除
+     */
+    removed?: boolean;
+    /**
+     * 执行版本
+     */
+    revisionId?: string;
+    /**
+     * 原始快照错误
+     */
+    snapshotError?: string;
+    /**
+     * 重试来源
+     */
+    sourceRunId?: string;
+    /**
+     * 工作台发起
+     */
+    sourceWorkbench?: boolean;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowRunStatus & unknown;
+    /**
+     * 总结补写时间
+     */
+    summaryFinishedAt?: number;
+};
+
+/**
+ * ChatWorkflowRunsResponse 保存可见回合的运行记录。
+ */
+export type GithubComJieWaZiNeuxBotServerApisChatsChatWorkflowRunsResponse = {
+    /**
+     * 运行列表
+     */
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisChatsChatWorkflowRun>;
 };
 
 export type GithubComJieWaZiNeuxBotServerApisChatsCreateChatRequest = GithubComJieWaZiNeuxBotServerApisChatsMessageRequest & {
@@ -922,7 +1011,11 @@ export type GithubComJieWaZiNeuxBotServerApisChatsMessageRequest = {
     /**
      * 消息正文
      */
-    text: string;
+    text?: string;
+    /**
+     * 所选工作流
+     */
+    workflowId?: string;
 };
 
 /**
@@ -949,6 +1042,16 @@ export type GithubComJieWaZiNeuxBotServerApisChatsResolveElicitationRequest = {
      * 是否拒绝本次输入
      */
     declined?: boolean;
+};
+
+/**
+ * 工作流补交请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisChatsRetryChatWorkflowDeliveryRequest = {
+    /**
+     * 补写总结
+     */
+    summary?: boolean;
 };
 
 export type GithubComJieWaZiNeuxBotServerApisChatsSendMessageRequest = GithubComJieWaZiNeuxBotServerApisChatsMessageRequest & {
@@ -6291,6 +6394,10 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsRestoreWorkflowRevisionReq
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsRetryRunCommand = {
     /**
+     * 来源聊天
+     */
+    chatId?: string;
+    /**
      * 运行版本
      */
     expectedVersion?: number;
@@ -7544,6 +7651,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus = 'cancelled
  * * `execution.canceled` - ChatEventTypeExecutionCanceled 表示一次执行已经被用户或进程关闭取消。
  * * `execution.completed` - ChatEventTypeExecutionCompleted 表示一次执行已经成功结束。
  * * `execution.created` - ChatEventTypeExecutionCreated 表示一次执行已经建立。
+ * * `execution.delivery` - ChatEventTypeExecutionDelivery 附上已确认的领域产出或补写摘要，原执行结果由原生终态保有。
  * * `execution.failed` - ChatEventTypeExecutionFailed 表示一次执行因错误结束。
  * * `execution.started` - ChatEventTypeExecutionStarted 表示一次执行已经启动 Runtime。
  * * `message.inherited` - ChatEventTypeMessageInherited 表示分叉复制的历史展示快照，不创建新的 Execution。
@@ -7553,7 +7661,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus = 'cancelled
  * * `workspace.changes` - ChatEventTypeFileChanges 表示独立工作区采集结果及其不可变内容已经提交。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.retention_protection_updated' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.failed' | 'execution.started' | 'message.inherited' | 'message.user_created' | 'runtime.event' | 'tool.message' | 'workspace.changes';
+export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.retention_protection_updated' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.delivery' | 'execution.failed' | 'execution.started' | 'message.inherited' | 'message.user_created' | 'runtime.event' | 'tool.message' | 'workspace.changes';
 
 /**
  * >
@@ -8386,6 +8494,10 @@ export type GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference
      */
     name?: string;
     /**
+     * Partial 标记失败或停止时仍然有效的部分成果。
+     */
+    partial?: boolean;
+    /**
      * Path 是相对 Chat 工作目录的稳定路径。
      */
     path?: string;
@@ -8637,6 +8749,7 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      * UpdatedAt 是消息最近收到持久化事件时的 Unix 毫秒时间。
      */
     updatedAt?: number;
+    workflow?: GithubComJieWaZiNeuxBotServerInternalWorkinputWorkflowReference & unknown;
 };
 
 /**
@@ -10279,6 +10392,24 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkinputCodeReference = {
 };
 
 /**
+ * 工作流引用
+ */
+export type GithubComJieWaZiNeuxBotServerInternalWorkinputWorkflowReference = {
+    /**
+     * 工作流标识
+     */
+    id?: string;
+    /**
+     * 工作流名称
+     */
+    name?: string;
+    /**
+     * 工作流版本
+     */
+    revisionId?: string;
+};
+
+/**
  * ChangeEvent 表示一个资源观察订阅的状态或变化。
  */
 export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesChangeEvent = {
@@ -10595,6 +10726,38 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesControllersAutomaticTaskCou
      * Total 是伙伴拥有的全部任务数。
      */
     total?: number;
+};
+
+/**
+ * WorkflowChatRequest 保留实际节点的请求身份，聊天和画布提交到同一入口。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesControllersWorkflowChatRequest = {
+    /**
+     * ChatID 指向 Worker 对话。
+     */
+    chatId?: string;
+    /**
+     * DefinitionID 是实际运行的定义。
+     */
+    definitionId?: string;
+    human?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowHumanRequest & unknown;
+    /**
+     * InstanceID 是当前节点实例。
+     */
+    instanceId?: string;
+    /**
+     * Kind 区分业务问题、宿主许可及 Worker 的两类交互。
+     */
+    kind?: string;
+    operation?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequest & unknown;
+    /**
+     * RequestID 是原请求身份。
+     */
+    requestId?: string;
+    /**
+     * RunID 是实际提出问题或许可的运行。
+     */
+    runId?: string;
 };
 
 /**
@@ -11076,7 +11239,7 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelTask = {
      */
     assigneeWakerId?: string;
     /**
-     * CancelRequestedAt 是 CLI 持久接纳停止当前尝试的时间。
+     * CancelRequestedAt 是持久接纳停止当前尝试的时间。
      */
     cancelRequestedAt?: number;
     /**
@@ -15713,6 +15876,7 @@ export type ReadErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -15821,6 +15985,7 @@ export type ReadErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -16083,6 +16248,7 @@ export type CommandErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -16191,6 +16357,7 @@ export type CommandErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -16723,6 +16890,7 @@ export type StartAiAccountLoginErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -16831,6 +16999,7 @@ export type StartAiAccountLoginErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -17102,6 +17271,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -17210,6 +17380,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -17576,6 +17747,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -17684,6 +17856,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -18037,6 +18210,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -18145,6 +18319,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -18412,6 +18587,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -18520,6 +18696,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -18914,6 +19091,29 @@ export type CreateChannelThreadResponses = {
 };
 
 export type CreateChannelThreadResponse = CreateChannelThreadResponses[keyof CreateChannelThreadResponses];
+
+export type StopFirstChannelWorkData = {
+    body?: never;
+    path: {
+        /**
+         * 团队标识
+         */
+        channelId: string;
+    };
+    query: {
+        /**
+         * 首次发送标识
+         */
+        clientRequestId: string;
+    };
+    url: '/api/v1/channels/{channelId}/threads/first-send/stop';
+};
+
+export type StopFirstChannelWorkResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type StopFirstChannelWorkResponse = StopFirstChannelWorkResponses[keyof StopFirstChannelWorkResponses];
 
 export type DeleteChannelThreadData = {
     body?: never;
@@ -19379,7 +19579,12 @@ export type StopChannelWorkData = {
          */
         threadId: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * 在途输入标识
+         */
+        submissionId?: string;
+    };
     url: '/api/v1/channels/{channelId}/threads/{threadId}/work/stop';
 };
 
@@ -19449,6 +19654,45 @@ export type CreateChatResponses = {
 };
 
 export type CreateChatResponse = CreateChatResponses[keyof CreateChatResponses];
+
+export type CancelFirstChatExecutionData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * 首次发送标识
+         */
+        clientRequestId: string;
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    url: '/api/v1/chats/first-send/cancel';
+};
+
+export type CancelFirstChatExecutionErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type CancelFirstChatExecutionError = CancelFirstChatExecutionErrors[keyof CancelFirstChatExecutionErrors];
+
+export type CancelFirstChatExecutionResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type CancelFirstChatExecutionResponse = CancelFirstChatExecutionResponses[keyof CancelFirstChatExecutionResponses];
 
 export type DeleteChatData = {
     body?: never;
@@ -19582,7 +19826,16 @@ export type CancelChatExecutionData = {
          */
         chatId: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * 执行标识
+         */
+        executionId?: string;
+        /**
+         * 提交标识
+         */
+        submissionId?: string;
+    };
     url: '/api/v1/chats/{chatId}/cancel';
 };
 
@@ -19948,6 +20201,410 @@ export type MarkChatUnreadResponses = {
 };
 
 export type MarkChatUnreadResponse = MarkChatUnreadResponses[keyof MarkChatUnreadResponses];
+
+export type ListChatWorkflowRunsData = {
+    body?: never;
+    path: {
+        /**
+         * 对话标识
+         */
+        chatId: string;
+    };
+    query: {
+        /**
+         * 逗号分隔的回合标识
+         */
+        executionIds: string;
+    };
+    url: '/api/v1/chats/{chatId}/workflow-runs';
+};
+
+export type ListChatWorkflowRunsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisChatsChatWorkflowRunsResponse;
+};
+
+export type ListChatWorkflowRunsResponse = ListChatWorkflowRunsResponses[keyof ListChatWorkflowRunsResponses];
+
+export type RetryChatWorkflowDeliveryData = {
+    body: GithubComJieWaZiNeuxBotServerApisChatsRetryChatWorkflowDeliveryRequest & unknown;
+    path: {
+        /**
+         * 对话标识
+         */
+        chatId: string;
+        /**
+         * 运行标识
+         */
+        runId: string;
+    };
+    query?: never;
+    url: '/api/v1/chats/{chatId}/workflow-runs/{runId}/delivery';
+};
+
+export type RetryChatWorkflowDeliveryErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[RuntimeInstallationFailed][50200007301]`
+     *
+     */
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type RetryChatWorkflowDeliveryError = RetryChatWorkflowDeliveryErrors[keyof RetryChatWorkflowDeliveryErrors];
+
+export type RetryChatWorkflowDeliveryResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type RetryChatWorkflowDeliveryResponse = RetryChatWorkflowDeliveryResponses[keyof RetryChatWorkflowDeliveryResponses];
 
 export type ListLibraryConnectorsData = {
     body?: never;
@@ -20368,6 +21025,7 @@ export type StreamEventsErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -20476,6 +21134,7 @@ export type StreamEventsErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -21462,6 +22121,7 @@ export type UpdateMcpServiceErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -21570,6 +22230,7 @@ export type UpdateMcpServiceErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -21931,6 +22592,7 @@ export type UpdateApiServiceErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -22039,6 +22701,7 @@ export type UpdateApiServiceErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -30722,6 +31385,7 @@ export type ListPluginsErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -30830,6 +31494,7 @@ export type ListPluginsErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -31113,6 +31778,7 @@ export type BrowsePluginsErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -31221,6 +31887,7 @@ export type BrowsePluginsErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -31483,6 +32150,7 @@ export type RefreshPluginCatalogErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -31591,6 +32259,7 @@ export type RefreshPluginCatalogErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -31863,6 +32532,7 @@ export type GetCatalogPluginErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -31971,6 +32641,7 @@ export type GetCatalogPluginErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -32251,6 +32922,7 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -32359,6 +33031,7 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -32626,6 +33299,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -32734,6 +33408,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -33014,6 +33689,7 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -33122,6 +33798,7 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -33406,6 +34083,7 @@ export type GetCatalogPluginSkillErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -33514,6 +34192,7 @@ export type GetCatalogPluginSkillErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -33776,6 +34455,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -33884,6 +34564,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -34250,6 +34931,7 @@ export type GetPluginErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -34358,6 +35040,7 @@ export type GetPluginErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -34719,6 +35402,7 @@ export type StartPluginAuthorizationErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -34827,6 +35511,7 @@ export type StartPluginAuthorizationErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -35405,6 +36090,7 @@ export type GetPluginConfigurationErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -35513,6 +36199,7 @@ export type GetPluginConfigurationErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -35999,6 +36686,7 @@ export type InstallPluginErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -36107,6 +36795,7 @@ export type InstallPluginErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -36517,6 +37206,7 @@ export type UpdatePluginInstallationsErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -36625,6 +37315,7 @@ export type UpdatePluginInstallationsErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -38991,6 +39682,7 @@ export type CreateWakerErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -39099,6 +39791,7 @@ export type CreateWakerErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -39497,6 +40190,7 @@ export type ListAutomaticTasksErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -39605,6 +40299,7 @@ export type ListAutomaticTasksErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -39939,6 +40634,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -40047,6 +40743,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -40347,6 +41044,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -40455,6 +41153,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -40726,6 +41425,7 @@ export type GetAutomaticTaskErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -40834,6 +41534,7 @@ export type GetAutomaticTaskErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -41256,6 +41957,7 @@ export type ListAutomaticRunsErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -41364,6 +42066,7 @@ export type ListAutomaticRunsErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -41635,6 +42338,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -41743,6 +42447,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -42533,6 +43238,7 @@ export type StartWakerOnboardingErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -42641,6 +43347,7 @@ export type StartWakerOnboardingErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -42939,6 +43646,7 @@ export type ListWakerPluginsErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -43047,6 +43755,7 @@ export type ListWakerPluginsErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -44519,6 +45228,7 @@ export type CreateWorkflowErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -44627,6 +45337,7 @@ export type CreateWorkflowErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -44907,6 +45618,7 @@ export type DeleteWorkflowErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -45015,6 +45727,7 @@ export type DeleteWorkflowErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -45305,6 +46018,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -45413,6 +46127,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -45709,6 +46424,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -45817,6 +46533,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -46084,6 +46801,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -46192,6 +46910,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -46547,6 +47266,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -46655,6 +47375,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -46953,6 +47674,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -47061,6 +47783,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -47359,6 +48082,7 @@ export type StartWorkflowRunErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -47467,6 +48191,7 @@ export type StartWorkflowRunErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -47738,6 +48463,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -47846,6 +48572,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -48014,6 +48741,7 @@ export type GetWorkflowRunErrors = {
      * >
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
      * * `[ManagedWorkspaceError][50000000033]`
+     * * `[WorkflowFileStorageError][50000003005]`
      * * `[WorkflowStateInvalid][50000003004]`
      *
      */
@@ -48227,6 +48955,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -48335,6 +49064,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -48610,6 +49340,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -48718,6 +49449,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -48993,6 +49725,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -49101,6 +49834,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -49376,6 +50110,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -49484,6 +50219,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -49755,6 +50491,7 @@ export type RetryWorkflowRunErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -49863,6 +50600,7 @@ export type RetryWorkflowRunErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -50204,6 +50942,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[AutomaticTaskInputChanged][40900003005]`
      * * `[AutomaticTaskRequestConflict][40900000035]`
      * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[BuiltInSkillCannotUninstall][40900000009]`
@@ -50312,6 +51051,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[AutomaticTaskAPIUnavailable][50000001003]`
      * * `[AutomaticTaskServiceInvalid][50000001001]`
      * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
      * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
      * * `[ChannelToolDescriptorInvalid][50000002002]`
      * * `[ChatDirectoryOwnershipInvalid][50000000007]`
@@ -50534,6 +51274,7 @@ export type ValidateWorkflowSourceData = {
 export type ValidateWorkflowSourceErrors = {
     /**
      * >
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      *

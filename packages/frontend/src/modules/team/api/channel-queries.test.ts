@@ -30,6 +30,100 @@ beforeAll(() => {
 afterAll(() => server.close());
 
 describe("team timeline query ownership", () => {
+  it("负责人窗口外的工作流交付只推进游标，并在旧页的原答复上呈现", async () => {
+    let olderReads = 0;
+    let releaseOld!: () => void;
+    const reply = {
+      id: "earlier",
+      role: "assistant" as const,
+      status: "completed" as const,
+      createdSequence: 3,
+      revision: 12,
+      content: "补交结果",
+    };
+    server.use(
+      http.get(
+        "http://127.0.0.1:19877/api/v1/channels/channel/threads/delivery/timeline",
+        async ({ request }) => {
+          if (!new URL(request.url).searchParams.has("cursor")) {
+            return HttpResponse.json({
+              resources: [
+                {
+                  chatId: "lead",
+                  coordinator: true,
+                  message: {
+                    id: "latest",
+                    role: "assistant",
+                    createdSequence: 8,
+                  },
+                },
+              ],
+              hasMore: true,
+              nextCursor: "older",
+              leadChatLatestSequence: 10,
+            });
+          }
+          olderReads++;
+          if (olderReads === 1)
+            await new Promise<void>((resolve) => {
+              releaseOld = resolve;
+            });
+          return HttpResponse.json({
+            resources: [
+              {
+                chatId: "lead",
+                coordinator: true,
+                message:
+                  olderReads === 1
+                    ? { ...reply, revision: 7, content: "尚未交付" }
+                    : reply,
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const observer = new InfiniteQueryObserver(
+      queryClient,
+      teamTimelineInfiniteOptions("channel", "delivery"),
+    );
+    const stop = observer.subscribe(() => {});
+    try {
+      await observer.refetch();
+      const older = observer.fetchNextPage();
+      await waitFor(() => expect(olderReads).toBe(1));
+      expect(
+        commitTeamTimelineEvents(
+          queryClient,
+          "channel",
+          "delivery",
+          "lead",
+          "waker",
+          [{ sequence: 12, type: "execution.delivery", message: reply }],
+        ),
+      ).toBe(12);
+      expect(observer.getCurrentResult().data?.pages[0]).toMatchObject({
+        leadChatLatestSequence: 12,
+        resources: [{ message: { id: "latest" } }],
+      });
+      releaseOld();
+      await older;
+      expect(
+        observer.getCurrentResult().data?.pages[1]?.resources,
+      ).toMatchObject([{ message: reply }]);
+      expect(olderReads).toBe(2);
+    } finally {
+      releaseOld?.();
+      stop();
+      queryClient.clear();
+      server.resetHandlers();
+    }
+  });
+
   it("真实线程导航key失效不重读已加载的时间线页", async () => {
     const reads: string[] = [];
     server.use(
@@ -173,7 +267,7 @@ it("主Chat连续终态只提交原时间线，保留旧页、待投递输入与
       "thread",
       "lead",
       "lead-waker",
-      [{ sequence: 11, message: { id: "gap", role: "assistant" } }],
+      [{ sequence: Number.NaN, message: { id: "invalid", role: "assistant" } }],
     ),
   ).toBeUndefined();
   expect(queryClient.getQueryData(key)).toBe(data);
@@ -833,7 +927,7 @@ it.each(["recovery", "pending"] as const)(
   },
 );
 
-it("断线超过50条导致新头部完全越过旧窗口时，只补缺口到原已加载区间", async () => {
+it("断线恢复补上头部缺口并刷新已加载的旧窗口", async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -874,7 +968,18 @@ it("断线超过50条导致新头部完全越过旧窗口时，只补缺口到�
         const newest = cursor ? Number(cursor.replace("before-", "")) - 1 : 225;
         return HttpResponse.json({
           leadChatLatestSequence: cursor ? undefined : 225,
-          resources: range(Math.max(1, newest - 49), newest),
+          resources: range(Math.max(1, newest - 49), newest).map((item) =>
+            item.message.id === "message-70"
+              ? {
+                  ...item,
+                  message: {
+                    ...item.message,
+                    content: "补交结果",
+                    revision: 224,
+                  },
+                }
+              : item,
+          ),
           hasMore: newest > 50,
           nextCursor: newest > 50 ? `before-${newest - 49}` : undefined,
         });
@@ -895,7 +1000,15 @@ it("断线超过50条导致新头部完全越过旧窗口时，只补缺口到�
       ),
     ).toEqual(new Set(range(51, 225).map((item) => item.message.id)));
     expect(data?.pages[0]?.nextCursor).toBe("before-101");
-    expect(reads).toEqual(["", "before-176"]);
+    expect(
+      data?.pages[1]?.resources?.find(
+        (item) => item.message?.id === "message-70",
+      )?.message,
+    ).toMatchObject({
+      content: "补交结果",
+      revision: 224,
+    });
+    expect(reads).toEqual(["", "before-176", "before-101"]);
     const observer = new InfiniteQueryObserver(
       queryClient,
       teamTimelineInfiniteOptions("channel", "thread"),
@@ -909,7 +1022,7 @@ it("断线超过50条导致新头部完全越过旧窗口时，只补缺口到�
           .map((item) => item.message?.id),
       ),
     ).toEqual(new Set(range(1, 225).map((item) => item.message.id)));
-    expect(reads).toEqual(["", "before-176", "before-51"]);
+    expect(reads).toEqual(["", "before-176", "before-101", "before-51"]);
   } finally {
     queryClient.clear();
     server.resetHandlers();

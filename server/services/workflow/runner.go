@@ -25,6 +25,16 @@ func (s *Service) Tick(ctx context.Context, id string) error {
 // tick 将本次已经核验的效果和许可交还调度者，不在事务后重复读取完整聚合。
 func (s *Service) tick(ctx context.Context, id string) (controllers.WorkflowRunState, error) {
 	var confirmed controllers.WorkflowRunState
+	err := s.withChatOutputSnapshots(ctx, &chatOutputBatch{}, func(batch *chatOutputBatch) error {
+		var err error
+		confirmed, err = s.tickCheckpoint(ctx, id, batch)
+		return err
+	})
+	return confirmed, err
+}
+
+func (s *Service) tickCheckpoint(ctx context.Context, id string, batch *chatOutputBatch) (controllers.WorkflowRunState, error) {
+	var confirmed controllers.WorkflowRunState
 	s.state.Commands.Lock()
 	defer s.state.Commands.Unlock()
 	err := s.transactions.Transaction(ctx, func(ctx context.Context) error {
@@ -339,6 +349,11 @@ func (s *Service) tick(ctx context.Context, id string) (controllers.WorkflowRunS
 		encoded, _ := json.Marshal(slots)
 		if len(encoded) > constants.WorkflowSlotsLimitBytes {
 			return s.abortRunState(ctx, state, status_error.WorkflowBudgetExceeded)
+		}
+		if keepsFinalChatFiles(state.Run) && state.Run.Status == constants.WorkflowRunStatusSucceeded && len(revision.Manifest.Meta.OutputSchema) > 0 {
+			if err := batch.attach(&state.Run, "", workflowdsl.FileValues(revision.Manifest.Meta.OutputSchema, state.Run.Result)); err != nil {
+				return err
+			}
 		}
 		return s.state.CommitRun(ctx, state)
 	})

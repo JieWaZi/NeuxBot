@@ -44,7 +44,7 @@ func (o *ListWorkflows) Output(ctx *gin.Context) (interface{}, error) {
 	} else if o.Category != "" {
 		category = &o.Category
 	}
-	items, err := global.WorkflowControllerManager.ListDefinitions(ctx, o.Search, o.Before, o.BeforeID, o.Limit, category)
+	items, err := global.WorkflowControllerManager.ListDefinitions(ctx, o.Search, o.Before, o.BeforeID, o.Limit, 0, category)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -55,15 +56,18 @@ func (s *service) createThread(
 		input.Input.Actor = string(constants.ChannelMessageActorUser)
 	}
 	if input.ChannelID == "" || input.ClientRequestID == "" ||
-		strings.TrimSpace(input.Input.Content) == "" ||
+		(strings.TrimSpace(input.Input.Content) == "" && input.Input.Workflow == nil) ||
+		(input.Input.Workflow != nil && input.MentionWakerID != "") ||
 		(input.ProjectID != "" && input.WorkingDirectory != "") {
 		return ThreadResult{}, status_error.BadRequest
 	}
-	locked, release, lockErr := teamwork.Acquire(ctx, input.ChannelID)
+	inputContext := ctx
+	locked, releaseTeam, lockErr := teamwork.Acquire(ctx, input.ChannelID)
 	if lockErr != nil {
 		return ThreadResult{}, lockErr
 	}
 	ctx = locked
+	release := sync.OnceFunc(releaseTeam)
 	defer release()
 	normalizedConfigs, err := normalizeMemberExecutionConfigs(input.MemberConfigs)
 	if err != nil {
@@ -87,8 +91,27 @@ func (s *service) createThread(
 	}
 	if exists {
 		result, replayed, err := s.replayCreateThread(ctx, existing, requestIdentity)
+		if err == nil && replayed && existing.ReadyAt == nil {
+			release()
+			if reconcileErr := s.ReconcileThread(inputContext, result.Thread.ID); reconcileErr != nil {
+				logx.Warnf("reconcile recovered channel thread failed: thread_id=%s error=%v", result.Thread.ID, reconcileErr)
+			}
+			result.Tasks, err = s.tasks.ListByThread(inputContext, result.Thread.ID)
+		}
 		if err != nil || replayed {
 			return result, err
+		}
+	}
+	if input.Input.SubmissionID != "" && s.executions.IsSubmissionStopped(initialLeadChatID(input.ChannelID, requestIdentity), input.Input.SubmissionID) {
+		return ThreadResult{}, status_error.OperationCanceled
+	}
+	if input.Input.Workflow != nil {
+		if s.freezeWorkflowSelection == nil {
+			return ThreadResult{}, status_error.WorkflowCapabilityUnsupported
+		}
+		input.Input.Workflow, err = s.freezeWorkflowSelection(ctx, input.Input.Workflow)
+		if err != nil {
+			return ThreadResult{}, err
 		}
 	}
 	channel, err := s.channels.Get(ctx, input.ChannelID)
@@ -152,7 +175,11 @@ func (s *service) createThread(
 		if getErr != nil {
 			return ThreadResult{}, getErr
 		}
+		isLead := member.WakerID == channel.LeadWakerID
 		chatID := util.New()
+		if isLead {
+			chatID = initialLeadChatID(channel.ID, requestIdentity)
+		}
 		plannedChatIDs = append(plannedChatIDs, chatID)
 		preparedMembers = append(preparedMembers, execution.PrepareChatMember{
 			ChatID:          chatID,
@@ -164,7 +191,6 @@ func (s *service) createThread(
 			Fast:            member.Fast,
 			PermissionLevel: member.PermissionLevel,
 		})
-		isLead := member.WakerID == channel.LeadWakerID
 		members = append(members, models.ChannelThreadMember{
 			ThreadID:        threadID,
 			WakerID:         member.WakerID,
@@ -193,12 +219,16 @@ func (s *service) createThread(
 	if leadChatID == "" || leadConfig.WakerID == "" {
 		return ThreadResult{}, status_error.ChannelLeadInvalid
 	}
+	title := input.Input.Content
+	if strings.TrimSpace(title) == "" && input.Input.Workflow != nil {
+		title = input.Input.Workflow.Name
+	}
 	thread := models.ChannelThread{AutomaticRunID: input.AutomaticRunID,
 		ID:                           threadID,
 		ChannelID:                    channel.ID,
 		ClientRequestID:              &requestIdentity.ID,
 		ClientRequestHash:            requestIdentity.Hash,
-		Title:                        shortSubject(input.Input.Content),
+		Title:                        shortSubject(title),
 		LeadWakerID:                  channel.LeadWakerID,
 		LeadChatID:                   leadChatID,
 		ProjectID:                    input.ProjectID,
@@ -273,7 +303,7 @@ func (s *service) createThread(
 			ProjectID:        input.ProjectID,
 			WorkingDirectory: input.WorkingDirectory,
 		},
-		Title:   input.Input.Content,
+		Title:   title,
 		Members: preparedMembers,
 	})
 	if err != nil {
@@ -346,10 +376,10 @@ func (s *service) createThread(
 		leadConfig.PermissionLevel,
 		capability,
 		teamInstruction,
-		input.MentionWakerID == thread.LeadWakerID,
+		input.MentionWakerID == thread.LeadWakerID || input.Input.Workflow != nil,
 	)
 	workOptions.AccountID = leadConfig.AccountID
-	input.Input.ContextInstructions = append(input.Input.ContextInstructions, leaderTurnInstruction(input.MentionWakerID == thread.LeadWakerID))
+	input.Input.ContextInstructions = append(input.Input.ContextInstructions, leaderTurnInstruction(input.MentionWakerID == thread.LeadWakerID || input.Input.Workflow != nil))
 
 	accepted, err := s.executions.Start(ctx, execution.WorkIntent{
 		AutomaticRunID: thread.AutomaticRunID, ExecutionID: leadExecutionID,
@@ -378,6 +408,7 @@ func (s *service) createThread(
 		logx.Warnf("publish accepted channel thread pending: thread_id=%s execution_id=%s error=%v", thread.ID, accepted.Execution.ID, err)
 		return ThreadResult{}, status_error.CreateRequestInProgress
 	}
+	release()
 	s.watchLeadExecution(thread, accepted.Execution.ID, nil, nil, capabilityToken)
 	result := ThreadResult{
 		Thread:        thread,
@@ -386,7 +417,7 @@ func (s *service) createThread(
 		Tasks:         initialTasks,
 	}
 	if initialTask != nil {
-		if _, scheduleErr := s.schedule(ctx, thread.ID); scheduleErr != nil {
+		if _, scheduleErr := s.schedule(inputContext, thread.ID); scheduleErr != nil {
 			if _, eventErr := s.appendEvent(ctx, channel.ID, thread.ID, constants.ChannelEventTaskDispatchDeferred, map[string]interface{}{
 				"taskId": initialTask.ID,
 			}); eventErr != nil {
@@ -413,6 +444,11 @@ func (s *service) createThread(
 		}
 	}
 	return result, nil
+}
+
+// initialLeadChatID 允许首发停止在成员 Chat 持久计划生成之前定位负责人占位。
+func initialLeadChatID(channelID string, request requestidempotency.Identity) string {
+	return request.ResourceID("channel_lead_chat", channelID)
 }
 
 // readInitialThreadExecution 从预分配的负责人 Chat 核验原团队首轮接纳。
@@ -490,9 +526,6 @@ func (s *service) replayCreateThread(
 		thread, err = s.recoverInitializingThread(ctx, thread, true)
 		if err != nil || thread.ID == "" {
 			return ThreadResult{}, false, err
-		}
-		if err := s.ReconcileThread(ctx, thread.ID); err != nil {
-			logx.Warnf("reconcile recovered channel thread failed: thread_id=%s error=%v", thread.ID, err)
 		}
 	}
 	members, err := s.threads.ListMembers(ctx, thread.ID)
@@ -586,14 +619,16 @@ func (s *service) sendMessage(
 	input.ThreadID = strings.TrimSpace(input.ThreadID)
 	input.MentionWakerID = strings.TrimSpace(input.MentionWakerID)
 	input.Input.Actor = string(constants.ChannelMessageActorUser)
-	if input.ThreadID == "" || strings.TrimSpace(input.Input.Content) == "" {
+	if input.ThreadID == "" || (strings.TrimSpace(input.Input.Content) == "" && input.Input.Workflow == nil) || (input.Input.Workflow != nil && input.MentionWakerID != "") {
 		return SendMessageResult{}, status_error.BadRequest
 	}
-	locked, release, lockErr := s.acquireThreadOperation(ctx, input.ThreadID)
+	inputContext := ctx
+	locked, releaseTeam, lockErr := s.acquireThreadOperation(ctx, input.ThreadID)
 	if lockErr != nil {
 		return SendMessageResult{}, lockErr
 	}
 	ctx = locked
+	release := sync.OnceFunc(releaseTeam)
 	defer release()
 	if err := s.freezeBeforeUserInput(ctx, input.ThreadID); err != nil {
 		return SendMessageResult{}, err
@@ -621,7 +656,8 @@ func (s *service) sendMessage(
 			}
 			return SendMessageResult{Task: active}, nil
 		}
-		created, err := s.CreateTask(ctx, CreateTaskInput{
+		release()
+		created, err := s.CreateTask(inputContext, CreateTaskInput{
 			ThreadID:        thread.ID,
 			AssigneeWakerID: input.MentionWakerID,
 			Subject:         shortSubject(input.Input.Content),
@@ -634,10 +670,12 @@ func (s *service) sendMessage(
 		}
 		return SendMessageResult{Task: &created.Task}, nil
 	}
-	queued, err := s.enqueueLeadInput(ctx, thread, input.Input, input.MentionWakerID != "", input.AdmissionBoundary)
+	queued, err := s.enqueueLeadInput(ctx, thread, input.Input, input.MentionWakerID != "" || input.Input.Workflow != nil, input.AdmissionBoundary)
 	if err != nil {
 		return SendMessageResult{}, err
 	}
+	release()
+	ctx = inputContext
 	var accepted *models.Execution
 	if queued.Status == constants.ChannelInputStatusPending {
 		accepted, err = s.dispatchLeadInputs(ctx, thread.ID, &queued)

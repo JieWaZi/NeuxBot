@@ -12,6 +12,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
@@ -47,7 +48,11 @@ func (s *service) enqueueLeadInput(
 			return models.ChannelLeadInput{}, err
 		}
 		if exists {
-			prior, err := requestidempotency.New(previous.Payload.SubmissionID, []any{previous.Payload, previous.DirectExecution})
+			priorInput := previous.Payload
+			if priorInput.Workflow != nil {
+				priorInput.Workflow = workinput.SelectWorkflow(priorInput.Workflow.ID)
+			}
+			prior, err := requestidempotency.New(priorInput.SubmissionID, []any{priorInput, previous.DirectExecution})
 			if err != nil {
 				return previous, err
 			}
@@ -55,6 +60,16 @@ func (s *service) enqueueLeadInput(
 				return previous, err
 			}
 			return previous, nil
+		}
+	}
+	if input.Workflow != nil {
+		if s.freezeWorkflowSelection == nil {
+			return models.ChannelLeadInput{}, status_error.WorkflowCapabilityUnsupported
+		}
+		var err error
+		input.Workflow, err = s.freezeWorkflowSelection(ctx, input.Workflow)
+		if err != nil {
+			return models.ChannelLeadInput{}, err
 		}
 	}
 	now := time.Now().UnixMilli()
@@ -70,6 +85,9 @@ func (s *service) enqueueLeadInput(
 	err := boundary.Commit(ctx, func(commitContext context.Context) error {
 		return s.transaction(commitContext, func(transactionContext context.Context) error {
 			if err := s.ensureThreadWritable(transactionContext, thread); err != nil {
+				return err
+			}
+			if err := s.checkStoppedThreadSubmission(thread, input.SubmissionID); err != nil {
 				return err
 			}
 			if err := s.threads.CreateLeadInput(transactionContext, queued); err != nil {
@@ -94,7 +112,7 @@ func (s *service) drainLeadInputs(
 
 // dispatchLeadInputs 跳过已确认失败的队首，直到接纳下一条输入或遇到需要等待的条件。
 func (s *service) dispatchLeadInputs(ctx context.Context, threadID string, submitted *models.ChannelLeadInput) (*models.Execution, error) {
-	locked, release, lockErr := s.acquireThreadOperation(ctx, threadID)
+	locked, release, lockErr := acquireLeadDispatch(ctx, threadID)
 	if lockErr != nil {
 		return nil, lockErr
 	}
@@ -185,7 +203,7 @@ func (s *service) dispatchLeadInput(ctx context.Context, thread models.ChannelTh
 	workOptions.AccountID = lead.AccountID
 	workInput.ContextInstructions = append(workInput.ContextInstructions, leaderTurnInstruction(queued.DirectExecution))
 
-	accepted, err := s.executions.Start(ctx, execution.WorkIntent{AutomaticRunID: automaticRunID,
+	accepted, err := s.startThreadExecution(ctx, thread, execution.WorkIntent{AutomaticRunID: automaticRunID,
 		ExecutionID: leadExecutionID,
 		Chat:        execution.ChatTarget{ChatID: thread.LeadChatID},
 		Input:       workInput,
@@ -258,6 +276,9 @@ var leadInputRejections = [...]status_error.StatusError{
 	status_error.RuntimeConfigurationInvalid,
 	status_error.RuntimePolicyUnsupported,
 	status_error.RuntimeUnavailable,
+	status_error.WorkflowCapabilityUnsupported,
+	status_error.WorkflowNotFound,
+	status_error.WorkflowStateConflict,
 }
 
 func rejectedLeadInput(err error) bool {

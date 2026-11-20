@@ -22,6 +22,7 @@ import (
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -200,7 +201,11 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime workflowFixtu
 	}
 	providers := agentapi.NewProviderRuntime(providerOptions)
 	threads := agentapi.NewThreadLifecycle(providers, conversations)
+	var fixture *workflowFixture
 	core, err := execution.New(execution.Config{
+		BindLocalWorkflowTurn: func(ctx context.Context, chat models.Chat, executionID string, selected *workinput.WorkflowReference, creationSessionID string) (execution.WorkflowTurnBinding, error) {
+			return fixture.BindLocalWorkflowTurn(ctx, chat, executionID, selected, creationSessionID)
+		},
 		Threads: threads, Accounts: accounts, ResolveAccount: resolve, RuntimeSummaries: catalog.Runtimes(),
 		Journal: chats, DormantChats: chats,
 		Agent: registry, AgentEndpoint: endpoint.URL + constants.AgentCLIPath, AgentBinary: fixtureCLIBinary, Events: hub,
@@ -218,7 +223,8 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime workflowFixtu
 	if len(domain) != 0 && domain[0] {
 		worker = domainWorkflowWorker{CoreWorkerAdapter: workflow.CoreWorkerAdapter{Executions: core, Chats: chats}, model: runtime}
 	}
-	s := workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Events: hub, Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), CreationSessions: controllers.NewWorkflowCreationController(database.DB), Transactions: transactions, Executions: core, Chats: chats, Worker: worker, Wakers: wakers, Projects: projects, DataDirectory: directory})
+	s := workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Events: hub, Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Transactions: transactions, Executions: core, Chats: chats, Worker: worker, Wakers: wakers, Projects: projects, DataDirectory: directory})
+	fixture = s
 	if err := s.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -374,12 +380,12 @@ func TestF1DomainWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T) {
 	}
 }
 
-func TestWorkerScopedConnectorPolicyRejectsBeforeNativeDispatch(t *testing.T) {
+func TestWorkerInheritedConnectorPolicyKeepsDispatchAndResults(t *testing.T) {
 	directory := t.TempDir()
 	runtime := &fixtureRuntime{calls: map[string]int{}}
-	s, _ := openCoreWorkflowFixture(t, directory, runtime)
+	s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{}, true)
 	ctx := context.Background()
-	source := `export const meta={sdk:'bot.workflow',title:'内部能力',description:'系统结果提交不属于业务工具白名单',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('整理',{id:'facts',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object'},toolPolicy:{connectors:{mode:'allowlist',connectorIds:[]}}});`
+	source := `export const meta={sdk:'bot.workflow',title:'内部能力',description:'通过原生执行交付工作流结果',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('整理',{id:'facts',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object'},toolPolicy:{connectors:{mode:'inherit'},nativeTools:{mode:'inherit'}}});`
 	definition := savedTestWorkflow(t, s, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "system-reference", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture", PermissionLevel: constants.PermissionLevelFullAccess}})
 	if err != nil {
@@ -388,16 +394,12 @@ func TestWorkerScopedConnectorPolicyRejectsBeforeNativeDispatch(t *testing.T) {
 	state := awaitFixtureState(t, s, run.ID, func(state controllers.WorkflowRunState) bool {
 		return workflowstate.TerminalRun(state.Run.Status)
 	})
-	if len(state.Effects) != 1 || state.Effects[0].Failure == nil || state.Run.Status != constants.WorkflowRunStatusFailed {
-		t.Fatalf("scoped worker escaped resource admission: %+v", state.Effects)
-	}
-	failure, _ := state.Effects[0].Failure.Data.(map[string]any)
-	if failure["code"] != status_error.RuntimePolicyUnsupported.Key() || state.Effects[0].Candidate != nil {
-		t.Fatalf("unexpected scope failure: %+v", failure)
+	if len(state.Effects) != 1 || state.Effects[0].Failure != nil || state.Run.Status != constants.WorkflowRunStatusSucceeded || state.Run.Result == nil {
+		t.Fatalf("inherited policy failed dispatch or results: status=%s result=%+v", state.Run.Status, state.Run.Result)
 	}
 	runtime.mutex.Lock()
 	defer runtime.mutex.Unlock()
-	if len(runtime.calls) != 0 {
-		t.Fatal("rejected worker submitted a native prompt")
+	if len(runtime.calls) != 1 || runtime.calls["facts"] != 1 {
+		t.Fatalf("inherited policy did not dispatch the intended worker: %v", runtime.calls)
 	}
 }

@@ -97,6 +97,36 @@ func TestContinuationSubmissionReceiptSurvivesJournalReloadAndRejectsChangedInpu
 	}
 }
 
+func TestCancelSubmissionUsesReceiptAfterNativeTurnFinishes(t *testing.T) {
+	ctx := t.Context()
+	manager := newMessageTestService(t, t.TempDir())
+	accepted, err := manager.execution.Start(ctx, WorkIntent{
+		ClientRequestID: "stopped-after-native",
+		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}},
+		Input:           WorkInput{Actor: "user", Content: "完成回合后停止关联工作"},
+		Options:         WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
+	core := manager.execution.(*service)
+	var stoppedID string
+	core.executions.cancelAssociated = func(_ context.Context, chatID, executionID string) error {
+		if chatID != accepted.Chat.ID {
+			t.Fatalf("stopped chat %q, want %q", chatID, accepted.Chat.ID)
+		}
+		stoppedID = executionID
+		return nil
+	}
+	if err := core.CancelSubmissionAndWait(ctx, accepted.Chat.ID, "stopped-after-native"); err != nil {
+		t.Fatal(err)
+	}
+	if stoppedID != accepted.Execution.ID {
+		t.Fatalf("stopped execution %q, want %q", stoppedID, accepted.Execution.ID)
+	}
+}
+
 func TestSteerRelationSurvivesExecutionAndHistoryReplay(t *testing.T) {
 	manager := newMessageTestService(t, t.TempDir())
 	accepted, err := manager.execution.Start(context.Background(), WorkIntent{

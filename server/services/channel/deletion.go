@@ -33,6 +33,9 @@ func (s *service) DeleteThread(ctx context.Context, channelID string, threadID s
 			map[string]interface{}{"ThreadID": threadID},
 		)
 	}
+	if thread.CancelingAt != nil {
+		return status_error.ChannelHasActiveWork
+	}
 	active, err := s.threads.CountActiveWork(ctx, threadID)
 	if err != nil {
 		return err

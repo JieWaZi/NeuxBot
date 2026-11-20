@@ -18,6 +18,15 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 )
 
+func TestInstallIsAvailableWithoutExecutionContext(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	t.Setenv(constants.AgentCLIContextEnvironment, filepath.Join(t.TempDir(), "missing.json"))
+	code := Execute(t.Context(), []string{"install", "--help"}, IO{Out: &stdout, Err: &stderr})
+	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "botcli install") {
+		t.Fatalf("standalone install help failed: code=%d stdout=%s stderr=%s", code, &stdout, &stderr)
+	}
+}
+
 func TestContextFlagBelongsToMCPServe(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := Execute(t.Context(), []string{"version", "--context", "ignored"}, IO{Out: &stdout, Err: &stderr})

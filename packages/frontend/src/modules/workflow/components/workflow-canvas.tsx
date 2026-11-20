@@ -92,6 +92,7 @@ export function WorkflowCanvas({
   nodeScrollable = true,
   nodeHeading,
   onDismiss,
+  dismissWithinCanvas = false,
   listMode = false,
   nodeCounts,
   onSelectInstance,
@@ -117,6 +118,7 @@ export function WorkflowCanvas({
   nodeScrollable?: boolean;
   nodeHeading?: (node: WorkflowNode) => { title?: string; status?: string };
   onDismiss?: () => void;
+  dismissWithinCanvas?: boolean;
   listMode?: boolean;
   nodeCounts?: WorkflowNodeCount[];
   onSelectInstance?: (instanceId: string) => void;
@@ -624,10 +626,14 @@ export function WorkflowCanvas({
             data-motion={active && selected === node.id ? "popup" : "none"}
             onFocusOutside={(event) => event.preventDefault()}
             onInteractOutside={(event) => {
-              // 导航和局部重试保留浮层，避免关闭回调清空目标路由或未提交输入。
+              // 分栏中的聊天仍可编辑同一题，导航和局部重试也保留当前节点。
               if (
                 event.target instanceof Element &&
-                event.target.closest("a[href], [data-workflow-query-feedback]")
+                ((dismissWithinCanvas &&
+                  !host.current?.contains(event.target)) ||
+                  event.target.closest(
+                    "a[href], [data-workflow-query-feedback]",
+                  ))
               )
                 event.preventDefault();
             }}

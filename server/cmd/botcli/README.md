@@ -6,19 +6,21 @@
 
 ## 开始使用
 
-应用提供系统 [bot 技能](../../../skills/bot/SKILL.md) 的实际可执行文件路径。宿主通过 `BOTCLI_CONTEXT_FILE` 绑定受管 CLI 连接，模型只需调用给定的可执行文件。支持 stdio 的工作流由宿主启动内部 MCP，工具与 CLI 共用能力目录、授权及回执。
+macOS 桌面版和 Linux 本机 Web 版首次启动时安装 `~/.local/bin/botcli`，并为当前用户的 Shell 配置 PATH。Windows 为当前用户安装时注册 `%LOCALAPPDATA%\NeuxBot\bin\botcli.exe`，也会在桌面首次启动时为实际使用者补装。安装后重新打开终端，运行 `botcli --help` 即可看到命令。
+
+伙伴执行可以直接运行 `botcli`。宿主将 Core 当前发布的程序放在该执行的 PATH 首位，并通过 `BOTCLI_CONTEXT_FILE` 绑定连接。Shell 过滤 PATH 时，使用应用指令给出的程序路径。支持 stdio 的工作流由宿主启动内部 MCP，工具与 CLI 共用能力目录、授权及回执。
 
 Codex 的 Shell 过滤掉 `BOTCLI_CONTEXT_FILE` 时，随应用交付的 botcli 根据 Codex 提供的原生线程标识查找同一受管连接。其他原生智能体的显式环境过滤须允许 `BOTCLI_CONTEXT_FILE`。
 
-以下命令在宿主启动的执行环境中运行，路径替换为宿主提供的绝对路径。
+以下命令在宿主启动的执行环境中运行。
 
 ```sh
-"/app/skills/bot/scripts/botcli" capabilities
-"/app/skills/bot/scripts/botcli" describe knowledge.pages.search
-"/app/skills/bot/scripts/botcli" knowledge pages search --library-id library-example --query "部署流程"
+botcli capabilities
+botcli describe knowledge.pages.search
+botcli knowledge pages search --library-id library-example --query "部署流程"
 ```
 
-Windows 使用应用提供的 `botcli.exe` 绝对路径。普通外部终端没有执行上下文时，不能直接获得应用业务能力。开发时可在仓库根目录运行 `go -C server run ./cmd/botcli --help` 查看命令树，但这不签发业务授权。Core 启动器用于定位打包程序的 `BOTCLI_BINARY_PATH` 只属于宿主装配，不再注入模型执行子进程。
+业务命令需要有效的宿主执行授权。应用包内的程序可通过 `botcli install` 重新配置当前用户的终端入口。开发时可在仓库根目录运行 `go -C server run ./cmd/botcli --help`。Core 启动器通过 `BOTCLI_BINARY_PATH` 定位打包程序。
 
 操作标识中的点对应命令路径中的空格，例如 `workflow.runs.get` 对应 `botcli workflow runs get`。短标量可用命令行参数，复杂对象或长正文用 `--input request.json`；`--input -` 从标准输入读取 JSON。同一字段不要同时从文件和命令行提供。
 
@@ -121,6 +123,8 @@ Windows 使用应用提供的 `botcli.exe` 绝对路径。普通外部终端没�
 | `workflow.definitions.list`     | 发现当前执行获授权的工作流定义。                                       | `read`     | `immediate` |
 | `workflow.definitions.describe` | 读取一个定义的版本和输入输出合同。                                     | `read`     | `immediate` |
 | `workflow.runs.start`           | 按明确版本及冻结输入接纳一次运行。                                     | `external` | `accepted`  |
+| `workflow.runs.list`            | 分页读取当前聊天发起的工作流运行。                                     | `read`     | `immediate` |
+| `workflow.runs.repeat`          | 以来源运行冻结的版本和输入接纳重跑或重试。                             | `external` | `accepted`  |
 | `workflow.runs.get`             | 读取原运行、实际请求与业务状态。                                       | `read`     | `immediate` |
 | `workflow.runs.wait`            | 在有界时间内观察原运行，超时不取消执行。                               | `read`     | `immediate` |
 | `workflow.runs.cancel`          | 对获授权运行请求取消，不撤销已经发生的外部效果。                       | `mutation` | `accepted`  |
@@ -177,21 +181,21 @@ Windows 使用应用提供的 `botcli.exe` 绝对路径。普通外部终端没�
 先发现目标和操作，再提交用户要求的工作。以下示例中的 `request.json` 是调用者准备的真实 UTF-8 JSON 文件，字段以对应 `describe` 为准：
 
 ```sh
-"/app/skills/bot/scripts/botcli" describe im.deliveries.create
-"/app/skills/bot/scripts/botcli" im deliveries create --input request.json --request-id delivery-example-01
-"/app/skills/bot/scripts/botcli" receipts get --operation im.deliveries.create --request-id delivery-example-01
+botcli describe im.deliveries.create
+botcli im deliveries create --input request.json --request-id delivery-example-01
+botcli receipts get --operation im.deliveries.create --request-id delivery-example-01
 ```
 
 已知交付身份后，可在最长 60 秒的观察窗口内等待：
 
 ```sh
-"/app/skills/bot/scripts/botcli" im deliveries wait --delivery-id delivery-example --timeout 30s
+botcli im deliveries wait --delivery-id delivery-example --timeout 30s
 ```
 
 已有明确的工作流创作需求时，优先读取所需上下文，避免遍历全部指南：
 
 ```sh
-"/app/skills/bot/scripts/botcli" workflow authoring prepare --primitives functionTask
+botcli workflow authoring prepare --primitives functionTask
 ```
 
 ## 当前边界

@@ -115,10 +115,10 @@ func TestExplicitRetryReportsToCurrentLeadTurnOrigin(t *testing.T) {
 			if _, _, err := sut.mintLeadCapability(ctx, thread, lead.Chat.ActiveExecutionID, true); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := sut.toolChannelTasks(ctx, thread.ID, channeltool.TaskInput{Action: constants.ChannelTaskToolActionList}); err != nil {
+			if _, err := callTeamTask(sut, ctx, thread.ID, channeltool.TaskInput{Action: constants.ChannelTaskToolActionList}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := sut.toolChannelTasks(ctx, thread.ID, channeltool.TaskInput{Action: constants.ChannelTaskToolActionRetry, TaskID: task.ID}); err != nil {
+			if _, err := callTeamTask(sut, ctx, thread.ID, channeltool.TaskInput{Action: constants.ChannelTaskToolActionRetry, TaskID: task.ID}); err != nil {
 				t.Fatal(err)
 			}
 			queued, err := sut.tasks.Get(ctx, task.ID)
@@ -663,7 +663,7 @@ func TestMemberReportUsesMCPContentAndKeepsFinalAsConciseAcknowledgement(t *test
 	if err != nil {
 		t.Fatalf("mint member capability: %v", err)
 	}
-	denied, err := service.toolChannelTasks(
+	denied, err := callTeamTask(service,
 		ctx,
 		channeltool.MemberEndpointKey(threadID, memberID),
 		channeltool.TaskInput{Action: constants.ChannelTaskToolActionList},
@@ -672,7 +672,7 @@ func TestMemberReportUsesMCPContentAndKeepsFinalAsConciseAcknowledgement(t *test
 		t.Fatalf("member task-board access output = %+v, error = %v", denied, err)
 	}
 	detailedReport := "已完成实现与核验；相关测试通过，未发现阻塞问题。"
-	output, err := service.toolChannelTasks(
+	output, err := callTeamTask(service,
 		ctx,
 		channeltool.MemberEndpointKey(threadID, memberID),
 		channeltool.TaskInput{

@@ -49,6 +49,8 @@ type userMessage struct {
 	ConnectorIDs []string
 	// CodeReferences 是用户从工作范围内选择的有序整文件或代码片段引用。
 	CodeReferences []CodeReferenceInput
+	// Workflow 固定用户当前选择，发送幂等单独只使用用户提交的定义标识。
+	Workflow *workinput.WorkflowReference `json:"-"`
 }
 
 // CodeReferenceInput 是跨入口共享的待校验内容引用。
@@ -139,6 +141,10 @@ type pendingMessage struct {
 	admissionBoundary AdmissionBoundary
 	// toolCapabilities 保存上层入口为本次执行签发的短期内部能力。
 	toolCapabilities []ToolCapability
+	// workflowCreationSessionID 是创作页提供的工作流目标和记录归属。
+	workflowCreationSessionID string
+	// localWorkflowTools 表示本轮使用共享本地工作流工具和连接凭据。
+	localWorkflowTools bool
 	// allowedAgentDomains 冻结默认软件能力的领域白名单。
 	allowedAgentDomains *[]string
 	// allowedConnectorIDs 是入口冻结的 MCP 白名单，nil 与空列表具有不同业务含义。
@@ -161,6 +167,11 @@ func normalizePendingMessage(input pendingMessage) pendingMessage {
 	input.parentExecutionID = strings.TrimSpace(input.parentExecutionID)
 	input.message.Actor = strings.TrimSpace(input.message.Actor)
 	input.message.Text = strings.TrimSpace(input.message.Text)
+	if input.message.Workflow != nil {
+		workflow := *input.message.Workflow
+		workflow.ID = strings.TrimSpace(workflow.ID)
+		input.message.Workflow = &workflow
+	}
 	input.message.Attachments = append([]AttachmentInput(nil), input.message.Attachments...)
 	input.toolCapabilities = cloneToolCapabilities(input.toolCapabilities)
 	input.allowedAgentDomains = cloneConnectorAllowlist(input.allowedAgentDomains)
@@ -261,7 +272,8 @@ func (m *service) startMessage(
 	ctx context.Context,
 	request pendingMessage,
 	claimAttachments func([]AttachmentInput) (func(bool), error),
-) (AcceptedExecution, error) {
+	releaseTeamAdmission func(),
+) (_ AcceptedExecution, resultErr error) {
 	if request.requestedAt == 0 {
 		request.requestedAt = nowMillis()
 	}
@@ -273,6 +285,9 @@ func (m *service) startMessage(
 	isNew := request.chatID == ""
 	if request.submissionID != "" {
 		content := []any{request.chatID, request.message, request.runtime, request.parentExecutionID, request.admission, stableToolCapabilities(request.toolCapabilities), request.supplementalInstructions, request.contextInstructions, request.allowedConnectorIDs, request.allowedAgentDomains}
+		if request.message.Workflow != nil {
+			content = append(content, map[string]string{"workflowId": request.message.Workflow.ID})
+		}
 		if request.imReplyLinkID != "" {
 			content = append(content, map[string]string{"imReplyLinkId": request.imReplyLinkID})
 		}
@@ -302,7 +317,7 @@ func (m *service) startMessage(
 		isNew != (request.clientRequestID != "") ||
 		(!isNew && claimAttachments != nil) ||
 		request.message.Actor == "" ||
-		validateMessage(request.message.Text) != nil ||
+		(validateMessage(request.message.Text) != nil && (request.message.Text != "" || request.message.Workflow == nil)) ||
 		request.runtime.RuntimeID == "" ||
 		!constants.SelectablePermissionLevel(request.runtime.PermissionLevel) ||
 		(request.runtime.SessionPolicy != constants.RuntimeSessionPolicyContinue &&
@@ -367,6 +382,46 @@ func (m *service) startMessage(
 			defer func() { releaseAttachments(files != nil && files.committed) }()
 		}
 	}
+	// 一次性生成本轮全部稳定标识，后续 JSONL、SQLite 查询索引和 Runtime 调用共用同一身份。
+	executionID := request.executionID
+	if executionID == "" {
+		executionID = util.New()
+	}
+	userMessageID := util.New()
+	// 现有 Chat 在读取准备状态前取得原操作占位，一次读取即为本次接纳的状态基线。
+	reservationChatID := request.chatID
+	reservationSubmissionID := request.submissionID
+	if isNew {
+		reservationChatID = request.createChatID
+		if reservationSubmissionID == "" {
+			reservationSubmissionID = request.clientRequestID
+		}
+	}
+	executionContext, err := m.executions.reserve(reservationChatID, executionID, reservationSubmissionID)
+	if err != nil {
+		return AcceptedExecution{}, err
+	}
+	ctx, cancelPreparation := context.WithCancel(ctx)
+	stopPreparation := context.AfterFunc(executionContext, cancelPreparation)
+	defer func() {
+		stopPreparation()
+		cancelPreparation()
+	}()
+	releaseReservation := true
+	defer func() {
+		if releaseReservation {
+			m.executions.release(reservationChatID, executionID)
+		}
+	}()
+	defer func() {
+		if executionContext.Err() != nil && reservationSubmissionID != "" &&
+			(errors.Is(resultErr, context.Canceled) || errors.Is(resultErr, status_error.DatabaseOperationCancelled)) &&
+			m.executions.submissionStopped(reservationChatID, reservationSubmissionID) {
+			resultErr = status_error.OperationCanceled
+		}
+	}()
+	// 团队停止通过同一操作门看到这次占位。配置读取和原生准备由执行自身负责取消。
+	releaseTeamAdmission()
 	if m.runtimeEnvironments == nil {
 		return AcceptedExecution{}, status_error.RuntimeUnavailable
 	}
@@ -374,6 +429,9 @@ func (m *service) startMessage(
 		ctx,
 		request.runtime.RuntimeID,
 	)
+	if ctx.Err() != nil {
+		return AcceptedExecution{}, status_error.OperationCanceled
+	}
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
@@ -393,33 +451,6 @@ func (m *service) startMessage(
 		}
 		requiredPermissionLevel = constants.PermissionLevelDefault
 	}
-	// 一次性生成本轮全部稳定标识，后续 JSONL、SQLite 查询索引和 Runtime 调用共用同一身份。
-	executionID := request.executionID
-	if executionID == "" {
-		executionID = util.New()
-	}
-	userMessageID := util.New()
-	// 现有 Chat 在读取准备状态前取得原操作占位，一次读取即为本次接纳的状态基线。
-	reservationChatID := request.chatID
-	if isNew {
-		reservationChatID = request.createChatID
-	}
-	executionContext, err := m.executions.reserve(reservationChatID, executionID)
-	if err != nil {
-		return AcceptedExecution{}, err
-	}
-	ctx, cancelPreparation := context.WithCancel(ctx)
-	stopPreparation := context.AfterFunc(executionContext, cancelPreparation)
-	defer func() {
-		stopPreparation()
-		cancelPreparation()
-	}()
-	releaseReservation := true
-	defer func() {
-		if releaseReservation {
-			m.executions.release(reservationChatID, executionID)
-		}
-	}()
 	if !isNew && request.submissionID != "" {
 		receipt, err := m.journal.ReadSubmission(ctx, request.chatID, request.submissionID)
 		if err != nil {
@@ -445,6 +476,34 @@ func (m *service) startMessage(
 	state, err := m.resolveMessageChat(ctx, request, executionID)
 	if err != nil {
 		return AcceptedExecution{}, err
+	}
+	if request.message.Actor == string(constants.ChannelMessageActorUser) && request.imReplyLinkID == "" {
+		var binding WorkflowTurnBinding
+		var err error
+		if m.bindLocalWorkflowTurn != nil && request.automaticRunID == "" &&
+			(!state.chat.HiddenFromWakerHistory || request.workflowCreationSessionID != "") {
+			binding, err = m.bindLocalWorkflowTurn(ctx, state.chat, executionID, request.message.Workflow, request.workflowCreationSessionID)
+			request.localWorkflowTools = binding.Capability != nil
+		} else if m.bindWorkflowTurn != nil {
+			binding, err = m.bindWorkflowTurn(ctx, state.chat, executionID, request.message.Workflow)
+		} else if request.message.Workflow != nil {
+			err = status_error.WorkflowCapabilityUnsupported
+		}
+		if err != nil {
+			return AcceptedExecution{}, err
+		}
+		request.message.Workflow = binding.Reference
+		if state.isNew && request.message.Text == "" && binding.Reference != nil {
+			state.chat.Title = defaultTitle(binding.Reference.Name)
+		}
+		if binding.Capability != nil {
+			request.toolCapabilities = append(request.toolCapabilities, *binding.Capability)
+		}
+		if binding.Instruction != "" {
+			request.contextInstructions = append(request.contextInstructions, agent.Instruction{Name: "Workflow", Content: binding.Instruction})
+		}
+	} else if request.message.Workflow != nil {
+		return AcceptedExecution{}, status_error.WorkflowCapabilityUnsupported
 	}
 	if !isNew && request.message.Actor == constants.WakerOnboardingActor {
 		if state.chat.HiddenFromWakerHistory || state.chat.ID != requestidempotency.WakerOnboardingChatID(state.chat.WakerID) {
@@ -592,6 +651,9 @@ func createRequestContent(request pendingMessage) []interface{} {
 	}
 	if request.runtime.Fast != nil {
 		content = append(content, map[string]any{"fast": *request.runtime.Fast})
+	}
+	if request.message.Workflow != nil {
+		content = append(content, map[string]string{"workflowId": request.message.Workflow.ID})
 	}
 	if request.runtime.ContextWindow != "" {
 		content = append(content, map[string]any{"contextWindow": request.runtime.ContextWindow})
@@ -1372,6 +1434,7 @@ func startedMessageEvents(
 				Skills:         skills,
 				Connectors:     connectors,
 				CodeReferences: codeReferences,
+				Workflow:       request.message.Workflow,
 			}),
 		},
 		eventlog.AppendInput{
