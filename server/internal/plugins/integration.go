@@ -4,19 +4,21 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient/oauth"
 )
 
-// Authentication 声明包内授权桥接，不复制供应商协议。
+// Authentication 声明包内桥接或由标准 MCP 声明派生的托管授权。
 type Authentication struct {
 	// SkillBindings 精确限定技能可取得的私有环境键和路径键。
 	SkillBindings []SkillAuthenticationBinding `json:"skillBindings,omitempty"`
 	// Strategy 是宿主支持的认证策略。
 	Strategy string `json:"strategy"`
-	// Protocol 是桥接消息版本。
+	// Protocol 是共享的插件授权协议版本。
 	Protocol string `json:"protocol"`
 	// Command 是已安装包内的固定入口。
 	Command string `json:"command,omitempty"`
@@ -32,7 +34,7 @@ type Authentication struct {
 
 // Integration 保存唯一标准包归一后的授权声明。
 type Integration struct {
-	// Authentication 是可选包内授权入口。
+	// Authentication 是可选的插件授权入口。
 	Authentication *Authentication `json:"authentication,omitempty"`
 }
 
@@ -73,6 +75,17 @@ func (p *Package) loadIntegration(root string) error {
 	raw, err := neuxExtensionObject(*p)
 	if err != nil {
 		return err
+	}
+	if p.declaresHostedOAuth() {
+		if !p.validHostedOAuthComposition(raw) {
+			return status_error.PluginCapabilityUnsupported
+		}
+		p.Integration.Authentication = &Authentication{
+			Strategy:        constants.PluginAuthHostedStrategy,
+			Protocol:        constants.PluginAuthProtocol,
+			PreferredAction: constants.PluginAuthOpenURLAction,
+		}
+		return nil
 	}
 	value, exists := raw["authentication"]
 	if !exists {
@@ -134,6 +147,44 @@ func (p *Package) loadIntegration(root string) error {
 		}
 	}
 	return nil
+}
+
+// HostedOAuthServer 返回已经通过当前包契约校验的托管 OAuth MCP 组件。
+func (p Package) HostedOAuthServer() (Server, bool) {
+	auth := p.Integration.Authentication
+	if auth == nil || auth.Strategy != constants.PluginAuthHostedStrategy || ValidateContract(p) != nil {
+		return Server{}, false
+	}
+	return p.Servers[0], true
+}
+
+// ChangesHostedOAuthBinding 判断替换包是否会改变共享托管授权的方式或确切资源。
+func (p Package) ChangesHostedOAuthBinding(next Package) bool {
+	before, wasHosted := p.HostedOAuthServer()
+	after, isHosted := next.HostedOAuthServer()
+	return wasHosted != isHosted || (wasHosted && before.URL != after.URL)
+}
+
+func (p Package) declaresHostedOAuth() bool {
+	return slices.ContainsFunc(p.Servers, func(server Server) bool {
+		return server.Authentication != nil && server.Authentication.Type == constants.PluginMCPOAuthMode
+	})
+}
+
+func (p Package) validHostedOAuthComposition(extension map[string]json.RawMessage) bool {
+	if len(p.Servers) != 1 || len(p.Skills) != 0 || extension["authentication"] != nil || extension["configuration"] != nil {
+		return false
+	}
+	server := p.Servers[0]
+	auth := server.Authentication
+	if server.Key == "" || server.Type != "streamable-http" || auth == nil || auth.Type != constants.PluginMCPOAuthMode ||
+		auth.HeaderScheme != "" || auth.HeaderName != "" || len(server.Headers) != 0 ||
+		server.Command != "" || server.Cwd != "" || len(server.Args) != 0 || len(server.Env) != 0 ||
+		strings.Contains(server.URL, "${") {
+		return false
+	}
+	_, err := oauth.ParseResource(server.URL)
+	return err == nil
 }
 
 func safeRelative(value string) bool {

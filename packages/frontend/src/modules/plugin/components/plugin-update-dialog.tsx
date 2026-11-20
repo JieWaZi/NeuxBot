@@ -343,7 +343,9 @@ function PreparedPluginUpdateForm({
   const pkg = detail.versions?.find(
     (version) => version.id === versionId,
   )?.package;
-  const hasAuth = pluginHasAuthorization(pkg);
+  const authorizeAfterUpdate = configuration.authorizationAfterUpdate === true;
+  const authorizeBeforeUpdate =
+    pluginHasAuthorization(pkg) && !authorizeAfterUpdate;
   const [authenticated, setAuthenticated] = useState(false);
   const save = useMutation({
     ...withLocalErrorMutation(updatePluginInstallationsMutation()),
@@ -370,7 +372,11 @@ function PreparedPluginUpdateForm({
           </p>
         )}
         <p className="type-body text-content-secondary">
-          {t("updateReadyHelp")}
+          {t(
+            authorizeAfterUpdate
+              ? "updateReauthorizationHelp"
+              : "updateReadyHelp",
+          )}
         </p>
         {queryError ? (
           <QueryState error={queryError} onRetry={onRetry} />
@@ -382,7 +388,7 @@ function PreparedPluginUpdateForm({
               draft={draft}
             />
           )}
-          {hasAuth && (
+          {authorizeBeforeUpdate && (
             <PluginAuthPanel
               pluginId={detail.plugin?.id ?? ""}
               wakerId={wakerId}
@@ -417,7 +423,7 @@ function PreparedPluginUpdateForm({
             pending ||
             fetching ||
             Boolean(queryError) ||
-            (hasAuth && !authenticated) ||
+            (authorizeBeforeUpdate && !authenticated) ||
             !accountContext
           }
           onClick={() =>

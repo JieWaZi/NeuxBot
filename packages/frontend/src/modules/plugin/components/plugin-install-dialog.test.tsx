@@ -11,6 +11,7 @@ import { MemoryRouter } from "react-router-dom";
 import "@/shared/i18n";
 import type { GlobalEventObserver } from "@/shared/api/global-events";
 import { ApiError } from "@/shared/api/errors";
+import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { PluginInstallDialog } from "./plugin-install-dialog";
 const fixture = vi.hoisted(() => ({
   detail: {
@@ -127,12 +128,19 @@ vi.mock("./plugin-auth-panel", () => ({
   PluginAuthPanel: ({
     onReady,
     onRestart,
+    operationError,
   }: {
     onReady?: () => void;
     onRestart?: (scopes: string[]) => Promise<void>;
+    operationError?: unknown;
   }) => (
     <div>
       <p>扫码授权区域</p>
+      {operationError ? (
+        <p role="alert">
+          {localApiErrorMessage(operationError, "操作未完成，请重试。")}
+        </p>
+      ) : null}
       <button onClick={onReady}>完成设备授权</button>
       <button
         onClick={() => void onRestart?.(["extra:scope"]).catch(() => undefined)}

@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import {
   listWakerPluginReferencesOptions,
   listWakerPluginReferencesQueryKey,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 
-/** 输入候选只读取所选伙伴已启用的固定版本身份；实际执行仍由接纳核验。 */
+/** 输入候选读取所选伙伴的固定版本身份和展示图标；实际执行仍由接纳核验。 */
 export function useInstalledPluginReferences(
   wakerId: string | undefined,
   active = true,
@@ -34,18 +35,25 @@ export function useInstalledPluginReferences(
       return frame.resource.kind === "global";
     },
   });
-  const plugins = (query.data ?? []).flatMap((plugin) =>
-    plugin.id && plugin.versionId
-      ? [
-          {
-            id: plugin.id,
-            name: plugin.name ?? "",
-            description: plugin.description ?? "",
-            version: plugin.version ?? "",
-            versionId: plugin.versionId,
-          },
-        ]
-      : [],
+  const { data } = query;
+  const plugins = useMemo(
+    () =>
+      (data ?? []).flatMap((plugin) =>
+        plugin.id && plugin.versionId
+          ? [
+              {
+                id: plugin.id,
+                name: plugin.name ?? "",
+                description: plugin.description ?? "",
+                version: plugin.version ?? "",
+                versionId: plugin.versionId,
+                icon: plugin.icon,
+                icons: plugin.icons,
+              },
+            ]
+          : [],
+      ),
+    [data],
   );
   return { ...query, plugins };
 }

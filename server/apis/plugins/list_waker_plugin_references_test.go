@@ -3,6 +3,7 @@ package plugins
 import (
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -68,7 +69,8 @@ func TestWakerPluginReferencesUseFourNarrowQueriesWithoutManagementState(t *test
 		t.Fatalf("refs=%+v queries=%v", refs, queries)
 	}
 	for _, query := range queries {
-		if strings.Contains(query, "package") || strings.Contains(query, "plugin_configurations") {
+		table, columns, _ := strings.Cut(query, ":")
+		if table == "plugin_configurations" || slices.Contains(strings.Split(columns, ","), "package") {
 			t.Fatalf("management data read: %s", query)
 		}
 	}

@@ -243,7 +243,6 @@ func (m *service) startNativeExecution(
 	connectors := configuredConnectors
 	contextInstructions := nativeContextInstructions(request, files)
 	message := nativeMessage(request, files)
-	message.Text += pluginSelectionHint(frozen.selected)
 	instructions := nativeInstructions(request, files)
 	grant, err := m.prepareAgent(ctx, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles)
 	if err != nil {
@@ -345,6 +344,9 @@ func (m *service) startNativeExecution(
 		}
 		work.selectedPlugins = append(work.selectedPlugins, work.resources.plugins[index])
 	}
+	if err := turn.AppendPromptContext(pluginSelectionHint(work.selectedPlugins, work.resources.connectors)); err != nil {
+		return AcceptedExecution{}, err
+	}
 	work.execution.PluginResources = slices.Clone(work.resources.plugins)
 	work.skills = selectedSkillReferences(request.message.SkillIDs, enabledSkills)
 	work.connectors = selectedConnectorReferences(request.message.ConnectorIDs, work.resources.connectors)
@@ -444,8 +446,13 @@ func (m *service) acquireNativeResources(
 		if connector.Transport == constants.RuntimeConnectorTransportStreamableHTTP {
 			transport = "http"
 		}
-		lease.MCPServers = append(lease.MCPServers, agent.AgentMCPServer{Name: name, Transport: transport,
-			Command: connector.Command, Arguments: connector.Arguments, Environment: connector.Environment, URL: connector.URL, Headers: connector.Headers})
+		server := agent.AgentMCPServer{Name: name, Transport: transport,
+			Command: connector.Command, Arguments: connector.Arguments, Environment: connector.Environment, URL: connector.URL, Headers: connector.Headers}
+		if route, ok := materialized.hostedRoutes[connector.ID]; ok {
+			server.URL = route.URL
+			server.Headers = map[string]string{"Authorization": "Bearer " + route.Bearer}
+		}
+		lease.MCPServers = append(lease.MCPServers, server)
 	}
 	for index := range projection.connectors {
 		projection.connectors[index].Environment = nil
@@ -503,7 +510,8 @@ func (work *nativeExecutionWork) admission(invocationID string) chatservice.Star
 	admission := chatservice.StartedTurn{NewChat: work.state.isNew && !work.precommitted, Chat: work.chat, Execution: work.execution}
 	if !work.precommitted {
 		admission.Facts = startedMessageEvents(work.state, work.input, work.execution, invocationID,
-			work.files.attachmentReferences, work.files.codeReferences, work.skills, work.connectors, work.selectedPlugins)
+			work.files.attachmentReferences, work.files.codeReferences, work.skills, work.connectors,
+			slices.Concat(work.selectedPlugins, work.input.messagePlugins))
 	}
 	if invocationID != "" {
 		admission.Facts = append(admission.Facts, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionStarted,

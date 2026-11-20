@@ -10,7 +10,7 @@ import (
 	native "github.com/JieWaZi/acp-go/pkg/agentclient"
 )
 
-// TurnRequest holds one immutable host input and its public delivery identity.
+// TurnRequest holds the initial host input and its public delivery identity.
 type TurnRequest struct {
 	// UsageSource identifies the verified host entry point.
 	UsageSource string
@@ -170,6 +170,27 @@ func (t *Turn) setSession(conn *providerConnection, binding NativeBinding) {
 	t.mu.Lock()
 	t.conn, t.binding = conn, binding
 	t.mu.Unlock()
+}
+
+// AppendPromptContext adds host context from acquired resources before native submission.
+func (t *Turn) AppendPromptContext(text string) error {
+	if text == "" {
+		return nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.phase != turnPrepared {
+		return status_error.RuntimeUnavailable
+	}
+	if err := t.ctx.Err(); err != nil {
+		return err
+	}
+	if len(t.input.Content) == 0 {
+		t.input.Text += text
+	} else {
+		t.input.Content = append(t.input.Content, AgentContent{Kind: "text", Text: text})
+	}
+	return nil
 }
 
 // Run consumes the prepared Turn once, retaining native evidence through local failures.

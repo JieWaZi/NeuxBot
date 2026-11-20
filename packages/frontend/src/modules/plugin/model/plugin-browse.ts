@@ -58,10 +58,14 @@ export function pluginBrowseGroups(entries: readonly PluginBrowseEntry[]) {
   })).filter((group) => group.entries.length > 0);
 }
 
+export function pluginDetailHref(pluginId: string): string {
+  return `/resources/plugins/${encodeURIComponent(pluginId)}`;
+}
+
 /** 本地插件始终进入真实详情；目录包只有实际安装后才从固定版本进入。 */
 export function pluginBrowseHref(entry: PluginBrowseEntry): string {
   return entry.pluginId &&
     ((entry.installedCount ?? 0) > 0 || !entry.catalogKey)
-    ? `/resources/plugins/${encodeURIComponent(entry.pluginId)}`
+    ? pluginDetailHref(entry.pluginId)
     : `/resources/plugins/catalog/${encodeURIComponent(entry.catalogKey ?? "")}`;
 }

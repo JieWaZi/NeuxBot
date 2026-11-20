@@ -2,7 +2,7 @@ package plugins
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
+	"errors"
 	"slices"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -10,10 +10,12 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-func pluginAuthorizer(ctx context.Context, id, waker, selectedVersion string, expected PluginAccountRequest) (*authorization.Authorizer, *packageplugin.Authentication, error) {
+func pluginAuthorizer(ctx context.Context, id, waker, selectedVersion string, expected PluginAccountRequest) (*commandbridge.Selection, *packageplugin.Authentication, error) {
 	resource, err := visiblePlugin(ctx, id, waker)
 	if err != nil {
 		return nil, nil, err
@@ -35,11 +37,10 @@ func pluginAuthorizer(ctx context.Context, id, waker, selectedVersion string, ex
 		return nil, nil, err
 	}
 	if declaration := version.Package.Integration.Authentication; declaration != nil {
-		auth, bridge, err := installationService().Bridge(ctx, version)
+		auth, operation, err := installationService().Authorization(ctx, version)
 		if err != nil {
 			return nil, nil, err
 		}
-		operation := bridge.OperationContext()
 		if operation.ConfigurationRevision != expected.ExpectedConfigurationRevision {
 			return nil, nil, status_error.PluginConfigurationConflict
 		}
@@ -90,7 +91,8 @@ func removePluginReferences(ctx context.Context, plugin, waker string, versions 
 		}
 	}()
 	for _, provider := range providers {
-		var auth *authorization.Authorizer
+		var auth *commandbridge.Selection
+		var bindingConflict error
 		for _, version := range versions {
 			if version.Package.Integration.Authentication == nil {
 				continue
@@ -100,12 +102,20 @@ func removePluginReferences(ctx context.Context, plugin, waker string, versions 
 			}
 			if "plugin:"+version.PluginID == provider {
 				var bridgeErr error
-				auth, _, bridgeErr = installationService().Bridge(ctx, version)
+				auth, _, bridgeErr = installationService().Authorization(ctx, version)
+				if errors.Is(bridgeErr, status_error.PluginAccountConflict) {
+					// 全局删除可同时包含未安装的候选版本，清理应沿实际共享授权。
+					bindingConflict = bridgeErr
+					continue
+				}
 				if bridgeErr != nil {
 					return bridgeErr
 				}
 				break
 			}
+		}
+		if auth == nil && bindingConflict != nil {
+			return bindingConflict
 		}
 		if auth != nil {
 			guard, err := auth.GuardReferences()

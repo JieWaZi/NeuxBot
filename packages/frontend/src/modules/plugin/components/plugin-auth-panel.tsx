@@ -14,7 +14,11 @@ import type {
 } from "@/shared/api/generated/types.gen";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { PluginAuthorizationActions } from "./plugin-authorization-dialog";
+import {
+  openNewAuthorizationPage,
+  PluginAuthorizationActions,
+  PluginAuthorizationFooter,
+} from "./plugin-authorization-dialog";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { pluginAccountContext } from "../model/plugin-account-context";
 import { pluginLocale } from "../model/plugin-view";
@@ -44,6 +48,10 @@ export function PluginAuthPanel({
   onReady,
   installation = false,
   starting = false,
+  operationError,
+  detailError,
+  detailRefreshing = false,
+  onRetryDetail,
   preferredAction,
   onRestart,
   onSessionStarted,
@@ -60,6 +68,10 @@ export function PluginAuthPanel({
   ) => void;
   installation?: boolean;
   starting?: boolean;
+  operationError?: unknown;
+  detailError?: unknown;
+  detailRefreshing?: boolean;
+  onRetryDetail?: () => void;
   preferredAction?: "show-qr" | "open-url" | "";
   onRestart?: (additionalScopes: string[]) => Promise<void>;
 }) {
@@ -128,7 +140,10 @@ export function PluginAuthPanel({
     queryKeys: [options.queryKey],
     active,
   });
-  const [openError, setOpenError] = useState("");
+  const [actionError, setActionError] = useState<{
+    challenge: string;
+    message: string;
+  }>();
   const [expiredDevice, setExpiredDevice] = useState("");
   const previousWaitingSession = useRef("");
   const login = useMutation({
@@ -146,6 +161,8 @@ export function PluginAuthPanel({
       if (session.id && session.id !== previousWaitingSession.current) {
         if (onSessionStarted) onSessionStarted(session, startedContext);
         else selfOwned.current.set(session.id, session);
+        if (alive.current && active)
+          openNewAuthorizationPage(session, preferredAction);
       }
       if (!alive.current) closeOwned();
       await refresh();
@@ -180,6 +197,7 @@ export function PluginAuthPanel({
   const expired = session?.state === "expired" || expiredDevice === deviceKey;
   const waiting = session?.state === "waiting" && !expired;
   const ready = Boolean(account?.available);
+  const connectedName = account?.name || account?.id;
   const pending =
     starting ||
     login.isPending ||
@@ -209,7 +227,17 @@ export function PluginAuthPanel({
         ? "expired"
         : undefined;
   const showQR = qrMode && (status.isPending || waiting || pending || expired);
-  const error = login.error ?? cancel.error ?? logout.error ?? check.error;
+  const error =
+    operationError ??
+    login.error ??
+    cancel.error ??
+    logout.error ??
+    check.error;
+  const readError = status.error ?? detailError;
+  const operationMessage =
+    (waiting && actionError?.challenge === deviceKey
+      ? actionError.message
+      : "") || (error ? localApiErrorMessage(error, t("failed")) : "");
   const message = expired
     ? t("authExpired")
     : session?.state === "failed"
@@ -278,7 +306,7 @@ export function PluginAuthPanel({
   }, [deviceKey, session?.expiresAt, session?.state]);
   async function restart() {
     if (!context) return;
-    setOpenError("");
+    setActionError(undefined);
     onAvailabilityChange?.(false);
     if (session?.state === "waiting") setExpiredDevice(deviceKey);
     try {
@@ -307,6 +335,28 @@ export function PluginAuthPanel({
       // Mutation 的稳定错误在当前面板统一呈现。
     }
   }
+  const retry =
+    (!installation || (!waiting && !pending && !status.isPending)) &&
+    (!ready || waiting) &&
+    !showQR ? (
+      <Button
+        type="button"
+        variant={installation ? "primary" : "text"}
+        size={installation ? "catalog" : undefined}
+        disabled={pending || !context || activeUses.length > 0}
+        onClick={() => void restart()}
+      >
+        {t(
+          account?.configured ||
+            expired ||
+            waiting ||
+            session?.state === "failed" ||
+            session?.state === "cancelled"
+            ? "retryAuthorization"
+            : "login",
+        )}
+      </Button>
+    ) : null;
   return (
     <section className={installation ? "space-y-4 text-center" : "space-y-4"}>
       {!installation && (
@@ -314,8 +364,29 @@ export function PluginAuthPanel({
           <h3 className="type-label font-medium">{t("authentication")}</h3>
         </div>
       )}
-      {(status.isPending && !installation && preferredAction !== "show-qr") ||
-      status.isError ? (
+      {installation && readError ? (
+        <>
+          <StatusNotice role="alert">
+            {localApiErrorMessage(readError, t("failed"))}
+          </StatusNotice>
+          <PluginAuthorizationFooter>
+            <Button
+              type="button"
+              size="catalog"
+              disabled={pending || status.isFetching || detailRefreshing}
+              onClick={() => {
+                if (status.error) void status.refetch();
+                if (detailError) onRetryDetail?.();
+              }}
+            >
+              {t("retry", { ns: "common" })}
+            </Button>
+          </PluginAuthorizationFooter>
+        </>
+      ) : (status.isPending &&
+          !installation &&
+          preferredAction !== "show-qr") ||
+        status.isError ? (
         <QueryState
           loadingLayout="content"
           pending={status.isPending}
@@ -324,9 +395,13 @@ export function PluginAuthPanel({
         />
       ) : (
         <>
-          {ready && !waiting ? (
+          {operationMessage && !pending ? (
+            <StatusNotice role="alert">{operationMessage}</StatusNotice>
+          ) : ready && !waiting ? (
             <StatusNotice tone="success">
-              {t("sharedIdentity", { name: account?.name || account?.id })}
+              {connectedName
+                ? t("sharedIdentity", { name: connectedName })
+                : t("accountConnected")}
             </StatusNotice>
           ) : !waiting &&
             !pending &&
@@ -335,15 +410,11 @@ export function PluginAuthPanel({
               session?.state === "failed" ||
               session?.state === "cancelled") ? (
             <StatusNotice role="status">{message}</StatusNotice>
-          ) : (
+          ) : !waiting && !preparing ? (
             <p className="type-body text-content-secondary" role="status">
-              {waiting
-                ? t("authorizationWaiting")
-                : pending || status.isPending
-                  ? t("busy")
-                  : message}
+              {message}
             </p>
-          )}
+          ) : null}
           {waiting && noticeMessage && (
             <StatusNotice tone="warning">{noticeMessage}</StatusNotice>
           )}
@@ -355,17 +426,14 @@ export function PluginAuthPanel({
               preparing={preparing}
               disabled={pending || !context || activeUses.length > 0}
               onRefresh={() => void restart()}
-              onOpenError={() => setOpenError(t("failed"))}
+              onActionError={(error) =>
+                setActionError(
+                  error
+                    ? { challenge: deviceKey, message: t(error) }
+                    : undefined,
+                )
+              }
             />
-          )}
-          {waiting && Boolean(session?.expiresAt) && (
-            <p className="type-caption text-muted-foreground">
-              {t("localWaitUntil", {
-                time: new Intl.DateTimeFormat(undefined, {
-                  timeStyle: "medium",
-                }).format(session?.expiresAt),
-              })}
-            </p>
           )}
           {!waiting &&
             !pending &&
@@ -375,82 +443,59 @@ export function PluginAuthPanel({
                 {t("missingScopesHelp")}
               </p>
             )}
-          <div
-            className={
-              installation
-                ? "flex flex-wrap justify-center gap-2"
-                : "flex flex-wrap gap-2"
-            }
-          >
-            {(!installation || (!waiting && !pending && !status.isPending)) &&
-              (!ready || waiting) &&
-              !showQR && (
+          {!installation && (
+            <div className="flex flex-wrap gap-2">
+              {retry}
+              {!installation && waiting && session?.id && (
                 <Button
                   type="button"
-                  variant="text"
-                  disabled={pending || !context || activeUses.length > 0}
-                  onClick={() => void restart()}
+                  variant="secondary"
+                  disabled={pending || !context}
+                  onClick={() => {
+                    const body =
+                      ownedContexts.current.get(session.id ?? "") ?? context;
+                    if (body)
+                      cancel.mutate({
+                        path: { pluginId, sessionId: session.id ?? "" },
+                        query: { wakerId, versionId },
+                        body,
+                      });
+                  }}
                 >
-                  {t(
-                    account?.configured ||
-                      expired ||
-                      waiting ||
-                      session?.state === "failed" ||
-                      session?.state === "cancelled"
-                      ? "retryAuthorization"
-                      : "login",
-                  )}
+                  {t("cancelAuth")}
                 </Button>
               )}
-            {!installation && waiting && session?.id && (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={pending || !context}
-                onClick={() => {
-                  const body =
-                    ownedContexts.current.get(session.id ?? "") ?? context;
-                  if (body)
-                    cancel.mutate({
-                      path: { pluginId, sessionId: session.id ?? "" },
-                      query: { wakerId, versionId },
-                      body,
-                    });
-                }}
-              >
-                {t("cancelAuth")}
-              </Button>
-            )}
-            {!installation && !waiting && !pending && !showQR && (
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={pending || !context || activeUses.length > 0}
-                onClick={() => {
-                  if (context)
-                    check.mutate({
-                      path: { pluginId },
-                      query: { wakerId, versionId },
-                      body: context,
-                    });
-                }}
-              >
-                <RefreshCw aria-hidden="true" />
-                {t("authRefresh")}
-              </Button>
-            )}
-            {ready && !installation && (
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={pending || !context || activeUses.length > 0}
-                onClick={() => setConfirmLogout(true)}
-              >
-                <Unplug aria-hidden="true" />
-                {t("logout")}
-              </Button>
-            )}
-          </div>
+              {!installation && !waiting && !pending && !showQR && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={pending || !context || activeUses.length > 0}
+                  onClick={() => {
+                    if (context)
+                      check.mutate({
+                        path: { pluginId },
+                        query: { wakerId, versionId },
+                        body: context,
+                      });
+                  }}
+                >
+                  <RefreshCw aria-hidden="true" />
+                  {t("authRefresh")}
+                </Button>
+              )}
+              {ready && !installation && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={pending || !context || activeUses.length > 0}
+                  onClick={() => setConfirmLogout(true)}
+                >
+                  <Unplug aria-hidden="true" />
+                  {t("logout")}
+                </Button>
+              )}
+            </div>
+          )}
           {activeUses.length > 0 && (
             <section className="space-y-2">
               <h4 className="type-label">{t("activeWork")}</h4>
@@ -468,9 +513,9 @@ export function PluginAuthPanel({
               </p>
             </section>
           )}
-          <p className="type-caption text-muted-foreground">
-            {t("authorizationScopeHelp")}
-          </p>
+          {installation && retry && (
+            <PluginAuthorizationFooter>{retry}</PluginAuthorizationFooter>
+          )}
         </>
       )}
       {confirmLogout && (
@@ -506,11 +551,6 @@ export function PluginAuthPanel({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      )}
-      {(error || openError) && (
-        <p role="alert" className="type-body text-destructive">
-          {openError || localApiErrorMessage(error, t("failed"))}
-        </p>
       )}
     </section>
   );

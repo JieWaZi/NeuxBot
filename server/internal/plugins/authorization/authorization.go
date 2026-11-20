@@ -13,6 +13,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
 // Device 是适配器报告的用户确认入口，不包含内部设备凭据或访问令牌。
@@ -80,6 +81,8 @@ type Authorizer struct {
 	active int
 	// deviceRunning 在真实进程退出前阻止身份变更与新工作。
 	deviceRunning bool
+	// deviceFinalizing 表示已经保留最终提交，取消只能等候完成。
+	deviceFinalizing bool
 	// deviceDone 在真实授权进程和完成通知全部退出后关闭。
 	deviceDone <-chan struct{}
 	// resetting 阻止最后引用清理期间接纳新的身份使用或授权。
@@ -132,12 +135,29 @@ func (a *Authorizer) ScopeGranted(granted []string, required string) bool {
 }
 
 func (a *Authorizer) Status(ctx context.Context, verify bool) (Account, error) {
+	return a.StatusFor(ctx, nil, verify)
+}
+
+// StatusFor 在同一锁内核对驱动并固定显式检查所用的身份，避免版本替换。
+func (a *Authorizer) StatusFor(ctx context.Context, matches func(Driver) bool, verify bool) (Account, error) {
 	a.mu.Lock()
-	busy := a.deviceRunning || a.resetting
-	a.mu.Unlock()
-	if busy {
+	if matches != nil && !matches(a.driver()) {
+		a.mu.Unlock()
+		return Account{Scopes: []string{}}, status_error.PluginAccountConflict
+	}
+	if a.deviceRunning || a.resetting {
+		a.mu.Unlock()
 		return Account{Scopes: []string{}}, status_error.PluginBusy
 	}
+	if matches != nil {
+		a.active++
+		defer func() {
+			a.mu.Lock()
+			a.active--
+			a.mu.Unlock()
+		}()
+	}
+	a.mu.Unlock()
 	return a.verifyStatus(ctx, verify)
 }
 
@@ -243,8 +263,16 @@ func (a *Authorizer) Usages() []Usage {
 	return result
 }
 func (a *Authorizer) Logout(ctx context.Context) error {
+	return a.LogoutFor(ctx, nil)
+}
+
+// LogoutFor 在清理共享身份的同一锁内核对预期驱动。
+func (a *Authorizer) LogoutFor(ctx context.Context, matches func(Driver) bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if matches != nil && !matches(a.driver()) {
+		return status_error.PluginAccountConflict
+	}
 	if a.active > 0 || a.deviceRunning || a.resetting {
 		return status_error.PluginBusy
 	}
@@ -275,7 +303,16 @@ func cloneNotice(notice *Notice) *Notice {
 
 // Login 的 HTTP 请求只等待确认入口；真实授权由 Core 根生命周期继续拥有。
 func (a *Authorizer) Login(ctx context.Context, requested ...string) (Session, error) {
+	return a.LoginFor(ctx, nil, requested...)
+}
+
+// LoginFor 在保留唯一授权会话的同一锁内核对预期驱动。
+func (a *Authorizer) LoginFor(ctx context.Context, matches func(Driver) bool, requested ...string) (Session, error) {
 	a.mu.Lock()
+	if matches != nil && !matches(a.driver()) {
+		a.mu.Unlock()
+		return Session{}, status_error.PluginAccountConflict
+	}
 	if a.resetting {
 		a.mu.Unlock()
 		return Session{}, status_error.PluginBusy
@@ -313,6 +350,7 @@ func (a *Authorizer) Login(ctx context.Context, requested ...string) (Session, e
 	scopes := a.RequiredScopes(requested...)
 	initialized := make(chan struct{}, 1)
 	finished := make(chan struct{})
+	var loginFailure statuserror.CommonError
 	a.deviceDone = finished
 	a.workers.Add(1)
 	a.mu.Unlock()
@@ -395,27 +433,44 @@ func (a *Authorizer) Login(ctx context.Context, requested ...string) (Session, e
 			}
 		}
 		if err == nil {
-			if complete, ok := a.driver().(interface {
+			if commit, ok := a.driver().(interface {
+				CommitLogin(context.Context, Account) error
+			}); ok {
+				a.mu.Lock()
+				if a.session.ID != id || a.session.State != constants.PluginAuthorizationStateWaiting || a.resetting || work.Err() != nil {
+					err = context.Canceled
+				} else {
+					a.deviceFinalizing = true
+				}
+				a.mu.Unlock()
+				if err == nil {
+					err = commit.CommitLogin(work, result)
+				}
+			} else if complete, ok := a.driver().(interface {
 				CompleteLogin(context.Context, Account) error
 			}); ok {
 				err = complete.CompleteLogin(work, result)
 			}
 		}
+		if cleanup, ok := a.driver().(interface{ DiscardPendingLogin() }); ok {
+			cleanup.DiscardPendingLogin()
+		}
 		if err != nil {
+			if !errors.As(err, &loginFailure) {
+				loginFailure = status_error.PluginAuthorizationFailed
+			}
 			a.clearSummary(false)
 			result = Account{Scopes: []string{}}
 		}
 		a.mu.Lock()
 		a.deviceRunning = false
+		a.deviceFinalizing = false
 		a.cancel = nil
 		if a.session.ID == id && a.session.State == constants.PluginAuthorizationStateWaiting {
 			a.session.State = constants.PluginAuthorizationStateReady
 			if err != nil {
 				a.session.State = constants.PluginAuthorizationStateFailed
-				a.session.ErrorCode = "PluginAuthorizationFailed"
-				if errors.Is(err, status_error.PluginDependencyUnavailable) {
-					a.session.ErrorCode = status_error.PluginDependencyUnavailable.Key()
-				}
+				a.session.ErrorCode = loginFailure.Key()
 				if context.Cause(work) == context.DeadlineExceeded || errors.Is(err, context.DeadlineExceeded) {
 					a.session.State = constants.PluginAuthorizationStateExpired
 				} else if work.Err() != nil || errors.Is(err, context.Canceled) {
@@ -437,16 +492,20 @@ func (a *Authorizer) Login(ctx context.Context, requested ...string) (Session, e
 	case <-initialized:
 		return a.Snapshot(), nil
 	case <-finished:
+		if loginFailure != nil {
+			return Session{}, loginFailure
+		}
 		snapshot := a.Snapshot()
 		if snapshot.State == constants.PluginAuthorizationStateReady {
 			return snapshot, nil
 		}
-		if snapshot.ErrorCode == status_error.PluginDependencyUnavailable.Key() {
-			return Session{}, status_error.PluginDependencyUnavailable
-		}
 		return Session{}, status_error.PluginAuthorizationFailed
 	case <-ctx.Done():
-		cancel(ctx.Err())
+		a.mu.Lock()
+		if a.session.ID == id && !a.deviceFinalizing {
+			cancel(ctx.Err())
+		}
+		a.mu.Unlock()
 		return Session{}, ctx.Err()
 	}
 }
@@ -479,7 +538,7 @@ func (a *Authorizer) cancelSession(id string) (<-chan struct{}, error) {
 		a.mu.Unlock()
 		return nil, status_error.PluginNotFound
 	}
-	if a.session.State == constants.PluginAuthorizationStateWaiting {
+	if a.session.State == constants.PluginAuthorizationStateWaiting && !a.deviceFinalizing {
 		a.session.State = constants.PluginAuthorizationStateCancelled
 		a.clearSummary(false)
 		a.session.Actions = nil
@@ -519,13 +578,32 @@ type ReferenceGuard struct {
 
 // GuardReferences 阻止新的身份使用，已有工作继续持有原占用。
 func (a *Authorizer) GuardReferences() (*ReferenceGuard, error) {
+	return a.GuardReferencesFor(nil)
+}
+
+// GuardReferencesFor 在保留清理权限的同一锁内核对预期驱动。
+func (a *Authorizer) GuardReferencesFor(matches func(Driver) bool) (*ReferenceGuard, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if matches != nil && !matches(a.driver()) {
+		return nil, status_error.PluginAccountConflict
+	}
 	if a.resetting {
 		return nil, status_error.PluginBusy
 	}
 	a.resetting = true
 	a.clearSummary(false)
+	return &ReferenceGuard{authorizer: a}, nil
+}
+
+// GuardIdleIdentity 保留空闲共享身份，直到调用方完成原子版本切换。
+func (a *Authorizer) GuardIdleIdentity() (*ReferenceGuard, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.active > 0 || a.deviceRunning || a.resetting {
+		return nil, status_error.PluginBusy
+	}
+	a.resetting = true
 	return &ReferenceGuard{authorizer: a}, nil
 }
 
@@ -544,14 +622,14 @@ func (g *ReferenceGuard) Reset(ctx context.Context) error {
 		a.mu.Unlock()
 		return status_error.PluginBusy
 	}
-	if a.session.State == constants.PluginAuthorizationStateWaiting {
+	if a.session.State == constants.PluginAuthorizationStateWaiting && !a.deviceFinalizing {
 		a.session.State = constants.PluginAuthorizationStateCancelled
 		a.session.VerificationURL, a.session.UserCode = "", ""
 		a.session.Actions = nil
 		a.session.Notice = nil
 		a.session.ChallengeID = ""
 	}
-	if a.cancel != nil {
+	if a.cancel != nil && !a.deviceFinalizing {
 		a.cancel(context.Canceled)
 	}
 	done := a.deviceDone

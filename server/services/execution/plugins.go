@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,6 +20,7 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient/oauthrelay"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
@@ -34,6 +36,8 @@ type preparedPlugins struct {
 	skills []agentapi.Skill
 	// connectors 是经过配置和传输能力检查的派生连接器。
 	connectors []models.MCPConnector
+	// hostedRoutes 只为原生启动保留本机地址和秘密，不进入连接器摘要。
+	hostedRoutes map[string]oauthrelay.Lease
 	// environment 是技能授权投射使用的私有进程变量。
 	environment map[string]string
 	// snapshots 记录实际交付组件与版本事实。
@@ -68,8 +72,6 @@ type frozenPluginResources struct {
 	pluginIDs []string
 	// key 仅包含安装、版本、配置与交付限制，不包含消息或授权令牌。
 	key string
-	// selected 保存当前消息明确引用的公开资源名称。
-	selected []plugins.Snapshot
 	// selection 是固定的插件交付约束。
 	selection pluginResourceSelection
 	// detection 提供已注册目标的资源目录与版本适配信息。
@@ -107,7 +109,6 @@ func (m *service) freezePluginResources(ctx context.Context, waker string, reque
 	declarations = slices.Clone(declarations)
 	slices.SortFunc(declarations, func(a, b models.PluginExecutionDeclaration) int { return strings.Compare(a.ID, b.ID) })
 	identities := []map[string]any{}
-	selected := []plugins.Snapshot{}
 	pluginIDs := []string{}
 	enabled := map[string]bool{}
 	fixed := make([]models.PluginExecutionDeclaration, 0, len(declarations))
@@ -116,9 +117,6 @@ func (m *service) freezePluginResources(ctx context.Context, waker string, reque
 		fixed = append(fixed, declaration)
 		enabled[declaration.ID] = true
 		pluginIDs = append(pluginIDs, declaration.ID)
-		if slices.Contains(request.message.PluginIDs, declaration.ID) {
-			selected = append(selected, plugins.Snapshot{ID: declaration.ID, Name: declaration.Name})
-		}
 		identities = append(identities, map[string]any{"id": declaration.ID, "versionId": declaration.VersionID, "digest": declaration.Digest, "trustedAt": declaration.TrustedAt, "revision": declaration.ConfigurationRevision, "accountGeneration": declaration.AccountGeneration})
 	}
 	for _, id := range request.message.PluginIDs {
@@ -145,7 +143,7 @@ func (m *service) freezePluginResources(ctx context.Context, waker string, reque
 		return frozenPluginResources{}, status_error.BadRequest
 	}
 	digest := sha256.Sum256(body)
-	return frozenPluginResources{wakerID: waker, pluginIDs: pluginIDs, key: hex.EncodeToString(digest[:]), selected: selected, selection: selection, native: native, detection: detection, declarations: fixed}, nil
+	return frozenPluginResources{wakerID: waker, pluginIDs: pluginIDs, key: hex.EncodeToString(digest[:]), selection: selection, native: native, detection: detection, declarations: fixed}, nil
 }
 
 // acquirePluginResources 核对发布声明后取得真实内容与共享身份租约。
@@ -360,7 +358,8 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			Delivery: constants.PluginDeliveryProjection, LoadStage: constants.PluginLoadStagePrepared,
 			ConfigurationRevision: configuration.Revision, AccountGeneration: declaration.AccountGeneration, ComponentIDs: []string{},
 		}
-		native := frozen.native[id]
+		hostedServer, hosted := logicalVersion.Package.HostedOAuthServer()
+		native := frozen.native[id] && !hosted
 		authenticationBindings := plugins.TargetAuthenticationBindings(logicalVersion.Package, cli)
 		if err := pluginProjectionError(id, logicalVersion.Package, version.Package, request, detection, m.pluginLauncher, native); err != nil {
 			if required {
@@ -373,6 +372,12 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 		accountState := models.PluginAccount{PluginID: id, Generation: declaration.AccountGeneration}
 		bridgeRelease := func() {}
 		candidateEnvironment := map[string]string{}
+		if hosted && m.pluginInstallations == nil {
+			if required {
+				return result, status_error.PluginNotReady
+			}
+			continue
+		}
 		if hasAuthentication {
 			if m.pluginInstallations != nil {
 				update, retained, authErr := m.pluginInstallations.IdentityLease(id, usage...)
@@ -383,7 +388,15 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 				usageUpdates = append(usageUpdates, update)
 				bridgeRelease = retained
 			}
-			if m.pluginController != nil {
+			if hosted {
+				generation, readErr := m.pluginController.AccountGeneration(ctx, id)
+				if readErr != nil {
+					return result, readErr
+				}
+				if generation != declaration.AccountGeneration {
+					return result, status_error.PluginAccountConflict
+				}
+			} else if m.pluginController != nil {
 				current, readErr := m.pluginController.Account(ctx, id)
 				if readErr != nil {
 					return result, readErr
@@ -416,7 +429,6 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 		}
 		for _, server := range version.Package.Servers {
-
 			transport := constants.RuntimeConnectorTransport(server.Type)
 			if server.Type == "streamable-http" {
 				transport = constants.RuntimeConnectorTransportStreamableHTTP
@@ -426,6 +438,27 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 				continue
 			}
 			if supported, _ := agentapi.ConnectorCompatibility(cli, transport); !supported {
+				continue
+			}
+			if hosted {
+				if server.Key != hostedServer.Key || server.URL != hostedServer.URL || server.Type != hostedServer.Type {
+					return result, status_error.PluginVersionConflict
+				}
+				route, routeErr := m.acquireHostedMCPRoute(ctx, id, hostedServer.URL, declaration.AccountGeneration)
+				if routeErr != nil {
+					if required || routeErr != status_error.PluginNotReady {
+						return result, routeErr
+					}
+					continue
+				}
+				if result.hostedRoutes == nil {
+					result.hostedRoutes = make(map[string]oauthrelay.Lease)
+				}
+				result.hostedRoutes[componentID] = route
+				releases = append(releases, route.Revoke)
+				candidateConnectors = append(candidateConnectors, models.MCPConnector{ID: componentID, Name: server.Key, RuntimeKey: "bot_plugin_" + componentID,
+					Transport: constants.MCPTransportStreamableHTTP, URL: hostedServer.URL, TimeoutMS: 30000})
+				snapshot.ComponentIDs = append(snapshot.ComponentIDs, componentID)
 				continue
 			}
 			if !plugininstallation.MCPDeliveryReady(id, server.Key, authenticationBindings, bindings) {
@@ -597,16 +630,31 @@ func mergePluginSkills(independent, derived []agentapi.Skill) ([]agentapi.Skill,
 	return result, nil
 }
 
-// pluginSelectionHint 将明确插件意图附在本轮消息，保留内部组件的按需发现语义。
-func pluginSelectionHint(selected []plugins.Snapshot) string {
+// pluginSelectionHint 使用已交付的组件传达本轮插件意图。
+func pluginSelectionHint(selected []plugins.Snapshot, connectors []agentapi.Connector) string {
 	if len(selected) == 0 {
 		return ""
 	}
-	names := make([]string, 0, len(selected))
-	for _, item := range selected {
-		names = append(names, item.Name+" ("+item.ID+")")
+	var hint strings.Builder
+	hint.WriteByte('\n')
+	for _, plugin := range selected {
+		fmt.Fprintf(&hint, "\nUse %q to carry out this request.", plugin.Name)
+		var names []string
+		for _, connector := range connectors {
+			if connector.RuntimeKey == "" || !slices.Contains(plugin.ComponentIDs, connector.ID) {
+				continue
+			}
+			name := connector.RuntimeKey
+			if plugin.Runtime == agentapi.RuntimeIDCodex {
+				name = "mcp__" + name
+			}
+			names = append(names, name)
+		}
+		if len(names) > 0 {
+			fmt.Fprintf(&hint, " (MCP: %s)", strings.Join(names, ", "))
+		}
 	}
-	return "\n\nThe user selected these plugins for this turn: " + strings.Join(names, ", ") + ". Use their available skills or connectors as needed for the task."
+	return hint.String()
 }
 
 var pluginCLIVersion = regexp.MustCompile(`([0-9]+)\.([0-9]+)\.([0-9]+)`)

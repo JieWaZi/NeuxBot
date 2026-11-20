@@ -85,6 +85,9 @@ func validateNativeEntries(root string, pkg Package) error {
 			return status_error.PluginManifestInvalid
 		}
 		if value, exists := raw["pi"]; exists {
+			if pkg.declaresHostedOAuth() {
+				return status_error.PluginCapabilityUnsupported
+			}
 			var fields map[string]json.RawMessage
 			if json.Unmarshal(value, &fields) != nil || fields == nil {
 				return status_error.PluginManifestInvalid

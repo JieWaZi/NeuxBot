@@ -2,7 +2,12 @@ package plugins
 
 import (
 	"context"
+	"slices"
+	"strings"
+
 	"github.com/JieWaZi/NeuxBot/server/global"
+	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -32,5 +37,35 @@ func (o *ListWakerPluginReferences) Output(ctx *gin.Context) (interface{}, error
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	projectPluginReferenceIcons(result)
 	return result, nil
+}
+
+// projectPluginReferenceIcons 复用现有目录快照，只替换公开展示图标。
+func projectPluginReferenceIcons(refs []models.PluginReference) {
+	if !slices.ContainsFunc(refs, func(ref models.PluginReference) bool {
+		return strings.HasPrefix(ref.SourceKey, "catalog:")
+	}) {
+		return
+	}
+	entries := catalog.SnapshotEntries(global.PluginCatalogSource())
+	bySource := make(map[string]catalog.Entry, len(entries))
+	for _, entry := range entries {
+		bySource[entry.SourceKey] = entry
+	}
+	for i := range refs {
+		ref := &refs[i]
+		entry, found := bySource[ref.SourceKey]
+		if !found {
+			continue
+		}
+		var icons packageplugin.ThemeValues
+		if ref.Icons != nil {
+			icons = *ref.Icons
+		}
+		if useCatalogDisplayIcon(ref.SourceKey, ref.Version, ref.Icon, icons, entry) {
+			ref.Icon = entry.Package.Icon
+			ref.Icons = &entry.Package.Presentation.Icons
+		}
+	}
 }
