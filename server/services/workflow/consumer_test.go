@@ -78,6 +78,51 @@ func TestConsumerDescribesAdmissionRevisionAfterHeadChanges(t *testing.T) {
 	}
 }
 
+func TestConsumerLifetimeFollowsItsActiveExecution(t *testing.T) {
+	ctx := t.Context()
+	s, _ := workflowTestService(t)
+	definition := savedTestWorkflow(t, s, workflowTestSource(t))
+	conversation := consumerFixtureChat(t, "long-running-chat")
+	lease := models.WorkflowConsumerLease{
+		ID: "long-running-execution", ChatID: conversation.ID,
+		Selection: &workinput.WorkflowReference{ID: definition.ID, RevisionID: definition.CurrentRevisionID},
+		CreatedAt: time.Now().Add(-25 * time.Hour).UnixMilli(),
+	}
+	if err := s.consumers.CreateConsumer(ctx, lease); err != nil {
+		t.Fatal(err)
+	}
+	conversation.ActiveExecutionID = lease.ID
+	queries := &consumerChatBoundary{
+		actual:  models.Execution{ID: lease.ID, ChatID: conversation.ID, UserMessageID: "input", Status: constants.ExecutionStatusRunning, PermissionLevel: constants.PermissionLevelDefault},
+		summary: chat.ChatSummary{Chat: conversation},
+	}
+	s.chats = queries
+	s.executions = consumerExecutionBoundary{}
+	scope := workflowtool.Scope{Key: lease.ID, Kind: constants.WorkflowCapabilityScopeConsumer}
+	query := workflowtool.Input{Action: constants.WorkflowActionQuery, Type: constants.WorkflowQueryWorkflows}
+	if _, err := s.handleTool(ctx, scope, query); err != nil {
+		t.Fatalf("active execution lost its selected workflow after a day: %v", err)
+	}
+	start := workflowtool.Input{Action: constants.WorkflowActionRunStart, WorkflowID: definition.ID, RevisionID: definition.CurrentRevisionID, RequestID: "long-running-start", Args: map[string]any{"text": "input"}}
+	if _, err := s.handleTool(ctx, scope, start); err != nil {
+		t.Fatalf("active execution could not admit its selected workflow: %v", err)
+	}
+	now := time.Now().UnixMilli()
+	queries.actual.CompletedAt = &now
+	queries.actual.Status = constants.ExecutionStatusCompleted
+	if _, err := s.handleTool(ctx, scope, query); !errors.Is(err, status_error.WorkflowStateConflict) {
+		t.Fatalf("completed execution retained workflow access: %v", err)
+	}
+	start.RequestID = "after-completion"
+	if _, err := s.handleTool(ctx, scope, start); !errors.Is(err, status_error.WorkflowStateConflict) {
+		t.Fatalf("completed execution admitted another workflow: %v", err)
+	}
+	runs, err := s.runs.ListChatRunSources(ctx, conversation.ID, []string{lease.ID})
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("execution lifetime produced unexpected runs: %+v %v", runs, err)
+	}
+}
+
 func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 	ctx := context.Background()
 	s, _ := workflowTestService(t)

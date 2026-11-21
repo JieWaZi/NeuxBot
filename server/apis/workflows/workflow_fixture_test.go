@@ -71,9 +71,6 @@ func workflowAPIDependencies(s *workflowFixture) *workflowDependencies {
 			return s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: previous.DefinitionID, RevisionID: previous.RevisionID, Args: previous.Args, Defaults: previous.Defaults, WorkerConfigurations: previous.WorkerConfigurations, ApprovedScope: &previous.ScopeBinding, RequestID: requestID, RetrySourceRunID: previous.ID, ExpectedSourceVersion: previous.Version})
 		},
 	}
-	if s.Worker != nil {
-		deps.WorkerCancel = s.Worker.Cancel
-	}
 	return deps
 }
 

@@ -264,7 +264,7 @@ func TestWakerOnboardingSavesAfterInterviewWithoutConfirmation(t *testing.T) {
 			return []capability.Binding{agentPreparationBinding(t, "memory.entries.search")}
 		}
 		run := recordedRun{Runtime: runtimeSelection{RuntimeID: "unsupported"}}
-		grant, err := manager.prepareAgent(ctx, models.RuntimeEnvironment{}, run.Workspace, &run.Skills, &run.Instructions, &run.Connectors, &run.ContextInstructions,
+		grant, err := manager.prepareAgent(ctx, ctx, models.RuntimeEnvironment{}, run.Workspace, &run.Skills, &run.Instructions, &run.Connectors, &run.ContextInstructions,
 			chat, "turn", pendingMessage{admission: constants.ExecutionAdmissionCommitOnRuntimeAccept, message: userMessage{Actor: "user"}}, nil, nil)
 		if err != nil {
 			t.Fatal(err)

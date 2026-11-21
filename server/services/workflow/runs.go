@@ -3,22 +3,18 @@ package workflow
 import (
 	"cmp"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
-	"mime"
 	"os"
 	"path/filepath"
-	"slices"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -70,8 +66,6 @@ type StartRunCommand struct {
 	Defaults models.WorkflowExecutionDefaults `json:"defaults"`
 	// ParentRunID 是服务端填写的来源运行。
 	ParentRunID string `json:"-"`
-	// AwaitChildResult 表示创建该子运行的 workflow 节点会直接读取结果。
-	AwaitChildResult bool `json:"-"`
 	// Joined 表示跟随父运行取消。
 	Joined bool `json:"-"`
 	// Depth 是服务端填写的调用深度。
@@ -86,9 +80,6 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 	if command.RequestID == "" || len(command.RequestID) > 128 || command.Depth > constants.WorkflowMaxChildDepth ||
 		(command.RetrySourceRunID != "" && command.ReplaySourceRunID != "") || (command.ParentRunID != "" && command.ChatSource != nil) {
 		return models.WorkflowRun{}, status_error.BadRequest
-	}
-	if origin := command.ChatSource; origin != nil && !origin.Workbench && !s.chatTurns.beginStart(origin.ChatID, origin.ExecutionID) {
-		return models.WorkflowRun{}, status_error.WorkflowStateConflict
 	}
 	encodedArgs, err := json.Marshal(command.Args)
 	if err != nil || len(encodedArgs) > constants.WorkflowOutputLimitBytes {
@@ -220,6 +211,14 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 			return models.WorkflowRun{}, err
 		}
 	}
+	if command.ChatSource != nil {
+		// 接纳与来源会话删除共用操作门，文件准备不占用删除边界。
+		release, err := chatstorage.AcquireReferences(s.dataDirectory, command.ChatSource.ChatID)
+		if err != nil {
+			return models.WorkflowRun{}, err
+		}
+		defer release()
+	}
 	s.state.Commands.Lock()
 	defer s.state.Commands.Unlock()
 	if receipt, found, err := s.store.FindReceipt(ctx, command.DefinitionID, command.RequestID); err != nil {
@@ -291,7 +290,6 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		now := time.Now().UnixMilli()
 		id := preparedID
 		rootRunID := id
-		var captureFilesForChatParent bool
 		if command.ParentRunID != "" {
 			parent, err := s.runs.GetRun(ctx, command.ParentRunID)
 			if err != nil {
@@ -313,10 +311,6 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 			}
 			if count > constants.WorkflowMaxChildren {
 				return status_error.WorkflowBudgetExceeded.WithField("budget", "child_count")
-			}
-			captureFilesForChatParent, err = s.childFilesReachChat(ctx, command, parent, revision)
-			if err != nil {
-				return err
 			}
 		}
 		fiberID := util.New()
@@ -349,7 +343,6 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		run = models.WorkflowRun{AutomaticRunID: command.AutomaticRunID, ID: id, RootRunID: rootRunID, DefinitionID: definition.ID, RevisionID: revision.ID, RevisionOrdinal: revision.Ordinal, Status: constants.WorkflowRunStatusQueued, Args: args, InputFileDigests: inputDigests, Defaults: command.Defaults, WorkerConfigurations: configurations, Limits: revision.Manifest.Meta.Limits, ScopeBinding: scope, Context: flowContext, RootFiberID: fiberID, ParentRunID: command.ParentRunID, Joined: command.Joined, Depth: command.Depth, Version: 1, StartedAt: now, DeadlineAt: now + timeout}
 		run.WorkerPermissionsLimited = limitWorkerPermissions
 		run.AdditionalWorkingDirectories = command.additionalWorkingDirectories
-		run.CaptureFilesForChatParent = captureFilesForChatParent
 		if origin := command.ChatSource; origin != nil {
 			run.SourceChatID = origin.ChatID
 			run.SourceExecutionID = origin.ExecutionID
@@ -371,13 +364,6 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 			return err
 		}
 		_, err = s.store.AppendEvent(ctx, models.WorkflowEvent{StreamID: definition.ID, EventID: util.New(), Type: constants.WorkflowRunCreatedEvent, EntityID: id, Payload: map[string]any{"runId": id, "revisionId": revision.ID}})
-		if err == nil && run.SourceChatID != "" {
-			chatID, executionID := run.SourceChatID, run.SourceExecutionID
-			if run.SourceWorkbench {
-				executionID = ""
-			}
-			events.AfterCommit(ctx, func() { s.chatTurns.remember(chatID, executionID) })
-		}
 		return err
 	})
 	if err != nil && stage != nil {
@@ -388,28 +374,6 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 
 func workflowRunID(definitionID, requestID string) string {
 	return requestidempotency.Identity{ID: requestID}.ResourceID("workflow-run", definitionID)
-}
-
-func keepsFinalChatFiles(run models.WorkflowRun) bool {
-	return run.CaptureFilesForChatParent || run.SourceChatID != "" && !run.SourceWorkbench
-}
-
-// childFilesReachChat 只给可返回结果的子链保留文件。异步启动要求子流程声明文件且父流程可显式等待。
-func (s *Service) childFilesReachChat(ctx context.Context, command StartRunCommand, parent models.WorkflowRun, revision models.WorkflowRevision) (bool, error) {
-	if !keepsFinalChatFiles(parent) {
-		return false, nil
-	}
-	if command.AwaitChildResult {
-		return true, nil
-	}
-	if !workflowdsl.HasDeclaredFileFields(revision.Manifest.Meta.OutputSchema) {
-		return false, nil
-	}
-	parentRevision, err := s.store.GetRevision(ctx, parent.DefinitionID, parent.RevisionID)
-	if err != nil {
-		return false, err
-	}
-	return slices.ContainsFunc(parentRevision.Manifest.Nodes, func(node workflowdsl.Node) bool { return node.Kind == "joinWorkflow" }), nil
 }
 
 func (s *Service) validateIMDependencies(ctx context.Context, revision models.WorkflowRevision) error {
@@ -478,6 +442,35 @@ func (s *Service) requestRunCancellation(ctx context.Context, id string) (models
 		}
 	}
 	return state.Run, nil
+}
+
+// FailChatRuns 在删除开始时直接将会话关联任务置为失败，提交后停止真实执行。
+func (s *Service) FailChatRuns(ctx context.Context, chatIDs []string) error {
+	failed, err := s.runs.FailChatRuns(ctx, chatIDs, time.Now().UnixMilli())
+	if err != nil {
+		return err
+	}
+	for _, run := range failed.Runs {
+		if _, err := s.store.AppendEvent(ctx, models.WorkflowEvent{StreamID: run.ID, EventID: util.New(), Type: constants.WorkflowRunChangedEvent, EntityID: run.ID,
+			Payload: map[string]any{"runId": run.ID, "status": run.Status, "version": run.Version},
+		}); err != nil {
+			return err
+		}
+	}
+	events.AfterCommit(ctx, func() {
+		ids := make([]string, len(failed.Effects))
+		for i, effect := range failed.Effects {
+			ids[i] = effect.ID
+			if effect.ExecutionID == "" || s.executions == nil {
+				continue
+			}
+			if effect.ChatID != "" {
+				s.executions.CancelExecution(effect.ChatID, effect.ExecutionID)
+			}
+		}
+		s.state.CancelEffects(ids)
+	})
+	return nil
 }
 
 func (s *Service) prepareAdmission(ctx context.Context, definition models.WorkflowDefinition, revision models.WorkflowRevision, command StartRunCommand, parent *models.WorkflowRun, limitWorkerPermissions bool, configurations map[string]models.WorkflowExecutionDefaults) (models.WorkflowScopeBinding, error) {
@@ -695,131 +688,6 @@ func openRunFile(run models.WorkflowRun, candidate string) (*os.File, error) {
 
 func runFileRoots(run models.WorkflowRun, workspace workflowfiles.Workspace) []string {
 	return append([]string{run.ScopeBinding.WorkingDirectory, workspace.RootDirectory}, run.AdditionalWorkingDirectories...)
-}
-
-// OutputFile 是最终输出 schema 中明确声明的可下载文件。
-type OutputFile struct {
-	// ID 是结果字段的稳定下载身份，不接受调用方指定本地路径。
-	ID string `json:"id"`
-	// Field 是结果中的 JSON Pointer。
-	Field string `json:"field"`
-	// Name 是下载文件名。
-	Name string `json:"name"`
-	// Size 是当前真实字节数。
-	Size int64 `json:"size"`
-	// MediaType 是下载类型，未知类型使用二进制流。
-	MediaType string `json:"mediaType"`
-	// Available 表示文件仍存在且属于本次运行范围。
-	Available bool `json:"available"`
-}
-
-func outputFileID(pointer string) string {
-	digest := sha256.Sum256([]byte(pointer))
-	return hex.EncodeToString(digest[:16])
-}
-
-// OutputFiles 按不可变运行版本识别最终文件结果，普通字符串不被当作文件路径。
-func (s *Service) OutputFiles(ctx context.Context, run models.WorkflowRun) ([]OutputFile, error) {
-	files := []OutputFile{}
-	if run.Status != constants.WorkflowRunStatusSucceeded {
-		return files, nil
-	}
-	revision, err := s.store.GetRevision(ctx, run.DefinitionID, run.RevisionID)
-	if err != nil {
-		return nil, err
-	}
-	return s.InspectFinalOutputFiles(run, revision.Manifest.Meta.OutputSchema), nil
-}
-
-// InspectOutputFiles 检查指定冻结 Schema 和结果中的真实文件，供运行与节点产出入口复用。
-func InspectOutputFiles(run models.WorkflowRun, schema map[string]any, result any) []OutputFile {
-	return inspectOutputFiles(schema, result, func(_ string, path string) (int64, bool) {
-		file, err := openRunFile(run, path)
-		if err != nil {
-			return 0, false
-		}
-		defer file.Close()
-		info, err := file.Stat()
-		if err != nil {
-			return 0, false
-		}
-		return info.Size(), true
-	})
-}
-
-// InspectFinalOutputFiles 读取已确认快照的文件元数据，用于结果列表。
-func (s *Service) InspectFinalOutputFiles(run models.WorkflowRun, schema map[string]any) []OutputFile {
-	if !keepsFinalChatFiles(run) {
-		return InspectOutputFiles(run, schema, run.Result)
-	}
-	return inspectOutputFiles(schema, run.Result, func(field, _ string) (int64, bool) {
-		file, size, err := s.openChatSnapshot(run, run.ChatFiles[field])
-		if err != nil {
-			return 0, false
-		}
-		file.Close()
-		return size, true
-	})
-}
-
-func inspectOutputFiles(schema map[string]any, result any, sizeOf func(string, string) (int64, bool)) []OutputFile {
-	files := []OutputFile{}
-	values := workflowdsl.FileValues(schema, result)
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, pointer := range keys {
-		path := values[pointer]
-		view := OutputFile{ID: outputFileID(pointer), Field: pointer, Name: filepath.Base(path), MediaType: "application/octet-stream"}
-		if media := mime.TypeByExtension(filepath.Ext(path)); media != "" {
-			view.MediaType = media
-		}
-		if size, available := sizeOf(pointer, path); available {
-			view.Available = true
-			view.Size = size
-		}
-		files = append(files, view)
-	}
-	return files
-}
-
-// OpenOutputFile 仅允许下载本次成功运行已声明的最终文件产物。
-func (s *Service) OpenOutputFile(ctx context.Context, definitionID, runID, fileID string) (*os.File, string, error) {
-	run, err := s.runs.GetRun(ctx, runID)
-	if err != nil {
-		return nil, "", err
-	}
-	if run.DefinitionID != definitionID || run.Status != constants.WorkflowRunStatusSucceeded {
-		return nil, "", status_error.WorkflowFileNotFound
-	}
-	revision, err := s.store.GetRevision(ctx, run.DefinitionID, run.RevisionID)
-	if err != nil {
-		return nil, "", err
-	}
-	if keepsFinalChatFiles(run) {
-		for pointer := range workflowdsl.FileValues(revision.Manifest.Meta.OutputSchema, run.Result) {
-			if outputFileID(pointer) == fileID {
-				file := run.ChatFiles[pointer]
-				content, err := s.openChatFile(run, file)
-				return content, file.Name, err
-			}
-		}
-		return nil, "", status_error.WorkflowFileNotFound
-	}
-	return OpenDeclaredOutputFile(run, revision.Manifest.Meta.OutputSchema, run.Result, fileID)
-}
-
-// OpenDeclaredOutputFile 只打开冻结结果中已声明且属于运行真实目录的文件。
-func OpenDeclaredOutputFile(run models.WorkflowRun, schema map[string]any, result any, fileID string) (*os.File, string, error) {
-	for pointer, path := range workflowdsl.FileValues(schema, result) {
-		if outputFileID(pointer) == fileID {
-			file, err := openRunFile(run, path)
-			return file, filepath.Base(path), err
-		}
-	}
-	return nil, "", status_error.WorkflowFileNotFound
 }
 
 // UploadFileForKey 由集成入口保存主体隔离的任务输入，不改变旧 Token 或本机上传归属。

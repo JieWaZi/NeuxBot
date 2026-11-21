@@ -42,7 +42,7 @@ func TestWorkflowSafetyQueriesUseIndexesAsHistoryGrows(t *testing.T) {
 			if err := db.Create(&models.WorkflowActionCall{ID: "unknown-call", RunID: uncertain, Status: constants.WorkflowStepStatusUnknown}).Error; err != nil {
 				t.Fatal(err)
 			}
-			if err := db.Create(&models.WorkflowConsumerLease{ID: "pending", ThreadID: root.SourceThreadID, ChatID: root.SourceChatID, DeadlineAt: 20}).Error; err != nil {
+			if err := db.Create(&models.WorkflowConsumerLease{ID: "pending", ThreadID: root.SourceThreadID, ChatID: root.SourceChatID}).Error; err != nil {
 				t.Fatal(err)
 			}
 			log := &repositoryQueryLog{Interface: logger.Discard}

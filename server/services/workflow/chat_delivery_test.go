@@ -340,9 +340,9 @@ func TestFailedChatWorkflowDeliversOnlyConfirmedPartialResults(t *testing.T) {
 		t.Fatalf("wrong partial bytes: %q %v", bytes, err)
 	}
 	checkResults(1)
-	for _, file := range run.ChatFiles {
+	for _, file := range run.OutputFiles {
 		// 交付完成后，工具不能为了列出已交付文件读取原快照的大文件内容。
-		if err := os.Truncate(filepath.Join(s.chatOutputDirectory(run), file.Path), constants.WorkflowFileMaximumBytes); err != nil {
+		if err := os.Truncate(filepath.Join(s.outputDirectory(run), file.Path), constants.WorkflowFileMaximumBytes); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -408,9 +408,9 @@ func TestChatActionFreezesFilesDeclaredByBothOutputSchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"declared", "invocation"} {
-		file, ok := run.ChatFiles[effect.ID+":/"+name]
+		file, ok := run.OutputFiles[effect.ID+":/"+name]
 		if !ok || !file.Partial || file.Error != "" || file.Name != name+".csv" {
-			t.Fatalf("missing verified partial output %s: %+v", name, run.ChatFiles)
+			t.Fatalf("missing verified partial output %s: %+v", name, run.OutputFiles)
 		}
 	}
 }
@@ -434,7 +434,7 @@ func TestBusyChatFileCopyLetsOrdinaryWorkflowFinish(t *testing.T) {
 	release := sync.OnceFunc(func() { close(stop) })
 	defer release()
 	entered := make(chan struct{})
-	s.runner.copyChatOutput("earlier-chat-run", func() { close(entered); <-stop })
+	s.runner.copyOutputFiles("earlier-chat-run", func() { close(entered); <-stop })
 	select {
 	case <-entered:
 	case <-time.After(2 * time.Second):
@@ -458,8 +458,8 @@ func TestBusyChatFileCopyLetsOrdinaryWorkflowFinish(t *testing.T) {
 	}
 	release()
 	result = waitWorkflow(t, s, chatID, terminal)
-	if result.Run.Status != constants.WorkflowRunStatusSucceeded || result.Run.ChatFiles[""].Digest == "" {
-		t.Fatalf("file copy did not resume: %+v", result.Run.ChatFiles)
+	if result.Run.Status != constants.WorkflowRunStatusSucceeded || result.Run.OutputFiles[""].Digest == "" {
+		t.Fatalf("file copy did not resume: %+v", result.Run.OutputFiles)
 	}
 }
 

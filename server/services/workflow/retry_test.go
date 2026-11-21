@@ -9,6 +9,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agentcapability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
@@ -55,6 +56,9 @@ func TestWorkerRetryKeepsAttemptsAndRevokesOldResultToken(t *testing.T) {
 	runTicks(t, s, run.ID, 2)
 	state, _ := s.runs.LoadRunState(ctx, run.ID)
 	first := state.Effects[0]
+	if first.ChatID != (requestidempotency.Identity{ID: first.ID}).ResourceID("chat", "fixture") {
+		t.Fatalf("first attempt has no durable worker ownership: %+v", first)
+	}
 	if first.DeadlineAt != 0 {
 		t.Fatal("worker admission created a node deadline")
 	}
@@ -90,6 +94,9 @@ func TestWorkerRetryKeepsAttemptsAndRevokesOldResultToken(t *testing.T) {
 		t.Fatalf("attempts overwritten: %+v", state)
 	}
 	second, _ := s.runs.GetEffect(ctx, state.Instances[0].EffectID)
+	if second.ChatID != (requestidempotency.Identity{ID: second.ID}).ResourceID("chat", "fixture") || second.ChatID == first.ChatID {
+		t.Fatalf("retry did not prepare its own worker ownership: %+v", second)
+	}
 	if second.DeadlineAt != 0 {
 		t.Fatal("worker retry created a node deadline")
 	}

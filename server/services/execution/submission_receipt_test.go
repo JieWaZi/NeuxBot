@@ -111,19 +111,12 @@ func TestCancelSubmissionUsesReceiptAfterNativeTurnFinishes(t *testing.T) {
 	}
 	waitForChatTerminal(t, manager, accepted.Chat.ID)
 	core := manager.execution.(*service)
-	var stoppedID string
-	core.executions.cancelAssociated = func(_ context.Context, chatID, executionID string) error {
-		if chatID != accepted.Chat.ID {
-			t.Fatalf("stopped chat %q, want %q", chatID, accepted.Chat.ID)
-		}
-		stoppedID = executionID
-		return nil
-	}
 	if err := core.CancelSubmissionAndWait(ctx, accepted.Chat.ID, "stopped-after-native"); err != nil {
 		t.Fatal(err)
 	}
-	if stoppedID != accepted.Execution.ID {
-		t.Fatalf("stopped execution %q, want %q", stoppedID, accepted.Execution.ID)
+	receipt, err := core.journal.ReadSubmission(ctx, accepted.Chat.ID, "stopped-after-native")
+	if err != nil || receipt == nil || receipt.ID != accepted.Execution.ID {
+		t.Fatalf("native cancellation changed the durable submission: %+v, %v", receipt, err)
 	}
 }
 

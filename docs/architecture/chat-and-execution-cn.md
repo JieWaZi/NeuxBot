@@ -6,6 +6,19 @@ Chat 是消息与原生会话的容器。用户输入、结构化执行事件和
 
 Execution 负责中立工作意图、权限和配置校验、业务接纳、执行终态及取消。`ThreadLifecycle` 按 Chat 维护原生绑定和配置兼容；`Turn` 拥有本轮输入；`ProviderRuntime` 独占原生进程、账号与资源租约。共享 cwd 不合并聊天身份或原生进程。
 
+Execution 只取消实际原生执行并管理其资源收尾。聊天与团队的公开停止用例分别调用 Execution 和 Workflow，按原提交回执或确切 Execution 身份停止关联运行；执行注册表不反向编排 Workflow。工具能力的 Context 直接属于该执行，取消即撤销工具访问。
+
+共享会话删除入口拥有删除顺序，领域任务的失败规则见[工作流](workflows-cn.md#授权与失败)。
+
+```mermaid
+flowchart LR
+  Stop[聊天或团队停止用例] --> Native[Execution 原生取消]
+  Stop --> Run[Workflow 关联运行停止]
+  Delete[共享 Chat 删除入口] --> Fail[Workflow 关联任务直接失败]
+  Fail --> Release[取消实际工作并释放原生资源]
+  Release --> Files[删除 Chat 日志和私有文件]
+```
+
 `agent.Catalog` 保留 CLI 安装、Profile 与程序定位，acp-go 拥有原生协议和客户端。Chat 与运行时共用 ConversationStore，查询投影不复制执行权威。职责详见[智能体与账号](runtimes-and-accounts-cn.md)。
 
 ## 输入与接纳

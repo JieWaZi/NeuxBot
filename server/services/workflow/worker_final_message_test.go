@@ -12,7 +12,10 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
@@ -32,6 +35,246 @@ type workerDispatchExecution struct {
 	status constants.ExecutionStatus
 	// validationError 模拟原工作接纳后执行环境发生变化。
 	validationError error
+}
+
+// deletedWorkerExecutions 记录删除事务提交后发出的精确执行取消。
+type deletedWorkerExecutions struct {
+	// Service 保留本用例不使用的原生执行端口。
+	execution.Service
+	// chatID 是最后一次取消的实际 Worker 会话。
+	chatID string
+	// executionID 是最后一次取消的原执行身份。
+	executionID string
+	// wholeChatStops 记录误用当前会话停止入口的次数。
+	wholeChatStops int
+}
+
+func (e *deletedWorkerExecutions) CancelExecution(chatID, executionID string) {
+	e.chatID, e.executionID = chatID, executionID
+}
+
+func (e *deletedWorkerExecutions) CancelExecutionAndWait(_ context.Context, chatID, executionID string) error {
+	e.chatID, e.executionID = chatID, executionID
+	return nil
+}
+
+func (e *deletedWorkerExecutions) CancelAndWait(context.Context, string) error {
+	e.wholeChatStops++
+	return nil
+}
+
+// commitWorkerAdmission 模拟首次接纳已 durable、派发尚未返回，不建立 ChatExecutionLocation。
+func commitWorkerAdmission(t *testing.T, s *Service, effect models.WorkflowEffect) string {
+	t.Helper()
+	chatID := requestidempotency.Identity{ID: effect.ID}.ResourceID("chat", "fixture")
+	authority, err := conversation.NewStore(s.dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(authority.Close)
+	if _, err := authority.Commit(t.Context(), agent.ConversationBatch{ChatID: chatID, Key: effect.ID, Changes: []agent.ConversationChange{
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeCreated, Data: json.RawMessage(`{"wakerId":"fixture"}`)}},
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: effect.ExecutionID, Data: json.RawMessage(`{"runtimeId":"fixture"}`)}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	return chatID
+}
+
+// stoppingWorker 在真实 outbox 边界模拟丢失收据、查询故障和一次停止失败。
+type stoppingWorker struct {
+	// controlledWorker 提供冻结配置及派发、停止次数记录。
+	controlledWorker
+	// cancelError 是原生停止端口返回的错误。
+	cancelError error
+	// inspectError 模拟首次执行查询结果不确定或丢失。
+	inspectError error
+	// cancelDispatch 模拟真实派发退出时收到执行所有者取消。
+	cancelDispatch context.CancelFunc
+}
+
+func (w *stoppingWorker) Dispatch(_ context.Context, input WorkerDispatch) (WorkerReceipt, error) {
+	w.prompts = append(w.prompts, input.Effect.ID)
+	if w.cancelDispatch != nil {
+		w.cancelDispatch()
+	}
+	return WorkerReceipt{}, status_error.WorkflowEffectFailed
+}
+
+func (w *stoppingWorker) Inspect(_ context.Context, effect models.WorkflowEffect) (WorkerReceipt, error) {
+	w.inspections++
+	return WorkerReceipt{ChatID: effect.ChatID, ExecutionID: effect.ExecutionID, Status: constants.ExecutionStatusRunning}, w.inspectError
+}
+
+func (w *stoppingWorker) Cancel(context.Context, models.WorkflowEffect) error {
+	w.cancellations++
+	return w.cancelError
+}
+
+func TestWorkerStopsOnceAcrossAdmissionAndCancellation(t *testing.T) {
+	for _, mode := range []string{"prepared-after-restart", "stop-failed", "execution-context", "dispatch-unknown", "running-chat-missing"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx := t.Context()
+			s, _ := workflowTestService(t)
+			worker := &stoppingWorker{cancelError: status_error.WorkflowEffectFailed}
+			s.worker = worker
+			definition := savedTestWorkflow(t, s, runtimeTestMeta+`return await worker('read',{id:'read',label:'读取',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`)
+			run, err := s.StartRun(ctx, StartRunCommand{DefinitionID: definition.ID, RequestID: mode, Defaults: models.WorkflowExecutionDefaults{RuntimeID: "fixture"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			runTicks(t, s, run.ID, 1)
+			state, err := s.runs.LoadRunState(ctx, run.ID)
+			if err != nil || len(state.Effects) != 1 {
+				t.Fatalf("worker was not prepared: %+v %v", state, err)
+			}
+			effect := state.Effects[0]
+			dispatchContext := ctx
+			switch mode {
+			case "prepared-after-restart", "stop-failed":
+				commitWorkerAdmission(t, s, effect)
+				if mode == "prepared-after-restart" {
+					worker.cancelError = nil
+				}
+				if err := s.CancelRun(ctx, run.ID); err != nil {
+					t.Fatal(err)
+				}
+				if current := runTicks(t, s, run.ID, 1); current.Status != constants.WorkflowRunStatusCancelling {
+					t.Fatalf("prepared admission bypassed its actual stop: %+v", current)
+				}
+			case "execution-context":
+				var cancel context.CancelFunc
+				dispatchContext, cancel = context.WithCancel(ctx)
+				defer cancel()
+				worker.cancelDispatch = cancel
+				s.runner = &runnerLifecycle{ctx: ctx}
+			case "dispatch-unknown":
+				worker.inspectError = status_error.WorkflowEffectFailed
+			case "running-chat-missing":
+				worker.inspectError = status_error.ChatNotFound
+				if err := s.state.MutateEffect(ctx, run.ID, effect.ID, func(_ context.Context, _ *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
+					current.Status = constants.WorkflowStepStatusRunning
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if s.state.EffectActive(effect.ID) {
+				t.Fatal("fixture unexpectedly retained a process-local dispatch")
+			}
+			s.dispatchEffect(dispatchContext, state.Run, effect)
+			if worker.cancellations != 1 {
+				t.Fatalf("one stop triggered compensating stops: calls=%d", worker.cancellations)
+			}
+			if mode == "prepared-after-restart" || mode == "stop-failed" {
+				if len(worker.prompts) != 0 {
+					t.Fatal("stopping a prepared admission started another execution")
+				}
+			}
+			expectedStep, expectedRun := constants.WorkflowStepStatusUnknown, constants.WorkflowRunStatusFailed
+			if mode == "prepared-after-restart" {
+				expectedStep, expectedRun = constants.WorkflowStepStatusCancelled, constants.WorkflowRunStatusCancelled
+			}
+			state, err = s.runs.LoadRunState(ctx, run.ID)
+			if err != nil || state.Effects[0].Status != expectedStep {
+				t.Fatalf("one stop did not record its outcome: %+v %v", state, err)
+			}
+			if completed := runTicks(t, s, run.ID, 2); completed.Status != expectedRun || worker.cancellations != 1 {
+				t.Fatalf("stop outcome did not finish directly: %+v calls=%d", completed, worker.cancellations)
+			}
+		})
+	}
+}
+
+func TestWorkerCancellationKeepsLaterChatExecutionRunning(t *testing.T) {
+	s, _ := workflowTestService(t)
+	effect := models.WorkflowEffect{ID: "attempt", ExecutionID: "original", Boundary: workflowdsl.EffectBoundary{Primitive: "worker", Arguments: []workflowdsl.Value{
+		workflowdsl.JSONValue("read"), workflowdsl.JSONValue(map[string]any{"resolve": map[string]any{"wakerId": "fixture"}}),
+	}}}
+	effect.ChatID = commitWorkerAdmission(t, s, effect)
+	authority, err := conversation.NewStore(s.dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer authority.Close()
+	if _, err := authority.Commit(t.Context(), agent.ConversationBatch{ChatID: effect.ChatID, Key: "continue", ExpectedVersion: 2, Changes: []agent.ConversationChange{
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: effect.ExecutionID, Data: json.RawMessage(`{"status":"completed"}`)}},
+		{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "continued", Data: json.RawMessage(`{"runtimeId":"fixture"}`)}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if current, err := authority.ReadLatestExecutionID(t.Context(), effect.ChatID); err != nil || current != "continued" {
+		t.Fatalf("worker chat did not continue: current=%s error=%v", current, err)
+	}
+	port := &deletedWorkerExecutions{}
+	if err := (CoreWorkerAdapter{Executions: port}).Cancel(t.Context(), effect); err != nil {
+		t.Fatal(err)
+	}
+	if port.wholeChatStops != 0 || port.chatID != effect.ChatID || port.executionID != effect.ExecutionID {
+		t.Fatalf("workflow cancellation targeted the later chat execution: %+v", port)
+	}
+}
+
+func TestDeletedWorkerChatFailsTaskAndRejectsLateSuccess(t *testing.T) {
+	for _, status := range []constants.WorkflowStepStatus{constants.WorkflowStepStatusPrepared, constants.WorkflowStepStatusRunning} {
+		t.Run(string(status), func(t *testing.T) {
+			ctx := t.Context()
+			s, _ := workflowTestService(t)
+			s.worker = &retryWorker{}
+			executions := &deletedWorkerExecutions{}
+			s.executions = executions
+			definition := savedTestWorkflow(t, s, runtimeTestMeta+`return await worker('read',{id:'read',label:'读取',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`)
+			run, err := s.StartRun(ctx, StartRunCommand{DefinitionID: definition.ID, RequestID: "deleted-worker", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "fixture"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			runTicks(t, s, run.ID, 1)
+			state, err := s.runs.LoadRunState(ctx, run.ID)
+			if err != nil || len(state.Effects) != 1 {
+				t.Fatalf("worker was not prepared: %+v %v", state, err)
+			}
+			effect := state.Effects[0]
+			chatID := commitWorkerAdmission(t, s, effect)
+			if effect.ChatID != chatID {
+				t.Fatalf("prepared worker has no durable chat ownership: %+v", effect)
+			}
+			if err := s.state.MutateEffect(ctx, run.ID, effect.ID, func(_ context.Context, _ *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
+				current.Status = status
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			job, cancel, admitted := s.state.BeginEffect(ctx, effect.ID, false, 1)
+			if !admitted {
+				t.Fatal("worker job was not admitted")
+			}
+			defer cancel()
+			defer s.state.EndEffect(effect.ID)
+			if err := s.transactions.Transaction(ctx, func(tx context.Context) error {
+				if err := s.FailChatRuns(tx, []string{chatID}); err != nil {
+					return err
+				}
+				if job.Err() != nil || executions.chatID != "" {
+					t.Error("deletion cancelled native work before committing its failed task")
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if job.Err() == nil || executions.chatID != chatID || executions.executionID != effect.ExecutionID {
+				t.Fatalf("deletion did not cancel its exact work after commit: job=%v chat=%s execution=%s", job.Err(), executions.chatID, executions.executionID)
+			}
+			failed, err := s.runs.LoadRunState(ctx, run.ID)
+			if err != nil || failed.Run.Status != constants.WorkflowRunStatusFailed || failed.Effects[0].Status != constants.WorkflowStepStatusFailed || failed.Instances[0].Status != constants.WorkflowStepStatusFailed {
+				t.Fatalf("deleting a worker did not directly fail its task: %+v %v", failed, err)
+			}
+			s.finishEffect(ctx, effect, WorkerReceipt{ChatID: chatID, ExecutionID: effect.ExecutionID, Status: constants.ExecutionStatusCompleted, FinalPresent: true, Text: "late result"}, nil)
+			after, err := s.runs.LoadRunState(ctx, run.ID)
+			if err != nil || after.Run.Status != constants.WorkflowRunStatusFailed || after.Run.Version != failed.Run.Version || after.Effects[0].Status != constants.WorkflowStepStatusFailed || after.Effects[0].Result != nil {
+				t.Fatalf("late success revived the deleted task: %+v %v", after, err)
+			}
+		})
+	}
 }
 
 func (e *workerDispatchExecution) ValidateConfiguration(context.Context, execution.ExecutionConfiguration) error {

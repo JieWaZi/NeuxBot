@@ -581,10 +581,22 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		hub.Publish(events.Event{Topic: "usage", Type: "usage.changed", Resource: events.Resource{Kind: "global"}})
 	}
 	chatModule, err := chat.New(chat.Config{
-		StorageDirectory:      configuration.ManagedFilesDirectory,
-		Conversations:         conversations,
-		Projects:              ProjectControllerManager,
-		CloseNativeThread:     threads.CloseThread,
+		StorageDirectory:  configuration.ManagedFilesDirectory,
+		Conversations:     conversations,
+		Projects:          ProjectControllerManager,
+		CloseNativeThread: threads.CloseThread,
+		PrepareDelete: func(ctx context.Context, chatIDs []string) error {
+			if WorkflowService != nil {
+				return WorkflowService.FailChatRuns(ctx, chatIDs)
+			}
+			return nil
+		},
+		StopExecution: func(ctx context.Context, chatID string) error {
+			if ExecutionService != nil {
+				return ExecutionService.CancelAndWait(ctx, chatID)
+			}
+			return nil
+		},
 		PreserveIMAdmissions:  IMControllerManager.PreserveInboxAdmissions,
 		CloseIdleNativeThread: threads.CloseIdleChat,
 		ResetUsageProjection: func(ctx context.Context) error {
@@ -648,12 +660,6 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 				return execution.WorkflowTurnBinding{}, nil
 			}
 			return WorkflowService.BindWorkflowTurn(ctx, chat, executionID, selection)
-		},
-		CancelWorkflowTurn: func(ctx context.Context, chatID, executionID string) error {
-			if WorkflowService == nil {
-				return nil
-			}
-			return WorkflowService.StopChatWorkflowTurn(ctx, chatID, executionID)
 		},
 		ValidateIntent: func(ctx context.Context, intent execution.WorkIntent) error {
 			if KnowledgeService == nil {
@@ -719,6 +725,12 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	}
 	var imModule *imservice.Service
 	channelModule, err := channelservice.New(channelservice.Config{
+		StopWorkflowTurn: func(ctx context.Context, chatID, executionID string) error {
+			if WorkflowService == nil {
+				return nil
+			}
+			return WorkflowService.StopChatWorkflowTurn(ctx, chatID, executionID)
+		},
 		StopChatWorkflows: func(ctx context.Context, threadID string, chatIDs []string, cancelingAt int64) error {
 			if WorkflowService == nil {
 				return status_error.WorkflowCapabilityUnsupported
@@ -790,7 +802,6 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	if err := workflowfiles.RecoverStagedInputs(ctx, configuration.ManagedFilesDirectory, WorkflowRunControllerManager.OwnedInputRunIDs); err != nil && ctx.Err() == nil {
 		logx.Warnf("recover staged workflow inputs failed: error=%v", err)
 	}
-	WorkflowService.RestoreChatRunIndex(ctx)
 	if err := ChannelService.Start(ctx); err != nil {
 		return mapCoreError("start_channel_service", status_error.CoreChannelInitializationFailed, err)
 	}

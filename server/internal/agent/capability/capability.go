@@ -64,6 +64,8 @@ type Binding struct {
 
 // GrantSpec freezes the exact operations available to an execution and its current identity validation.
 type GrantSpec struct {
+	// Lifecycle belongs to the admitted execution; nil leaves revocation to the explicit owner.
+	Lifecycle context.Context
 	// ExecutionID is the stable identity of the admitted execution.
 	ExecutionID string
 	// SharedLocalToken uses the Core credential for an interactive local chat connection.
@@ -234,7 +236,11 @@ func (r *Registry) bindExecutionLocked(key string, spec GrantSpec) (func(), func
 		}
 		bindings[binding.Operation] = binding
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	lifecycle := spec.Lifecycle
+	if lifecycle == nil {
+		lifecycle = context.Background()
+	}
+	ctx, cancel := context.WithCancel(lifecycle)
 	current := &lease{
 		executionID:  spec.ExecutionID,
 		bindings:     bindings,
@@ -440,11 +446,11 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 		writeSuccess(w, "execution", constants.AgentCLICompletionImmediate, Result{Data: current.executionID})
 		return
 	}
-	ctx, cancel := context.WithCancel(request.Context())
+	ctx, cancel := context.WithCancel(current.ctx)
 	ctx = context.WithValue(ctx, fileRootsKey{}, current.fileRoots)
 	ctx = context.WithValue(ctx, filePathsKey{}, current.filePaths)
 	ctx = context.WithValue(ctx, managedSpaceKey{}, current.managedSpace)
-	stop := context.AfterFunc(current.ctx, cancel)
+	stop := context.AfterFunc(request.Context(), cancel)
 	defer func() { stop(); cancel() }()
 	if current.ctx.Err() != nil {
 		writeFailure(w, "", status_error.AgentContextUnauthorized)

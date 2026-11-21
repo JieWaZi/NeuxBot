@@ -2,6 +2,8 @@
 package capability
 
 import (
+	"sync"
+
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
@@ -77,6 +79,8 @@ type Scope struct {
 	DefaultWorkflowID string
 	// Selection 固定用户通过聊天引用选择的工作流版本。
 	Selection *workinput.WorkflowReference
+	// SavedRevisions 仅在本次能力生命周期内记录已返回保存回执的版本。
+	SavedRevisions *sync.Map
 	// Token 是节点结果提交使用的尝试凭证。
 	Token string
 	// Kind 是服务端签发的能力用途。

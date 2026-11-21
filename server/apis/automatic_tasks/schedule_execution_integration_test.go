@@ -574,7 +574,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 		if err := teamTasks.UpdateFields(ctx, review.ID, map[string]interface{}{"status": constants.ChannelTaskStatusCompleted}); err != nil {
 			t.Fatal(err)
 		}
-		notification := models.ChannelLeadNotification{ID: util.New(), ThreadID: run.ThreadID, TaskID: review.ID, AttemptID: util.New(), Status: constants.ChannelNotificationStatusDelivering, Payload: "等待汇总"}
+		notification := models.ChannelLeadNotification{ID: util.New(), ThreadID: run.ThreadID, TaskID: review.ID, AttemptID: util.New(), LeadExecutionID: util.New(), Status: constants.ChannelNotificationStatusDelivering, Payload: "等待汇总"}
 		if err := teamTasks.CreateNotification(ctx, notification); err != nil {
 			t.Fatal(err)
 		}
@@ -582,7 +582,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 		if err != nil || waiting.ActiveRun == nil || waiting.ActiveRun.State != constants.AutomaticRunStateRunning {
 			t.Fatalf("团队汇总被提前完成: %+v %v", waiting, err)
 		}
-		if err := teamTasks.UpdateNotifications(ctx, []string{notification.ID}, constants.ChannelNotificationStatusConsumed, "", finishedAt); err != nil {
+		if err := teamTasks.UpdateNotifications(ctx, []string{notification.ID}, constants.ChannelNotificationStatusConsumed, notification.LeadExecutionID, finishedAt); err != nil {
 			t.Fatal(err)
 		}
 		// 首次整体结束后不查询自动任务，直接由 Core 接纳手动续聊，仍须冻结原结果。

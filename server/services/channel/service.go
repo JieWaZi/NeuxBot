@@ -71,6 +71,8 @@ type Config struct {
 	FreezeWorkflowSelection func(context.Context, *workinput.WorkflowReference) (*workinput.WorkflowReference, error)
 	// StopChatWorkflows 按仍有效的停止代次撤销原成员聊天关联的工作流。
 	StopChatWorkflows func(ctx context.Context, threadID string, chatIDs []string, cancelingAt int64) error
+	// StopWorkflowTurn 停止单个团队任务回合发起的工作流。
+	StopWorkflowTurn func(ctx context.Context, chatID, executionID string) error
 	// ManagedFilesDirectory 是 Chat 引用写入和聚合删除共用操作门的受管文件根。
 	ManagedFilesDirectory string
 	// Commands 保存与任务事务一起提交的 CLI 回执。
@@ -105,6 +107,8 @@ type service struct {
 	freezeWorkflowSelection func(context.Context, *workinput.WorkflowReference) (*workinput.WorkflowReference, error)
 	// stopChatWorkflows 同时用于团队显式停止和启动恢复。
 	stopChatWorkflows func(context.Context, string, []string, int64) error
+	// stopWorkflowTurn 由任务停止用例显式收敛该尝试发起的工作流。
+	stopWorkflowTurn func(context.Context, string, string) error
 	// managedFilesDirectory 标识成员会话引用与删除共用的操作门。
 	managedFilesDirectory string
 	// commands 持久化任务命令接纳事实。
@@ -171,6 +175,7 @@ func New(config Config) (Service, error) {
 	return &service{
 		freezeWorkflowSelection:  config.FreezeWorkflowSelection,
 		stopChatWorkflows:        config.StopChatWorkflows,
+		stopWorkflowTurn:         config.StopWorkflowTurn,
 		managedFilesDirectory:    config.ManagedFilesDirectory,
 		commands:                 config.Commands,
 		channels:                 config.Channels,

@@ -1,11 +1,13 @@
 package chats
 
 import (
+	"context"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -39,12 +41,12 @@ func (c *CancelChatExecution) Validate(*gin.Context) error {
 // Output 取消使用原回执或提交标识定位的执行。
 func (c *CancelChatExecution) Output(ctx *gin.Context) (interface{}, error) {
 	if c.ExecutionID != "" {
-		if err := global.ExecutionService.CancelExecutionAndWait(ctx.Request.Context(), c.ChatID, c.ExecutionID); err != nil {
+		if err := stopChatExecution(ctx.Request.Context(), c.ChatID, c.ExecutionID); err != nil {
 			return nil, ginx.WithStack(err)
 		}
 		return ginx.CommonSuccessResponse(), nil
 	}
-	if err := global.ExecutionService.CancelSubmissionAndWait(ctx.Request.Context(), c.ChatID, c.SubmissionID); err != nil {
+	if err := stopChatSubmission(ctx.Request.Context(), c.ChatID, c.SubmissionID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	return ginx.CommonSuccessResponse(), nil
@@ -67,8 +69,40 @@ func (c *CancelFirstChatExecution) Output(ctx *gin.Context) (interface{}, error)
 	if err != nil || wakerID == "" {
 		return nil, status_error.BadRequest
 	}
-	if err := global.ExecutionService.CancelSubmissionAndWait(ctx.Request.Context(), identity.ResourceID("chat", wakerID), identity.ID); err != nil {
+	if err := stopChatSubmission(ctx.Request.Context(), identity.ResourceID("chat", wakerID), identity.ID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	return ginx.CommonSuccessResponse(), nil
+}
+
+// stopChatExecution 在公开停止用例中分别结束原生执行与该回合拥有的工作流。
+func stopChatExecution(ctx context.Context, chatID, executionID string) error {
+	global.ExecutionService.CancelExecution(chatID, executionID)
+	var workflowErr error
+	if global.WorkflowService != nil {
+		workflowErr = global.WorkflowService.StopChatWorkflowTurn(ctx, chatID, executionID)
+	}
+	if err := global.ExecutionService.CancelExecutionAndWait(ctx, chatID, executionID); err != nil {
+		return err
+	}
+	return workflowErr
+}
+
+// stopChatSubmission 用原提交事实定位关联工作，不在执行注册表内编排工作流。
+func stopChatSubmission(ctx context.Context, chatID, submissionID string) error {
+	nativeErr := global.ExecutionService.CancelSubmissionAndWait(ctx, chatID, submissionID)
+	if global.WorkflowService == nil {
+		return nativeErr
+	}
+	receipt, err := global.ChatService.ReadSubmission(ctx, chatID, submissionID)
+	if util.HasStatusCode(err, status_error.ChatNotFound) || err == nil && receipt == nil {
+		return nativeErr
+	}
+	if err != nil {
+		return err
+	}
+	if err := global.WorkflowService.StopChatWorkflowTurn(ctx, chatID, receipt.ID); err != nil {
+		return err
+	}
+	return nativeErr
 }

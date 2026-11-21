@@ -279,7 +279,6 @@ func (s *Service) prepareAuthoring(
 }
 
 func (s *Service) persistConsumer(ctx context.Context, lease models.WorkflowConsumerLease) (models.WorkflowConsumerLease, error) {
-	lease.DeadlineAt = time.Now().UnixMilli() + constants.WorkflowDefaultTimeoutMillis
 	var err error
 	if lease.ThreadID == "" {
 		err = s.consumers.CreateConsumer(ctx, lease)
@@ -690,38 +689,25 @@ func (s *Service) authorizeWorkflowTool(ctx context.Context, scope workflowtool.
 	}
 	switch scope.Kind {
 	case constants.WorkflowCapabilityScopeConsumer:
-		if s.consumers == nil || s.chats == nil {
+		if s.consumers == nil {
 			return workflowToolAccess{}, status_error.WorkflowCapabilityUnsupported
 		}
 		lease, err := s.consumers.GetConsumer(ctx, scope.Key)
 		if err != nil {
 			return workflowToolAccess{}, err
 		}
-		if lease.DeadlineAt <= time.Now().UnixMilli() || lease.StoppedAt != nil {
+		if lease.StoppedAt != nil {
 			return workflowToolAccess{}, status_error.WorkflowStateConflict
 		}
-		if s.chatTurns.stopped(lease.ChatID, lease.ID) {
-			return workflowToolAccess{}, status_error.WorkflowStateConflict
-		}
-		actual, err := s.chats.ReadExecution(ctx, lease.ChatID, lease.ID)
+		actual, chat, err := s.readWorkflowExecution(ctx, lease.ChatID, lease.ID)
 		if err != nil {
 			return workflowToolAccess{}, err
-		}
-		if actual.CompletedAt != nil || actual.Status != constants.ExecutionStatusPending && actual.Status != constants.ExecutionStatusRunning {
-			return workflowToolAccess{}, status_error.WorkflowStateConflict
-		}
-		summary, err := s.chats.GetChatSummary(ctx, lease.ChatID)
-		if err != nil {
-			return workflowToolAccess{}, err
-		}
-		if summary.Chat.ActiveExecutionID != lease.ID {
-			return workflowToolAccess{}, status_error.WorkflowStateConflict
 		}
 		return workflowToolAccess{
 			owner:     consumerReceiptOwner(lease),
 			selection: lease.Selection,
 			call: func(ctx context.Context, input workflowtool.Input) (map[string]any, error) {
-				return s.handleConsumerTool(ctx, lease, actual, summary.Chat, input)
+				return s.handleConsumerTool(ctx, lease, actual, chat, input)
 			},
 		}, nil
 	case constants.WorkflowCapabilityScopeResult:

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"strings"
+	"sync"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -18,7 +19,7 @@ import (
 // BindLocalWorkflowTurn 为本地交互回合准备共同工具和默认目标。实际调用前不创建运行记录。
 func (s *Service) BindLocalWorkflowTurn(ctx context.Context, chat models.Chat, executionID string, selected *workinput.WorkflowReference, creationSessionID string) (execution.WorkflowTurnBinding, error) {
 	var bound execution.WorkflowTurnBinding
-	scope := workflowtool.Scope{Key: creationSessionID, ExecutionID: executionID, LocalChatID: chat.ID}
+	scope := workflowtool.Scope{Key: creationSessionID, ExecutionID: executionID, LocalChatID: chat.ID, SavedRevisions: &sync.Map{}}
 	if creationSessionID != "" {
 		session, err := s.creationSessions.GetCreationSession(ctx, creationSessionID)
 		if err != nil {
@@ -37,7 +38,6 @@ func (s *Service) BindLocalWorkflowTurn(ctx context.Context, chat models.Chat, e
 		scope.Selection = reference
 		bound.Reference = reference
 	}
-	s.chatTurns.bind(chat.ID, executionID, false)
 	ids := append(append([]string{}, workflowAuthoringOperations...), workflowRunOperations...)
 	ids = append(ids, "workflow.runs.list", "workflow.runs.repeat")
 	bound.Capability = &execution.ToolCapability{ID: "workflow.local", Name: "工作流", Bindings: s.agentBindings(scope, ids)}
@@ -51,7 +51,7 @@ func (s *Service) BindLocalWorkflowTurn(ctx context.Context, chat models.Chat, e
 	return bound, nil
 }
 
-func (s *Service) readLocalWorkflowExecution(ctx context.Context, chatID, executionID string) (models.Execution, models.Chat, error) {
+func (s *Service) readWorkflowExecution(ctx context.Context, chatID, executionID string) (models.Execution, models.Chat, error) {
 	if s.chats == nil {
 		return models.Execution{}, models.Chat{}, status_error.WorkflowCapabilityUnsupported
 	}
@@ -64,7 +64,7 @@ func (s *Service) readLocalWorkflowExecution(ctx context.Context, chatID, execut
 		return actual, models.Chat{}, err
 	}
 	if actual.CompletedAt != nil || actual.Status != constants.ExecutionStatusPending && actual.Status != constants.ExecutionStatusRunning ||
-		summary.Chat.ActiveExecutionID != executionID || s.chatTurns.stopped(chatID, executionID) {
+		summary.Chat.ActiveExecutionID != executionID {
 		return actual, summary.Chat, status_error.WorkflowStateConflict
 	}
 	return actual, summary.Chat, nil
@@ -75,7 +75,7 @@ func workflowExecutionDefaults(actual models.Execution) models.WorkflowExecution
 }
 
 func (s *Service) authorizeLocalWorkflowTool(ctx context.Context, scope workflowtool.Scope) (workflowToolAccess, error) {
-	actual, chat, err := s.readLocalWorkflowExecution(ctx, scope.LocalChatID, scope.ExecutionID)
+	actual, chat, err := s.readWorkflowExecution(ctx, scope.LocalChatID, scope.ExecutionID)
 	if err != nil {
 		return workflowToolAccess{}, err
 	}
@@ -163,10 +163,6 @@ func (s *Service) handleLocalWorkflowTool(ctx context.Context, scope workflowtoo
 }
 
 func (s *Service) readLocalWorkflowDefinitions(ctx context.Context, scope workflowtool.Scope, request agentcap.Request) (agentcap.Result, error) {
-	// 命令入口已核验当前执行，已登记的停止意图会先于执行终态生效。
-	if s.chatTurns.stopped(scope.LocalChatID, scope.ExecutionID) {
-		return agentcap.Result{}, status_error.WorkflowStateConflict
-	}
 	if request.Operation == "workflow.definitions.describe" {
 		id, _ := request.Params["definitionId"].(string)
 		revisionID, _ := request.Params["revisionId"].(string)
@@ -245,9 +241,8 @@ func (s *Service) localWorkflowRevision(scope workflowtool.Scope, id, revisionID
 	if revisionID == "" || revisionID == scope.Selection.RevisionID {
 		return scope.Selection.RevisionID, nil
 	}
-	grant := s.chatTurns.current(scope.LocalChatID)
-	if grant != nil && grant.executionID == scope.ExecutionID {
-		if _, saved := grant.savedRevisions.Load(revisionID); saved {
+	if scope.SavedRevisions != nil {
+		if _, saved := scope.SavedRevisions.Load(revisionID); saved {
 			return revisionID, nil
 		}
 	}

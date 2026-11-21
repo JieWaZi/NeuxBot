@@ -184,6 +184,9 @@ func TestMeasureVerifiesMaterializedSystemSkillFiles(t *testing.T) {
 	}
 
 	partner := filepath.Join(managed, "Agents", "waker-a")
+	if err := workspace.EnsureAgentWorkspace(partner, "waker-a"); err != nil {
+		t.Fatal(err)
+	}
 	snapshot := ".neuxbot/skills/" + digest
 	for _, target := range []string{snapshot, ".cursor/skills/bot", ".agents/skills/bot", ".cursor/skills/another", ".neuxbot/skills/" + filepath.Base(published)} {
 		if err := managedskills.CopySelectedDirectory(published, filepath.Join(partner, target), managedskills.IsSystemSkillDocument); err != nil {

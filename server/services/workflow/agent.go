@@ -183,7 +183,7 @@ func (s *Service) startAgentRun(ctx context.Context, scope workflowtool.Scope, o
 		input := workflowAgentInput(prepared)
 		input.StagedInputs = staged
 		input.RequestID = commandID
-		// 冻结文件可能跨过授权期限，新运行接纳前读取当前执行范围。
+		// 文件准备期间执行可能已经结束，接纳前核对当前执行范围。
 		_, err := s.handleTool(ctx, scope, input)
 		return err
 	})
@@ -274,8 +274,8 @@ func (s *Service) workflowAgentReceipt(scope workflowtool.Scope, operation strin
 		return result
 	}
 	if scope.Selection != nil && data["definitionId"] == scope.Selection.ID {
-		if grant := s.chatTurns.current(scope.LocalChatID); grant != nil && grant.executionID == scope.ExecutionID {
-			grant.savedRevisions.Store(revisionID, struct{}{})
+		if scope.SavedRevisions != nil {
+			scope.SavedRevisions.Store(revisionID, struct{}{})
 		}
 	}
 	copy := make(map[string]any, len(data)+1)

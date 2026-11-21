@@ -123,16 +123,19 @@ func (s *service) exhaustAttemptWatcher(
 	attempt models.ChannelTaskAttempt,
 	threadID string,
 ) error {
-	if err := s.executions.CancelNativeExecutionAndWait(ctx, attempt.ChatID, attempt.ExecutionID); err != nil {
-		return err
-	}
 	task, err := s.tasks.Get(ctx, attempt.TaskID)
+	if hasStatusErrorCode(err, status_error.ChannelTaskNotFound.Code()) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
 	if task.ThreadID != threadID || task.CurrentFence != attempt.Fence ||
 		task.Status != constants.ChannelTaskStatusInProgress {
 		return nil
+	}
+	if err := s.executions.CancelExecutionAndWait(ctx, attempt.ChatID, attempt.ExecutionID); err != nil {
+		return err
 	}
 	if err := s.failAttempt(
 		ctx,
@@ -193,6 +196,9 @@ func (s *service) handleAttemptTerminal(
 		ctx = context.Background()
 	}
 	task, err := s.tasks.Get(ctx, attempt.TaskID)
+	if hasStatusErrorCode(err, status_error.ChannelTaskNotFound.Code()) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}

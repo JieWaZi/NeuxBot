@@ -13,7 +13,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -42,7 +41,7 @@ func TestListChatWorkflowRunsReturnsOriginalMessageAndExactRun(t *testing.T) {
 	old := models.WorkflowRun{ID: "tenth", DefinitionID: "flow", RevisionID: "v1", SourceChatID: "member", SourceName: "评审", SourceExecutionID: "turn10", SourceMessageID: "message10", Status: constants.WorkflowRunStatusFailed, Context: map[string]any{}, WorkerConfigurations: map[string]models.WorkflowExecutionDefaults{}}
 	newRun := old
 	newRun.ID, newRun.SourceExecutionID, newRun.SourceMessageID, newRun.SourceRunID, newRun.Status = "eleventh", "turn11", "message11", "tenth", constants.WorkflowRunStatusSucceeded
-	newRun.ChatFiles = map[string]models.WorkflowChatFile{
+	newRun.OutputFiles = map[string]models.WorkflowOutputFile{
 		"/partial": {Partial: true, Error: status_error.WorkflowFileNotFound.Key()},
 		"/final":   {Error: status_error.WorkflowFileInvalid.Key()},
 	}
@@ -86,7 +85,7 @@ func TestListChatWorkflowRunsReturnsOriginalMessageAndExactRun(t *testing.T) {
 	}
 }
 
-func TestListChatWorkflowRunsSkipsKnownEmptyChatAfterRestoration(t *testing.T) {
+func TestListChatWorkflowRunsReadsAuthoritativeSourcesAfterFailure(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "ordinary-chat.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
@@ -96,29 +95,26 @@ func TestListChatWorkflowRunsSkipsKnownEmptyChatAfterRestoration(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = connection.Close() })
-	previousWorkflow := global.WorkflowService
 	previousChats, previousRuns, previousTx := global.ChatControllerManager, global.WorkflowRunControllerManager, global.TransactionControllerManager
 	t.Cleanup(func() {
-		global.WorkflowService = previousWorkflow
 		global.ChatControllerManager, global.WorkflowRunControllerManager, global.TransactionControllerManager = previousChats, previousRuns, previousTx
 	})
 	global.ChatControllerManager = controllers.NewChatController(database.DB)
 	global.WorkflowRunControllerManager = unavailableChatWorkflowSources{WorkflowRunController: controllers.NewWorkflowRunController(database.DB)}
 	global.TransactionControllerManager = controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))
-	global.WorkflowService = workflow.New(workflow.Config{Runs: global.WorkflowRunControllerManager})
 	if err := database.DB.Create(&models.Chat{ID: "ordinary-chat"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	query := ListChatWorkflowRuns{ChatID: "ordinary-chat", ExecutionIDs: "turn"}
 	if _, err := query.Output(ctx); !errors.Is(err, status_error.DatabaseError) {
-		t.Fatalf("query did not consult its source before restoration: %v", err)
+		t.Fatalf("query did not consult its source while its store is unavailable: %v", err)
 	}
-	global.WorkflowService.RestoreChatRunIndex(t.Context())
+	global.WorkflowRunControllerManager = controllers.NewWorkflowRunController(database.DB)
 	result, err := query.Output(ctx)
 	response, ok := result.(ChatWorkflowRunsResponse)
 	if err != nil || !ok || response.Resources == nil || len(response.Resources) != 0 {
-		t.Fatalf("known empty chat depended on the workflow source: %+v, %v", result, err)
+		t.Fatalf("recovered source did not return the empty chat: %+v, %v", result, err)
 	}
 	query.ChatID = "missing-chat"
 	_, err = query.Output(ctx)
@@ -129,7 +125,7 @@ func TestListChatWorkflowRunsSkipsKnownEmptyChatAfterRestoration(t *testing.T) {
 }
 
 type unavailableChatWorkflowSources struct {
-	// WorkflowRunController keeps the real startup recovery query and other access methods.
+	// WorkflowRunController 保留来源查询以外的真实仓储行为。
 	controllers.WorkflowRunController
 }
 

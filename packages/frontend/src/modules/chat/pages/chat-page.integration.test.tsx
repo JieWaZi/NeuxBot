@@ -939,9 +939,10 @@ beforeEach(() => {
   listChatWorkspaceFiles.mockClear();
   downloadChatWorkspaceFile.mockClear();
   deleteChatWorkspaceFile.mockClear();
-  createChat.mockClear();
   wakerPluginReads.mockClear();
-  sendMessage.mockClear();
+  // 恢复初始发送实现，丢弃失败用例尚未消费的一次性回执。
+  createChat.mockReset();
+  sendMessage.mockReset();
   resolveApproval.mockClear();
   resolveApproval.mockResolvedValue(undefined);
 });
@@ -3554,7 +3555,8 @@ describe("ChatPage", () => {
         await user.click(
           await screen.findByRole("button", { name: "带草稿打开成员对话" }),
         );
-        expect(await screen.findByText("lead.txt")).toBeVisible();
+        await screen.findByText("历史消息：member-chat");
+        await waitFor(() => expect(screen.getByText("lead.txt")).toBeVisible());
         expect(byInput()).not.toHaveTextContent("@执行成员");
         await openLead();
         expect(byInput()).not.toHaveTextContent(message);
@@ -4077,11 +4079,7 @@ describe("ChatPage", () => {
       }
       await user.click(screen.getByRole("button", { name: "发送消息" }));
       await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
-      await act(async () => {
-        await new Promise((resolve) => window.setTimeout(resolve, 100));
-      });
-
-      expect(screen.getByText("继续工作")).toBeVisible();
+      await waitFor(() => expect(screen.getByText("继续工作")).toBeVisible());
       expect(chatMessageReads.current["chat-1"]).toBe(1);
       expect(chatDetailReads.current["chat-1"]).toBe(1);
       expect(recentProjectReads).not.toHaveBeenCalled();

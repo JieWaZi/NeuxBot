@@ -7,12 +7,124 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+func TestDeletedChatsFailOwnedWorkflowTasksAndPreserveFinishedFacts(t *testing.T) {
+	ctx := t.Context()
+	db := newTestDB(t)
+	runs := NewWorkflowRunController(db)
+	transactions := NewTransactionController(dbhelper.NewGormTransactionManager(db))
+	completedAt := int64(50)
+	rows := []models.WorkflowRun{
+		{ID: "source", SourceChatID: "source-chat", SourceExecutionID: "source-execution", Status: constants.WorkflowRunStatusWaiting},
+		{ID: "child", ParentRunID: "source", Joined: true, Status: constants.WorkflowRunStatusRunning},
+		{ID: "detached", ParentRunID: "source", Joined: false, Status: constants.WorkflowRunStatusRunning},
+		{ID: "worker", Status: constants.WorkflowRunStatusRunning},
+		{ID: "prepared", Status: constants.WorkflowRunStatusRunning},
+		{ID: "projection-only", Status: constants.WorkflowRunStatusRunning},
+		{ID: "finished", SourceChatID: "source-chat", SourceExecutionID: "finished-execution", Status: constants.WorkflowRunStatusSucceeded, CompletedAt: &completedAt},
+		{ID: "unrelated", Status: constants.WorkflowRunStatusRunning},
+	}
+	for i := range rows {
+		rows[i].Version, rows[i].Fence, rows[i].LeaseUntil, rows[i].LeaseOwner = 1, 1, 1000, "runner"
+		rows[i].WorkerConfigurations = map[string]models.WorkflowExecutionDefaults{}
+		rows[i].Context = map[string]any{}
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	effects := []models.WorkflowEffect{
+		{ID: "source-effect", RunID: "source", Status: constants.WorkflowStepStatusPrepared, SlotReserved: true},
+		{ID: "child-effect", RunID: "child", Status: constants.WorkflowStepStatusRunning, SlotReserved: true},
+		{ID: "worker-effect", RunID: "worker", ChatID: "worker-chat", ExecutionID: "worker-execution", Status: constants.WorkflowStepStatusRunning, SlotReserved: true},
+		{ID: "prepared-effect", RunID: "prepared", ChatID: "prepared-chat", ExecutionID: "prepared-execution", Status: constants.WorkflowStepStatusPrepared, SlotReserved: true},
+		{ID: "projection-only-effect", RunID: "projection-only", ExecutionID: "projection-only-execution", Status: constants.WorkflowStepStatusRunning, SlotReserved: true},
+		{ID: "confirmed-effect", RunID: "source", Status: constants.WorkflowStepStatusSucceeded},
+	}
+	if err := db.Create(&effects).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.ChatExecutionLocation{ChatID: "worker-chat", ExecutionID: "projection-only-execution"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []any{
+		&models.WorkflowFiber{ID: "source-fiber", RunID: "source", Status: constants.WorkflowStepStatusWaiting},
+		&models.WorkflowGroupRun{ID: "source-group", RunID: "source", Status: constants.WorkflowStepStatusRunning},
+		&models.WorkflowNodeInstance{ID: "source-node", RunID: "source", Status: constants.WorkflowStepStatusRunning},
+		&models.WorkflowHumanRequest{ID: "source-question", RunID: "source", Status: constants.WorkflowStepStatusWaiting, Options: map[string]any{}},
+		&models.WorkflowOperationRequest{ID: "source-operation", RunID: "source", EffectID: "source-effect", Status: constants.WorkflowStepStatusWaiting},
+		&models.WorkflowActionCall{ID: "source-call", RunID: "source", EffectID: "source-effect", Status: constants.WorkflowStepStatusRunning},
+	} {
+		if err := db.Create(model).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	stale, err := runs.LoadRunState(ctx, "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := transactions.Transaction(ctx, func(tx context.Context) error {
+		failed, err := runs.FailChatRuns(tx, []string{"source-chat", "worker-chat", "prepared-chat"}, 100)
+		if err == nil && (len(failed.Runs) != 4 || len(failed.Effects) != 4) {
+			t.Errorf("unexpected ownership: runs=%+v effects=%+v", failed.Runs, failed.Effects)
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"source", "child", "worker", "prepared"} {
+		run, err := runs.GetRun(ctx, id)
+		if err != nil || run.Status != constants.WorkflowRunStatusFailed || run.CompletedAt == nil || *run.CompletedAt != 100 || run.Version != 2 || run.Failure == nil {
+			t.Fatalf("deleted chat task remained active: %+v %v", run, err)
+		}
+	}
+	for _, id := range []string{"detached", "unrelated", "finished", "projection-only"} {
+		run, err := runs.GetRun(ctx, id)
+		if err != nil || run.Version != 1 || id == "finished" && (run.Status != constants.WorkflowRunStatusSucceeded || *run.CompletedAt != completedAt) || id != "finished" && run.Status != constants.WorkflowRunStatusRunning {
+			t.Fatalf("unowned or completed run changed: %+v %v", run, err)
+		}
+	}
+	state, err := runs.LoadRunState(ctx, "source")
+	if err != nil || state.Run.ChatDeliveryFinishedAt == nil || state.Run.ChatDeliveryError != status_error.ChatNotFound.Key() || state.Fibers[0].Status != constants.WorkflowStepStatusFailed || state.Groups[0].Status != constants.WorkflowStepStatusFailed || state.Instances[0].Status != constants.WorkflowStepStatusFailed || state.Humans[0].Status != constants.WorkflowStepStatusFailed || state.Operations[0].Status != constants.WorkflowStepStatusFailed || state.ActionCalls[0].Status != constants.WorkflowStepStatusFailed {
+		t.Fatalf("deletion did not directly finish the owned tasks: %+v %v", state, err)
+	}
+	confirmed, err := runs.GetEffect(ctx, "confirmed-effect")
+	if err != nil || confirmed.Status != constants.WorkflowStepStatusSucceeded {
+		t.Fatalf("confirmed result changed: %+v %v", confirmed, err)
+	}
+	stale.Run.Status = constants.WorkflowRunStatusSucceeded
+	if err := transactions.Transaction(ctx, func(tx context.Context) error { return runs.CommitRunState(tx, stale, stale.Run.Version, 101) }); !errors.Is(err, status_error.WorkflowFenceConflict) {
+		t.Fatalf("late runner commit revived the deleted task: %v", err)
+	}
+}
+
+func TestDeletedChatWorkflowFailureRollsBackWithDeletionTransaction(t *testing.T) {
+	db := newTestDB(t)
+	runs := NewWorkflowRunController(db)
+	transactions := NewTransactionController(dbhelper.NewGormTransactionManager(db))
+	if err := db.Create(&models.WorkflowRun{ID: "run", SourceChatID: "chat", Status: constants.WorkflowRunStatusWaiting, Version: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	err := transactions.Transaction(t.Context(), func(tx context.Context) error {
+		if _, err := runs.FailChatRuns(tx, []string{"chat"}, 100); err != nil {
+			return err
+		}
+		return status_error.ChatLogError
+	})
+	if !errors.Is(err, status_error.ChatLogError) {
+		t.Fatal(err)
+	}
+	run, err := runs.GetRun(t.Context(), "run")
+	if err != nil || run.Status != constants.WorkflowRunStatusWaiting || run.CompletedAt != nil || run.ChatDeliveryFinishedAt != nil || run.Version != 1 {
+		t.Fatalf("rolled back deletion changed workflow state: %+v %v", run, err)
+	}
+}
 
 func TestVisibleChatRunSourcePageUsesTheSameIndexForTotalAndRows(t *testing.T) {
 	for _, count := range []int{20, 1000} {

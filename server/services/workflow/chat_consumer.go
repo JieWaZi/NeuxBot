@@ -63,8 +63,14 @@ func (s *Service) FreezeWorkflowSelection(ctx context.Context, selected *workinp
 
 // BindWorkflowTurn 为公开伙伴、团队负责人或成员的准确回合签发使用能力。
 func (s *Service) BindWorkflowTurn(ctx context.Context, chat models.Chat, executionID string, selected *workinput.WorkflowReference) (execution.WorkflowTurnBinding, error) {
-	if selected == nil && (chat.LatestSequence == 0 || !s.chatTurns.hasHistory(chat.ID)) {
-		return execution.WorkflowTurnBinding{}, nil
+	if selected == nil {
+		if chat.LatestSequence == 0 {
+			return execution.WorkflowTurnBinding{}, nil
+		}
+		hasHistory, err := s.runs.HasChatRunSources(ctx, chat.ID)
+		if err != nil || !hasHistory {
+			return execution.WorkflowTurnBinding{}, nil
+		}
 	}
 	bound, err := s.bindChatWorkflowTurn(ctx, chat, executionID, selected)
 	if err != nil && selected == nil {
@@ -103,10 +109,6 @@ func (s *Service) bindChatWorkflowTurn(ctx context.Context, chat models.Chat, ex
 	fingerprint, err := requestidempotency.New(executionID, []any{chat.ID, threadID, reference})
 	if err != nil {
 		return bound, err
-	}
-	grant := s.chatTurns.bind(chat.ID, executionID, selected != nil)
-	if grant.state.Load()&chatTurnStopped != 0 {
-		return bound, status_error.WorkflowStateConflict
 	}
 	lease, err := s.persistConsumer(ctx, models.WorkflowConsumerLease{ID: executionID, ChatID: chat.ID, Selection: reference, ThreadID: threadID, PayloadDigest: fingerprint.Hash})
 	if err != nil {
@@ -166,7 +168,7 @@ func (s *Service) validateChatRunAdmission(ctx context.Context, command StartRun
 	if origin.Workbench {
 		return nil
 	}
-	if s.consumers == nil || s.chatTurns.stopped(origin.ChatID, origin.ExecutionID) {
+	if s.consumers == nil {
 		return status_error.WorkflowStateConflict
 	}
 	var lease models.WorkflowConsumerLease
@@ -185,7 +187,7 @@ func (s *Service) validateChatRunAdmission(ctx context.Context, command StartRun
 	if err != nil {
 		return err
 	}
-	if lease.ID != command.ConsumerLeaseID || lease.ChatID != origin.ChatID || lease.ThreadID != origin.ThreadID || lease.StoppedAt != nil || lease.DeadlineAt <= time.Now().UnixMilli() {
+	if lease.ID != command.ConsumerLeaseID || lease.ChatID != origin.ChatID || lease.ThreadID != origin.ThreadID || lease.StoppedAt != nil {
 		return status_error.WorkflowStateConflict
 	}
 	if lease.ThreadID != "" {
@@ -261,33 +263,25 @@ func workflowPermissions(level constants.PermissionLevel) int {
 	}
 }
 
-// StopChatWorkflowTurn 撤销未接纳调用，同时停止同一回合已经接纳的运行。
+// StopChatWorkflowTurn 撤销确切回合的使用权限，并停止该回合已经接纳的运行。
 func (s *Service) StopChatWorkflowTurn(ctx context.Context, chatID, executionID string) error {
 	if executionID == "" || s.runs == nil || s.consumers == nil {
 		return nil
 	}
-	restored := s.chatTurns.restored.Load()
-	if !s.chatTurns.stop(chatID, executionID) && restored {
-		return nil
+	if err := s.consumers.StopConsumer(ctx, chatID, executionID, time.Now().UnixMilli()); err != nil {
+		return err
 	}
-	s.state.Commands.Lock()
-	defer s.state.Commands.Unlock()
-	return s.transactions.Transaction(ctx, func(ctx context.Context) error {
-		if err := s.consumers.StopConsumer(ctx, chatID, executionID, time.Now().UnixMilli()); err != nil {
+	runs, err := s.runs.ListChatRunSources(ctx, chatID, []string{executionID})
+	if err != nil {
+		return err
+	}
+	for _, run := range runs {
+		if run.SourceWorkbench || workflowstate.TerminalRun(run.Status) || run.Status == constants.WorkflowRunStatusCancelling {
+			continue
+		}
+		if err := s.CancelRun(ctx, run.ID); err != nil {
 			return err
 		}
-		runs, err := s.runs.ListChatRunSources(ctx, chatID, []string{executionID})
-		if err != nil {
-			return err
-		}
-		for _, run := range runs {
-			if run.SourceWorkbench || workflowstate.TerminalRun(run.Status) || run.Status == constants.WorkflowRunStatusCancelling {
-				continue
-			}
-			if _, err := s.requestRunCancellation(ctx, run.ID); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	}
+	return nil
 }

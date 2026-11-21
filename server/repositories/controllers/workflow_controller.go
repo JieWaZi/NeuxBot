@@ -15,7 +15,7 @@ import (
 type WorkflowController interface {
 	// CreateDefinition 建立没有运行版本的空定义。
 	CreateDefinition(context.Context, models.WorkflowDefinition) error
-	// DeleteDefinition 删除资源入口但保留不可变版本与历史，活跃运行和触发依赖必须先解除。
+	// DeleteDefinition 删除资源入口并保留不可变版本与历史，不阻止仍有引用的删除。
 	DeleteDefinition(context.Context, string, string) error
 	// GetDefinition 按稳定身份读取定义。
 	GetDefinition(context.Context, string) (models.WorkflowDefinition, error)
@@ -64,20 +64,6 @@ func (c *workflowController) CreateDefinition(ctx context.Context, value models.
 
 func (c *workflowController) DeleteDefinition(ctx context.Context, id, expectedRevisionID string) error {
 	db := controllerDB(ctx, c.db)
-	var active int64
-	if err := db.Model(&models.WorkflowRun{}).Where("definition_id = ? AND status NOT IN ?", id, []constants.WorkflowRunStatus{constants.WorkflowRunStatusSucceeded, constants.WorkflowRunStatusFailed, constants.WorkflowRunStatusCancelled}).Count(&active).Error; err != nil {
-		return databaseError("check_workflow_delete_runs", id, err)
-	}
-	if active > 0 {
-		return status_error.WorkflowStateConflict.WithField("reason", "active_runs")
-	}
-	var triggers int64
-	if err := db.Model(&models.AutomaticTask{}).Where("workflow_id = ? AND workflow_trigger_detached = ?", id, false).Count(&triggers).Error; err != nil {
-		return databaseError("check_workflow_delete_triggers", id, err)
-	}
-	if triggers > 0 {
-		return status_error.WorkflowStateConflict.WithField("reason", "trigger_dependencies")
-	}
 	result := db.Where("id = ? AND current_revision_id = ?", id, expectedRevisionID).Delete(&models.WorkflowDefinition{})
 	if result.Error != nil {
 		return databaseError("delete_workflow_definition", id, result.Error)

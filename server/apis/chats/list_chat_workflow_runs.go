@@ -100,9 +100,6 @@ func (o *ListChatWorkflowRuns) read(ctx context.Context) (ChatWorkflowRunsRespon
 	if _, err := global.ChatControllerManager.Get(ctx, o.ChatID); err != nil {
 		return ChatWorkflowRunsResponse{}, err
 	}
-	if global.WorkflowService != nil && !global.WorkflowService.MayHaveChatRunSources(o.ChatID) {
-		return ChatWorkflowRunsResponse{Resources: []ChatWorkflowRun{}}, nil
-	}
 	runs, err := global.WorkflowRunControllerManager.ListChatRunSources(ctx, o.ChatID, strings.Split(o.ExecutionIDs, ","))
 	if err != nil {
 		return ChatWorkflowRunsResponse{}, err

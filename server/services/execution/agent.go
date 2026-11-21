@@ -39,7 +39,7 @@ type preparedAgentConnection struct {
 	finish func()
 }
 
-func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEnvironment, workspace agentapi.Workspace, skills *[]agentapi.Skill, instructions *[]agentapi.Instruction, connectors *[]agentapi.ConnectorDeclaration, contextInstructions *[]agentapi.Instruction, chat models.Chat, executionID string, request pendingMessage, requestReferencedFiles, uploadedFiles []string) (preparedAgentConnection, error) {
+func (m *service) prepareAgent(ctx, executionContext context.Context, environment models.RuntimeEnvironment, workspace agentapi.Workspace, skills *[]agentapi.Skill, instructions *[]agentapi.Instruction, connectors *[]agentapi.ConnectorDeclaration, contextInstructions *[]agentapi.Instruction, chat models.Chat, executionID string, request pendingMessage, requestReferencedFiles, uploadedFiles []string) (preparedAgentConnection, error) {
 	if m.agent == nil {
 		return preparedAgentConnection{}, nil
 	}
@@ -163,7 +163,7 @@ func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEn
 		identity = append(identity, mcpOperations...)
 	}
 	key := agentIdentity(strings.Join(identity, "\x00"))
-	path, activate, finish, err := m.agent.PrepareConnection(filepath.Join(root, constants.AgentCLIContextDirectory), key, m.agentEndpoint, capability.GrantSpec{ExecutionID: executionID, SharedLocalToken: request.localWorkflowTools, Bindings: bindings, FileRoots: roots, FilePaths: requestReferencedFiles, ManagedSpace: workspace.Path, Record: func(ctx context.Context, op capability.Operation, result capability.Result) error {
+	path, activate, finish, err := m.agent.PrepareConnection(filepath.Join(root, constants.AgentCLIContextDirectory), key, m.agentEndpoint, capability.GrantSpec{Lifecycle: executionContext, ExecutionID: executionID, SharedLocalToken: request.localWorkflowTools, Bindings: bindings, FileRoots: roots, FilePaths: requestReferencedFiles, ManagedSpace: workspace.Path, Record: func(ctx context.Context, op capability.Operation, result capability.Result) error {
 		fact := eventlog.AgentCommandData{CommandID: result.CommandID, Operation: op.ID, Completion: op.Completion}
 		_, err := m.journal.AppendExecutionFacts(ctx, chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeAgentCommandCommitted,
 			ExecutionID: executionID, InvocationID: executionID, Data: marshalData(fact)}})

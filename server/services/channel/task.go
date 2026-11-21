@@ -470,7 +470,7 @@ func (s *service) dispatchTask(
 	acceptedAt := time.Now().UnixMilli()
 	if accepted.Execution.ID != attempt.ExecutionID {
 		s.capabilities.Revoke(capabilityToken)
-		if cancelErr := s.executions.CancelNativeExecutionAndWait(ctx, member.ChatID, accepted.Execution.ID); cancelErr != nil {
+		if cancelErr := s.executions.CancelExecutionAndWait(ctx, member.ChatID, accepted.Execution.ID); cancelErr != nil {
 			logx.Errorf("cancel mismatched channel task execution failed: thread_id=%s task_id=%s attempt_id=%s expected_execution_id=%s actual_execution_id=%s chat_id=%s error=%v", thread.ID, task.ID, attempt.ID, attempt.ExecutionID, accepted.Execution.ID, member.ChatID, cancelErr)
 		}
 		return nil, s.rejectTaskDispatch(ctx, thread, attempt, status_error.ChannelTaskAttemptStale)
@@ -506,7 +506,7 @@ func (s *service) dispatchTask(
 	})
 	if err != nil {
 		s.capabilities.Revoke(capabilityToken)
-		if cancelErr := s.executions.CancelNativeExecutionAndWait(ctx, member.ChatID, attempt.ExecutionID); cancelErr != nil {
+		if cancelErr := s.executions.CancelExecutionAndWait(ctx, member.ChatID, attempt.ExecutionID); cancelErr != nil {
 			logx.Errorf("cancel uncommitted channel task execution failed: thread_id=%s task_id=%s attempt_id=%s execution_id=%s chat_id=%s error=%v", thread.ID, task.ID, attempt.ID, attempt.ExecutionID, member.ChatID, cancelErr)
 		}
 		return nil, s.rejectTaskDispatch(ctx, thread, attempt, err)

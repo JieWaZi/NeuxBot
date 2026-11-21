@@ -2,13 +2,18 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -17,6 +22,7 @@ import (
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
@@ -41,6 +47,91 @@ func TestLocalWorkflowToolSetSurvivesChangingSelection(t *testing.T) {
 	if _, err := call("workflow.runs.repeat", "repeat", map[string]any{"runId": "prior-run"}); !errors.Is(err, status_error.AgentOperationForbidden) {
 		t.Fatalf("selected turn allowed repeat: %v", err)
 	}
+}
+
+func TestCancelledExecutionCannotAdmitItsFirstInFlightLocalWorkflowRun(t *testing.T) {
+	ctx := t.Context()
+	s, _ := workflowTestService(t)
+	conversation := consumerFixtureChat(t, "local-chat")
+	definition := savedTestWorkflow(t, s, workflowTestSource(t))
+	bound, _ := bindLocalWorkflowFixture(t, s, conversation, nil)
+	registry := agentcap.New(nil)
+	t.Cleanup(registry.Close)
+	executionContext, cancelExecution := context.WithCancel(ctx)
+	defer cancelExecution()
+	grant, activate, finish, err := registry.Prepare(agentcap.GrantSpec{
+		Lifecycle: executionContext, ExecutionID: "local-turn", Bindings: bound.Capability.Bindings,
+		Validate: func(context.Context) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(finish)
+	activate()
+	entered := make(chan context.Context, 1)
+	release := make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	s.store = blockedLocalStartRevisionStore{WorkflowController: s.store, entered: entered, release: release}
+	body, _ := json.Marshal(map[string]any{"operation": "workflow.runs.start", "requestId": "first-start", "params": map[string]any{
+		"definitionId": definition.ID, "revisionId": definition.CurrentRevisionID, "args": map[string]any{"text": "input"},
+	}})
+	request := httptest.NewRequest(http.MethodPost, constants.AgentCLIPath+"/commands", strings.NewReader(string(body)))
+	request.RemoteAddr = "127.0.0.1:12345"
+	request.Header.Set("Authorization", "Bearer "+grant.Token)
+	request.Header.Set(constants.AgentCLIExecutionHeader, "local-turn")
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		registry.ServeHTTP(response, request)
+	}()
+	var commandContext context.Context
+	select {
+	case commandContext = <-entered:
+	case <-done:
+		t.Fatalf("first local workflow start did not enter revision preparation: %d %s", response.Code, response.Body)
+	case <-time.After(3 * time.Second):
+		t.Fatal("first local workflow start did not enter revision preparation")
+	}
+	cancelExecution()
+	if commandContext.Err() != context.Canceled {
+		t.Fatal("in-flight workflow input retained a live execution context")
+	}
+	if err := s.StopChatWorkflowTurn(ctx, conversation.ID, "local-turn"); err != nil {
+		t.Fatal(err)
+	}
+	unblock()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled workflow start did not finish")
+	}
+	var result agentcap.Response
+	if json.Unmarshal(response.Body.Bytes(), &result) != nil || result.OK {
+		t.Fatalf("cancelled local workflow start returned success: %s", response.Body)
+	}
+	runs, err := s.runs.ListChatRunSources(ctx, conversation.ID, []string{"local-turn"})
+	if err != nil || len(runs) != 0 {
+		t.Fatalf("cancelled first start admitted a run: %+v %v", runs, err)
+	}
+}
+
+// blockedLocalStartRevisionStore 在首次运行读取版本时停住，保留真实数据库接纳行为。
+type blockedLocalStartRevisionStore struct {
+	// WorkflowController 继续执行真实工作流仓储操作。
+	controllers.WorkflowController
+	// entered 提供已经进入首次运行准备的命令上下文。
+	entered chan context.Context
+	// release 允许在执行取消后继续原来的版本读取。
+	release <-chan struct{}
+}
+
+// GetRevision 在测试释放后使用原命令上下文读取真实版本。
+func (s blockedLocalStartRevisionStore) GetRevision(ctx context.Context, definitionID, revisionID string) (models.WorkflowRevision, error) {
+	s.entered <- ctx
+	<-s.release
+	return s.WorkflowController.GetRevision(ctx, definitionID, revisionID)
 }
 
 func TestLocalWorkflowCancellationRequiresAnOwnedChatRun(t *testing.T) {
@@ -171,10 +262,7 @@ func TestLocalWorkflowReferenceFreezesDefinitionAndRevision(t *testing.T) {
 	if err != nil || started.Data.(map[string]any)["revisionId"] != bound.Reference.RevisionID {
 		t.Fatalf("start did not use the send-time revision: %+v %v", started, err)
 	}
-	s.chatTurns.stop("local-chat", "local-turn")
-	if _, err := call("workflow.definitions.describe", "", map[string]any{"definitionId": definition.ID}); !errors.Is(err, status_error.WorkflowStateConflict) {
-		t.Fatalf("describe accepted a stopped turn: %v", err)
-	}
+
 }
 
 func TestLocalWorkflowReferenceCanRunTheExplicitRevisionSavedByTheTurn(t *testing.T) {
@@ -195,8 +283,6 @@ func TestLocalWorkflowReferenceCanRunTheExplicitRevisionSavedByTheTurn(t *testin
 	if err != nil || description.Data.(map[string]any)["revisionId"] != revisionID {
 		t.Fatalf("describe did not use the explicit revision saved by this turn: %+v %v", description, err)
 	}
-	// 模拟有效回执已提交，当前回合未收到保存调用的授权回填。
-	s.chatTurns.current("local-chat").savedRevisions.Delete(revisionID)
 	for _, binding := range bound.Capability.Bindings {
 		if binding.Operation != "workflow.source.save" {
 			continue

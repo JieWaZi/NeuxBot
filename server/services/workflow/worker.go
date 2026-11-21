@@ -3,7 +3,6 @@ package workflow
 import (
 	"context"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"path/filepath"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -156,16 +156,6 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 
 func (a CoreWorkerAdapter) Inspect(ctx context.Context, effect models.WorkflowEffect) (WorkerReceipt, error) {
 	chatID := effect.ChatID
-	if chatID == "" {
-		args := effect.Boundary.Arguments
-		if len(args) != 2 {
-			return WorkerReceipt{}, status_error.WorkflowStateInvalid
-		}
-		options, _ := args[1].Data.(map[string]any)
-		resolve, _ := options["resolve"].(map[string]any)
-		wakerID, _ := resolve["wakerId"].(string)
-		chatID = requestidempotency.Identity{ID: effect.ID}.ResourceID("chat", wakerID)
-	}
 	state, err := a.Chats.ReadInitialExecution(ctx, chatID)
 	if err != nil {
 		return WorkerReceipt{}, err
@@ -220,12 +210,14 @@ func (a CoreWorkerAdapter) Inspect(ctx context.Context, effect models.WorkflowEf
 	return receipt, nil
 }
 func (a CoreWorkerAdapter) Cancel(ctx context.Context, effect models.WorkflowEffect) error {
-	if effect.ChatID == "" {
-		resolve, _ := workflowstate.BoundaryOptions(effect.Boundary)["resolve"].(map[string]any)
-		wakerID, _ := resolve["wakerId"].(string)
-		effect.ChatID = requestidempotency.Identity{ID: effect.ID}.ResourceID("chat", wakerID)
-	}
-	return a.Executions.CancelAndWait(ctx, effect.ChatID)
+	return a.Executions.CancelExecutionAndWait(ctx, effect.ChatID, effect.ExecutionID)
+}
+
+// workerChatID 由效果身份和冻结伙伴定位同一个首次接纳会话。
+func workerChatID(effectID string, boundary workflowdsl.EffectBoundary) string {
+	resolve, _ := workflowstate.BoundaryOptions(boundary)["resolve"].(map[string]any)
+	wakerID, _ := resolve["wakerId"].(string)
+	return requestidempotency.Identity{ID: effectID}.ResourceID("chat", wakerID)
 }
 
 // ValidateAdmission 在接纳事务之外检查节点的智能体选择。
@@ -380,6 +372,7 @@ func prepareWorkerRetry(state *controllers.WorkflowRunState, fiberIndex int, pre
 	}
 	token := util.New() + util.New()
 	next := models.WorkflowEffect{ID: util.New(), RunID: previous.RunID, FiberID: previous.FiberID, InstanceID: previous.InstanceID, Boundary: previous.Boundary, Status: constants.WorkflowStepStatusPrepared, AttemptGeneration: previous.AttemptGeneration + 1, ExecutionID: util.New(), AuthToken: token, TokenDigest: workflowdsl.Digest([]byte(token))}
+	next.ChatID = workerChatID(next.ID, next.Boundary)
 	state.Effects = append(state.Effects, next)
 	state.Fibers[fiberIndex].WaitingID = next.ID
 	for index := range state.Instances {
@@ -421,11 +414,11 @@ func (s *Service) dispatchEffect(ctx context.Context, run models.WorkflowRun, ef
 			if inspectErr == nil && workflowstate.ExecutionTerminal(receipt.Status) {
 				s.finishEffect(ctx, effect, receipt, nil)
 			} else {
-				s.workerCancellationUnknown(ctx, effect, err)
+				s.recordWorkerCancellationUnknown(ctx, effect, err)
 			}
 			return
 		}
-		s.finishEffect(ctx, effect, WorkerReceipt{ChatID: effect.ChatID, ExecutionID: effect.ExecutionID, Status: constants.ExecutionStatusCanceled}, status_error.WorkflowCancelled)
+		s.finishEffect(ctx, effect, WorkerReceipt{ChatID: effect.ChatID, ExecutionID: effect.ExecutionID, Status: constants.ExecutionStatusCanceled}, nil)
 		return
 	}
 	var receipt WorkerReceipt
@@ -438,11 +431,11 @@ func (s *Service) dispatchEffect(ctx context.Context, run models.WorkflowRun, ef
 		if s.runner != nil && s.runner.ctx.Err() == nil {
 			cancelErr := s.worker.Cancel(s.runner.ctx, effect)
 			if cancelErr != nil {
-				s.workerCancellationUnknown(s.runner.ctx, effect, cancelErr)
+				s.recordWorkerCancellationUnknown(s.runner.ctx, effect, cancelErr)
 				return
 			}
 			receipt.Status = constants.ExecutionStatusCanceled
-			s.finishEffect(s.runner.ctx, effect, receipt, status_error.WorkflowCancelled)
+			s.finishEffect(s.runner.ctx, effect, receipt, nil)
 		}
 		return
 	}
@@ -456,12 +449,12 @@ func (s *Service) dispatchEffect(ctx context.Context, run models.WorkflowRun, ef
 		missingExecution := workflowstate.ErrorKey(inspectErr) == status_error.ChatNotFound.Key() ||
 			workflowstate.ErrorKey(inspectErr) == status_error.ExecutionNotFound.Key()
 		if !missingExecution {
-			s.workerCancellationUnknown(ctx, effect, err)
+			s.stopUncertainWorker(ctx, effect, err)
 			return
 		}
 		if effect.Status != constants.WorkflowStepStatusPrepared {
 			// 已运行的首次执行记录消失也不能证明外部工作没有发生。
-			s.workerCancellationUnknown(ctx, effect, inspectErr)
+			s.stopUncertainWorker(ctx, effect, inspectErr)
 			return
 		}
 	}
@@ -471,13 +464,17 @@ func (s *Service) dispatchEffect(ctx context.Context, run models.WorkflowRun, ef
 	s.finishEffect(ctx, effect, receipt, err)
 }
 
-func (s *Service) workerCancellationUnknown(ctx context.Context, effect models.WorkflowEffect, cause error) {
-	// 尽力停止可能已经启动的执行；停止失败也只记录证据，不再交给用户反复点击停止。
+func (s *Service) stopUncertainWorker(ctx context.Context, effect models.WorkflowEffect, cause error) {
+	// 尚未发出停止的派发或查询故障只尝试停止一次，随后保存原不确定证据。
 	stopCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := s.worker.Cancel(stopCtx, effect); err != nil {
 		logx.Errorf("stop uncertain workflow worker failed: effect_id=%s error=%v", effect.ID, err)
 	}
+	s.recordWorkerCancellationUnknown(ctx, effect, cause)
+}
+
+func (s *Service) recordWorkerCancellationUnknown(ctx context.Context, effect models.WorkflowEffect, cause error) {
 	if err := s.state.MutateEffect(ctx, effect.RunID, effect.ID, func(_ context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
 		if workflowstate.StepTerminal(current.Status) || current.Status == constants.WorkflowStepStatusUnknown {
 			return nil
@@ -503,7 +500,7 @@ func (s *Service) finishEffect(ctx context.Context, effect models.WorkflowEffect
 	}
 	defer release()
 	schema, _ := workflowstate.BoundaryOptions(effect.Boundary)["schema"].(map[string]any)
-	err = s.commitChatOutputEffect(ctx, effect, schema, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
+	err = s.commitOutputEffect(ctx, effect, schema, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
 		if workflowstate.StepTerminal(current.Status) || current.Status == constants.WorkflowStepStatusUnknown {
 			return nil
 		}

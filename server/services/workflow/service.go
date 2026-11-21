@@ -42,8 +42,6 @@ type Service struct {
 	summarizeOutput func(context.Context, models.WorkflowExecutionDefaults, string) (string, error)
 	// chatDeliveries 合并同一运行和交付项的同时请求。
 	chatDeliveries singleflight.Group
-	// chatTurns 提供普通发送和停止是否需要进入工作流领域的进程内提示。
-	chatTurns chatRunIndex
 	// worker 是既有 Execution Core 的窄适配端口。
 	worker WorkerPort
 	// creationSessions 保存创作会话与批注。
@@ -154,11 +152,8 @@ func (s *Service) Start(ctx context.Context) error {
 	if s.runner != nil {
 		return status_error.WorkflowStateConflict
 	}
-	s.RestoreChatRunIndex(ctx)
 	child, cancel := context.WithCancel(ctx)
-	s.state.AgentBindings = s.AgentBindings
 	s.runner = &runnerLifecycle{ctx: child, cancel: cancel, done: make(chan struct{}), deliveryWake: make(chan struct{}, 1)}
-	s.chatTurns.teamStopsReady.Store(true)
 	if s.chats != nil {
 		s.runner.workers.Add(1)
 		go s.runChatDeliveryLoop(s.runner)
@@ -167,12 +162,11 @@ func (s *Service) Start(ctx context.Context) error {
 	return nil
 }
 
-// Close 停止接纳、等待派发退出并释放能力装配，未终态帧保留供启动恢复。
+// Close 停止接纳、等待派发退出并释放运行租约，未终态帧保留供启动恢复。
 func (s *Service) Close() {
 	if s == nil || s.runner == nil {
 		return
 	}
-	s.chatTurns.teamStopsReady.Store(false)
 	lifecycle := s.runner
 	lifecycle.cancel()
 	<-lifecycle.done
@@ -180,7 +174,6 @@ func (s *Service) Close() {
 	if err := s.runs.ReleaseLeases(context.Background(), s.state.Owner, time.Now().UnixMilli()); err != nil {
 		logx.Errorf("release workflow leases failed: error=%v", err)
 	}
-	s.state.AgentBindings = nil
 	s.runner = nil
 }
 
@@ -200,9 +193,9 @@ func (s *Service) runLoop(lifecycle *runnerLifecycle) {
 			if lifecycle.copying(run.ID) {
 				continue
 			}
-			var batch chatOutputBatch
+			var batch outputFileBatch
 			state, err := s.tickCheckpoint(lifecycle.ctx, run.ID, &batch)
-			if s.deferChatOutput(lifecycle, run.ID, &batch, err) {
+			if s.deferOutputFiles(lifecycle, run.ID, &batch, err) {
 				continue
 			}
 			if err != nil {

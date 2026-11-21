@@ -182,7 +182,7 @@ func TestExecutionRegistryCancelAndWaitCoversCompletionAndTimeout(t *testing.T) 
 	registry.close()
 }
 
-func TestExecutionCancellationWaitsForSettlementAfterWorkflowStopFails(t *testing.T) {
+func TestExecutionCancellationWaitsForNativeSettlement(t *testing.T) {
 	for _, exact := range []bool{false, true} {
 		name := "chat"
 		if exact {
@@ -198,9 +198,6 @@ func TestExecutionCancellationWaitsForSettlementAfterWorkflowStopFails(t *testin
 					t.Fatal(err)
 				}
 				defer registry.release("chat", "execution")
-				registry.cancelAssociated = func(context.Context, string, string) error {
-					return status_error.DatabaseBusy
-				}
 				done := make(chan error, 1)
 				core := &service{executions: registry}
 				go func() {
@@ -220,8 +217,8 @@ func TestExecutionCancellationWaitsForSettlementAfterWorkflowStopFails(t *testin
 					t.Fatalf("native execution did not receive cancellation: %v", active.Err())
 				}
 				registry.release("chat", "execution")
-				if err := <-done; !errors.Is(err, status_error.DatabaseBusy) {
-					t.Fatalf("cancel did not return the workflow stop error after settlement: %v", err)
+				if err := <-done; err != nil {
+					t.Fatalf("native cancellation failed after settlement: %v", err)
 				}
 			})
 		})
@@ -241,7 +238,7 @@ func TestCancelExecutionAndWaitCannotCancelNextChatExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer registry.release("shared-chat", "new-input")
-	if err = registry.cancelExecutionAndWait(context.Background(), "shared-chat", "old-worker", true); err != nil {
+	if err = registry.cancelExecutionAndWait(context.Background(), "shared-chat", "old-worker"); err != nil {
 		t.Fatal(err)
 	}
 	if next.Err() != nil {

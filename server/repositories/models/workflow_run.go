@@ -35,9 +35,9 @@ type WorkflowExecutionDefaults struct {
 	WorkspaceReadOnly bool `json:"workspaceReadOnly"`
 }
 
-// WorkflowChatFile 是聊天运行在成果确认时冻结的文件收据。
-type WorkflowChatFile struct {
-	// Name 是原成果名称，供来源消息展示。
+// WorkflowOutputFile 是工作流在节点或最终成果确认时冻结的文件收据。
+type WorkflowOutputFile struct {
+	// Name 是成果确认时的原文件名称。
 	Name string `json:"name"`
 	// Path 是受管快照目录内的相对路径。
 	Path string `json:"path,omitempty"`
@@ -65,10 +65,8 @@ type WorkflowRun struct {
 	SourceWorkbench bool `gorm:"not null;default:false" json:"-"`
 	// WorkerPermissionsLimited 表示节点及后代所用权限受本次冻结 Defaults 限制。
 	WorkerPermissionsLimited bool `gorm:"not null;default:false" json:"-"`
-	// CaptureFilesForChatParent 记录子结果需要向聊天父链提供终态文件的接纳决定。
-	CaptureFilesForChatParent bool `gorm:"not null;default:false" json:"-"`
-	// ChatFiles 以结果字段或节点尝试和字段为键，绑定已确认的真实文件成果。
-	ChatFiles map[string]WorkflowChatFile `gorm:"serializer:json;type:text" json:"-"`
+	// OutputFiles 以结果字段或节点尝试和字段为键，保存本运行已确认的不可变文件收据。
+	OutputFiles map[string]WorkflowOutputFile `gorm:"column:chat_files;serializer:json;type:text" json:"-"`
 	// ChatDeliveryFinishedAt 标记正式附件已经尝试交付，用户仍可重试失败项。
 	ChatDeliveryFinishedAt *int64 `json:"-"`
 	// ChatDeliveryError 是可尝试重新交付的会话副本失败码。
@@ -315,7 +313,7 @@ type WorkflowEffect struct {
 	ExecutionID string `gorm:"index" json:"executionId"`
 	// ExecutionStatus 保存本次真实 Execution 收据，自动重试只接受已停止的失败尝试。
 	ExecutionStatus constants.ExecutionStatus `json:"executionStatus"`
-	// ChatID 是 Core 接纳后的稳定对话身份。
+	// ChatID 在 worker outbox 准备时确定会话归属；其他效果为空。
 	ChatID string `gorm:"index" json:"chatId"`
 	// ChildRunID 是已接纳的真实子运行身份，不能从普通 JSON 伪造。
 	ChildRunID string `json:"childRunId,omitempty"`

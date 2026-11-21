@@ -66,8 +66,6 @@ type executionRegistry struct {
 	waitGroup sync.WaitGroup
 	// started 表示注册表已经绑定进程根 Context。
 	started bool
-	// cancelAssociated 撤销由当前执行接纳的工作流，内部清理与关闭不调用。
-	cancelAssociated func(context.Context, string, string) error
 }
 
 // newExecutionRegistry 创建尚未绑定进程生命周期的执行注册表。
@@ -249,14 +247,13 @@ func (r *executionRegistry) complete(
 }
 
 // cancel 取消 Chat 当前活跃执行；没有活跃执行时保持幂等。
-func (r *executionRegistry) cancel(chatID string) string {
+func (r *executionRegistry) cancel(chatID string) {
 	r.mutex.Lock()
 	active, exists := r.active[chatID]
 	r.mutex.Unlock()
 	if exists {
 		active.cancel()
 	}
-	return active.executionID
 }
 
 // stopSubmission 在占位锁内记录尚未到达的停止，或返回本次占位的精确执行。
@@ -301,15 +298,8 @@ func (r *executionRegistry) cancelNativeExecution(chatID, executionID string) {
 
 // cancelAndWait 取消活跃执行，并等待该 Chat 的所有现有执行收尾退出。
 func (r *executionRegistry) cancelAndWait(ctx context.Context, chatID string) error {
-	active, pending := r.stopNative([]string{chatID})
-	var associatedErr error
-	if len(active) != 0 {
-		associatedErr = r.cancelAssociatedWork(ctx, chatID, active[0].executionID)
-	}
-	if err := waitForExecutionSettlements(ctx, pending); err != nil {
-		return err
-	}
-	return associatedErr
+	_, pending := r.stopNative([]string{chatID})
+	return waitForExecutionSettlements(ctx, pending)
 }
 
 // stopNative 捕获并取消已占位的执行，等待只使用本次捕获的收尾屏障。
@@ -344,7 +334,7 @@ func waitForExecutionSettlements(ctx context.Context, pending []<-chan struct{})
 }
 
 // cancelExecutionAndWait 捕获精确执行并等待其文件收尾，旧请求不能取消新工作。
-func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, executionID string, withAssociatedWork bool) error {
+func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, executionID string) error {
 	r.mutex.Lock()
 	active, exists := r.active[chatID]
 	var done <-chan struct{}
@@ -355,10 +345,6 @@ func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, 
 	if exists && active.executionID == executionID {
 		active.cancel()
 	}
-	var associatedErr error
-	if withAssociatedWork {
-		associatedErr = r.cancelAssociatedWork(ctx, chatID, executionID)
-	}
 	if done != nil {
 		select {
 		case <-done:
@@ -366,14 +352,7 @@ func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, 
 			return status_error.ChatHasActiveExecution
 		}
 	}
-	return associatedErr
-}
-
-func (r *executionRegistry) cancelAssociatedWork(ctx context.Context, chatID, executionID string) error {
-	if r.cancelAssociated == nil || executionID == "" {
-		return nil
-	}
-	return r.cancelAssociated(ctx, chatID, executionID)
+	return nil
 }
 
 // executionStartResult is the sending caller’s durable admission receipt.

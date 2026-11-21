@@ -175,7 +175,7 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		_, err := s.appendEvent(ctx, thread.ChannelID, thread.ID, constants.ChannelEventTeamLeaderProcessing, processing)
 		return err
 	}); err != nil {
-		if cancelErr := s.executions.CancelNativeExecutionAndWait(ctx, thread.LeadChatID, accepted.Execution.ID); cancelErr != nil {
+		if cancelErr := s.executions.CancelExecutionAndWait(ctx, thread.LeadChatID, accepted.Execution.ID); cancelErr != nil {
 			logx.Errorf("cancel uncommitted leader notification execution failed: thread_id=%s execution_id=%s error=%v", thread.ID, accepted.Execution.ID, cancelErr)
 		}
 		s.closeLeaderProcessing(ctx, thread, processing)
@@ -494,11 +494,20 @@ func (s *service) exhaustLeadWatcher(
 	notificationIDs []string,
 	inputIDs []string,
 ) error {
-	if err := s.executions.CancelNativeExecutionAndWait(ctx, thread.LeadChatID, executionID); err != nil {
+	if _, err := s.threads.Get(ctx, thread.ID); err != nil {
+		if hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
+			return nil
+		}
+		return err
+	}
+	if err := s.executions.CancelExecutionAndWait(ctx, thread.LeadChatID, executionID); err != nil {
 		return err
 	}
 	now := time.Now().UnixMilli()
 	if err := s.transaction(ctx, func(transactionContext context.Context) error {
+		if _, err := s.threads.Get(transactionContext, thread.ID); err != nil {
+			return err
+		}
 		if err := s.tasks.UpdateNotifications(
 			transactionContext,
 			notificationIDs,
@@ -534,6 +543,9 @@ func (s *service) exhaustLeadWatcher(
 		)
 		return err
 	}); err != nil {
+		if hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
+			return nil
+		}
 		return err
 	}
 	s.watchRecoveryDrain(thread.ID)
@@ -558,6 +570,9 @@ func (s *service) completeLeadExecution(
 	}
 	now := time.Now().UnixMilli()
 	if err := s.transaction(ctx, func(transactionContext context.Context) error {
+		if _, err := s.threads.Get(transactionContext, thread.ID); err != nil {
+			return err
+		}
 		if len(notificationIDs) > 0 {
 			if err := s.tasks.UpdateNotifications(
 				transactionContext, notificationIDs, notificationStatus, executionID, now,
@@ -584,6 +599,9 @@ func (s *service) completeLeadExecution(
 		}
 		return nil
 	}); err != nil {
+		if hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
+			return true, nil
+		}
 		return false, err
 	}
 	if _, err := s.schedule(ctx, thread.ID); err != nil {

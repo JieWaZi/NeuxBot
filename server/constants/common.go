@@ -258,8 +258,6 @@ const (
 	ChannelTasksMCPTitle = "NeuxBot Team Tasks"
 	// ChannelTasksMCPTokenBytes 是团队协作工具执行期租约标识的随机字节数。
 	ChannelTasksMCPTokenBytes = 32
-	// ChannelCapabilityTTLHours 是单次团队执行能力的强制最长存活小时数。
-	ChannelCapabilityTTLHours = 24
 	// ChannelCapabilityRoleLead 是协作 MCP 的负责人调用角色。
 	ChannelCapabilityRoleLead = "lead"
 	// ChannelCapabilityRoleMember 是协作 MCP 的执行成员调用角色。

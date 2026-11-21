@@ -71,25 +71,25 @@ func (s *Service) deliverChatRun(ctx context.Context, chatID, runID string, summ
 
 func (s *Service) deliverChatArtifacts(ctx context.Context, run models.WorkflowRun) error {
 	delivery := chat.ExecutionDelivery{ChatID: run.SourceChatID, ExecutionID: run.SourceExecutionID, SourceID: run.ID}
-	var updatedFiles map[string]models.WorkflowChatFile
+	var updatedFiles map[string]models.WorkflowOutputFile
 	var err error
 	partial := run.Status != constants.WorkflowRunStatusSucceeded
-	for _, field := range slices.Sorted(maps.Keys(run.ChatFiles)) {
-		file := run.ChatFiles[field]
+	for _, field := range slices.Sorted(maps.Keys(run.OutputFiles)) {
+		file := run.OutputFiles[field]
 		if file.Partial != partial || file.Error != "" {
 			continue
 		}
 		fileID := requestidempotency.Identity{ID: run.ID}.ResourceID("workflow-chat-output", outputFileID(field), run.SourceExecutionID)
 		delivery.Files = append(delivery.Files, chat.ExecutionDeliveryFile{
 			ID: fileID, Name: file.Name, Partial: file.Partial,
-			Open: func() (io.ReadCloser, error) { return s.openChatFile(run, file) },
+			Open: func() (io.ReadCloser, error) { return s.openOutputReceipt(run, file) },
 			HandleSourceError: func(err error) bool {
 				if !errors.Is(err, status_error.WorkflowFileNotFound) && !errors.Is(err, status_error.WorkflowFileInvalid) {
 					return false
 				}
 				file.Error = util.ErrorCode(err, status_error.WorkflowFileInvalid.Key())
-				run.ChatFiles[field] = file
-				updatedFiles = run.ChatFiles
+				run.OutputFiles[field] = file
+				updatedFiles = run.OutputFiles
 				return true
 			},
 		})
@@ -97,16 +97,11 @@ func (s *Service) deliverChatArtifacts(ctx context.Context, run models.WorkflowR
 	if len(delivery.Files) > 0 {
 		err = s.chats.PublishExecutionDelivery(ctx, delivery)
 	}
-	if errors.Is(err, status_error.ChatHasActiveExecution) || ctx.Err() != nil {
+	if errors.Is(err, status_error.ChatHasActiveExecution) {
 		return err
 	}
-	if err == nil {
-		if cleanupErr := s.removeUnusedChatPartialFiles(ctx, run); cleanupErr != nil && ctx.Err() == nil {
-			logx.Warnf("remove redundant workflow chat files failed: run_id=%s error=%v", run.ID, cleanupErr)
-		}
-	}
-	if ctx.Err() != nil {
-		return ctx.Err()
+	if contextErr := ctx.Err(); contextErr != nil {
+		return contextErr
 	}
 	code := ""
 	if err != nil {
@@ -124,8 +119,8 @@ func ChatSnapshotError(run models.WorkflowRun) string {
 		return ""
 	}
 	partial := run.Status != constants.WorkflowRunStatusSucceeded
-	for _, field := range slices.Sorted(maps.Keys(run.ChatFiles)) {
-		if file := run.ChatFiles[field]; file.Partial == partial && file.Error != "" {
+	for _, field := range slices.Sorted(maps.Keys(run.OutputFiles)) {
+		if file := run.OutputFiles[field]; file.Partial == partial && file.Error != "" {
 			return file.Error
 		}
 	}
@@ -152,8 +147,8 @@ func deliveredChatPartialResults(run models.WorkflowRun) []map[string]string {
 	if run.ChatDeliveryFinishedAt == nil || run.ChatDeliveryError != "" {
 		return results
 	}
-	for _, field := range slices.Sorted(maps.Keys(run.ChatFiles)) {
-		file := run.ChatFiles[field]
+	for _, field := range slices.Sorted(maps.Keys(run.OutputFiles)) {
+		file := run.OutputFiles[field]
 		if file.Partial && file.Error == "" {
 			results = append(results, map[string]string{"field": field, "name": file.Name})
 		}
@@ -263,5 +258,15 @@ func (s *Service) runChatDeliveryLoop(lifecycle *runnerLifecycle) {
 		case <-lifecycle.deliveryWake:
 		case <-retry.C:
 		}
+	}
+}
+
+func (s *Service) notifyTerminalChat(l *runnerLifecycle, run models.WorkflowRun) {
+	if run.SourceChatID == "" || run.SourceWorkbench {
+		return
+	}
+	select {
+	case l.deliveryWake <- struct{}{}:
+	default:
 	}
 }

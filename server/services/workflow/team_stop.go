@@ -22,12 +22,6 @@ func (s *Service) StopTeamWorkflowTurns(ctx context.Context, threadID string, ch
 	if thread.CancelingAt == nil || *thread.CancelingAt != cancelingAt {
 		return nil
 	}
-	mayHaveWork := s.chatTurns.stopTeamTurns(chatIDs)
-	if s.chatTurns.teamStopsReady.Load() && s.chatTurns.restored.Load() && !mayHaveWork {
-		return nil
-	}
-	s.state.Commands.Lock()
-	defer s.state.Commands.Unlock()
 	return s.transactions.Transaction(ctx, func(ctx context.Context) error {
 		thread, err := s.channelThreads.Get(ctx, threadID)
 		if err != nil {

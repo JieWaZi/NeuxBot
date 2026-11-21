@@ -2,13 +2,116 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"gorm.io/gorm"
 )
+
+// WorkflowChatFailure 保存删除会话时已失败的运行和需要释放的真实执行。
+type WorkflowChatFailure struct {
+	// Runs 是本次从活动状态直接进入失败终态的运行。
+	Runs []models.WorkflowRun
+	// Effects 是这些运行中尚在执行的效果，用于提交后取消实际工作。
+	Effects []models.WorkflowEffect
+}
+
+// FailChatRuns 使用原来源和节点关联直接提交失败，不依赖原生回合是否仍占位。
+func (c *workflowRunController) FailChatRuns(ctx context.Context, chatIDs []string, at int64) (WorkflowChatFailure, error) {
+	var failed WorkflowChatFailure
+	ids := uniqueRowIDs(chatIDs)
+	if len(ids) == 0 {
+		return failed, nil
+	}
+	db := controllerDB(ctx, c.db)
+	terminal := []constants.WorkflowRunStatus{constants.WorkflowRunStatusSucceeded, constants.WorkflowRunStatusFailed, constants.WorkflowRunStatusCancelled}
+	seen := map[string]bool{}
+	const batchSize = 128
+	for start := 0; start < len(ids); start += batchSize {
+		batch := ids[start:min(start+batchSize, len(ids))]
+		workers := db.Model(&models.WorkflowEffect{}).Select("run_id").Where("chat_id IN ?", batch)
+		var roots []models.WorkflowRun
+		if err := db.Select("id,definition_id,source_chat_id,version").Where("status NOT IN ?", terminal).
+			Where("source_chat_id IN ? OR id IN (?)", batch, workers).Find(&roots).Error; err != nil {
+			return failed, databaseError("read_deleted_chat_workflow_runs", "", err)
+		}
+		for len(roots) > 0 {
+			var parents []string
+			for _, run := range roots {
+				if seen[run.ID] {
+					continue
+				}
+				seen[run.ID] = true
+				parents = append(parents, run.ID)
+				failed.Runs = append(failed.Runs, run)
+			}
+			if len(parents) == 0 {
+				break
+			}
+			var err error
+			roots, err = readRelatedRows[models.WorkflowRun](db.Where("joined = true AND status NOT IN ?", terminal), "parent_run_id", "id,definition_id,source_chat_id,version", parents)
+			if err != nil {
+				return failed, err
+			}
+		}
+		// 来源已经删除，已有成果交付到此结束，不再进入后台补交。
+		if err := db.Model(&models.WorkflowRun{}).Where("source_chat_id IN ?", batch).
+			UpdateColumns(map[string]any{"chat_delivery_finished_at": at, "chat_delivery_error": status_error.ChatNotFound.Key()}).Error; err != nil {
+			return failed, databaseError("finish_deleted_chat_workflow_delivery", "", err)
+		}
+	}
+	if len(failed.Runs) == 0 {
+		return failed, nil
+	}
+	value := workflowdsl.JSONValue(map[string]any{"code": status_error.ChatNotFound.Key()})
+	failure, err := json.Marshal(value)
+	if err != nil {
+		return failed, databaseError("encode_deleted_chat_workflow_failure", "", err)
+	}
+	active := []constants.WorkflowStepStatus{constants.WorkflowStepStatusReady, constants.WorkflowStepStatusWaiting, constants.WorkflowStepStatusPrepared, constants.WorkflowStepStatusRunning}
+	for start := 0; start < len(failed.Runs); start += batchSize {
+		runs := failed.Runs[start:min(start+batchSize, len(failed.Runs))]
+		runIDs := make([]string, len(runs))
+		for i := range runs {
+			runIDs[i] = runs[i].ID
+			runs[i].Status, runs[i].CompletedAt, runs[i].Failure = constants.WorkflowRunStatusFailed, &at, &value
+			runs[i].Version++
+		}
+		var effects []models.WorkflowEffect
+		if err := db.Where("run_id IN ? AND status IN ?", runIDs, active).Find(&effects).Error; err != nil {
+			return failed, databaseError("read_deleted_chat_workflow_effects", "", err)
+		}
+		failed.Effects = append(failed.Effects, effects...)
+		if err := db.Model(&models.WorkflowRun{}).Where("id IN ? AND status NOT IN ?", runIDs, terminal).
+			UpdateColumns(map[string]any{"status": constants.WorkflowRunStatusFailed, "failure": string(failure), "completed_at": at, "updated_at": at, "version": gorm.Expr("version + 1")}).Error; err != nil {
+			return failed, databaseError("fail_deleted_chat_workflow_runs", "", err)
+		}
+		for _, model := range []any{&models.WorkflowFiber{}, &models.WorkflowGroupRun{}, &models.WorkflowNodeInstance{}, &models.WorkflowEffect{}, &models.WorkflowHumanRequest{}, &models.WorkflowOperationRequest{}, &models.WorkflowActionCall{}} {
+			fields := map[string]any{"status": constants.WorkflowStepStatusFailed}
+			switch model.(type) {
+			case *models.WorkflowGroupRun, *models.WorkflowActionCall:
+				fields["failure"] = string(failure)
+			case *models.WorkflowNodeInstance:
+				fields["failure"], fields["completed_at"] = string(failure), at
+			case *models.WorkflowEffect:
+				fields["failure"], fields["slot_reserved"] = string(failure), false
+			case *models.WorkflowHumanRequest, *models.WorkflowOperationRequest:
+				fields["answered_at"] = at
+			}
+			if err := db.Model(model).Where("run_id IN ? AND status IN ?", runIDs, active).UpdateColumns(fields).Error; err != nil {
+				return failed, databaseError("fail_deleted_chat_workflow_tasks", "", err)
+			}
+		}
+	}
+	publishChatWorkflowChanges(ctx, c.db, failed.Runs)
+	publishCommittedChange(ctx, c.db, "work-board", eventsResource("global", ""))
+	publishWorkRequestRecheck(ctx, c.db, eventsResource("global", ""))
+	return failed, nil
+}
 
 // WorkflowChatRequest 保留实际节点的请求身份，聊天和画布提交到同一入口。
 type WorkflowChatRequest struct {
@@ -36,15 +139,14 @@ type WorkflowChatRequest struct {
 
 const chatRunFields = "id,definition_id,revision_id,source_chat_id,source_execution_id,source_message_id,source_name,source_run_id,source_workbench,chat_files,chat_delivery_error,chat_summary_finished_at,source_waker_id,source_thread_id,status,created_at,completed_at,history_deleted_at,root_run_id,parent_run_id,joined,deadline_at"
 
-func (c *workflowRunController) ListChatRunOrigins(ctx context.Context) ([]models.WorkflowRun, error) {
-	rows := []models.WorkflowRun{}
-	terminal := []constants.WorkflowRunStatus{constants.WorkflowRunStatusSucceeded, constants.WorkflowRunStatusFailed, constants.WorkflowRunStatusCancelled}
-	err := controllerDB(ctx, c.db).Select("DISTINCT source_chat_id, CASE WHEN source_workbench = false AND status NOT IN ? THEN source_execution_id ELSE '' END AS source_execution_id", terminal).
-		Where("source_chat_id <> '' AND source_execution_id <> ''").Find(&rows).Error
+func (c *workflowRunController) HasChatRunSources(ctx context.Context, chatID string) (bool, error) {
+	var rows []models.WorkflowRun
+	err := controllerDB(ctx, c.db).Select("id").
+		Where("source_chat_id = ?", chatID).Limit(1).Find(&rows).Error
 	if err != nil {
-		return nil, databaseError("list_chat_workflow_origins", "", err)
+		return false, databaseError("has_chat_workflow_sources", chatID, err)
 	}
-	return rows, nil
+	return len(rows) != 0, nil
 }
 
 func (c *workflowRunController) ListChatRunSources(ctx context.Context, chatID string, executionIDs []string) ([]models.WorkflowRun, error) {

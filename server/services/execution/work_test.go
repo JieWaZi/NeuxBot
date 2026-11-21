@@ -1160,7 +1160,7 @@ func (r recordedRun) turnRequest(id string, detection agent.DetectionResult) (ag
 }
 func (r *recordedRun) prepare(m *service, chat models.Chat, id string, capabilities []ToolCapability, domains *[]string, paths []string) (func(), func(), error) {
 	r.Runtime.WorkspaceReadOnly = r.ReadOnly
-	grant, err := m.prepareAgent(context.Background(), models.RuntimeEnvironment{Detection: r.Detection}, r.Workspace, &r.Skills, &r.Instructions, &r.Connectors, &r.ContextInstructions, chat, id, pendingMessage{runtime: r.Runtime, toolCapabilities: capabilities, allowedAgentDomains: domains}, paths, nil)
+	grant, err := m.prepareAgent(context.Background(), context.Background(), models.RuntimeEnvironment{Detection: r.Detection}, r.Workspace, &r.Skills, &r.Instructions, &r.Connectors, &r.ContextInstructions, chat, id, pendingMessage{runtime: r.Runtime, toolCapabilities: capabilities, allowedAgentDomains: domains}, paths, nil)
 	r.CLIContextFile = grant.cliContextFile
 	return grant.activate, grant.finish, err
 }

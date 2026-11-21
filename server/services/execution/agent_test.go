@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -319,6 +320,85 @@ func agentPreparationFixture(t *testing.T) *service {
 	return manager
 }
 
+func TestExecutionCancellationRevokesToolsBeforeNativeSettlement(t *testing.T) {
+	manager := agentPreparationFixture(t)
+	manager.executions = newExecutionRegistry()
+	manager.executions.start(t.Context())
+	t.Cleanup(manager.executions.close)
+	conversation := manager.journal.(*agentTestJournal).chat
+	executionContext, err := manager.executions.reserve(conversation.ID, "turn", "submission")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { manager.executions.release(conversation.ID, "turn") })
+	entered := make(chan context.Context, 1)
+	release := make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	request := pendingMessage{runtime: runtimeSelection{RuntimeID: "unsupported"}, allowedAgentDomains: &[]string{},
+		toolCapabilities: []ToolCapability{{Bindings: []capability.Binding{{Operation: "im.targets.list", Call: func(ctx context.Context, _ capability.Request) (capability.Result, error) {
+			entered <- ctx
+			<-release
+			return capability.Result{}, ctx.Err()
+		}}}}},
+	}
+	var skills []agentapi.Skill
+	var instructions, contextInstructions []agentapi.Instruction
+	var connectors []agentapi.ConnectorDeclaration
+	sender, senderFinished := context.WithCancel(t.Context())
+	defer senderFinished()
+	grant, err := manager.prepareAgent(sender, executionContext, models.RuntimeEnvironment{}, agentapi.Workspace{Path: t.TempDir()}, &skills, &instructions, &connectors, &contextInstructions, conversation, "turn", request, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(grant.finish)
+	grant.activate()
+	connection, err := capability.ReadConnection(grant.cliContextFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(method, constants.AgentCLIPath+path, strings.NewReader(body))
+		request.RemoteAddr = "127.0.0.1:12345"
+		request.Header.Set("Authorization", "Bearer "+connection.Token)
+		response := httptest.NewRecorder()
+		manager.agent.ServeHTTP(response, request)
+		return response
+	}
+	// 发送 HTTP 请求结束不会结束已经接纳的执行及工具连接。
+	senderFinished()
+	if response := call(http.MethodGet, "/capabilities", ""); response.Code != http.StatusOK {
+		t.Fatalf("sending caller owned the admitted grant: %d %s", response.Code, response.Body)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		call(http.MethodPost, "/commands", `{"operation":"im.targets.list","params":{}}`)
+	}()
+	var commandContext context.Context
+	select {
+	case commandContext = <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("tool call did not enter")
+	}
+	manager.CancelExecution(conversation.ID, "turn")
+	if !manager.IsExecutionActive(conversation.ID, "turn") {
+		t.Fatal("test lost the native settlement window")
+	}
+	if commandContext.Err() != context.Canceled {
+		t.Fatal("execution cancellation did not synchronously cancel the in-flight command")
+	}
+	if response := call(http.MethodGet, "/capabilities", ""); response.Code != http.StatusUnauthorized {
+		t.Fatalf("cancelled execution retained tools before native settlement: %d %s", response.Code, response.Body)
+	}
+	unblock()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled command did not finish")
+	}
+}
+
 func TestAgentPreparationFreezesRealReferencedFilesIndependentOfNativeProjection(t *testing.T) {
 	manager := agentPreparationFixture(t)
 	chat := manager.journal.(*agentTestJournal).chat
@@ -483,7 +563,7 @@ func TestLocalWorkflowTurnsShareCredentialAndKeepTheCreationPromptLocal(t *testi
 		var skills []agentapi.Skill
 		var instructions, contextInstructions []agentapi.Instruction
 		var connectors []agentapi.ConnectorDeclaration
-		grant, err := manager.prepareAgent(t.Context(), models.RuntimeEnvironment{}, agentapi.Workspace{Path: t.TempDir()}, &skills, &instructions, &connectors, &contextInstructions, journal.chat, journal.chat.ActiveExecutionID, request, nil, nil)
+		grant, err := manager.prepareAgent(t.Context(), t.Context(), models.RuntimeEnvironment{}, agentapi.Workspace{Path: t.TempDir()}, &skills, &instructions, &connectors, &contextInstructions, journal.chat, journal.chat.ActiveExecutionID, request, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

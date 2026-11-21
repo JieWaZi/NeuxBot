@@ -142,7 +142,7 @@ func (runner *MaintenanceRunner) Run(ctx context.Context, input MaintenanceReque
 		Input:          agent.TurnRequest{Text: input.Message, UsageSource: "knowledge_maintenance"},
 		Ports: agent.TurnPorts{
 			AcquireResources: func(ctx context.Context, _ agent.ResourceSelection) (agent.ResourceLease, error) {
-				lease, revokeGrant, err := runner.acquireBridge(ctx, input, bindings, binary, bridgeName)
+				lease, revokeGrant, err := runner.acquireBridge(ctx, runCtx, input, bindings, binary, bridgeName)
 				revoke = revokeGrant
 				return lease, err
 			},
@@ -196,7 +196,7 @@ func (runner *MaintenanceRunner) Run(ctx context.Context, input MaintenanceReque
 }
 
 // acquireBridge 启用原生 MCP 工具发现，实际领域调用仍须等待本轮授权。
-func (runner *MaintenanceRunner) acquireBridge(ctx context.Context, input MaintenanceRequest, bindings []capability.Binding, binary, name string) (agent.ResourceLease, func(), error) {
+func (runner *MaintenanceRunner) acquireBridge(ctx, lifecycle context.Context, input MaintenanceRequest, bindings []capability.Binding, binary, name string) (agent.ResourceLease, func(), error) {
 	if err := ctx.Err(); err != nil {
 		return agent.ResourceLease{}, nil, err
 	}
@@ -212,7 +212,7 @@ func (runner *MaintenanceRunner) acquireBridge(ctx context.Context, input Mainte
 		return nil
 	}}
 	grant, activate, revoke, err := runner.config.Registry.Prepare(capability.GrantSpec{
-		ExecutionID: input.JobID, Bindings: bindings, Validate: input.Validate,
+		Lifecycle: lifecycle, ExecutionID: input.JobID, Bindings: bindings, Validate: input.Validate,
 	})
 	if err != nil {
 		return lease, nil, err

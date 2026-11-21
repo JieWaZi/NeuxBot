@@ -658,7 +658,7 @@ func (c *channelThreadController) DeleteInitializing(
 	return c.deleteThreadFacts(db, threadID, true)
 }
 
-// CountActiveWork 统计阻止删除的活跃工作。
+// CountActiveWork 统计团队对话中仍在进行的工作。
 func (c *channelThreadController) CountActiveWork(
 	ctx context.Context,
 	threadID string,
@@ -721,13 +721,6 @@ func (c *channelThreadController) CountActiveWorkflows(ctx context.Context, thre
 // Delete 删除一个团队对话的全部结构化编排事实。
 func (c *channelThreadController) Delete(ctx context.Context, threadID string) error {
 	db := controllerDB(ctx, c.db)
-	var stopping int64
-	if err := db.Model(&models.ChannelThread{}).Where("id = ? AND canceling_at IS NOT NULL", threadID).Count(&stopping).Error; err != nil {
-		return databaseError("read_channel_thread_stop_for_delete", "thread_id="+threadID, err)
-	}
-	if stopping != 0 {
-		return status_error.ChannelHasActiveWork
-	}
 	if err := c.deleteThreadFacts(db, threadID, false); err != nil {
 		return err
 	}

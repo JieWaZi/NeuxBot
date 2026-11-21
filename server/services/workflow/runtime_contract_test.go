@@ -23,6 +23,56 @@ import (
 
 const runtimeTestMeta = `export const meta={sdk:'bot.workflow',title:'工作流',description:'runtime',phases:[{id:'work',title:'执行',detail:'流程'}]};`
 
+func TestDeclaredFileReceiptsHaveTheSameOwnershipAcrossRunSources(t *testing.T) {
+	for _, source := range []string{"chat", "manual", "workbench"} {
+		t.Run(source, func(t *testing.T) {
+			ctx := t.Context()
+			s, _ := workflowTestService(t)
+			conversation := consumerFixtureChat(t, "source-chat")
+			path := filepath.Join(conversation.WorkspaceDirectory, "report.csv")
+			if err := os.WriteFile(path, []byte("confirmed result"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			encoded, _ := json.Marshal(path)
+			definition := savedTestWorkflow(t, s, strings.Replace(runtimeTestMeta, "phases:", "outputSchema:{type:'string',format:'file'},phases:", 1)+"return "+string(encoded)+";")
+			var run models.WorkflowRun
+			if source == "chat" {
+				run, _ = startChatDeliveryFixture(t, s, conversation, "source-execution", definition)
+			} else {
+				command := StartRunCommand{DefinitionID: definition.ID, RequestID: "run", ApprovedScope: &models.WorkflowScopeBinding{WorkingDirectory: conversation.WorkspaceDirectory}}
+				if source == "workbench" {
+					command.ChatSource = &ChatRunSource{ChatID: conversation.ID, ExecutionID: "source-execution", MessageID: "source-message", Workbench: true}
+				}
+				var err error
+				run, err = s.StartRun(ctx, command)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			run = runTicks(t, s, run.ID, 3)
+			if run.Status != constants.WorkflowRunStatusSucceeded || len(run.OutputFiles) != 1 || run.OutputFiles[""].Digest == "" {
+				t.Fatalf("run source changed file confirmation: %+v", run)
+			}
+			if err := os.WriteFile(path, []byte("later overwrite"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			files, err := s.OutputFiles(ctx, run)
+			if err != nil || len(files) != 1 || !files[0].Available || files[0].Size != int64(len("confirmed result")) {
+				t.Fatalf("file metadata did not use the confirmed receipt: %+v %v", files, err)
+			}
+			content, name, err := s.OpenOutputFile(ctx, run.DefinitionID, run.ID, files[0].ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual, readErr := io.ReadAll(content)
+			content.Close()
+			if readErr != nil || name != "report.csv" || string(actual) != "confirmed result" {
+				t.Fatalf("confirmed output changed with its original path: name=%s body=%q err=%v", name, actual, readErr)
+			}
+		})
+	}
+}
+
 func TestRunWorkspaceUsesWorkflowIdentityAndPrivateRunDirectory(t *testing.T) {
 	s, _ := workflowTestService(t)
 	s.dataDirectory = t.TempDir()
@@ -67,12 +117,11 @@ func TestRelativeOutputsUseRunDirectoryWithoutNameFallback(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	schema := map[string]any{"type": "string", "format": "file"}
-	files := InspectOutputFiles(run, schema, "report.txt")
-	if len(files) != 1 || !files[0].Available {
-		t.Fatalf("current run output unavailable: %+v", files)
+	var receipt models.WorkflowOutputFile
+	if err := s.freezeOutputFile(t.Context(), run, "report.txt", "report", &receipt); err != nil {
+		t.Fatal(err)
 	}
-	file, _, err := OpenDeclaredOutputFile(run, schema, "report.txt", files[0].ID)
+	file, err := s.openOutputReceipt(run, receipt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,12 +133,8 @@ func TestRelativeOutputsUseRunDirectoryWithoutNameFallback(t *testing.T) {
 	if err := os.Remove(actual); err != nil {
 		t.Fatal(err)
 	}
-	if files := InspectOutputFiles(run, schema, "report.txt"); len(files) != 1 || files[0].Available {
-		t.Fatalf("missing run output fell back to a same-name file: %+v", files)
-	}
-	if file, _, err := OpenDeclaredOutputFile(run, schema, "report.txt", files[0].ID); err == nil {
-		file.Close()
-		t.Fatal("missing run output downloaded a same-name file")
+	if err := s.freezeOutputFile(t.Context(), run, "report.txt", "missing", &receipt); err == nil {
+		t.Fatal("missing run output fell back to a same-name file")
 	}
 }
 
@@ -107,7 +152,6 @@ func TestRelativeChildResultsFreezeChildRunDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	childRun.Result = "report.txt"
 	workspace := childRun.Context["workspace"].(map[string]any)
 	actual := filepath.Join(workspace["runDirectory"].(string), "report.txt")
 	for path, content := range map[string]string{
@@ -119,6 +163,7 @@ func TestRelativeChildResultsFreezeChildRunDirectory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	childRun = runTicks(t, s, childRun.ID, 3)
 	effect := models.WorkflowEffect{ID: "relative-child-result"}
 	result, _, err := s.freezeChildResult(ctx, parentRun, effect, childRun)
 	if err != nil {
@@ -131,8 +176,14 @@ func TestRelativeChildResultsFreezeChildRunDirectory(t *testing.T) {
 	if err := os.Remove(actual); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := s.freezeChildResult(ctx, parentRun, effect, childRun); err != nil {
+		t.Fatalf("confirmed child result depended on the original file: %v", err)
+	}
+	if err := os.Remove(filepath.Join(s.outputDirectory(childRun), childRun.OutputFiles[""].Path)); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := s.freezeChildResult(ctx, parentRun, effect, childRun); err == nil {
-		t.Fatal("missing child output fell back to a same-name file")
+		t.Fatal("missing child receipt fell back to a same-name business file")
 	}
 }
 
@@ -335,25 +386,20 @@ func TestDeclaredOutputsUseOnlyBusinessScopeAndInternalWorkspace(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	schema := map[string]any{"type": "string", "format": "file"}
 	for _, path := range []string{internal, external} {
-		files := InspectOutputFiles(run, schema, path)
-		if len(files) != 1 || !files[0].Available {
-			t.Fatalf("declared output unavailable: %s %+v", path, files)
+		var receipt models.WorkflowOutputFile
+		if err := s.freezeOutputFile(t.Context(), run, path, path, &receipt); err != nil {
+			t.Fatal(err)
 		}
-		file, _, err := OpenDeclaredOutputFile(run, schema, path, files[0].ID)
+		file, err := s.openOutputReceipt(run, receipt)
 		if err != nil {
 			t.Fatal(err)
 		}
 		file.Close()
 	}
-	files := InspectOutputFiles(run, schema, outside)
-	if len(files) != 1 || files[0].Available {
+	var receipt models.WorkflowOutputFile
+	if err := s.freezeOutputFile(t.Context(), run, outside, "outside", &receipt); err == nil {
 		t.Fatal("result path expanded file authorization")
-	}
-	if file, _, err := OpenDeclaredOutputFile(run, schema, outside, files[0].ID); err == nil {
-		file.Close()
-		t.Fatal("outside file downloaded")
 	}
 }
 
@@ -375,7 +421,6 @@ func TestDeclaredOutputsRejectMissingMalformedAndMismatchedWorkspace(t *testing.
 		mismatched[key] = value
 	}
 	mismatched["scriptsDirectory"] = business
-	schema := map[string]any{"type": "string", "format": "file"}
 	for _, test := range []struct {
 		// name 标识缺少或损坏的冻结目录事实。
 		name string
@@ -391,14 +436,8 @@ func TestDeclaredOutputsRejectMissingMalformedAndMismatchedWorkspace(t *testing.
 		t.Run(test.name, func(t *testing.T) {
 			invalid := run
 			invalid.Context = map[string]any{"workspace": test.workspace}
-			files := InspectOutputFiles(invalid, schema, path)
-			if len(files) != 1 || files[0].Available {
-				t.Errorf("invalid workspace retained business-scope download: %+v", files)
-			}
-			file, _, err := OpenDeclaredOutputFile(invalid, schema, path, outputFileID(""))
-			if file != nil {
-				file.Close()
-			}
+			var receipt models.WorkflowOutputFile
+			err := s.freezeOutputFile(t.Context(), invalid, path, "invalid", &receipt)
 			var failure interface{ Key() string }
 			if !errors.As(err, &failure) || failure.Key() != test.failure.Key() {
 				t.Fatalf("invalid workspace download error = %v, want %v", err, test.failure)

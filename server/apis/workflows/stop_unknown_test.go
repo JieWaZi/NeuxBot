@@ -126,7 +126,7 @@ func TestLostWorkerReceiptFailsWithoutUserReconciliationOrResend(t *testing.T) {
 	if effect.Status != constants.WorkflowStepStatusUnknown || state.Instances[0].Status != constants.WorkflowStepStatusFailed || state.Run.Failure == nil || state.Run.CompletedAt == nil {
 		t.Fatal("uncertainty was not retained as failure evidence", state)
 	}
-	bindings := service.State.AgentBindings(workflowtool.Scope{Key: effect.ID, Token: effect.AuthToken, Kind: constants.WorkflowCapabilityScopeResult})
+	bindings := service.AgentBindings(workflowtool.Scope{Key: effect.ID, Token: effect.AuthToken, Kind: constants.WorkflowCapabilityScopeResult})
 	var callErr error
 	for _, binding := range bindings {
 		if binding.Operation == "workflow.results.submit" {

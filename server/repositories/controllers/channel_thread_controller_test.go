@@ -31,7 +31,7 @@ func TestChannelLeadInputsKeepEnqueueOrderAtTheSameTimestamp(t *testing.T) {
 	}
 }
 
-func TestTeamDeletionCountsOnlyActiveChatWorkflowRuns(t *testing.T) {
+func TestTeamWorkCountsOnlyActiveChatWorkflowRuns(t *testing.T) {
 	ctx := t.Context()
 	database := newTestDB(t)
 	threads := NewChannelThreadController(database)
@@ -71,7 +71,7 @@ func TestTeamDeletionCountsOnlyActiveChatWorkflowRuns(t *testing.T) {
 	}
 }
 
-func TestTeamDeletionCountsUndeliveredReport(t *testing.T) {
+func TestTeamWorkCountsUndeliveredReport(t *testing.T) {
 	ctx := t.Context()
 	database := newTestDB(t)
 	threads := NewChannelThreadController(database)

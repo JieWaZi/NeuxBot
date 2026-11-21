@@ -117,7 +117,7 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 			}
 			configuration = &session.Defaults
 		} else if command.ExecutionChatID != "" {
-			actual, _, err := s.readLocalWorkflowExecution(ctx, command.ExecutionChatID, command.ExecutionID)
+			actual, _, err := s.readWorkflowExecution(ctx, command.ExecutionChatID, command.ExecutionID)
 			if err != nil {
 				return err
 			}

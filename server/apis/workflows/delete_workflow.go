@@ -35,7 +35,7 @@ func (o *DeleteWorkflow) Output(ctx *gin.Context) (interface{}, error) {
 	return true, nil
 }
 
-// deleteDefinition 原子验证依赖并删除资源入口，既有运行和不可变证据完整保留。
+// deleteDefinition 按当前版本删除资源入口，引用方在后续调用时取得不存在错误。
 func deleteDefinition(ctx context.Context, d *workflowDependencies, id, expectedRevisionID string) error {
 	d.State.Commands.Lock()
 	defer d.State.Commands.Unlock()

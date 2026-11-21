@@ -48,12 +48,12 @@ type Service interface {
 	ResolveConfiguration(ctx context.Context, config ExecutionConfiguration) (ExecutionConfiguration, error)
 	// Cancel 取消指定 Chat 当前活跃的执行。
 	Cancel(chatID string) error
-	// CancelAndWait 取消指定 Chat 当前活跃执行及关联工作流，等待原生收尾。
+	// CancelAndWait 取消指定 Chat 当前活跃执行并等待原生收尾。
 	CancelAndWait(ctx context.Context, chatID string) error
 	// StopNativeExecutions 发出一组原生取消，返回等待这些执行收尾的函数。
 	StopNativeExecutions(chatIDs []string) func(context.Context) error
-	// CancelNativeExecutionAndWait 精确停止单次原生执行，供内部监听与派发补偿使用。
-	CancelNativeExecutionAndWait(ctx context.Context, chatID, executionID string) error
+	// CancelExecution 向指定执行发出取消，不等待后台收尾。
+	CancelExecution(chatID, executionID string)
 	// CancelExecutionAndWait 只取消指定执行占用，旧任务不得影响同Chat后续输入。
 	CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error
 	// CancelSubmissionAndWait 在界面尚未收到执行身份时，只取消对应的提交占用。
@@ -190,8 +190,6 @@ type Config struct {
 	BindWorkflowTurn func(context.Context, models.Chat, string, *workinput.WorkflowReference) (WorkflowTurnBinding, error)
 	// BindLocalWorkflowTurn 为本地交互回合绑定工作流目标及共享工具。
 	BindLocalWorkflowTurn func(context.Context, models.Chat, string, *workinput.WorkflowReference, string) (WorkflowTurnBinding, error)
-	// CancelWorkflowTurn 请求取消确切执行已获授权或已启动的工作流。
-	CancelWorkflowTurn func(context.Context, string, string) error
 	// Events 提供已提交状态的有界观察。
 	Events *events.Hub
 	// Agent 是当前 Core 独占的短期执行能力注册表。
@@ -314,7 +312,6 @@ func New(config Config) (Core, error) {
 		}
 	}
 	registry := newExecutionRegistry()
-	registry.cancelAssociated = config.CancelWorkflowTurn
 	return &service{
 		agent:                  config.Agent,
 		events:                 config.Events,
@@ -373,11 +370,11 @@ func (m *service) Cancel(chatID string) error {
 	if chatID == "" {
 		return status_error.BadRequest
 	}
-	executionID := m.executions.cancel(chatID)
-	return m.executions.cancelAssociatedWork(context.Background(), chatID, executionID)
+	m.executions.cancel(chatID)
+	return nil
 }
 
-// CancelAndWait 取消指定 Chat 当前活跃执行及关联工作流，等待原生收尾。
+// CancelAndWait 取消指定 Chat 当前活跃执行并等待原生收尾。
 func (m *service) CancelAndWait(ctx context.Context, chatID string) error {
 	chatID = strings.TrimSpace(chatID)
 	if chatID == "" {
@@ -392,14 +389,19 @@ func (m *service) StopNativeExecutions(chatIDs []string) func(context.Context) e
 	return func(ctx context.Context) error { return waitForExecutionSettlements(ctx, pending) }
 }
 
-// CancelNativeExecutionAndWait 只停止指定执行及其收尾，关联工作流仍按原事实交付。
-func (m *service) CancelNativeExecutionAndWait(ctx context.Context, chatID, executionID string) error {
-	return m.cancelExecutionAndWait(ctx, chatID, executionID, false)
+// CancelExecution 只向指定执行发出取消，业务终态由原执行所有者提交。
+func (m *service) CancelExecution(chatID, executionID string) {
+	m.executions.cancelNativeExecution(chatID, executionID)
 }
 
 // CancelExecutionAndWait 原子匹配聊天与执行身份后取消，等待该次执行的持久收尾。
 func (m *service) CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error {
-	return m.cancelExecutionAndWait(ctx, chatID, executionID, true)
+	chatID = strings.TrimSpace(chatID)
+	executionID = strings.TrimSpace(executionID)
+	if chatID == "" || executionID == "" {
+		return status_error.BadRequest
+	}
+	return m.executions.cancelExecutionAndWait(ctx, chatID, executionID)
 }
 
 // CancelSubmissionAndWait 以原提交定位执行，后续执行不受旧请求影响。
@@ -421,20 +423,11 @@ func (m *service) CancelSubmissionAndWait(ctx context.Context, chatID, submissio
 		}
 		executionID = receipt.ID
 	}
-	return m.executions.cancelExecutionAndWait(ctx, chatID, executionID, true)
+	return m.executions.cancelExecutionAndWait(ctx, chatID, executionID)
 }
 
 func (m *service) IsSubmissionStopped(chatID, submissionID string) bool {
 	return m.executions.submissionStopped(chatID, submissionID)
-}
-
-func (m *service) cancelExecutionAndWait(ctx context.Context, chatID, executionID string, withAssociatedWork bool) error {
-	chatID = strings.TrimSpace(chatID)
-	executionID = strings.TrimSpace(executionID)
-	if chatID == "" || executionID == "" {
-		return status_error.BadRequest
-	}
-	return m.executions.cancelExecutionAndWait(ctx, chatID, executionID, withAssociatedWork)
 }
 
 func resolveWorkingDirectory(value string) (models.ProjectSource, error) {

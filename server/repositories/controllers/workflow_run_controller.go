@@ -37,14 +37,16 @@ type WorkflowRunState struct {
 
 // WorkflowRunController 只暴露接纳、租约、快照提交和有界查询。
 type WorkflowRunController interface {
+	// FailChatRuns 随会话删除直接终结其来源运行及节点任务，返回需要停止的实际执行。
+	FailChatRuns(context.Context, []string, int64) (WorkflowChatFailure, error)
 	// OwnedInputRunIDs identifies the durable runs that own inputs left by interrupted admission.
 	OwnedInputRunIDs(context.Context, string, []string) ([]string, error)
 	// ListChatRunSources 按聊天与明确的发起回合读取运行，包括已移除的历史标记。
 	ListChatRunSources(context.Context, string, []string) ([]models.WorkflowRun, error)
 	// ListVisibleChatRunSources 在同一读事务内读取可用的来源运行窗口和总量。
 	ListVisibleChatRunSources(ctx context.Context, chatID string, offset, limit int) ([]models.WorkflowRun, int64, error)
-	// ListChatRunOrigins 恢复有运行历史的 Chat 和仍需收敛的准确回合。
-	ListChatRunOrigins(context.Context) ([]models.WorkflowRun, error)
+	// HasChatRunSources 按聊天身份判断是否存在来源运行，不建立进程内历史状态。
+	HasChatRunSources(context.Context, string) (bool, error)
 	// RequestTeamChatRunStop 按持久来源登记团队工作流停止，保留 Runner 原有租约。
 	RequestTeamChatRunStop(ctx context.Context, threadID string, chatIDs []string, at int64) ([]models.WorkflowRun, error)
 	// ListChatRunRequests 批量读取来源运行及其受管子流程的人工问题与授权。
@@ -94,7 +96,7 @@ type WorkflowRunController interface {
 	// ListPendingChatDeliveries 返回终态后尚未结算附件的来源运行身份。
 	ListPendingChatDeliveries(context.Context, string, int) ([]models.WorkflowRun, error)
 	// FinishChatRunFiles 结算附件交付，并保存原快照验证新发现的错误。
-	FinishChatRunFiles(ctx context.Context, chatID, runID, errorCode string, files map[string]models.WorkflowChatFile, at int64) error
+	FinishChatRunFiles(ctx context.Context, chatID, runID, errorCode string, files map[string]models.WorkflowOutputFile, at int64) error
 	// FinishChatRunSummary 记录原回合已完成的手动补写。
 	FinishChatRunSummary(ctx context.Context, chatID, runID string, at int64) error
 
@@ -427,7 +429,7 @@ func (c *workflowRunController) ListPendingChatDeliveries(ctx context.Context, a
 	return values, nil
 }
 
-func (c *workflowRunController) FinishChatRunFiles(ctx context.Context, chatID, runID, errorCode string, files map[string]models.WorkflowChatFile, at int64) error {
+func (c *workflowRunController) FinishChatRunFiles(ctx context.Context, chatID, runID, errorCode string, files map[string]models.WorkflowOutputFile, at int64) error {
 	fields := map[string]any{"chat_delivery_finished_at": at, "chat_delivery_error": errorCode}
 	if files != nil {
 		encoded, err := json.Marshal(files)
@@ -504,10 +506,10 @@ func (c *workflowRunController) CommitRunState(ctx context.Context, value Workfl
 		return databaseError("encode_workflow_failure", run.ID, err)
 	}
 	fields := map[string]any{"status": run.Status, "result": string(output), "failure": string(failure), "version": run.Version, "completed_at": run.CompletedAt}
-	if len(run.ChatFiles) > 0 {
-		files, err := json.Marshal(run.ChatFiles)
+	if len(run.OutputFiles) > 0 {
+		files, err := json.Marshal(run.OutputFiles)
 		if err != nil {
-			return databaseError("encode_workflow_chat_files", run.ID, err)
+			return databaseError("encode_workflow_output_files", run.ID, err)
 		}
 		fields["chat_files"] = string(files)
 	}

@@ -2,13 +2,14 @@ package channel
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -20,6 +21,7 @@ import (
 
 // deletionChatFake 记录团队删除请求覆盖的 Chat 集合。
 type deletionChatFake struct {
+	// Service 保留本用例不使用的 Chat 端口。
 	chatservice.Service
 	// calls 保存每次批量删除收到的 Chat 标识。
 	calls [][]string
@@ -190,27 +192,17 @@ func TestDeleteThreadRemovesAllOrchestrationFactsAndKeepsTeam(t *testing.T) {
 	}
 }
 
-func TestDeleteChannelRejectsActiveWorkThenRemovesEveryThread(t *testing.T) {
+func TestDeleteChannelDirectlyRemovesActiveWorkAndEveryThread(t *testing.T) {
 	fixture := newDeletionFixture(t)
 	channelID, firstThreadID, _ := fixture.seedTeam(t)
 	ctx := context.Background()
 	pending := models.ChannelTask{
 		ID: "14141414141414141414141414141414", ThreadID: firstThreadID,
-		AssigneeWakerID: "member", Subject: "运行中", Description: "先停止", Status: constants.ChannelTaskStatusPending,
+		AssigneeWakerID: "member", Subject: "运行中", Description: "直接删除", Status: constants.ChannelTaskStatusPending,
 		ChangedPaths: []string{},
 	}
 	if err := fixture.db.Create(&pending).Error; err != nil {
 		t.Fatalf("seed pending task: %v", err)
-	}
-	if err := fixture.service.DeleteChannel(ctx, channelID); !errors.Is(err, status_error.ChannelHasActiveWork) {
-		t.Fatalf("DeleteChannel(active) error = %v, want ChannelHasActiveWork", err)
-	}
-	if len(fixture.chats.calls) != 0 {
-		t.Fatalf("active team deleted chats: %v", fixture.chats.calls)
-	}
-	if err := fixture.db.Model(&models.ChannelTask{}).Where("id = ?", pending.ID).
-		Updates(map[string]interface{}{"status": constants.ChannelTaskStatusCancelled}).Error; err != nil {
-		t.Fatalf("cancel pending task: %v", err)
 	}
 	if err := fixture.service.DeleteChannel(ctx, channelID); err != nil {
 		t.Fatalf("DeleteChannel() error = %v", err)
@@ -224,6 +216,121 @@ func TestDeleteChannelRejectsActiveWorkThenRemovesEveryThread(t *testing.T) {
 	threadIDs, err := fixture.threads.ListIDsByChannel(ctx, channelID)
 	if err != nil || len(threadIDs) != 0 {
 		t.Fatalf("remaining team conversations = %v, error = %v", threadIDs, err)
+	}
+}
+
+func TestDeleteThreadWithActiveWorkflowUsesTheSharedChatDeletion(t *testing.T) {
+	fixture := newDeletionFixture(t)
+	channelID, threadID, _ := fixture.seedTeam(t)
+	ctx := t.Context()
+	thread, err := fixture.threads.Get(ctx, threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := models.WorkflowRun{ID: "active-workflow", DefinitionID: "definition", SourceChatID: thread.LeadChatID, SourceExecutionID: "original-turn", SourceThreadID: threadID, Status: constants.WorkflowRunStatusWaiting}
+	if err := fixture.db.Create(&run).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count, err := fixture.threads.CountActiveWork(ctx, threadID); err != nil || count == 0 {
+		t.Fatalf("fixture has no active workflow: count=%d error=%v", count, err)
+	}
+	if err := fixture.db.Model(&models.ChannelThread{}).Where("id = ?", threadID).UpdateColumn("canceling_at", 100).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.DeleteThread(ctx, channelID, threadID); err != nil {
+		t.Fatalf("active work or unfinished stop prevented explicit deletion: %v", err)
+	}
+	if len(fixture.chats.calls) != 1 || len(fixture.chats.calls[0]) != 2 {
+		t.Fatalf("deletion bypassed the shared chat ownership boundary: %v", fixture.chats.calls)
+	}
+}
+
+// deletedAttemptChat 在真实团队删除提交后向已有监听返回 Chat 已删除。
+type deletedAttemptChat struct {
+	// deletionChatFake 继续执行真实仓储聚合删除。
+	*deletionChatFake
+	// deleted 在删除事务结束后释放原监听。
+	deleted <-chan struct{}
+}
+
+func (f *deletedAttemptChat) SubscribeExecutionEvents(ctx context.Context, _, _ string) (chatservice.Subscription, error) {
+	select {
+	case <-f.deleted:
+		return chatservice.Subscription{}, status_error.ChatNotFound
+	case <-ctx.Done():
+		return chatservice.Subscription{}, ctx.Err()
+	}
+}
+
+func TestDeletingActiveThreadEndsWatchersWithoutCompensation(t *testing.T) {
+	for _, role := range []string{"member", "lead"} {
+		t.Run(role, func(t *testing.T) {
+			fixture := newDeletionFixture(t)
+			channelID, threadID, _ := fixture.seedTeam(t)
+			sut := fixture.service
+			sut.tasks = controllers.NewChannelTaskController(fixture.db)
+			ctx, cancel := context.WithCancel(t.Context())
+			sut.lifecycleContext, sut.lifecycleCancel = ctx, cancel
+			sut.watchers, sut.capabilities = make(map[string]struct{}), channeltool.NewRegistry()
+			sut.watcherPolicy = deliveryWatcherPolicy{maximumFailures: 1, initialDelay: time.Millisecond, maximumDelay: 50 * time.Millisecond}
+			t.Cleanup(sut.Close)
+			deleted := make(chan struct{})
+			sut.chats = &deletedAttemptChat{deletionChatFake: fixture.chats, deleted: deleted}
+			executions := &postTurnExecutionFake{}
+			sut.executions = executions
+			attempt := models.ChannelTaskAttempt{ID: "attempt", TaskID: "task", ChatID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", ExecutionID: "execution", AssigneeWakerID: "member", Fence: 1, Reason: constants.ChannelAttemptReasonInitial, Status: constants.ExecutionStatusRunning}
+			if err := sut.tasks.Create(ctx, models.ChannelTask{ID: attempt.TaskID, ThreadID: threadID, Subject: "进行中", Description: "删除直接结束所属监听", AssigneeWakerID: "member", Status: constants.ChannelTaskStatusInProgress, CurrentFence: 1, ChangedPaths: []string{}}, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := sut.tasks.CreateAttempt(ctx, attempt); err != nil {
+				t.Fatal(err)
+			}
+			thread, err := fixture.threads.Get(ctx, threadID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if role == "member" {
+				sut.watchAttempt(attempt, threadID, "")
+			} else {
+				for _, fact := range []any{
+					&models.ChannelLeadNotification{ID: "notification", ThreadID: threadID, TaskID: attempt.TaskID, AttemptID: attempt.ID, Status: constants.ChannelNotificationStatusDelivering, Payload: "result", LeadExecutionID: attempt.ExecutionID},
+					&models.ChannelLeadInput{ID: "input", ThreadID: threadID, Payload: workinput.Input{Content: "continue"}, Status: constants.ChannelInputStatusDelivering, LeadExecutionID: attempt.ExecutionID},
+				} {
+					if err := fixture.db.Create(fact).Error; err != nil {
+						t.Fatal(err)
+					}
+				}
+				sut.watchLeadExecution(thread, attempt.ExecutionID, []string{"notification"}, []string{"input"}, "")
+			}
+			if err := sut.DeleteThread(ctx, channelID, threadID); err != nil {
+				t.Fatal(err)
+			}
+			close(deleted)
+			finished := make(chan struct{})
+			go func() {
+				sut.waitGroup.Wait()
+				close(finished)
+			}()
+			select {
+			case <-finished:
+			case <-time.After(500 * time.Millisecond):
+				t.Fatal("deleted task retained its attempt watcher and compensation loop")
+			}
+			if executions.cancelCount() != 0 {
+				t.Fatalf("deleted task triggered another execution stop: calls=%d", executions.cancelCount())
+			}
+			if role == "member" {
+				if err := sut.handleAttemptTerminal(attempt, messageview.Message{ExecutionID: attempt.ExecutionID, Status: constants.ExecutionStatusCanceled}); err != nil {
+					t.Fatalf("late terminal event retried the deleted task: %v", err)
+				}
+			} else if handled, err := sut.completeLeadExecution(ctx, thread, attempt.ExecutionID, []string{"notification"}, []string{"input"}, chatservice.PublicEvent{ExecutionID: attempt.ExecutionID, ExecutionStatus: constants.ExecutionStatusCanceled}); err != nil || !handled {
+				t.Fatalf("late terminal event retried the deleted thread: handled=%v error=%v", handled, err)
+			}
+			var events int64
+			if err := fixture.db.Model(&models.ChannelEvent{}).Where("thread_id = ?", threadID).Count(&events).Error; err != nil || events != 0 {
+				t.Fatalf("late watcher recreated deleted thread events: events=%d error=%v", events, err)
+			}
+		})
 	}
 }
 

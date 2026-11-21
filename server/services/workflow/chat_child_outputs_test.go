@@ -109,7 +109,7 @@ func TestChatParentUsesChildFileFromTerminalReceipt(t *testing.T) {
 	if childRun.Status != constants.WorkflowRunStatusSucceeded {
 		t.Fatalf("child did not settle: %+v", childRun)
 	}
-	if !childRun.CaptureFilesForChatParent || childRun.SourceChatID != "" || childRun.SourceExecutionID != "" || childRun.SourceThreadID != "" || len(childRun.ChatFiles) != 1 {
+	if childRun.SourceChatID != "" || childRun.SourceExecutionID != "" || childRun.SourceThreadID != "" || len(childRun.OutputFiles) != 1 {
 		t.Fatalf("child receipts leaked or lost source ownership: %+v", childRun)
 	}
 	origins, total, err := s.runs.ListVisibleChatRunSources(ctx, chat.ID, 0, 10)
@@ -126,15 +126,15 @@ func TestChatParentUsesChildFileFromTerminalReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if name := parentRun.ChatFiles[""].Name; name != "report.csv" {
+	if name := parentRun.OutputFiles[""].Name; name != "report.csv" {
 		t.Fatalf("forwarded chat attachment name = %q, want report.csv", name)
 	}
 	legacy := childRun
-	legacy.CaptureFilesForChatParent, legacy.ChatFiles = false, nil
+	legacy.OutputFiles = nil
 	if _, _, err := s.freezeChildResult(ctx, parentRun, started, legacy); !util.HasStatusCode(err, status_error.WorkflowFileInvalid) {
 		t.Fatalf("old child with no file receipt was allowed to use project bytes: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(s.chatOutputDirectory(childRun), childRun.ChatFiles[""].Path), []byte("收据文件损坏"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(s.outputDirectory(childRun), childRun.OutputFiles[""].Path), []byte("收据文件损坏"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := s.freezeChildResult(ctx, parentRun, started, childRun); !util.HasStatusCode(err, status_error.WorkflowFileInvalid) {
@@ -187,7 +187,7 @@ func TestChatParentFreezesNestedAndExplicitlyJoinedChildFiles(t *testing.T) {
 	}
 }
 
-func TestUncollectedAndOrdinaryChildResultsSkipChatSnapshots(t *testing.T) {
+func TestEveryChildRunOwnsItsDeclaredFileSnapshots(t *testing.T) {
 	for _, mode := range []string{"joined", "detached", "ordinary"} {
 		t.Run(mode, func(t *testing.T) {
 			s, _ := workflowTestService(t)
@@ -221,12 +221,13 @@ func TestUncollectedAndOrdinaryChildResultsSkipChatSnapshots(t *testing.T) {
 				t.Fatalf("ordinary child start used %d parent revision lookups, want one for the parent checkpoint", revisions.calls)
 			}
 			childRun := runTicks(t, s, started.ChildRunID, 2)
-			if childRun.Status != constants.WorkflowRunStatusSucceeded || childRun.CaptureFilesForChatParent || len(childRun.ChatFiles) != 0 {
-				t.Fatalf("unrelated child captured chat snapshots: %+v", childRun)
+			if childRun.Status != constants.WorkflowRunStatusSucceeded || len(childRun.OutputFiles) != 1 {
+				t.Fatalf("child did not retain its own confirmed file: %+v", childRun)
 			}
-			if _, err := os.Stat(s.chatOutputDirectory(childRun)); !os.IsNotExist(err) {
-				t.Fatalf("unrelated child touched chat output storage: %v", err)
+			if err := os.WriteFile(path, []byte("子流程结束后的覆盖"), 0o600); err != nil {
+				t.Fatal(err)
 			}
+			assertChatChildFixtureFile(t, s, childRun.ID, "普通流程文件")
 			if mode == "ordinary" {
 				dispatchChatFixtureChild(t, s, runID, "joinWorkflow")
 				assertChatChildFixtureFile(t, s, runID, "普通流程文件")

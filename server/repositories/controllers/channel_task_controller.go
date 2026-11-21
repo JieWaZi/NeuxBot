@@ -57,6 +57,8 @@ type ChannelTaskController interface {
 	ListPendingFollowUps(ctx context.Context, taskID string) ([]models.ChannelTaskFollowUp, error)
 	// DeletePendingFollowUp 按对话和提交身份撤回尚未被尝试领取的补充。
 	DeletePendingFollowUp(ctx context.Context, threadID, submissionID string) error
+	// FindDeliveredFollowUp 按原提交返回已被尝试领取的补充，不读取其他团队的输入。
+	FindDeliveredFollowUp(ctx context.Context, threadID, submissionID string) (models.ChannelTaskFollowUp, bool, error)
 	// ListTimelineFollowUps 按团队和可见性读取时间游标之前的有界补充窗口。
 	ListTimelineFollowUps(ctx context.Context, threadID string, taskIDs []string, beforeCreatedAt int64, beforeRole constants.MessageRole, beforeID string, limit int) ([]models.ChannelTaskFollowUp, error)
 	// MarkFollowUpsDelivered 把一批用户补充原子归属到指定任务尝试。
@@ -655,6 +657,21 @@ func (c *channelTaskController) DeletePendingFollowUp(ctx context.Context, threa
 		return databaseError("delete_pending_channel_follow_up", "thread_id="+threadID, err)
 	}
 	return nil
+}
+
+// FindDeliveredFollowUp 从原投递关系定位需要停止的尝试。
+func (c *channelTaskController) FindDeliveredFollowUp(ctx context.Context, threadID, submissionID string) (models.ChannelTaskFollowUp, bool, error) {
+	db := controllerDB(ctx, c.db)
+	tasks := db.Model(&models.ChannelTask{}).Select("id").Where("thread_id = ?", threadID)
+	var followUp models.ChannelTaskFollowUp
+	result := db.Select("id", "task_id", "delivered_attempt_id").
+		Where("task_id IN (?) AND delivered_at IS NOT NULL AND delivered_attempt_id <> ''", tasks).
+		Where("json_extract(payload, '$.submissionId') = ?", submissionID).
+		Order("created_at DESC, id DESC").Limit(1).Find(&followUp)
+	if result.Error != nil {
+		return models.ChannelTaskFollowUp{}, false, databaseError("find_delivered_channel_follow_up", "thread_id="+threadID, result.Error)
+	}
+	return followUp, result.RowsAffected == 1, nil
 }
 
 // ListTimelineFollowUps 只读取当前团队可公开的待投递用户补充和负责人协调消息。

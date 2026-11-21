@@ -65,14 +65,21 @@ func TestKimiSystemLoginFailureAndCancellation(t *testing.T) {
 			if _, err := client.Initialize(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
+			if mode == "cancel" {
+				progress := client.(interface{ SetAuthenticationProgressHandler(func(string, string)) })
+				progress.SetAuthenticationProgressHandler(func(string, string) { cancel() })
+			}
 			result, err := client.Authenticate(ctx, "login")
 			if err == nil || result != constants.RuntimeAuthenticationResultUnspecified {
 				t.Fatalf("%s claimed success: %s %v", mode, result, err)
 			}
 			if mode != "cancel" && !errors.Is(err, status_error.RuntimeAuthRequired) {
 				t.Fatalf("unexpected error %v", err)
+			}
+			if mode == "cancel" && !errors.Is(err, context.Canceled) {
+				t.Fatalf("login did not report its cancellation: %v", err)
 			}
 		})
 	}

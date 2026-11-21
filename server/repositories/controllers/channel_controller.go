@@ -237,7 +237,7 @@ func (c *channelController) Update(
 	return nil
 }
 
-// CountActiveWork 统计阻止删除的活跃工作。
+// CountActiveWork 统计团队中仍在进行的工作。
 func (c *channelController) CountActiveWork(
 	ctx context.Context,
 	channelID string,

@@ -84,7 +84,7 @@ func (s *Service) dispatchChild(ctx context.Context, run models.WorkflowRun, eff
 		mode, _ := options["mode"].(string)
 		joined := mode != "detached"
 		child, err = s.StartRun(ctx, StartRunCommand{AutomaticRunID: run.AutomaticRunID, DefinitionID: target, RequestID: effect.ID, RevisionID: revisionID, Args: options["args"], Defaults: run.Defaults, ParentRunID: run.ID,
-			Joined: joined, AwaitChildResult: effect.Boundary.Primitive == "workflow", Depth: run.Depth + 1, TriggerSource: "workflow"})
+			Joined: joined, Depth: run.Depth + 1, TriggerSource: "workflow"})
 	}
 	if err != nil {
 		s.finishEffect(ctx, effect, WorkerReceipt{}, err)
@@ -109,7 +109,7 @@ func (s *Service) dispatchChild(ctx context.Context, run models.WorkflowRun, eff
 			return
 		}
 	}
-	err = s.commitChatOutputEffect(ctx, effect, childSchema, func(ctx context.Context, _ *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
+	err = s.commitOutputEffect(ctx, effect, childSchema, func(ctx context.Context, _ *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
 		if workflowstate.StepTerminal(current.Status) {
 			return nil
 		}
@@ -163,28 +163,14 @@ func (s *Service) freezeChildResult(ctx context.Context, parent models.WorkflowR
 	if err != nil {
 		return nil, nil, err
 	}
-	useSnapshot := keepsFinalChatFiles(parent)
-	var childWorkspace workflowfiles.Workspace
-	var roots []string
-	if !useSnapshot {
-		childWorkspace, err = runWorkspace(child)
-		if err != nil {
-			return nil, nil, err
-		}
-		roots = runFileRoots(child, childWorkspace)
-	}
-	result, err := workflowdsl.MapFiles(schema, child.Result, func(pointer, reference string) (string, error) {
+	result, err := workflowdsl.MapFiles(schema, child.Result, func(pointer, _ string) (string, error) {
 		// 一个父运行可以接收多个子效果；字段身份同时绑定效果与子运行，避免成果互相覆盖。
 		identity := workflowstate.Digest([]any{effect.ID, child.ID, pointer})
-		if !useSnapshot {
-			frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, nil, childWorkspace.ResolveRunReference(reference), parentWorkspace.RootDirectory, parent.ID, identity, "")
-			return frozen.Path, err
-		}
-		file, found := child.ChatFiles[pointer]
+		file, found := child.OutputFiles[pointer]
 		if !found || file.Partial || file.Error != "" {
 			return "", status_error.WorkflowFileInvalid.WithField("field", pointer)
 		}
-		content, _, err := s.openChatSnapshot(child, file)
+		content, _, err := s.openOutputSnapshot(child, file)
 		if err != nil {
 			return "", err
 		}
@@ -337,7 +323,7 @@ func (s *Service) recordUnknownDeterministic(ctx context.Context, effect models.
 }
 
 func (s *Service) completeDeterministic(ctx context.Context, effect models.WorkflowEffect, result any, failure error, outputSchema map[string]any, logs ...workflowfunction.ProcessResult) {
-	err := s.commitChatOutputEffect(ctx, effect, outputSchema, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
+	err := s.commitOutputEffect(ctx, effect, outputSchema, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
 		if current.Status == constants.WorkflowStepStatusUnknown {
 			return nil
 		}

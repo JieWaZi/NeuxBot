@@ -10,9 +10,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -26,8 +24,6 @@ type Coordinator struct {
 	CreationCommands sync.Mutex
 	// Owner 标识本应用生命周期持有运行租约的主体。
 	Owner string
-	// AgentBindings 为创作、使用和结果场景签发精确领域能力。
-	AgentBindings func(workflowtool.Scope) []capability.Binding
 	// jobs 记录真实在途外部效果及其取消函数。
 	jobs map[string]context.CancelFunc
 	// jobsMutex 保护效果集合的查询、接纳与释放。
@@ -301,4 +297,15 @@ func (s *Coordinator) EndEffect(id string) {
 	s.jobsMutex.Lock()
 	defer s.jobsMutex.Unlock()
 	delete(s.jobs, id)
+}
+
+// CancelEffects 只向仍在执行的原效果发出取消，实际退出后由 EndEffect 释放所有权。
+func (s *Coordinator) CancelEffects(ids []string) {
+	s.jobsMutex.Lock()
+	defer s.jobsMutex.Unlock()
+	for _, id := range ids {
+		if cancel := s.jobs[id]; cancel != nil {
+			cancel()
+		}
+	}
 }

@@ -245,7 +245,7 @@ func (m *service) startNativeExecution(
 	message := nativeMessage(request, files)
 	message.Text += pluginSelectionHint(frozen.selected)
 	instructions := nativeInstructions(request, files)
-	grant, err := m.prepareAgent(ctx, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles, files.attachments.RuntimePaths)
+	grant, err := m.prepareAgent(ctx, executionContext, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles, files.attachments.RuntimePaths)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}

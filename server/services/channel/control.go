@@ -188,14 +188,16 @@ func (s *service) retryTask(
 
 // StopTask 持久请求停止单个任务对应的当前尝试。
 func (s *service) StopTask(ctx context.Context, taskID string) error {
-	return s.stopTask(ctx, strings.TrimSpace(taskID), false)
+	return s.stopTask(ctx, strings.TrimSpace(taskID), false, "")
 }
 
-func (s *service) stopTask(ctx context.Context, taskID string, fromSubmission bool) error {
+func (s *service) stopTask(ctx context.Context, taskID string, fromSubmission bool, expectedAttemptID string) error {
 	var attempt models.ChannelTaskAttempt
 	var scheduleThreadID string
 	now := time.Now().UnixMilli()
 	if err := s.transaction(ctx, func(ctx context.Context) error {
+		attempt = models.ChannelTaskAttempt{}
+		scheduleThreadID = ""
 		task, err := s.tasks.Get(ctx, taskID)
 		if err != nil {
 			return err
@@ -213,6 +215,25 @@ func (s *service) stopTask(ctx context.Context, taskID string, fromSubmission bo
 		if _, err := s.channels.Get(ctx, thread.ChannelID); err != nil {
 			return err
 		}
+		// 原始直接输入只拥有首次尝试，后续重试和补充各自保存投递身份。
+		if fromSubmission && expectedAttemptID == "" &&
+			(task.CurrentFence > 1 || task.CurrentFence > 0 && task.Status == constants.ChannelTaskStatusPending) {
+			return nil
+		}
+		if expectedAttemptID != "" && task.Status != constants.ChannelTaskStatusInProgress && task.Status != constants.ChannelTaskStatusInReview {
+			return nil
+		}
+		if task.Status == constants.ChannelTaskStatusInProgress || task.CurrentFence > 0 &&
+			(task.Status == constants.ChannelTaskStatusPending || task.Status == constants.ChannelTaskStatusInReview) {
+			attempt, err = s.tasks.GetCurrentAttempt(ctx, task.ID, task.CurrentFence)
+			if err != nil {
+				return err
+			}
+		}
+		if expectedAttemptID != "" && attempt.ID != expectedAttemptID {
+			attempt = models.ChannelTaskAttempt{}
+			return nil
+		}
 		switch task.Status {
 		case constants.ChannelTaskStatusPending, constants.ChannelTaskStatusInReview:
 			if err := s.tasks.UpdateFields(ctx, task.ID, map[string]interface{}{
@@ -229,10 +250,6 @@ func (s *service) stopTask(ctx context.Context, taskID string, fromSubmission bo
 				}
 			}
 		case constants.ChannelTaskStatusInProgress:
-			attempt, err = s.tasks.GetCurrentAttempt(ctx, task.ID, task.CurrentFence)
-			if err != nil {
-				return err
-			}
 			if !taskCancellationRequested(task, attempt.Fence) {
 				if err := s.tasks.UpdateFields(ctx, task.ID, map[string]interface{}{"cancel_requested_at": now, "cancel_requested_fence": attempt.Fence}); err != nil {
 					return err
@@ -248,18 +265,44 @@ func (s *service) stopTask(ctx context.Context, taskID string, fromSubmission bo
 	}); err != nil {
 		return err
 	}
+	var workflowStopErr error
+	if attempt.ID != "" {
+		if s.stopWorkflowTurn != nil {
+			workflowStopErr = s.stopWorkflowTurn(ctx, attempt.ChatID, attempt.ExecutionID)
+		}
+		if !capability.Active(ctx) {
+			if err := s.executions.CancelExecutionAndWait(ctx, attempt.ChatID, attempt.ExecutionID); err != nil {
+				return err
+			}
+		} else {
+			s.watchTaskCancellation(attempt)
+		}
+	}
 	if scheduleThreadID != "" {
-		_, err := s.schedule(ctx, scheduleThreadID)
+		if _, err := s.schedule(ctx, scheduleThreadID); err != nil {
+			return err
+		}
+	}
+	return workflowStopErr
+}
+
+// stopChatSubmission 用原生提交收据确定该次输入关联的工作流归属。
+func (s *service) stopChatSubmission(ctx context.Context, chatID, submissionID string) error {
+	cancelErr := s.executions.CancelSubmissionAndWait(ctx, chatID, submissionID)
+	if s.stopWorkflowTurn == nil {
+		return cancelErr
+	}
+	receipt, err := s.chats.ReadSubmission(ctx, chatID, submissionID)
+	if util.HasStatusCode(err, status_error.ChatNotFound) || err == nil && receipt == nil {
+		return cancelErr
+	}
+	if err != nil {
 		return err
 	}
-	if attempt.ID == "" {
-		return nil
+	if err := s.stopWorkflowTurn(ctx, chatID, receipt.ID); err != nil {
+		return err
 	}
-	if !capability.Active(ctx) {
-		return s.executions.CancelExecutionAndWait(ctx, attempt.ChatID, attempt.ExecutionID)
-	}
-	s.watchTaskCancellation(attempt)
-	return nil
+	return cancelErr
 }
 
 func (s *service) StopWorkForSubmission(ctx context.Context, channelID, threadID, submissionID string) error {
@@ -271,26 +314,40 @@ func (s *service) StopWorkForSubmission(ctx context.Context, channelID, threadID
 	if err != nil {
 		return err
 	}
-	cancelErr := s.executions.CancelSubmissionAndWait(ctx, thread.LeadChatID, identity.ID)
+	cancelErr := s.stopChatSubmission(ctx, thread.LeadChatID, identity.ID)
 	// 等待已经进入持久化边界的同团队输入，之后同标识不能再入队。
 	locked, release, err := teamwork.Acquire(ctx, thread.ChannelID)
 	if err != nil {
 		return err
 	}
 	leadInputID := LeadInputID(thread.ID, identity.ID)
-	_, queued, err := s.threads.GetLeadInput(locked, leadInputID)
-	if err == nil {
-		if queued {
-			err = s.threads.CancelLeadInput(locked, leadInputID, time.Now().UnixMilli())
-		} else {
-			err = s.tasks.DeletePendingFollowUp(locked, thread.ID, identity.ID)
+	var queued bool
+	var followUp models.ChannelTaskFollowUp
+	err = s.transaction(locked, func(ctx context.Context) error {
+		followUp = models.ChannelTaskFollowUp{}
+		_, found, err := s.threads.GetLeadInput(ctx, leadInputID)
+		queued = found
+		if err != nil {
+			return err
 		}
-	}
+		if queued {
+			return s.threads.CancelLeadInput(ctx, leadInputID, time.Now().UnixMilli())
+		}
+		if err := s.tasks.DeletePendingFollowUp(ctx, thread.ID, identity.ID); err != nil {
+			return err
+		}
+		followUp, _, err = s.tasks.FindDeliveredFollowUp(ctx, thread.ID, identity.ID)
+		return err
+	})
 	release()
 	if err != nil {
 		return err
 	}
-	if !queued {
+	if followUp.DeliveredAttemptID != "" {
+		if err := s.stopTask(ctx, followUp.TaskID, true, followUp.DeliveredAttemptID); err != nil {
+			return err
+		}
+	} else if !queued {
 		if err := s.stopMentionTask(ctx, thread, identity.ID); err != nil {
 			return err
 		}
@@ -305,7 +362,7 @@ func (s *service) StopFirstWork(ctx context.Context, channelID, submissionID str
 		return status_error.BadRequest
 	}
 	leadChatID := initialLeadChatID(channelID, identity)
-	cancelErr := s.executions.CancelSubmissionAndWait(ctx, leadChatID, identity.ID)
+	cancelErr := s.stopChatSubmission(ctx, leadChatID, identity.ID)
 	locked, release, err := teamwork.Acquire(ctx, channelID)
 	if err != nil {
 		return err
@@ -331,7 +388,7 @@ func (s *service) stopMentionTask(ctx context.Context, thread models.ChannelThre
 	}
 	for _, task := range tasks {
 		if task.DirectInput != nil && task.SenderWakerID == "" && task.DirectInput.SubmissionID == submissionID {
-			return s.stopTask(ctx, task.ID, true)
+			return s.stopTask(ctx, task.ID, true, "")
 		}
 	}
 	return nil

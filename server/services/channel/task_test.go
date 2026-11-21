@@ -638,17 +638,12 @@ func (f *postTurnExecutionFake) CancelAndWait(_ context.Context, chatID string) 
 	return f.cancelError
 }
 
-// CancelNativeExecutionAndWait 记录内部补偿所针对的旧执行。
-func (f *postTurnExecutionFake) CancelNativeExecutionAndWait(ctx context.Context, chatID, executionID string) error {
+// CancelExecutionAndWait 记录精确停止所针对的执行。
+func (f *postTurnExecutionFake) CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error {
 	f.mutex.Lock()
 	f.canceledExecutions = append(f.canceledExecutions, executionID)
 	f.mutex.Unlock()
 	return f.CancelAndWait(ctx, chatID)
-}
-
-// CancelExecutionAndWait 为测试记录显式任务停止。
-func (f *postTurnExecutionFake) CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error {
-	return f.CancelNativeExecutionAndWait(ctx, chatID, executionID)
 }
 
 // cancelCount 返回 watcher 补偿已经请求的停止次数。

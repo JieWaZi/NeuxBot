@@ -103,7 +103,7 @@ func TestChatSummaryDeadlinePublishesConfirmedFacts(t *testing.T) {
 	}
 }
 
-func TestSuccessfulChatDeliveryReleasesOnlyUnusedPartialSnapshots(t *testing.T) {
+func TestChatDeliveryPreservesWorkflowOwnedNodeAndFinalSnapshots(t *testing.T) {
 	ctx := t.Context()
 	s, _ := workflowTestService(t)
 	conversation := consumerFixtureChat(t, "attachment-chat")
@@ -124,10 +124,10 @@ func TestSuccessfulChatDeliveryReleasesOnlyUnusedPartialSnapshots(t *testing.T) 
 	schema, _ := workflowstate.BoundaryOptions(effect.Boundary)["outputSchema"].(map[string]any)
 	s.completeDeterministic(ctx, effect, path, nil, schema)
 	run = runTicks(t, s, run.ID, 5)
-	if run.Status != constants.WorkflowRunStatusSucceeded || len(run.ChatFiles) != 2 {
+	if run.Status != constants.WorkflowRunStatusSucceeded || len(run.OutputFiles) != 2 {
 		t.Fatalf("missing final or partial file receipt: %+v", run)
 	}
-	partial := filepath.Join(s.chatOutputDirectory(run), run.ChatFiles[effect.ID+":"].Path)
+	partial := filepath.Join(s.outputDirectory(run), run.OutputFiles[effect.ID+":"].Path)
 	if _, err := os.Stat(partial); err != nil {
 		t.Fatal(err)
 	}
@@ -145,11 +145,8 @@ func TestSuccessfulChatDeliveryReleasesOnlyUnusedPartialSnapshots(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(partial); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("redundant run snapshot was retained: %v", err)
-	}
-	if err := s.removeUnusedChatPartialFiles(ctx, run); err != nil {
-		t.Fatalf("already removed snapshot could not be cleaned again: %v", err)
+	if _, err := os.Stat(partial); err != nil {
+		t.Fatalf("chat delivery removed a workflow-owned node result: %v", err)
 	}
 	if contents, err := os.ReadFile(path); err != nil || string(contents) != "original user file" {
 		t.Fatalf("cleanup touched the source file: %q %v", contents, err)
@@ -177,10 +174,10 @@ func TestChatOutputMetadataUsesSnapshotWithoutReadingItsContents(t *testing.T) {
 	definition := savedTestWorkflow(t, s, source)
 	run, _ := startChatDeliveryFixture(t, s, conversation, "metadata-execution", definition)
 	run = runTicks(t, s, run.ID, 5)
-	if run.Status != constants.WorkflowRunStatusSucceeded || len(run.ChatFiles) != 1 {
+	if run.Status != constants.WorkflowRunStatusSucceeded || len(run.OutputFiles) != 1 {
 		t.Fatalf("missing final file receipt: %+v", run)
 	}
-	snapshot := filepath.Join(s.chatOutputDirectory(run), run.ChatFiles[""].Path)
+	snapshot := filepath.Join(s.outputDirectory(run), run.OutputFiles[""].Path)
 	if err := os.WriteFile(snapshot, []byte("modified"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -223,10 +220,10 @@ func TestChatDeliverySkipsUnavailableOriginalsAndRetriesIndependentCopies(t *tes
 	source := strings.Replace(runtimeTestMeta, "phases:", "outputSchema:"+schema+",phases:", 1) + "return " + string(paths) + ";"
 	run, _ := startChatDeliveryFixture(t, s, conversation, "attachment-execution", savedTestWorkflow(t, s, source))
 	run = runTicks(t, s, run.ID, 5)
-	if run.Status != constants.WorkflowRunStatusSucceeded || run.ChatFiles["/capture-failed"].Error == "" || run.ChatFiles["/corrupted"].Path == "" {
-		t.Fatalf("unexpected original file receipts: status=%s files=%+v", run.Status, run.ChatFiles)
+	if run.Status != constants.WorkflowRunStatusSucceeded || run.OutputFiles["/capture-failed"].Error == "" || run.OutputFiles["/corrupted"].Path == "" {
+		t.Fatalf("unexpected original file receipts: status=%s files=%+v", run.Status, run.OutputFiles)
 	}
-	if err := os.WriteFile(filepath.Join(s.chatOutputDirectory(run), run.ChatFiles["/corrupted"].Path), []byte("changed bytes"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(s.outputDirectory(run), run.OutputFiles["/corrupted"].Path), []byte("changed bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	boundary := &recordingAttachmentCopies{seen: map[string]int{}, copied: map[string]string{}, failTarget: true}
@@ -235,17 +232,17 @@ func TestChatDeliverySkipsUnavailableOriginalsAndRetriesIndependentCopies(t *tes
 		t.Fatalf("first delivery result = %v, want target copy failure", err)
 	}
 	stored, err := s.runs.GetRun(ctx, run.ID)
-	if err != nil || stored.ChatFiles["/corrupted"].Error != status_error.WorkflowFileInvalid.Key() || stored.ChatDeliveryError != status_error.MessageAttachmentStorageError.Key() || boundary.copied["good.txt"] != "good" {
-		t.Fatalf("mixed failures lost verified results: files=%+v copyError=%s copies=%v error=%v", stored.ChatFiles, stored.ChatDeliveryError, boundary.copied, err)
+	if err != nil || stored.OutputFiles["/corrupted"].Error != status_error.WorkflowFileInvalid.Key() || stored.ChatDeliveryError != status_error.MessageAttachmentStorageError.Key() || boundary.copied["good.txt"] != "good" {
+		t.Fatalf("mixed failures lost verified results: files=%+v copyError=%s copies=%v error=%v", stored.OutputFiles, stored.ChatDeliveryError, boundary.copied, err)
 	}
 	boundary.failTarget = false
 	if err := s.RetryChatDelivery(ctx, conversation.ID, run.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	stored, err = s.runs.GetRun(ctx, run.ID)
-	if err != nil || stored.ChatFiles["/corrupted"].Error != status_error.WorkflowFileInvalid.Key() || stored.ChatDeliveryError != "" || boundary.copied["retry.txt"] != "retry" ||
+	if err != nil || stored.OutputFiles["/corrupted"].Error != status_error.WorkflowFileInvalid.Key() || stored.ChatDeliveryError != "" || boundary.copied["retry.txt"] != "retry" ||
 		boundary.seen["capture-failed.txt"] != 0 || boundary.seen["corrupted.txt"] != 1 || boundary.seen["retry.txt"] != 2 {
-		t.Fatalf("retry re-opened an unavailable original or skipped the recoverable copy: files=%+v copyError=%s opens=%v copies=%v error=%v", stored.ChatFiles, stored.ChatDeliveryError, boundary.seen, boundary.copied, err)
+		t.Fatalf("retry re-opened an unavailable original or skipped the recoverable copy: files=%+v copyError=%s opens=%v copies=%v error=%v", stored.OutputFiles, stored.ChatDeliveryError, boundary.seen, boundary.copied, err)
 	}
 }
 
@@ -264,11 +261,11 @@ func TestChatDeliveryRetriesTemporarySnapshotStorageFailure(t *testing.T) {
 	source := strings.Replace(runtimeTestMeta, "phases:", "outputSchema:{type:'string',format:'file'},phases:", 1) + "return " + string(encodedPath) + ";"
 	run, _ := startChatDeliveryFixture(t, s, conversation, "attachment-execution", savedTestWorkflow(t, s, source))
 	run = runTicks(t, s, run.ID, 5)
-	file := run.ChatFiles[""]
+	file := run.OutputFiles[""]
 	if file.Path == "" || file.Error != "" {
 		t.Fatalf("not a confirmed frozen file: %+v", file)
 	}
-	snapshot := filepath.Join(s.chatOutputDirectory(run), file.Path)
+	snapshot := filepath.Join(s.outputDirectory(run), file.Path)
 	if err := os.Chmod(snapshot, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +275,7 @@ func TestChatDeliveryRetriesTemporarySnapshotStorageFailure(t *testing.T) {
 		t.Fatalf("unreadable snapshot did not return a retryable storage error: %v", err)
 	}
 	stored, err := s.runs.GetRun(ctx, run.ID)
-	if err != nil || stored.ChatFiles[""].Error != "" || stored.ChatDeliveryError != status_error.WorkflowFileStorageError.Key() {
+	if err != nil || stored.OutputFiles[""].Error != "" || stored.ChatDeliveryError != status_error.WorkflowFileStorageError.Key() {
 		t.Fatalf("temporary failure was recorded as an unavailable original: %+v, %v", stored, err)
 	}
 	if err := os.Chmod(snapshot, 0o600); err != nil {
@@ -287,6 +284,46 @@ func TestChatDeliveryRetriesTemporarySnapshotStorageFailure(t *testing.T) {
 	if err := s.RetryChatDelivery(ctx, conversation.ID, run.ID, false); err != nil || boundary.copied["report.txt"] != "confirmed report" {
 		t.Fatalf("original bytes did not arrive after retry: %v, %v", boundary.copied, err)
 	}
+}
+
+func TestChatDeliveryCanceledAfterPublicationRemainsUnsettled(t *testing.T) {
+	s, _ := workflowTestService(t)
+	run := models.WorkflowRun{
+		ID: "run", SourceChatID: "chat", SourceExecutionID: "execution", Status: constants.WorkflowRunStatusSucceeded,
+		OutputFiles: map[string]models.WorkflowOutputFile{"": {Name: "report.txt"}},
+	}
+	insertWorkflowChatHistory(t, s, run)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	s.chats = &cancelAfterArtifactDelivery{cancel: cancel}
+	if err := s.RetryChatDelivery(ctx, run.SourceChatID, run.ID, false); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled delivery reported success: %v", err)
+	}
+	stored, err := s.runs.GetRun(t.Context(), run.ID)
+	if err != nil || stored.ChatDeliveryFinishedAt != nil {
+		t.Fatalf("canceled request settled attachment delivery: %+v %v", stored, err)
+	}
+	s.chats = &deliveryChatBoundary{}
+	if err := s.RetryChatDelivery(t.Context(), run.SourceChatID, run.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	stored, err = s.runs.GetRun(t.Context(), run.ID)
+	if err != nil || stored.ChatDeliveryFinishedAt == nil || stored.ChatDeliveryError != "" {
+		t.Fatalf("an explicit retry did not settle delivery: %+v %v", stored, err)
+	}
+}
+
+// cancelAfterArtifactDelivery 模拟文件已发布、调用上下文在返回时取消的边界。
+type cancelAfterArtifactDelivery struct {
+	// Module 补齐与本次交付无关的 Chat 能力。
+	chat.Module
+	// cancel 在发布成功后取消本次请求。
+	cancel context.CancelFunc
+}
+
+func (b *cancelAfterArtifactDelivery) PublishExecutionDelivery(context.Context, chat.ExecutionDelivery) error {
+	b.cancel()
+	return nil
 }
 
 type recordingAttachmentCopies struct {

@@ -27,8 +27,6 @@ type workflowDependencies struct {
 	CreationSessions controllers.WorkflowCreationController
 	// State 共享 API 与 Runner 的命令锁、租约及状态提交边界。
 	State *workflowstate.Coordinator
-	// WorkerCancel 等待对应 Core 执行真实停止。
-	WorkerCancel func(context.Context, models.WorkflowEffect) error
 	// Executions 接纳并派发中立创作工作。
 	Executions execution.Service
 	// Chats 读取创作的权威 Chat 与执行事实。
@@ -48,14 +46,12 @@ type workflowDependencies struct {
 // dependencies 在入口装配共享状态边界，不保存另一份命令锁或执行事实。
 func dependencies() *workflowDependencies {
 	chats := global.ChatService
-	worker := workflow.CoreWorkerAdapter{Executions: global.ExecutionService, Chats: chats}
 	return &workflowDependencies{
 		Store:            global.WorkflowControllerManager,
 		Transactions:     global.TransactionControllerManager,
 		Runs:             global.WorkflowRunControllerManager,
 		CreationSessions: global.WorkflowCreationControllerManager,
 		State:            global.WorkflowState,
-		WorkerCancel:     worker.Cancel,
 		Executions:       global.ExecutionService,
 		Chats:            chats,
 		Wakers:           global.WakerControllerManager,

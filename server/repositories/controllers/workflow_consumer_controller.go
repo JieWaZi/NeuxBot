@@ -67,7 +67,7 @@ func (c *workflowConsumerController) StopThreadConsumers(ctx context.Context, th
 		return nil
 	}
 	err := controllerDB(ctx, c.db).Model(&models.WorkflowConsumerLease{}).
-		Where("thread_id = ? AND chat_id IN ? AND stopped_at IS NULL AND deadline_at > ?", threadID, chatIDs, stopAt).
+		Where("thread_id = ? AND chat_id IN ? AND stopped_at IS NULL", threadID, chatIDs).
 		UpdateColumn("stopped_at", stopAt).Error
 	if err != nil {
 		return databaseError("stop_thread_workflow_consumers", threadID, err)
