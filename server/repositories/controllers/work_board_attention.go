@@ -79,6 +79,7 @@ func (c *workBoardController) walkAttention(ctx context.Context, at int64, scope
 		if scope.executors != nil {
 			direct = direct.Table("chats chat INDEXED BY idx_chat_pending_waker").Where(pendingChatPredicate).
 				Where("waker_id IN ?", scope.executors).Where(workBoardIndependentChat).
+				Where("NOT EXISTS (SELECT 1 FROM workflow_creation_sessions WHERE chat_id=chat.id)").
 				Where("NOT EXISTS (SELECT 1 FROM workflow_effects WHERE execution_id=chat.active_execution_id AND " + unboundWorkerEffect + ")")
 			threads = threads.Where("channel_id IN ? AND ready_at IS NOT NULL", scope.executors)
 			visibleRuns = visibleRuns.Where("definition_id IN ? AND (parent_run_id='' OR NOT joined) AND history_deleted_at IS NULL", scope.executors)

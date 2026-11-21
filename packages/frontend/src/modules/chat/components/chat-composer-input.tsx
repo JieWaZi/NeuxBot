@@ -9,7 +9,7 @@ import Mention from "@tiptap/extension-mention";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { type SuggestionOptions } from "@tiptap/suggestion";
+import type { SuggestionOptions, SuggestionProps } from "@tiptap/suggestion";
 import {
   useCallback,
   useEffect,
@@ -34,6 +34,11 @@ import {
 } from "./chat-attachment";
 import type { ChatSkillOption } from "./chat-skill-reference";
 import type { ChatConnectorOption } from "./chat-connector-reference";
+import type {
+  ChatWorkflowPicker,
+  ChatWorkflowReference,
+} from "./chat-workflow-reference";
+import { chatComposerReferenceChipClass } from "./chat-reference-chip";
 import type { ChatPluginIcon, ChatPluginOption } from "./chat-plugin-reference";
 import type { BotPathFile } from "../runtime/chat-attachment-adapter";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
@@ -47,7 +52,9 @@ type MentionItem = {
   id: string;
   label: string;
   description?: string;
-  referenceType: "file" | "skill" | "connector" | "plugin" | "code" | "member";
+  referenceType:
+    "file" | "skill" | "connector" | "plugin" | "code" | "member" | "workflow";
+  group?: string;
   pluginIcon?: ChatPluginIcon;
 };
 const fileReferenceLimit = 20;
@@ -83,6 +90,7 @@ type ChatComposerInputProps = {
   onPluginSelectionChange?: (pluginIds: string[]) => void;
   selectedPluginIds?: string[];
   pluginsError?: boolean;
+  workflowPicker?: ChatWorkflowPicker;
   fileRoots?: string[];
   fileScopePath?: string;
   fileScopeChatId?: string;
@@ -220,25 +228,23 @@ async function searchFiles(
   ];
 }
 
+type ComposerSuggestionProps = Pick<
+  SuggestionProps<MentionItem, MentionItem>,
+  "editor" | "query" | "items" | "clientRect" | "command" | "loading"
+>;
+
 function renderSuggestion(
   title: string,
   emptyMessage: () => string,
   loadingMessage?: () => string,
+  pendingItems?: (query: string) => MentionItem[],
 ): NonNullable<SuggestionOptions<MentionItem>["render"]> {
   return () => {
     let popup: HTMLDivElement | undefined;
     let selectedIndex = 0;
     let currentItems: MentionItem[] = [];
     let execute: ((item: MentionItem) => void) | undefined;
-    let latestProps:
-      | {
-          editor: Editor;
-          items: MentionItem[];
-          clientRect?: (() => DOMRect | null) | null;
-          command: (item: MentionItem) => void;
-          loading?: boolean;
-        }
-      | undefined;
+    let latestProps: ComposerSuggestionProps | undefined;
 
     const positionPopup = () => {
       if (!popup || !latestProps) return;
@@ -263,15 +269,10 @@ function renderSuggestion(
       }
     };
 
-    const render = (props: {
-      editor: Editor;
-      items: MentionItem[];
-      clientRect?: (() => DOMRect | null) | null;
-      command: (item: MentionItem) => void;
-      loading?: boolean;
-    }) => {
+    const render = (props: ComposerSuggestionProps) => {
       latestProps = props;
-      currentItems = props.items;
+      currentItems =
+        props.loading && pendingItems ? pendingItems(props.query) : props.items;
       execute = props.command;
       selectedIndex = Math.min(
         selectedIndex,
@@ -282,7 +283,9 @@ function renderSuggestion(
         popup.className =
           "border-border bg-surface-elevated fixed z-50 max-h-80 overflow-y-auto overflow-x-hidden rounded-lg border p-1 shadow-sm";
         popup.setAttribute("role", "listbox");
+        popup.setAttribute("aria-label", title);
       }
+      const list = popup;
       popup.replaceChildren();
       popup.setAttribute("aria-busy", String(Boolean(props.loading)));
       const heading = document.createElement("div");
@@ -290,21 +293,40 @@ function renderSuggestion(
         "text-muted-foreground type-caption px-2 py-1.5 font-medium";
       heading.textContent = title;
       popup.append(heading);
-      if (props.loading && loadingMessage) {
+      const showLoading = props.loading && loadingMessage;
+      if (showLoading) {
         const loading = document.createElement("div");
         loading.className =
           "text-muted-foreground type-body px-2 py-3 text-center";
         loading.setAttribute("role", "status");
-        loading.textContent = loadingMessage();
+        loading.textContent = showLoading();
         popup.append(loading);
-      } else if (currentItems.length === 0) {
+      }
+      if (currentItems.length === 0 && !showLoading) {
         const empty = document.createElement("div");
         empty.className =
           "text-muted-foreground type-body px-2 py-3 text-center";
         empty.textContent = emptyMessage();
         popup.append(empty);
       } else {
+        let group: string | undefined;
+        let itemContainer = list;
         currentItems.forEach((item, index) => {
+          if (item.group !== group) {
+            itemContainer = list;
+            if (item.group) {
+              const section = document.createElement("div");
+              section.setAttribute("role", "group");
+              section.setAttribute("aria-label", item.group);
+              const groupHeading = heading.cloneNode() as HTMLDivElement;
+              groupHeading.setAttribute("aria-hidden", "true");
+              groupHeading.textContent = item.group;
+              section.append(groupHeading);
+              list.append(section);
+              itemContainer = section;
+            }
+          }
+          group = item.group;
           const button = document.createElement("button");
           button.type = "button";
           button.className =
@@ -332,7 +354,7 @@ function renderSuggestion(
             event.preventDefault(),
           );
           button.addEventListener("click", () => execute?.(item));
-          popup?.append(button);
+          itemContainer.append(button);
         });
       }
       positionPopup();
@@ -353,7 +375,10 @@ function renderSuggestion(
       onUpdate: render,
       onKeyDown: ({ event }) => {
         if (event.key === "ArrowDown") {
-          selectedIndex = Math.min(selectedIndex + 1, currentItems.length - 1);
+          selectedIndex = Math.min(
+            selectedIndex + 1,
+            Math.max(0, currentItems.length - 1),
+          );
           if (latestProps) render(latestProps);
           return true;
         }
@@ -378,6 +403,40 @@ function renderSuggestion(
   };
 }
 
+function replaceWorkflowReference(
+  editor: Editor,
+  workflow: ChatWorkflowReference,
+  range: { from: number; to: number },
+) {
+  editor
+    .chain()
+    .focus()
+    .command(({ tr, commands }) => {
+      const existing: { from: number; to: number }[] = [];
+      tr.doc.descendants((node, position) => {
+        if (
+          node.type.name === "mention" &&
+          node.attrs.referenceType === "workflow"
+        )
+          existing.push({ from: position, to: position + node.nodeSize });
+      });
+      for (const item of existing.reverse()) tr.delete(item.from, item.to);
+      return commands.insertContentAt(
+        { from: tr.mapping.map(range.from), to: tr.mapping.map(range.to) },
+        {
+          type: "mention",
+          attrs: {
+            id: workflow.id,
+            label: workflow.name,
+            referenceType: "workflow",
+            mentionSuggestionChar: "#",
+          },
+        },
+      );
+    })
+    .run();
+}
+
 /**
  * 使用 TipTap Mention 节点承载文件、Skill、MCP 和业务上下文引用。
  * Mention 是原子节点，因此正文与引用共享同一条编辑器文档，不会因 React 列表重排。
@@ -394,6 +453,7 @@ export function ChatComposerInput({
   selectedPluginIds = [],
   onPluginSelectionChange,
   pluginsError = false,
+  workflowPicker,
   fileRoots = [],
   fileScopePath,
   fileScopeChatId,
@@ -423,6 +483,7 @@ export function ChatComposerInput({
   disabled = false,
 }: ChatComposerInputProps) {
   const { t } = useTranslation("chat");
+  const workflowsEnabled = Boolean(workflowPicker);
   const aui = useAui();
   const threadDisabled = useAuiState((state) => state.thread.isDisabled);
   const callbacksRef = useRef({
@@ -448,6 +509,8 @@ export function ChatComposerInput({
   const selectedPluginIdsRef = useRef(selectedPluginIds);
   const pluginHrefPrefixRef = useRef(pluginHrefPrefix);
   const pluginsErrorRef = useRef(pluginsError);
+  const workflowPickerRef = useRef(workflowPicker);
+  const workflowSearchFailedRef = useRef(false);
   const connectorsRef = useRef(connectors);
   const fileRootsRef = useRef(fileRoots);
   const fileScopePathRef = useRef(fileScopePath);
@@ -474,6 +537,8 @@ export function ChatComposerInput({
   const handledDraftReferenceRef = useRef("");
   const handledClearRevisionRef = useRef(clearRevision);
   const handledRestoreRevisionRef = useRef(restoreRevision);
+  const workflowRestoration = workflowPicker?.restoredSubmission;
+  const handledWorkflowRestoration = useRef(workflowRestoration);
 
   useEffect(() => {
     callbacksRef.current = {
@@ -499,6 +564,7 @@ export function ChatComposerInput({
     selectedPluginIdsRef.current = selectedPluginIds;
     pluginHrefPrefixRef.current = pluginHrefPrefix;
     pluginsErrorRef.current = pluginsError;
+    workflowPickerRef.current = workflowPicker;
     connectorsRef.current = connectors;
     fileRootsRef.current = fileRoots;
     fileScopePathRef.current = fileScopePath;
@@ -515,6 +581,7 @@ export function ChatComposerInput({
     pluginHrefPrefix,
     selectedPluginIds,
     pluginsError,
+    workflowPicker,
     connectors,
     connectorsError,
     disabled,
@@ -761,50 +828,91 @@ export function ChatComposerInput({
       }) as SuggestionOptions<MentionItem>,
     [selectSkill, selectPlugin, t],
   );
-  const connectorSuggestion = useMemo(
-    () =>
-      ({
-        char: "#",
-        allowedPrefixes: [" "],
-        items: ({ query }) =>
-          connectorsRef.current
-            .filter((connector) =>
-              [connector.id, connector.name, connector.description].some(
-                (value) => value.toLowerCase().includes(query.toLowerCase()),
-              ),
-            )
-            .map((connector) => ({
-              id: connector.id,
-              label: connector.name,
-              description: connector.description,
-              referenceType: "connector" as const,
+  const resourceSuggestion = useMemo<
+    Omit<SuggestionOptions<MentionItem>, "editor">
+  >(() => {
+    const connectorItems = (query: string): MentionItem[] =>
+      connectorsRef.current
+        .filter((connector) =>
+          [connector.id, connector.name, connector.description].some((value) =>
+            value.toLowerCase().includes(query.toLowerCase()),
+          ),
+        )
+        .map((connector) => ({
+          id: connector.id,
+          label: connector.name,
+          description: connector.description,
+          referenceType: "connector",
+          group: workflowsEnabled ? t("connectors") : undefined,
+        }));
+    return {
+      char: "#",
+      allowedPrefixes: [" "],
+      items: async ({ query, signal }) => {
+        const items = connectorItems(query);
+        const picker = workflowPickerRef.current;
+        workflowSearchFailedRef.current = false;
+        if (!picker) return items;
+        try {
+          const workflows = await picker.search(query);
+          return [
+            ...items,
+            ...workflows.map((workflow) => ({
+              id: workflow.id,
+              label: workflow.name,
+              referenceType: "workflow" as const,
+              group: t("workflow.group"),
             })),
-        command: ({ editor, range, props }) => {
-          editor
-            .chain()
-            .focus()
-            .insertContentAt(range, {
-              type: "mention",
-              attrs: {
-                id: props.id,
-                label: props.label,
-                referenceType: "connector",
-                mentionSuggestionChar: "#",
-              },
-            })
-            .run();
-          selectConnector(props);
-        },
-        // The suggestion renderer outlives React renders, so read the latest query state from the ref.
+          ];
+        } catch {
+          if (!signal.aborted) workflowSearchFailedRef.current = true;
+          return items;
+        }
+      },
+      command: ({ editor, range, props }) => {
+        if (props.referenceType === "workflow") {
+          replaceWorkflowReference(
+            editor,
+            { id: props.id, name: props.label },
+            range,
+          );
+          return;
+        }
+        editor
+          .chain()
+          .focus()
+          .insertContentAt(range, {
+            type: "mention",
+            attrs: {
+              id: props.id,
+              label: props.label,
+              referenceType: "connector",
+              mentionSuggestionChar: "#",
+            },
+          })
+          .run();
+        selectConnector(props);
+      },
+      render: renderSuggestion(
+        workflowsEnabled ? t("resourceReferenceMenu") : t("connectors"),
+        // TipTap invokes these callbacks when the editor menu is open.
         // eslint-disable-next-line react-hooks/refs
-        render: renderSuggestion(t("connectors"), () =>
-          connectorsErrorRef.current
-            ? t("connectorsLoadError")
-            : t("noMatchingConnectors"),
-        ),
-      }) as SuggestionOptions<MentionItem>,
-    [selectConnector, t],
-  );
+        () =>
+          workflowSearchFailedRef.current
+            ? t("workflow.loadError")
+            : connectorsErrorRef.current
+              ? t("connectorsLoadError")
+              : t(
+                  workflowsEnabled
+                    ? "noMatchingResources"
+                    : "noMatchingConnectors",
+                ),
+        workflowsEnabled ? () => t("workflow.loading") : undefined,
+        // eslint-disable-next-line react-hooks/refs
+        workflowsEnabled ? connectorItems : undefined,
+      ),
+    };
+  }, [selectConnector, t, workflowsEnabled]);
 
   const editor = useEditor({
     autofocus: autoFocus ? "end" : false,
@@ -866,7 +974,7 @@ export function ChatComposerInput({
             "span",
             {
               class: cn(
-                "bg-action-quiet-hover text-content-primary type-body inline-flex max-w-full items-center rounded-full px-2 py-0.5 font-medium",
+                chatComposerReferenceChipClass,
                 node.attrs.referenceType === "skill" &&
                   "bg-accent-surface text-accent-content",
                 node.attrs.referenceType === "connector" &&
@@ -887,6 +995,10 @@ export function ChatComposerInput({
                 node.attrs.referenceType === "skill"
                   ? node.attrs.id
                   : undefined,
+              "data-chat-composer-plugin":
+                node.attrs.referenceType === "plugin"
+                  ? node.attrs.id
+                  : undefined,
               "data-chat-composer-connector":
                 node.attrs.referenceType === "connector"
                   ? node.attrs.id
@@ -898,13 +1010,39 @@ export function ChatComposerInput({
                   ? node.attrs.id
                   : undefined,
             },
+            ...(node.attrs.referenceType === "workflow"
+              ? [
+                  [
+                    "http://www.w3.org/2000/svg svg",
+                    {
+                      viewBox: "0 0 24 24",
+                      class: "size-icon-xs shrink-0",
+                      fill: "none",
+                      stroke: "currentColor",
+                      "stroke-width": "1.5",
+                      "stroke-linecap": "round",
+                      "stroke-linejoin": "round",
+                      "aria-hidden": "true",
+                    },
+                    [
+                      "rect",
+                      { x: "3", y: "3", width: "8", height: "8", rx: "2" },
+                    ],
+                    ["path", { d: "M7 11v4a2 2 0 0 0 2 2h4" }],
+                    [
+                      "rect",
+                      { x: "13", y: "13", width: "8", height: "8", rx: "2" },
+                    ],
+                  ] as const,
+                ]
+              : []),
             `${node.attrs.referenceType === "member" ? "@" : ""}${node.attrs.label ?? node.attrs.id}`,
           ];
         },
-        suggestions: [fileSuggestion, skillSuggestion, connectorSuggestion],
+        suggestions: [fileSuggestion, skillSuggestion, resourceSuggestion],
       }),
     ],
-    content: "",
+    content: workflowPicker?.draft ?? "",
     onCreate: ({ editor: createdEditor }) => {
       Object.defineProperty(createdEditor.view.dom, "value", {
         configurable: true,
@@ -913,11 +1051,15 @@ export function ChatComposerInput({
           createdEditor.commands.setContent(value);
         },
       });
+      if (workflowPickerRef.current?.draft) syncDraft(createdEditor, false);
     },
     editorProps: {
       attributes: {
         role: "textbox",
         "aria-label": ariaLabel,
+        ...(workflowsEnabled
+          ? { "aria-description": t("workflow.referenceHint") }
+          : {}),
         "aria-multiline": "true",
         "data-chat-composer-input": "true",
         class: cn(
@@ -997,70 +1139,94 @@ export function ChatComposerInput({
       },
     },
     onUpdate: ({ editor: nextEditor, transaction }) => {
-      const text = extractText(nextEditor);
-      const codeReferences: ChatCodeReference[] = [];
-      const skillIDs = new Set<string>();
-      const pluginIDs = new Set<string>();
-      const connectorIDs = new Set<string>();
-      const contextIDs = new Set<string>();
-      let memberID = "";
-      nextEditor.state.doc.descendants((node) => {
-        if (node.type.name !== "mention") return;
-        const referenceID = String(node.attrs.id ?? "");
-        switch (node.attrs.referenceType) {
-          case "file":
-            if (referenceID) {
-              codeReferences.push({
-                id: referenceID,
-                path: referenceID,
-              });
-            }
-            break;
-          case "skill":
-            if (referenceID) skillIDs.add(referenceID);
-            break;
-          case "plugin":
-            if (referenceID) pluginIDs.add(referenceID);
-            break;
-          case "connector":
-            if (referenceID) connectorIDs.add(referenceID);
-            break;
-          case "context":
-            if (referenceID) contextIDs.add(referenceID);
-            break;
-          case "code":
-            codeReferences.push({
-              id: referenceID || crypto.randomUUID(),
-              path: String(node.attrs.path),
-              startLine: Number(node.attrs.startLine),
-              endLine: Number(node.attrs.endLine),
-              content: String(node.attrs.content),
-            });
-            break;
-          case "member":
-            if (!memberID && referenceID) memberID = referenceID;
-            break;
-        }
-      });
-      selectedMemberIdRef.current = memberID;
-      nextEditor.view.dom.setAttribute("value", text);
-      callbacksRef.current.aui.composer.setText(
-        text || (codeReferences.length ? t("codeReferenceOnlyMessage") : ""),
+      syncDraft(
+        nextEditor,
+        transaction.docChanged && !transaction.getMeta(contextReferenceSync),
       );
-      callbacksRef.current.onPluginSelectionChange?.(Array.from(pluginIDs));
-      callbacksRef.current.onSkillSelectionChange?.(Array.from(skillIDs));
-      callbacksRef.current.onConnectorSelectionChange?.(
-        Array.from(connectorIDs),
-      );
-      callbacksRef.current.onCodeReferencesChange?.(codeReferences);
-      if (transaction.docChanged && !transaction.getMeta(contextReferenceSync))
-        callbacksRef.current.onContextReferencesChange?.(
-          Array.from(contextIDs),
-        );
-      callbacksRef.current.onMemberMentionChange?.(memberID || undefined);
-      callbacksRef.current.onValueChange?.();
     },
   });
+
+  function syncDraft(nextEditor: Editor, syncContext: boolean) {
+    const text = extractText(nextEditor);
+    const codeReferences: ChatCodeReference[] = [];
+    const skillIDs = new Set<string>();
+    const pluginIDs = new Set<string>();
+    const connectorIDs = new Set<string>();
+    const contextIDs = new Set<string>();
+    let memberID = "";
+    let workflow: ChatWorkflowReference | undefined;
+    nextEditor.state.doc.descendants((node) => {
+      if (node.type.name !== "mention") return;
+      const referenceID = String(node.attrs.id ?? "");
+      switch (node.attrs.referenceType) {
+        case "file":
+          if (referenceID) {
+            codeReferences.push({
+              id: referenceID,
+              path: referenceID,
+            });
+          }
+          break;
+        case "skill":
+          if (referenceID) skillIDs.add(referenceID);
+          break;
+        case "plugin":
+          if (referenceID) pluginIDs.add(referenceID);
+          break;
+        case "connector":
+          if (referenceID) connectorIDs.add(referenceID);
+          break;
+        case "context":
+          if (referenceID) contextIDs.add(referenceID);
+          break;
+        case "code":
+          codeReferences.push({
+            id: referenceID || crypto.randomUUID(),
+            path: String(node.attrs.path),
+            startLine: Number(node.attrs.startLine),
+            endLine: Number(node.attrs.endLine),
+            content: String(node.attrs.content),
+          });
+          break;
+        case "member":
+          if (!memberID && referenceID) memberID = referenceID;
+          break;
+        case "workflow":
+          if (referenceID)
+            workflow = {
+              id: referenceID,
+              name: String(node.attrs.label ?? ""),
+            };
+          break;
+      }
+    });
+    selectedMemberIdRef.current = memberID;
+    nextEditor.view.dom.setAttribute("value", text);
+    callbacksRef.current.aui.composer.setText(
+      text.trim()
+        ? text
+        : workflow
+          ? t("workflow.referenceOnlyMessage")
+          : codeReferences.length
+            ? t("codeReferenceOnlyMessage")
+            : text,
+    );
+    callbacksRef.current.onPluginSelectionChange?.(Array.from(pluginIDs));
+    callbacksRef.current.onSkillSelectionChange?.(Array.from(skillIDs));
+    callbacksRef.current.onConnectorSelectionChange?.(Array.from(connectorIDs));
+    callbacksRef.current.onCodeReferencesChange?.(codeReferences);
+    if (syncContext)
+      callbacksRef.current.onContextReferencesChange?.(Array.from(contextIDs));
+    callbacksRef.current.onMemberMentionChange?.(memberID || undefined);
+    const picker = workflowPickerRef.current;
+    picker?.saveDraft?.(
+      workflow || (picker.preserveTextDraft && !nextEditor.isEmpty)
+        ? nextEditor.getJSON()
+        : undefined,
+    );
+    picker?.onSelectionChange(workflow, Boolean(workflow && !text.trim()));
+    callbacksRef.current.onValueChange?.();
+  }
 
   useLayoutEffect(() => {
     if (
@@ -1166,6 +1332,23 @@ export function ChatComposerInput({
         .setContent(sentDocument)
         .run();
   }, [editor, restoreRevision]);
+
+  useLayoutEffect(() => {
+    if (
+      !editor ||
+      !workflowRestoration ||
+      handledWorkflowRestoration.current === workflowRestoration
+    )
+      return;
+    handledWorkflowRestoration.current = workflowRestoration;
+    const document = workflowPicker?.draft;
+    if (document)
+      editor
+        .chain()
+        .setMeta(contextReferenceSync, true)
+        .setContent(document)
+        .run();
+  }, [editor, workflowPicker, workflowRestoration]);
 
   useEffect(() => {
     if (!editor) return;
@@ -1321,6 +1504,15 @@ export function ChatComposerInput({
         event.preventDefault();
         event.stopPropagation();
         if (disabled || aui.thread.getState().isDisabled) return;
+        const onError = () => toast.error(t("attachmentFailed"));
+        if (workflowPicker?.addPastedFiles) {
+          void workflowPicker.addPastedFiles(
+            files,
+            notifyAttachmentsChanged,
+            onError,
+          );
+          return;
+        }
         const composer = aui.composer;
         void (async () => {
           for (const file of files) {
@@ -1328,7 +1520,7 @@ export function ChatComposerInput({
               await composer.addAttachment(file);
               notifyAttachmentsChanged();
             } catch {
-              toast.error(t("attachmentFailed"));
+              onError();
             }
           }
         })();

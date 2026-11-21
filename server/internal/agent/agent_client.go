@@ -779,6 +779,17 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 	if path := launch.BotCLIContextFile; path != "" && (!filepath.IsAbs(path) || strings.ContainsRune(path, 0)) {
 		return nil, status_error.RuntimeConfigurationInvalid
 	}
+	botCLIDirectory := ""
+	if executable := launch.BotCLIExecutable; executable != "" {
+		if launch.BotCLIContextFile == "" || !filepath.IsAbs(executable) || strings.ContainsRune(executable, 0) {
+			return nil, status_error.RuntimeConfigurationInvalid
+		}
+		directory := filepath.Dir(executable)
+		// An ambiguous PATH entry could expose a different program. The executable still works by absolute path.
+		if !strings.ContainsRune(directory, filepath.ListSeparator) {
+			botCLIDirectory = directory
+		}
+	}
 	profileScope := provider == constants.RuntimeIDKimi || provider == constants.RuntimeIDGemini ||
 		provider == constants.RuntimeIDGrok || provider == constants.RuntimeIDOpenCode || provider == constants.RuntimeIDPi
 	var homeVariable string
@@ -828,13 +839,15 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		}
 		return nil
 	}
-	applyResourcePath := func() {
-		if resourcePath == "" {
+	applyPath := func() {
+		if botCLIDirectory == "" && resourcePath == "" {
 			return
 		}
+		directories := append([]string{botCLIDirectory}, filepath.SplitList(resourcePath)...)
+		directories = append(directories, filepath.SplitList(environment["PATH"])...)
 		seen := map[string]bool{}
 		paths := []string{}
-		for _, directory := range append(filepath.SplitList(resourcePath), filepath.SplitList(environment["PATH"])...) {
+		for _, directory := range directories {
 			key := normalizedPathForComparison(directory)
 			if directory != "" && !seen[key] {
 				seen[key] = true
@@ -845,7 +858,7 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 	}
 
 	finalize := func() []string {
-		applyResourcePath()
+		applyPath()
 		if launch.BotCLIContextFile != "" {
 			environment[constants.AgentCLIContextEnvironment] = launch.BotCLIContextFile
 		}

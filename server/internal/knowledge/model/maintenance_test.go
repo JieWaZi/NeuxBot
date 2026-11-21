@@ -290,7 +290,7 @@ func TestCancelledMaintenanceDoesNotAcquireBridge(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	runner := &MaintenanceRunner{}
-	lease, _, err := runner.acquireBridge(ctx, maintenanceInput(), nil, "", "")
+	lease, _, err := runner.acquireBridge(ctx, ctx, maintenanceInput(), nil, "", "")
 	if !errors.Is(err, context.Canceled) || lease.Close != nil || lease.CloseFiles != nil {
 		t.Fatalf("cancelled preparation acquired resources: %+v %v", lease, err)
 	}

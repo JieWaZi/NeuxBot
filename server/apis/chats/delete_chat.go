@@ -26,9 +26,6 @@ func (d *DeleteChat) Path() string {
 // [ChatLogError][50000000004][Chat 权威日志读写失败]
 // [ChatDirectoryOwnershipInvalid][50000000007][Chat 目录归属校验失败]
 func (d *DeleteChat) Output(ctx *gin.Context) (interface{}, error) {
-	if err := global.ExecutionService.CancelAndWait(ctx, d.ChatID); err != nil {
-		return nil, ginx.WithStack(err)
-	}
 	if err := global.ChatService.DeleteChatsAtomically(ctx, []string{d.ChatID}, func(ctx context.Context) error {
 		return global.WorkflowCreationControllerManager.DeleteCreationSessionsByChatID(ctx, d.ChatID)
 	}); err != nil {

@@ -152,6 +152,26 @@ export function schemaDefaults(schema: Schema): unknown {
 
 const CompactSchemaContext = createContext(false);
 const FileWorkflowContext = createContext<string | undefined>(undefined);
+type JsonDraft = { text: string; signature: string; invalid: boolean };
+export type SchemaFormDraft = Readonly<
+  Record<string, { json?: JsonDraft; variant?: string }>
+>;
+type SchemaDraftControl = {
+  fields: SchemaFormDraft;
+  update: (change: (fields: SchemaFormDraft) => SchemaFormDraft) => void;
+};
+const SchemaDraftContext = createContext<SchemaDraftControl | undefined>(
+  undefined,
+);
+
+function withoutDraftSubtree(fields: SchemaFormDraft, path: string) {
+  return Object.fromEntries(
+    Object.entries(fields).filter(
+      ([key]) => key !== path && !key.startsWith(`${path}/`),
+    ),
+  );
+}
+
 type SchemaFormProps = {
   schema: Schema;
   value: unknown;
@@ -167,14 +187,18 @@ export function SchemaForm(
   props: SchemaFormProps & {
     compact?: boolean;
     fileWorkflowId?: string;
+    editingDraft?: SchemaDraftControl;
   },
 ) {
   const inherited = useContext(CompactSchemaContext);
   const workflowId = useContext(FileWorkflowContext);
+  const editingDraft = useContext(SchemaDraftContext);
   return (
     <FileWorkflowContext.Provider value={props.fileWorkflowId ?? workflowId}>
       <CompactSchemaContext.Provider value={props.compact ?? inherited}>
-        <SchemaFormFields {...props} />
+        <SchemaDraftContext.Provider value={props.editingDraft ?? editingDraft}>
+          <SchemaFormFields {...props} />
+        </SchemaDraftContext.Provider>
       </CompactSchemaContext.Provider>
     </FileWorkflowContext.Provider>
   );
@@ -273,15 +297,16 @@ function SchemaFormFields({
           const property = properties[key];
           const child = record(property);
           if (!child) return null;
+          const segment = key.replaceAll("~", "~0").replaceAll("/", "~1");
           return (
             <SchemaField
               key={key}
               name={key}
-              path={`${path}/${key}`}
+              path={`${path}/${segment}`}
               schema={child}
               rootSchema={rootSchema}
               fieldOrder={fieldOrder}
-              schemaPath={`${orderPath}/properties/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`}
+              schemaPath={`${orderPath}/properties/${segment}`}
               onValidityChange={onValidityChange}
               required={required.includes(key)}
               provided={key in object}
@@ -340,9 +365,21 @@ function SchemaVariants({
   const matches = variants.flatMap((branch, index) =>
     matchesBranch(resolveLocalSchema(branch, rootSchema), value) ? [index] : [],
   );
-  const [selected, setSelected] = useState(
+  const [localSelection, setLocalSelection] = useState(
     matches.length === 1 ? String(matches[0]) : "json",
   );
+  const editingDraft = useContext(SchemaDraftContext);
+  const sharedVariant = editingDraft?.fields[path]?.variant;
+  const updateDraft = editingDraft?.update;
+  const selected = sharedVariant ?? localSelection;
+  useEffect(() => {
+    if (sharedVariant !== undefined) return;
+    updateDraft?.((fields) =>
+      fields[path]?.variant !== undefined
+        ? fields
+        : { ...fields, [path]: { ...fields[path], variant: localSelection } },
+    );
+  }, [localSelection, path, sharedVariant, updateDraft]);
   const branch = selected === "json" ? undefined : variants[Number(selected)];
   const { oneOf: _oneOf, anyOf: _anyOf, ...base } = schema;
   void _oneOf;
@@ -358,7 +395,14 @@ function SchemaVariants({
       <Select
         value={selected}
         onValueChange={(next) => {
-          setSelected(next);
+          if (updateDraft) {
+            updateDraft((fields) => ({
+              ...withoutDraftSubtree(fields, path),
+              [path]: { variant: next },
+            }));
+          } else {
+            setLocalSelection(next);
+          }
           if (next !== "json") {
             const target = resolveLocalSchema(
               variants[Number(next)] ?? {},
@@ -459,6 +503,7 @@ function SchemaField({
   const id = useId();
   const compact = useContext(CompactSchemaContext);
   const workflowId = useContext(FileWorkflowContext);
+  const editingDraft = useContext(SchemaDraftContext);
   const missing =
     required &&
     (!provided ||
@@ -572,6 +617,9 @@ function SchemaField({
           <Select
             value={mode}
             onValueChange={(next) => {
+              editingDraft?.update((fields) =>
+                withoutDraftSubtree(fields, path),
+              );
               if (next === "omitted") onChange(undefined, false);
               else if (next === "null") onChange(null, true);
               else
@@ -832,6 +880,7 @@ function ArrayField({
   schemaPath?: string;
 }) {
   const { t } = useTranslation("workflow");
+  const editingDraft = useContext(SchemaDraftContext);
   const [keys, setKeys] = useState(() => value.map(() => crypto.randomUUID()));
   if (keys.length !== value.length)
     setKeys((current) =>
@@ -865,6 +914,27 @@ function ArrayField({
             size="sm"
             variant="ghost"
             onClick={() => {
+              editingDraft?.update((fields) => {
+                const prefix = `${path}/`;
+                return Object.fromEntries(
+                  Object.entries(fields).flatMap(([fieldPath, draft]) => {
+                    if (!fieldPath.startsWith(prefix))
+                      return [[fieldPath, draft]];
+                    const [position, ...suffix] = fieldPath
+                      .slice(prefix.length)
+                      .split("/");
+                    const itemIndex = Number(position);
+                    if (itemIndex < index) return [[fieldPath, draft]];
+                    if (itemIndex === index) return [];
+                    return [
+                      [
+                        `${prefix}${[itemIndex - 1, ...suffix].join("/")}`,
+                        draft,
+                      ],
+                    ];
+                  }),
+                );
+              });
               setKeys(keys.filter((_, itemIndex) => itemIndex !== index));
               onChange(value.filter((_, itemIndex) => itemIndex !== index));
             }}
@@ -908,14 +978,27 @@ function JsonField({
   const { t } = useTranslation("workflow");
   const id = useId();
   const signature = jsonText(value);
-  const [draft, setDraft] = useState(() => ({
+  const editingDraft = useContext(SchemaDraftContext);
+  const [localDraft, setLocalDraft] = useState<JsonDraft>(() => ({
     text: signature,
     signature,
     invalid: false,
   }));
-  if (draft.signature !== signature)
-    setDraft({ text: signature, signature, invalid: false });
-  const { text, invalid } = draft;
+  const draft = editingDraft ? editingDraft.fields[path]?.json : localDraft;
+  const fromValue = { text: signature, signature, invalid: false };
+  if (!editingDraft && localDraft.signature !== signature)
+    setLocalDraft(fromValue);
+  const { text, invalid } = draft?.signature === signature ? draft : fromValue;
+  const setDraft = (next: JsonDraft) => {
+    if (editingDraft) {
+      editingDraft.update((fields) => ({
+        ...fields,
+        [path]: { ...fields[path], json: next },
+      }));
+    } else {
+      setLocalDraft(next);
+    }
+  };
   useEffect(() => {
     onValidityChange?.(path, !invalid);
   }, [onValidityChange, path, invalid]);

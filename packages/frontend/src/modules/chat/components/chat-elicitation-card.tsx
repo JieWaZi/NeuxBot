@@ -1,16 +1,16 @@
-import {
-  Check,
-  CornerDownLeft,
-  ExternalLink,
-  Loader2,
-  MessageCircleQuestion,
-} from "lucide-react";
+import { ExternalLink, Loader2, MessageCircleQuestion } from "lucide-react";
 import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { cn } from "@/shared/lib/cn";
+import {
+  QuestionActions,
+  QuestionCard,
+  QuestionChoice,
+  QuestionOptionLetter,
+  QuestionResultHeader,
+} from "@/shared/ui/question-card";
 import type {
   BotChatMessage,
   ChatPendingElicitation,
@@ -278,13 +278,6 @@ export function ChatElicitationCard({
       {t("elicitation.waitingForTurn")}
     </p>
   ) : null;
-  const cardProps = {
-    "data-chat-elicitation-card": true,
-    "data-message-id": elicitationId,
-    "aria-busy": isSubmitting || undefined,
-    className:
-      "bg-message-card-background w-full max-w-chat-question space-y-3 rounded-2xl px-4 py-3",
-  };
   const submitOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
     if (
       event.key !== "Enter" ||
@@ -307,22 +300,17 @@ export function ChatElicitationCard({
 
   if (resolution?.result) {
     const fields = parsedSchema?.fields ?? [];
-    const resultLabel = (
-      <span className="text-muted-foreground type-ui ms-auto shrink-0 whitespace-nowrap">
-        {t(`elicitation.result.${resolution.result}`)}
-      </span>
-    );
+    const resultLabel = t(`elicitation.result.${resolution.result}`);
     return (
-      <article {...cardProps}>
+      <QuestionCard id={elicitationId} busy={isSubmitting}>
         {showMessage || fields.length === 0 ? (
-          <div className="flex items-start gap-3">
+          <QuestionResultHeader status={resultLabel}>
             {showMessage ? (
               <p className="type-title min-w-0 font-medium break-words whitespace-pre-wrap">
                 {message}
               </p>
             ) : null}
-            {resultLabel}
-          </div>
+          </QuestionResultHeader>
         ) : null}
         {fields.map((field, fieldIndex) => {
           const question = fieldQuestion(field);
@@ -349,12 +337,15 @@ export function ChatElicitationCard({
           }
           return (
             <div key={field.key} className="space-y-1">
-              <div className="flex items-start gap-3">
+              <QuestionResultHeader
+                status={
+                  !showMessage && fieldIndex === 0 ? resultLabel : undefined
+                }
+              >
                 <p className="type-label min-w-0 font-medium break-words whitespace-pre-wrap">
                   {question}
                 </p>
-                {!showMessage && fieldIndex === 0 ? resultLabel : null}
-              </div>
+              </QuestionResultHeader>
               {field.options.length === 0 && field.description ? (
                 <p className="text-muted-foreground type-caption break-words whitespace-pre-wrap">
                   {field.description}
@@ -367,7 +358,7 @@ export function ChatElicitationCard({
                       key={`${answer.index}:${answer.label}`}
                       className="flex items-start gap-2 break-words whitespace-pre-wrap"
                     >
-                      <ElicitationOptionLetter index={answer.index} selected />
+                      <QuestionOptionLetter index={answer.index} selected />
                       <span className="min-w-0">{answer.label}</span>
                     </li>
                   ))}
@@ -376,13 +367,13 @@ export function ChatElicitationCard({
             </div>
           );
         })}
-      </article>
+      </QuestionCard>
     );
   }
 
   if (elicitation.mode === "url" && elicitation.url) {
     return (
-      <article {...cardProps}>
+      <QuestionCard id={elicitationId} busy={isSubmitting}>
         <div className="flex items-start gap-2">
           <MessageCircleQuestion className="text-muted-foreground mt-0.5 size-4 shrink-0" />
           <div className="min-w-0 space-y-1">
@@ -422,12 +413,12 @@ export function ChatElicitationCard({
             )}
           </Button>
         </div>
-      </article>
+      </QuestionCard>
     );
   }
 
   return (
-    <article {...cardProps}>
+    <QuestionCard id={elicitationId} busy={isSubmitting}>
       {showMessage ? (
         <p className="type-title font-medium break-words whitespace-pre-wrap">
           {message}
@@ -467,7 +458,7 @@ export function ChatElicitationCard({
                           currentValue.includes(option.value)
                         : currentValue === option.value;
                       return (
-                        <ElicitationChoice
+                        <QuestionChoice
                           key={option.value}
                           index={index}
                           label={option.label}
@@ -500,7 +491,7 @@ export function ChatElicitationCard({
                       );
                     })}
                     {customKey ? (
-                      <ElicitationChoice
+                      <QuestionChoice
                         index={field.options.length}
                         label={t("elicitation.other")}
                         selected={customOpen}
@@ -554,30 +545,14 @@ export function ChatElicitationCard({
         </div>
       ) : null}
       {queueStatus}
-      <div className="flex flex-wrap justify-end gap-2 pt-1">
-        {elicitation.allowSkip !== false ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            onClick={decline}
-          >
-            {t("elicitation.skip")}
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          size="sm"
-          disabled={disabled || !canSubmit}
-          onClick={submit}
-        >
-          {isSubmitting ? <Loader2 className="animate-spin" /> : null}
-          {t("elicitation.next")}
-          {!isSubmitting ? <CornerDownLeft aria-hidden="true" /> : null}
-        </Button>
-      </div>
-    </article>
+      <QuestionActions
+        canSubmit={canSubmit}
+        disabled={disabled}
+        submitting={isSubmitting}
+        onSkip={elicitation.allowSkip !== false ? decline : undefined}
+        onSubmit={submit}
+      />
+    </QuestionCard>
   );
 }
 
@@ -585,69 +560,4 @@ function fieldQuestion(field: SchemaField) {
   return field.options.length > 0
     ? field.description || field.title
     : field.title;
-}
-
-function ElicitationChoice({
-  index,
-  label,
-  description,
-  selected,
-  disabled,
-  onClick,
-}: {
-  index: number;
-  label: string;
-  description?: string;
-  selected: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      type="button"
-      variant="choice"
-      size="option"
-      aria-pressed={selected}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <ElicitationOptionLetter index={index} selected={selected} />
-      <span className="min-w-0 flex-1 text-left">
-        <span className="block break-words whitespace-pre-wrap">{label}</span>
-        {description ? (
-          <span className="text-muted-foreground type-caption mt-0.5 block font-normal break-words whitespace-pre-wrap">
-            {description}
-          </span>
-        ) : null}
-      </span>
-      {selected ? (
-        <Check
-          aria-hidden="true"
-          className="text-accent-content mt-0.5 shrink-0"
-        />
-      ) : null}
-    </Button>
-  );
-}
-
-function ElicitationOptionLetter({
-  index,
-  selected,
-}: {
-  index: number;
-  selected: boolean;
-}) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "type-ui size-icon-lg flex shrink-0 items-center justify-center rounded-xs font-medium",
-        selected
-          ? "bg-accent text-accent-foreground"
-          : "bg-accent-surface-strong text-accent-content",
-      )}
-    >
-      {index < 26 ? String.fromCharCode(65 + index) : index + 1}
-    </span>
-  );
 }

@@ -11,6 +11,54 @@ import {
 import type { ChatEvent } from "@/shared/api/events";
 
 describe("chat projection", () => {
+  it("已结束的回复接收同一运行的晚到交付文件，重放旧回执保留新快照", () => {
+    const original: BotChatMessage = {
+      id: "workflow-reply",
+      executionId: "workflow-execution",
+      role: "assistant",
+      status: "completed",
+      revision: 4,
+    };
+    const delivered: BotChatMessage = {
+      ...original,
+      revision: 5,
+      attachments: [
+        { name: "报告", path: "attachments/result.md", managed: true },
+      ],
+    };
+    const messages = applyChatEvent([original], {
+      type: "execution.delivery",
+      message: delivered,
+    });
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject(delivered);
+    expect(
+      applyChatEvent(messages, {
+        type: "execution.delivery",
+        message: original,
+      }),
+    ).toEqual(messages);
+  });
+
+  it("晚到交付不把窗口外的答复追加到当前消息列表", () => {
+    const current: BotChatMessage[] = [
+      { id: "latest", role: "assistant", createdSequence: 20 },
+    ];
+    expect(
+      applyChatEvent(current, {
+        type: "execution.delivery",
+        sequence: 23,
+        message: {
+          id: "earlier",
+          role: "assistant",
+          status: "completed",
+          createdSequence: 4,
+          revision: 23,
+        },
+      }),
+    ).toBe(current);
+  });
+
   it("晚到的提问答案仍位于最初提问的时间位置", () => {
     const question: BotChatMessage = {
       id: "question",

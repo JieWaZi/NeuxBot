@@ -14,6 +14,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agent"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
@@ -222,10 +223,14 @@ type postTurnExecutionFake struct {
 	// startError 是后续执行接纳需要返回的可选错误。
 	startError error
 	// canceledChats 保存 watcher 耗尽补偿请求停止的 Chat。
-	canceledChats []string
+	// canceledExecutions 记录精确取消捕获的执行标识。
+	canceledExecutions []string
+	canceledChats      []string
 	// cancelError 是停止并等待执行退出时返回的可选错误。
 	cancelError error
 }
+
+func (f *postTurnExecutionFake) IsSubmissionStopped(string, string) bool { return false }
 
 // transientTransactionController 在指定次数内拒绝事务，然后交给真实事务边界。
 type transientTransactionController struct {
@@ -448,7 +453,7 @@ func TestAttemptWatcherExhaustionCancelsExecutionAndFailsCurrentFence(t *testing
 	service := &service{
 		channels: channels, threads: threads, tasks: tasks, transactions: transactions,
 		chats: chatFake, executions: executionFake, lifecycleContext: ctx, lifecycleCancel: cancel,
-		watchers: make(map[string]struct{}), scheduleLocks: make(map[string]*threadScheduleLock),
+		watchers:     make(map[string]struct{}),
 		capabilities: channeltool.NewRegistry(),
 		watcherPolicy: deliveryWatcherPolicy{
 			maximumFailures: 2,
@@ -545,7 +550,7 @@ func TestLeadWatcherExhaustionConsumesDurableInputWithoutDuplicatingMessage(t *t
 	service := &service{
 		channels: channels, threads: threads, tasks: tasks, transactions: transactions,
 		chats: chatFake, executions: executionFake, lifecycleContext: ctx, lifecycleCancel: cancel,
-		watchers: make(map[string]struct{}), scheduleLocks: make(map[string]*threadScheduleLock),
+		watchers:     make(map[string]struct{}),
 		capabilities: channeltool.NewRegistry(),
 		watcherPolicy: deliveryWatcherPolicy{
 			maximumFailures: 2,
@@ -631,6 +636,14 @@ func (f *postTurnExecutionFake) CancelAndWait(_ context.Context, chatID string) 
 	defer f.mutex.Unlock()
 	f.canceledChats = append(f.canceledChats, chatID)
 	return f.cancelError
+}
+
+// CancelExecutionAndWait 记录精确停止所针对的执行。
+func (f *postTurnExecutionFake) CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error {
+	f.mutex.Lock()
+	f.canceledExecutions = append(f.canceledExecutions, executionID)
+	f.mutex.Unlock()
+	return f.CancelAndWait(ctx, chatID)
 }
 
 // cancelCount 返回 watcher 补偿已经请求的停止次数。
@@ -962,6 +975,10 @@ func TestLeadCreatedTasksDispatchAfterLeadTerminalAndStartupRecovery(t *testing.
 	}); err != nil {
 		t.Fatalf("create approved review notification: %v", err)
 	}
+	cursor, err := threads.LatestEventCursor(ctx, threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := service.ReconcileThread(ctx, threadID); err != nil {
 		t.Fatalf("reconcile approved review task: %v", err)
 	}
@@ -976,11 +993,11 @@ func TestLeadCreatedTasksDispatchAfterLeadTerminalAndStartupRecovery(t *testing.
 	}
 	deadline = time.Now().Add(2 * time.Second)
 	for {
-		events, listErr := threads.ListEvents(ctx, threadID, "", 100)
+		events, listErr := threads.ListEvents(ctx, threadID, cursor, 100)
 		if listErr != nil {
 			t.Fatalf("list processing events: %v", listErr)
 		}
-		opened := false
+		opened := make(map[string]bool)
 		closed := false
 		for _, event := range events {
 			if event.Type != constants.ChannelEventTeamLeaderProcessing {
@@ -990,18 +1007,20 @@ func TestLeadCreatedTasksDispatchAfterLeadTerminalAndStartupRecovery(t *testing.
 			if err := json.Unmarshal(event.Payload, &processing); err != nil {
 				t.Fatalf("decode processing event: %v", err)
 			}
-			if processing.Active && processing.ExecutionID == "" {
-				opened = true
+			if processing.ExecutionID == "" {
+				continue
 			}
-			if opened && !processing.Active && processing.ExecutionID == "" {
+			if processing.Active {
+				opened[processing.ExecutionID] = true
+			} else if opened[processing.ExecutionID] {
 				closed = true
 			}
 		}
-		if opened && closed {
+		if closed {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("busy announce did not close its processing bridge; opened=%t closed=%t", opened, closed)
+			t.Fatalf("busy announce did not close its processing bridge for any of %v", opened)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -1061,7 +1080,7 @@ func TestUnstartedAttemptKeepsDelegationReasonAfterRelease(t *testing.T) {
 			tasks := controllers.NewChannelTaskController(database.DB)
 			sut := &service{tasks: tasks, transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}
 			task := models.ChannelTask{ID: "task", ThreadID: "thread", AssigneeWakerID: "replacement", CurrentFence: 2,
-				Status: constants.ChannelTaskStatusInProgress, ChangedPaths: []string{}}
+				Status: constants.ChannelTaskStatusInProgress, ChangedPaths: []string{}, CancelRequestedAt: testTimestamp(50), CancelRequestedFence: 1}
 			if err := tasks.Create(ctx, task, nil); err != nil {
 				t.Fatal(err)
 			}
@@ -1076,7 +1095,7 @@ func TestUnstartedAttemptKeepsDelegationReasonAfterRelease(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			if err := sut.releaseUnstartedAttempt(ctx, attempt); err != nil {
+			if _, err := sut.releaseUnstartedAttempt(ctx, attempt); err != nil {
 				t.Fatal(err)
 			}
 			task, err = tasks.Get(ctx, task.ID)
@@ -1096,6 +1115,123 @@ func TestUnstartedAttemptKeepsDelegationReasonAfterRelease(t *testing.T) {
 			got, err = recovered.taskAttemptReason(ctx, task, nil)
 			if err != nil || got != reason {
 				t.Fatalf("next accepted reason without supplement = %s, want %s, error = %v", got, reason, err)
+			}
+		})
+	}
+}
+
+type pausedTaskAdmission struct {
+	// postTurnExecutionFake 保留真实服务接口及实际派发计数。
+	*postTurnExecutionFake
+	// pauseFirst 只暂停第一次派发，使后续排队任务可正常接纳。
+	pauseFirst sync.Once
+	// ready 通知测试任务已领取，Execution 尚未接纳输入。
+	ready chan struct{}
+	// resume 模拟准备完成后继续耐久接纳。
+	resume <-chan struct{}
+	// stopped 记录尚无 Chat 投影时发出的精确取消。
+	stopped chan string
+}
+
+func (p *pausedTaskAdmission) CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error {
+	err := p.postTurnExecutionFake.CancelExecutionAndWait(ctx, chatID, executionID)
+	p.stopped <- executionID
+	return err
+}
+
+func (p *pausedTaskAdmission) Start(ctx context.Context, intent execution.WorkIntent) (accepted execution.AcceptedExecution, err error) {
+	paused := false
+	p.pauseFirst.Do(func() {
+		paused = true
+		close(p.ready)
+	})
+	if !paused {
+		return p.postTurnExecutionFake.Start(ctx, intent)
+	}
+	select {
+	case <-p.resume:
+	case <-ctx.Done():
+		return execution.AcceptedExecution{}, ctx.Err()
+	}
+	err = intent.AdmissionBoundary.Commit(ctx, func(ctx context.Context) error {
+		accepted, err = p.postTurnExecutionFake.Start(ctx, intent)
+		return err
+	})
+	return accepted, err
+}
+
+func TestStopTaskDuringClaimPreventsExecutionAdmission(t *testing.T) {
+	for _, source := range []string{"user", "capability"} {
+		t.Run(source, func(t *testing.T) {
+			sut, thread, _, executions := newDelegationDispatchService(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			task, err := sut.CreateTask(ctx, CreateTaskInput{ThreadID: thread.ID, SenderWakerID: "lead", AssigneeWakerID: "member",
+				Subject: "停止尚未接纳的任务", Description: "检查当前尝试的停止围栏。", DeferDispatch: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			resume := make(chan struct{})
+			release := sync.OnceFunc(func() { close(resume) })
+			defer release()
+			paused := &pausedTaskAdmission{postTurnExecutionFake: executions, ready: make(chan struct{}), resume: resume, stopped: make(chan string, 1)}
+			sut.executions = paused
+			dispatched := make(chan error, 1)
+			go func() {
+				_, err := sut.schedule(ctx, thread.ID)
+				dispatched <- err
+			}()
+			select {
+			case <-paused.ready:
+			case <-ctx.Done():
+				t.Fatal("task never reached claimed admission")
+			}
+			next, err := sut.CreateTask(ctx, CreateTaskInput{ThreadID: thread.ID, SenderWakerID: "lead", AssigneeWakerID: "member",
+				Subject: "执行后续任务", Description: "前一任务停止后继续派发。"})
+			if err != nil || next.Task.Status != constants.ChannelTaskStatusPending {
+				t.Fatalf("next task = %+v, error = %v", next.Task, err)
+			}
+			if source == "user" {
+				err = sut.StopTask(ctx, task.Task.ID)
+			} else {
+				_, err = capability.Execute(ctx, sut.commands, "lead:"+thread.ID, capability.Request{Operation: "team.tasks.cancel", RequestID: "stop"}, func(ctx context.Context) error {
+					return sut.StopTask(ctx, task.Task.ID)
+				})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			claimed, err := sut.tasks.GetCurrentAttempt(ctx, task.Task.ID, task.Task.CurrentFence+1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case executionID := <-paused.stopped:
+				if executionID != claimed.ExecutionID {
+					t.Fatalf("stop targeted execution %s, want %s", executionID, claimed.ExecutionID)
+				}
+			case <-ctx.Done():
+				t.Fatal("stop waited for the Chat projection before targeting the exact execution")
+			}
+			release()
+			select {
+			case err := <-dispatched:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-ctx.Done():
+				t.Fatal("claimed task did not settle")
+			}
+			current, err := sut.tasks.Get(ctx, task.Task.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			attempt, err := sut.tasks.GetCurrentAttempt(ctx, current.ID, current.CurrentFence)
+			if err != nil || current.Status != constants.ChannelTaskStatusCancelled || attempt.Status != constants.ExecutionStatusCanceled || attempt.StartedAt != nil {
+				t.Fatalf("stopped attempt reached execution for %s: task=%s attempt=%s err=%v", source, current.Status, attempt.Status, err)
+			}
+			if started := waitForDispatchedTask(t, ctx, sut, next.Task.ID); started.ExecutionID == attempt.ExecutionID || executions.startCount() != 1 {
+				t.Fatalf("unexpected task dispatch: next=%s stopped=%s starts=%d", started.ExecutionID, attempt.ExecutionID, executions.startCount())
 			}
 		})
 	}
@@ -1137,6 +1273,7 @@ func newDelegationDispatchService(t *testing.T) (*service, models.ChannelThread,
 	}}
 	executions := &postTurnExecutionFake{}
 	sut := &service{channels: channels, threads: threads, tasks: controllers.NewChannelTaskController(database.DB),
+		commands:     controllers.NewAgentCommandController(database.DB),
 		transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)),
 		wakers:       wakers, chats: chats, executions: executions, lifecycleContext: ctx, lifecycleCancel: cancel,
 		watchers: make(map[string]struct{}), capabilities: channeltool.NewRegistry()}
@@ -1200,6 +1337,57 @@ func TestRetryDelegationKeepsRequestTimeAcrossBusyAndFailedAdmission(t *testing.
 	}
 	if got := delegations[1]; got.Reason != constants.ChannelAttemptReasonRetry || got.DelegationSentAt != queued.DelegationSentAt {
 		t.Fatalf("accepted retry lost queued identity: %+v, want sentAt %d", got, queued.DelegationSentAt)
+	}
+}
+
+func TestDirectMentionResumesWhenMemberChatBecomesAvailable(t *testing.T) {
+	for _, busy := range []struct {
+		name string
+		err  error
+	}{
+		{name: "chat occupied", err: status_error.ChatHasActiveExecution},
+		{name: "native preparation busy", err: agent.ErrTurnAdmissionBusy},
+	} {
+		t.Run(busy.name, func(t *testing.T) {
+			sut, thread, _, executions := newDelegationDispatchService(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 2500*time.Millisecond)
+			defer cancel()
+			executions.setStartError(busy.err)
+			sent, err := sut.sendMessage(ctx, SendMessageInput{
+				ThreadID: thread.ID, MentionWakerID: "member", Input: execution.WorkInput{Content: "待成员空闲后执行"},
+			})
+			if err != nil || sent.Task == nil || sent.Task.Status != constants.ChannelTaskStatusPending {
+				t.Fatalf("busy member task = %+v, error = %v", sent.Task, err)
+			}
+			executions.setStartError(nil)
+			waitForDispatchedTask(t, ctx, sut, sent.Task.ID)
+		})
+	}
+}
+
+func waitForDispatchedTask(t *testing.T, ctx context.Context, sut *service, taskID string) models.ChannelTaskAttempt {
+	t.Helper()
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		task, err := sut.tasks.Get(ctx, taskID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if task.Status == constants.ChannelTaskStatusInProgress {
+			attempt, err := sut.tasks.GetCurrentAttempt(ctx, task.ID, task.CurrentFence)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if attempt.StartedAt != nil {
+				return attempt
+			}
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("queued task %s was not accepted: status=%s", taskID, task.Status)
+		case <-ticker.C:
+		}
 	}
 }
 
@@ -1330,6 +1518,7 @@ func TestDirectMentionOnlySupplementsInProgressAndReviewRequiresExplicitDecision
 	chatFake := &postTurnChatFake{summaries: map[string]chatservice.ChatSummary{
 		memberChatID: {Chat: models.Chat{ID: memberChatID, ActiveExecutionID: "external-member-work"}},
 	}}
+	executions := &postTurnExecutionFake{}
 	service := &service{
 		channels:     channels,
 		threads:      threads,
@@ -1337,7 +1526,7 @@ func TestDirectMentionOnlySupplementsInProgressAndReviewRequiresExplicitDecision
 		transactions: transactions,
 		wakers:       wakers,
 		chats:        chatFake,
-		executions:   &postTurnExecutionFake{},
+		executions:   executions,
 		watchers:     make(map[string]struct{}),
 		capabilities: channeltool.NewRegistry(),
 	}
@@ -1427,6 +1616,15 @@ func TestDirectMentionOnlySupplementsInProgressAndReviewRequiresExplicitDecision
 	if err := tasks.Create(ctx, cancellableReview, nil); err != nil {
 		t.Fatalf("create cancellable review task: %v", err)
 	}
+	reviewAttempt := models.ChannelTaskAttempt{
+		ID: "55555555555555555555555555555555", TaskID: cancellableReview.ID,
+		ChatID: memberChatID, ExecutionID: "66666666666666666666666666666666", AssigneeWakerID: memberID,
+		Fence: cancellableReview.CurrentFence, Reason: constants.ChannelAttemptReasonInitial,
+		Status: constants.ExecutionStatusCompleted, StartedAt: testTimestamp(now + 2), FinishedAt: testTimestamp(now + 3),
+	}
+	if err := tasks.CreateAttempt(ctx, reviewAttempt); err != nil {
+		t.Fatalf("create completed review attempt: %v", err)
+	}
 	if err := service.StopTask(ctx, cancellableReview.ID); err != nil {
 		t.Fatalf("StopTask(in_review) error = %v", err)
 	}
@@ -1436,6 +1634,9 @@ func TestDirectMentionOnlySupplementsInProgressAndReviewRequiresExplicitDecision
 	}
 	if cancelled.Status != constants.ChannelTaskStatusCancelled || cancelled.FinishedAt == nil {
 		t.Fatalf("cancelled review task = %+v", cancelled)
+	}
+	if len(executions.canceledExecutions) != 1 || executions.canceledExecutions[0] != reviewAttempt.ExecutionID {
+		t.Fatalf("review cancellation stopped another member execution: %v", executions.canceledExecutions)
 	}
 }
 

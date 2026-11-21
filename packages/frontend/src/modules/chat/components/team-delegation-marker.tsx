@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { TeamPartnerButton } from "./team-partner-button";
+import { ChatTimelineMarker } from "./chat-timeline-marker";
 
 type DelegationPartner = {
   id: string;
@@ -19,26 +20,22 @@ export function TeamDelegationMarker({
 }) {
   const { t } = useTranslation("chat");
   return (
-    <div className="text-content-secondary type-ui my-3 min-w-0 px-6">
-      <div className="flex min-w-0 flex-wrap items-center justify-center gap-1">
-        <span>
-          {t(
-            direction === "outgoing"
-              ? "team.delegatedTo"
-              : "team.delegatedFrom",
-          )}
-        </span>
-        {partners.map((partner) => (
-          <TeamPartnerButton
-            key={partner.id}
-            name={partner.name}
-            avatar={partner.avatar}
-            disabled={!partner.available}
-            aria-label={t("team.openDelegationChat", { name: partner.name })}
-            onClick={partner.onOpen}
-          />
-        ))}
-      </div>
-    </div>
+    <ChatTimelineMarker>
+      <span>
+        {t(
+          direction === "outgoing" ? "team.delegatedTo" : "team.delegatedFrom",
+        )}
+      </span>
+      {partners.map((partner) => (
+        <TeamPartnerButton
+          key={partner.id}
+          name={partner.name}
+          avatar={partner.avatar}
+          disabled={!partner.available}
+          aria-label={t("team.openDelegationChat", { name: partner.name })}
+          onClick={partner.onOpen}
+        />
+      ))}
+    </ChatTimelineMarker>
   );
 }

@@ -235,7 +235,9 @@ export function StoragePartnerDetails({
               {t("fileCount", { count: first.total ?? 0 })} ·{" "}
               {first.complete
                 ? storageSize(first.totalBytes ?? 0)
-                : t("partial", { size: storageSize(first.totalBytes ?? 0) })}
+                : t("partial", {
+                    size: storageSize(first.totalBytes ?? 0, "lower-bound"),
+                  })}
             </p>
           ) : null}
           {rows.length ? (

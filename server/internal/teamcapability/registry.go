@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -21,8 +20,6 @@ type Scope struct {
 	CallerWakerID string
 	// ExecutionID 是当前唯一允许调用该端点的团队执行。
 	ExecutionID string
-	// Fence 是同一 Team 对话能力激活的单调代次。
-	Fence uint64
 	// Role 是当前能力绑定的稳定 Team 角色。
 	Role string
 	// TaskID 是成员报告能力绑定的唯一任务标识；负责人能力为空。
@@ -33,20 +30,16 @@ type Scope struct {
 	Listed bool
 	// AllowMutations 表示本轮是否允许维护任务。
 	AllowMutations bool
-	// ExpiresAt 是本轮能力强制失效的时间。
-	ExpiresAt time.Time
 	// LeaseID 是生命周期持有者撤销本代能力时使用的随机标识。
 	LeaseID string
 }
 
 // Registry 按稳定 Team 角色端点保存当前 execution-scoped 授权。
 type Registry struct {
-	// mutex 保护授权映射和单调代次。
+	// mutex 保护授权映射。
 	mutex sync.Mutex
 	// byEndpoint 按 thread 或 thread+member 稳定键保存当前执行授权。
 	byEndpoint map[string]Scope
-	// nextFence 保存下一次激活使用的单调代次。
-	nextFence uint64
 }
 
 // NewRegistry 创建空的团队工具授权注册表。
@@ -114,21 +107,18 @@ func (r *Registry) mint(endpointKey string, scope Scope) (string, error) {
 	}
 	leaseID := hex.EncodeToString(random)
 	r.mutex.Lock()
-	r.nextFence++
 	scope.ThreadID = threadID
 	scope.CallerWakerID = callerWakerID
 	scope.ExecutionID = executionID
 	scope.TaskID = strings.TrimSpace(scope.TaskID)
 	scope.AttemptID = strings.TrimSpace(scope.AttemptID)
-	scope.Fence = r.nextFence
-	scope.ExpiresAt = time.Now().Add(time.Duration(constants.ChannelCapabilityTTLHours) * time.Hour)
 	scope.LeaseID = leaseID
 	r.byEndpoint[endpointKey] = scope
 	r.mutex.Unlock()
 	return leaseID, nil
 }
 
-// Resolve 返回稳定角色端点当前绑定的执行授权；未知、过期或已撤销时返回 false。
+// Resolve 返回稳定角色端点当前绑定的执行授权；未知或已撤销时返回 false。
 func (r *Registry) Resolve(endpointKey string) (Scope, bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -136,19 +126,15 @@ func (r *Registry) Resolve(endpointKey string) (Scope, bool) {
 	if !exists {
 		return Scope{}, false
 	}
-	if !scope.ExpiresAt.After(time.Now()) {
-		delete(r.byEndpoint, endpointKey)
-		return Scope{}, false
-	}
 	return scope, true
 }
 
 // MarkListed 记录当前负责人执行已经读取任务板。
-func (r *Registry) MarkListed(endpointKey string) {
+func (r *Registry) MarkListed(endpointKey, leaseID string) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	scope, exists := r.byEndpoint[endpointKey]
-	if !exists || !scope.ExpiresAt.After(time.Now()) {
+	if !exists || scope.LeaseID != leaseID {
 		return
 	}
 	scope.Listed = true

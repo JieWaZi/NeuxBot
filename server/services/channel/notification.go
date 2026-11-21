@@ -2,11 +2,11 @@ package channel
 
 import (
 	"context"
-	"hash/fnv"
 	"strings"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
@@ -32,17 +32,12 @@ type leaderProcessingEvent struct {
 }
 
 func (s *service) drainNotifications(ctx context.Context, threadID string) error {
-	locked, release, lockErr := s.acquireThreadOperation(ctx, threadID)
+	locked, release, lockErr := acquireLeadDispatch(ctx, threadID)
 	if lockErr != nil {
 		return lockErr
 	}
 	ctx = locked
 	defer release()
-	shard := fnv.New32a()
-	_, _ = shard.Write([]byte(threadID))
-	lock := &s.notificationDrainLocks[shard.Sum32()%uint32(len(s.notificationDrainLocks))]
-	lock.Lock()
-	defer lock.Unlock()
 	thread, err := s.threads.Get(ctx, threadID)
 	if err != nil {
 		return err
@@ -81,7 +76,7 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		return err
 	}
 	if direct {
-		return s.transaction(ctx, func(transactionContext context.Context) error {
+		return s.commitLeadDispatch(ctx, thread, func(transactionContext context.Context) error {
 			consumed, consumeErr := s.tasks.ConsumePendingNotification(
 				transactionContext, entries[0].NotificationID, time.Now().UnixMilli(),
 			)
@@ -127,19 +122,12 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		s.capabilities.Revoke(capabilityToken)
 		return err
 	}
-	// 协调任务终态与负责人汇总：在最后一个 task terminal 与负责人 announce execution
-	// started 之间先发布 processing，使 UI 不会把极短的接力窗口误判为空闲。
-	if _, err := s.appendEvent(
-		ctx,
-		thread.ChannelID,
-		thread.ID,
-		constants.ChannelEventTeamLeaderProcessing,
-		leaderProcessingEvent{
-			Active:  true,
-			AgentID: thread.LeadWakerID,
-			Tasks:   len(entries),
-		},
-	); err != nil {
+	// 在准备原生执行前发布处理中状态，屏蔽任务结束到负责人接纳之间的空闲窗口。
+	processing := leaderProcessingEvent{Active: true, AgentID: thread.LeadWakerID, Tasks: len(entries), ExecutionID: leadExecutionID}
+	if err := s.commitLeadDispatch(ctx, thread, func(ctx context.Context) error {
+		_, err := s.appendEvent(ctx, thread.ChannelID, thread.ID, constants.ChannelEventTeamLeaderProcessing, processing)
+		return err
+	}); err != nil {
 		s.capabilities.Revoke(capabilityToken)
 		return err
 	}
@@ -157,7 +145,7 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 	for _, entry := range projectedEntries {
 		options.HistoryMessageIDsToOmit = append(options.HistoryMessageIDsToOmit, entry.NotificationID)
 	}
-	accepted, err := s.executions.Start(ctx, execution.WorkIntent{AutomaticRunID: automaticRunID,
+	accepted, err := s.startThreadExecution(ctx, thread, execution.WorkIntent{AutomaticRunID: automaticRunID,
 		ExecutionID: leadExecutionID,
 		Chat:        execution.ChatTarget{ChatID: thread.LeadChatID},
 		Input: execution.WorkInput{
@@ -170,28 +158,8 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
 	})
 	if err != nil {
+		s.closeLeaderProcessing(ctx, thread, processing)
 		s.capabilities.Revoke(capabilityToken)
-		// Start 未接纳时必须用配对事件结束 bridge；持久通知仍留在队列中，
-		// 因而详情快照可以继续表达“有结果待处理”，而 SSE 不会卡在一次已失败的启动尝试上。
-		if _, eventErr := s.appendEvent(
-			ctx,
-			thread.ChannelID,
-			thread.ID,
-			constants.ChannelEventTeamLeaderProcessing,
-			leaderProcessingEvent{
-				Active:  false,
-				AgentID: thread.LeadWakerID,
-				Tasks:   len(entries),
-			},
-		); eventErr != nil {
-			logx.Errorf(
-				"close failed leader processing bridge failed: thread_id=%s chat_id=%s notification_count=%d error=%v",
-				thread.ID,
-				thread.LeadChatID,
-				len(entries),
-				eventErr,
-			)
-		}
 		s.watchRecoveryDrain(thread.ID)
 		if isChatBusy(err) {
 			return nil
@@ -199,70 +167,36 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		return err
 	}
 	now := time.Now().UnixMilli()
-	if err := s.tasks.UpdateNotifications(
-		ctx,
-		ids,
-		constants.ChannelNotificationStatusDelivering,
-		accepted.Execution.ID,
-		now,
-	); err != nil {
-		if cancelErr := s.executions.Cancel(thread.LeadChatID); cancelErr != nil {
-			logx.Errorf(
-				"cancel uncommitted leader notification execution failed: thread_id=%s execution_id=%s chat_id=%s notification_count=%d error=%v",
-				thread.ID,
-				accepted.Execution.ID,
-				thread.LeadChatID,
-				len(ids),
-				cancelErr,
-			)
+	if err := s.commitLeadDispatch(ctx, thread, func(ctx context.Context) error {
+		if err := s.tasks.UpdateNotifications(ctx, ids, constants.ChannelNotificationStatusDelivering, accepted.Execution.ID, now); err != nil {
+			return err
 		}
-		if _, eventErr := s.appendEvent(
-			ctx,
-			thread.ChannelID,
-			thread.ID,
-			constants.ChannelEventTeamLeaderProcessing,
-			leaderProcessingEvent{
-				Active:      false,
-				AgentID:     thread.LeadWakerID,
-				Tasks:       len(entries),
-				ExecutionID: accepted.Execution.ID,
-			},
-		); eventErr != nil {
-			logx.Errorf(
-				"close rejected leader processing bridge failed: thread_id=%s execution_id=%s chat_id=%s notification_count=%d error=%v",
-				thread.ID,
-				accepted.Execution.ID,
-				thread.LeadChatID,
-				len(ids),
-				eventErr,
-			)
+		processing.ExecutionID = accepted.Execution.ID
+		_, err := s.appendEvent(ctx, thread.ChannelID, thread.ID, constants.ChannelEventTeamLeaderProcessing, processing)
+		return err
+	}); err != nil {
+		if cancelErr := s.executions.CancelExecutionAndWait(ctx, thread.LeadChatID, accepted.Execution.ID); cancelErr != nil {
+			logx.Errorf("cancel uncommitted leader notification execution failed: thread_id=%s execution_id=%s error=%v", thread.ID, accepted.Execution.ID, cancelErr)
 		}
+		s.closeLeaderProcessing(ctx, thread, processing)
+		s.capabilities.Revoke(capabilityToken)
 		s.watchRecoveryDrain(thread.ID)
 		return err
 	}
-	if _, eventErr := s.appendEvent(
-		ctx,
-		thread.ChannelID,
-		thread.ID,
-		constants.ChannelEventTeamLeaderProcessing,
-		leaderProcessingEvent{
-			Active:      true,
-			AgentID:     thread.LeadWakerID,
-			Tasks:       len(entries),
-			ExecutionID: accepted.Execution.ID,
-		},
-	); eventErr != nil {
-		logx.Errorf(
-			"append accepted leader processing event failed: thread_id=%s execution_id=%s chat_id=%s notification_count=%d error=%v",
-			thread.ID,
-			accepted.Execution.ID,
-			thread.LeadChatID,
-			len(ids),
-			eventErr,
-		)
-	}
 	s.watchLeadExecution(thread, accepted.Execution.ID, ids, nil, capabilityToken)
 	return nil
+}
+
+func (s *service) closeLeaderProcessing(ctx context.Context, thread models.ChannelThread, processing leaderProcessingEvent) {
+	processing.Active = false
+	err := s.commitLeadDispatch(ctx, thread, func(ctx context.Context) error {
+		_, err := s.appendEvent(ctx, thread.ChannelID, thread.ID, constants.ChannelEventTeamLeaderProcessing, processing)
+		return err
+	})
+	// 停止意图自己的终态事件会清理处理状态。
+	if err != nil && !hasStatusErrorCode(err, status_error.ChannelTaskStateConflict.Code()) {
+		logx.Errorf("close leader processing failed: thread_id=%s execution_id=%s error=%v", thread.ID, processing.ExecutionID, err)
+	}
 }
 
 // notificationGroupTasks 只把同一回复来源的任务和本批报告所对应的续跑任务交给负责人。
@@ -560,16 +494,25 @@ func (s *service) exhaustLeadWatcher(
 	notificationIDs []string,
 	inputIDs []string,
 ) error {
-	if err := s.executions.CancelAndWait(ctx, thread.LeadChatID); err != nil {
+	if _, err := s.threads.Get(ctx, thread.ID); err != nil {
+		if hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
+			return nil
+		}
+		return err
+	}
+	if err := s.executions.CancelExecutionAndWait(ctx, thread.LeadChatID, executionID); err != nil {
 		return err
 	}
 	now := time.Now().UnixMilli()
 	if err := s.transaction(ctx, func(transactionContext context.Context) error {
+		if _, err := s.threads.Get(transactionContext, thread.ID); err != nil {
+			return err
+		}
 		if err := s.tasks.UpdateNotifications(
 			transactionContext,
 			notificationIDs,
 			constants.ChannelNotificationStatusPending,
-			"",
+			executionID,
 			now,
 		); err != nil {
 			return err
@@ -600,6 +543,9 @@ func (s *service) exhaustLeadWatcher(
 		)
 		return err
 	}); err != nil {
+		if hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
+			return nil
+		}
 		return err
 	}
 	s.watchRecoveryDrain(thread.ID)
@@ -619,16 +565,17 @@ func (s *service) completeLeadExecution(
 		return false, nil
 	}
 	notificationStatus := constants.ChannelNotificationStatusConsumed
-	leadExecutionID := executionID
 	if event.ExecutionStatus != constants.ExecutionStatusCompleted {
 		notificationStatus = constants.ChannelNotificationStatusPending
-		leadExecutionID = ""
 	}
 	now := time.Now().UnixMilli()
 	if err := s.transaction(ctx, func(transactionContext context.Context) error {
+		if _, err := s.threads.Get(transactionContext, thread.ID); err != nil {
+			return err
+		}
 		if len(notificationIDs) > 0 {
 			if err := s.tasks.UpdateNotifications(
-				transactionContext, notificationIDs, notificationStatus, leadExecutionID, now,
+				transactionContext, notificationIDs, notificationStatus, executionID, now,
 			); err != nil {
 				return err
 			}
@@ -652,6 +599,9 @@ func (s *service) completeLeadExecution(
 		}
 		return nil
 	}); err != nil {
+		if hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
+			return true, nil
+		}
 		return false, err
 	}
 	if _, err := s.schedule(ctx, thread.ID); err != nil {

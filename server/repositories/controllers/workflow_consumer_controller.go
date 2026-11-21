@@ -16,6 +16,10 @@ type WorkflowConsumerController interface {
 	CreateConsumer(context.Context, models.WorkflowConsumerLease) error
 	// GetConsumer 读取工具请求绑定的真实回合。
 	GetConsumer(context.Context, string) (models.WorkflowConsumerLease, error)
+	// StopConsumer 撤销确切聊天回合的使用权限；不存在的回合不产生新记录。
+	StopConsumer(ctx context.Context, chatID, executionID string, now int64) error
+	// StopThreadConsumers 撤销该团队停止范围内仍可能启动运行的回合授权。
+	StopThreadConsumers(ctx context.Context, threadID string, chatIDs []string, stopAt int64) error
 }
 
 // workflowConsumerController 始终加入业务层提供的统一事务。
@@ -46,4 +50,27 @@ func (c *workflowConsumerController) GetConsumer(ctx context.Context, id string)
 		return value, databaseError("get_workflow_consumer", id, err)
 	}
 	return value, nil
+}
+
+func (c *workflowConsumerController) StopConsumer(ctx context.Context, chatID, executionID string, now int64) error {
+	err := controllerDB(ctx, c.db).Model(&models.WorkflowConsumerLease{}).
+		Where("chat_id = ? AND id = ? AND stopped_at IS NULL", chatID, executionID).
+		Update("stopped_at", now).Error
+	if err != nil {
+		return databaseError("stop_workflow_consumer", executionID, err)
+	}
+	return nil
+}
+
+func (c *workflowConsumerController) StopThreadConsumers(ctx context.Context, threadID string, chatIDs []string, stopAt int64) error {
+	if len(chatIDs) == 0 {
+		return nil
+	}
+	err := controllerDB(ctx, c.db).Model(&models.WorkflowConsumerLease{}).
+		Where("thread_id = ? AND chat_id IN ? AND stopped_at IS NULL", threadID, chatIDs).
+		UpdateColumn("stopped_at", stopAt).Error
+	if err != nil {
+		return databaseError("stop_thread_workflow_consumers", threadID, err)
+	}
+	return nil
 }

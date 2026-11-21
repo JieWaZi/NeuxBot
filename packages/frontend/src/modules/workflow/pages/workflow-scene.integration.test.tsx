@@ -43,11 +43,7 @@ import type {
 import type { ChatEvent } from "@/shared/api/events";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import type * as SceneWorkspace from "@/shared/workspace/app-scene-workspace";
-import {
-  ChatContributionsProvider,
-  ChatQueueProvider,
-  WorkbenchProvider,
-} from "@/modules/chat";
+import { ChatQueueProvider, WorkbenchProvider } from "@/modules/chat";
 import { WorkflowDetailPage } from "./workflow-detail-page";
 import { WorkflowListPage } from "./workflow-list-page";
 import { ResourcesPage } from "@/app/pages/resources-page";
@@ -311,37 +307,35 @@ function renderScene(
   const content = () => (
     <QueryClientProvider client={queryClient}>
       <WorkbenchProvider>
-        <ChatContributionsProvider value={{}}>
-          <ChatQueueProvider>
-            <TooltipProvider>
-              <MemoryRouter initialEntries={[path]}>
-                {navigation}
-                <Routes>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter initialEntries={[path]}>
+              {navigation}
+              <Routes>
+                <Route
+                  element={
+                    shellCollapsed === undefined ? (
+                      <Outlet />
+                    ) : (
+                      <WorkflowShell collapsed={shellCollapsed} />
+                    )
+                  }
+                >
+                  <Route path="/workflows" element={<WorkflowListPage />} />
+                  <Route path="/resources" element={<ResourcesPage />} />
                   <Route
-                    element={
-                      shellCollapsed === undefined ? (
-                        <Outlet />
-                      ) : (
-                        <WorkflowShell collapsed={shellCollapsed} />
-                      )
-                    }
-                  >
-                    <Route path="/workflows" element={<WorkflowListPage />} />
-                    <Route path="/resources" element={<ResourcesPage />} />
-                    <Route
-                      path="/workflows/:workflowId"
-                      element={<WorkflowDetailPage />}
-                    />
-                    <Route
-                      path="/workflows/:workflowId/runs/:runId"
-                      element={<WorkflowDetailPage />}
-                    />
-                  </Route>
-                </Routes>
-              </MemoryRouter>
-            </TooltipProvider>
-          </ChatQueueProvider>
-        </ChatContributionsProvider>
+                    path="/workflows/:workflowId"
+                    element={<WorkflowDetailPage />}
+                  />
+                  <Route
+                    path="/workflows/:workflowId/runs/:runId"
+                    element={<WorkflowDetailPage />}
+                  />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
       </WorkbenchProvider>
     </QueryClientProvider>
   );

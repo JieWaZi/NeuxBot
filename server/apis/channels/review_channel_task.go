@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -52,10 +53,11 @@ func (r *ReviewChannelTask) Output(ctx *gin.Context) (interface{}, error) {
 	if r.Body.ExpectedFence <= 0 {
 		return nil, ginx.WithStack(status_error.BadRequest)
 	}
-	operationContext, release, lockErr := teamwork.Acquire(ctx, r.ChannelID)
+	operationContext, releaseTeam, lockErr := teamwork.Acquire(ctx, r.ChannelID)
 	if lockErr != nil {
 		return nil, ginx.WithStack(lockErr)
 	}
+	release := sync.OnceFunc(releaseTeam)
 	defer release()
 	thread, err := writableChannelThread(operationContext, r.ChannelID, r.ThreadID)
 	if err != nil {
@@ -74,7 +76,7 @@ func (r *ReviewChannelTask) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	now := time.Now().UnixMilli()
 	err = global.TransactionControllerManager.Transaction(operationContext, func(transactionContext context.Context) error {
-		if writableErr := ensureChannelWritable(transactionContext, thread.ChannelID); writableErr != nil {
+		if _, writableErr := writableChannelThread(transactionContext, thread.ChannelID, thread.ID); writableErr != nil {
 			return writableErr
 		}
 		current, currentErr := global.ChannelTaskControllerManager.Get(transactionContext, task.ID)
@@ -169,7 +171,8 @@ func (r *ReviewChannelTask) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if err := global.ChannelService.ReconcileThread(operationContext, thread.ID); err != nil {
+	release()
+	if err := global.ChannelService.ReconcileThread(ctx, thread.ID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	return ginx.CommonSuccessResponse(), nil

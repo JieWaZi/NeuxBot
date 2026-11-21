@@ -10,8 +10,11 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -32,6 +35,8 @@ type agentTestJournal struct {
 	chat models.Chat
 	// contextReads 记录误用完整历史准备入口的次数。
 	contextReads int
+	// summaryError 模拟阅读投影无法提供当前摘要。
+	summaryError error
 }
 
 func (j *agentTestJournal) LoadExecutionContext(context.Context, string) (chatservice.ExecutionContext, error) {
@@ -40,7 +45,22 @@ func (j *agentTestJournal) LoadExecutionContext(context.Context, string) (chatse
 }
 
 func (j *agentTestJournal) LoadExecutionChat(context.Context, string) (models.Chat, error) {
-	return j.chat, nil
+	return j.chat, j.summaryError
+}
+
+func reserveAgentTestExecution(t *testing.T, manager *service, chatID, executionID string) func() {
+	t.Helper()
+	if manager.executions == nil {
+		manager.executions = newExecutionRegistry()
+		manager.executions.start(t.Context())
+		t.Cleanup(manager.executions.close)
+	}
+	if _, err := manager.executions.reserve(chatID, executionID, ""); err != nil {
+		t.Fatal(err)
+	}
+	release := sync.OnceFunc(func() { manager.executions.release(chatID, executionID) })
+	t.Cleanup(release)
+	return release
 }
 
 func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
@@ -135,6 +155,7 @@ func TestNativeSessionReusesResidentCredentialAcrossExecutions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	releaseFirst := reserveAgentTestExecution(t, manager, journal.chat.ID, "first")
 	activate()
 	cliName := "botcli"
 	if runtime.GOOS == "windows" {
@@ -168,6 +189,7 @@ func TestNativeSessionReusesResidentCredentialAcrossExecutions(t *testing.T) {
 		t.Fatal(err)
 	}
 	revoke()
+	releaseFirst()
 	journal.chat.ActiveExecutionID = "second"
 	secondRequest := recordedRun{Runtime: request.Runtime}
 	activate, revokeSecond, err := secondRequest.prepare(manager, journal.chat, "second", nil, &[]string{}, nil)
@@ -175,6 +197,7 @@ func TestNativeSessionReusesResidentCredentialAcrossExecutions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer revokeSecond()
+	releaseSecond := reserveAgentTestExecution(t, manager, journal.chat.ID, "second")
 	activate()
 	if preparedContextPath(t, secondRequest) != firstPath {
 		t.Fatal("continued native process lost its stable explicit context path")
@@ -194,19 +217,15 @@ func TestNativeSessionReusesResidentCredentialAcrossExecutions(t *testing.T) {
 		registry.ServeHTTP(response, request)
 		return response.Code
 	}
-	if send(first.Token) != 200 {
+	journal.summaryError = status_error.ReadingProjectionIncomplete
+	if send(first.Token) != http.StatusOK {
 		t.Fatal("resident credential could not access the current execution")
 	}
-	journal.chat.WakerID = "other-waker"
-	if send(second.Token) != 401 {
-		t.Fatal("changed partner retained the old capability grant")
-	}
-	journal.chat.WakerID = "waker"
-	journal.chat.ActiveExecutionID = "other-execution"
-	if send(second.Token) != 401 {
+	releaseSecond()
+	reserveAgentTestExecution(t, manager, journal.chat.ID, "other-execution")
+	if send(second.Token) != http.StatusUnauthorized {
 		t.Fatal("changed active execution retained the old capability grant")
 	}
-	journal.chat.ActiveExecutionID = "second"
 	if journal.contextReads != 0 {
 		t.Fatalf("capability validation loaded full message context %d times", journal.contextReads)
 	}
@@ -259,6 +278,7 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer revoke()
+	reserveAgentTestExecution(t, manager, journal.chat.ID, "execution")
 	activate()
 	if len(request.Connectors) != 0 {
 		t.Fatalf("knowledge grant added a retired MCP transport: %+v", request.Connectors)
@@ -300,6 +320,85 @@ func agentPreparationFixture(t *testing.T) *service {
 	return manager
 }
 
+func TestExecutionCancellationRevokesToolsBeforeNativeSettlement(t *testing.T) {
+	manager := agentPreparationFixture(t)
+	manager.executions = newExecutionRegistry()
+	manager.executions.start(t.Context())
+	t.Cleanup(manager.executions.close)
+	conversation := manager.journal.(*agentTestJournal).chat
+	executionContext, err := manager.executions.reserve(conversation.ID, "turn", "submission")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { manager.executions.release(conversation.ID, "turn") })
+	entered := make(chan context.Context, 1)
+	release := make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	request := pendingMessage{runtime: runtimeSelection{RuntimeID: "unsupported"}, allowedAgentDomains: &[]string{},
+		toolCapabilities: []ToolCapability{{Bindings: []capability.Binding{{Operation: "im.targets.list", Call: func(ctx context.Context, _ capability.Request) (capability.Result, error) {
+			entered <- ctx
+			<-release
+			return capability.Result{}, ctx.Err()
+		}}}}},
+	}
+	var skills []agentapi.Skill
+	var instructions, contextInstructions []agentapi.Instruction
+	var connectors []agentapi.ConnectorDeclaration
+	sender, senderFinished := context.WithCancel(t.Context())
+	defer senderFinished()
+	grant, err := manager.prepareAgent(sender, executionContext, models.RuntimeEnvironment{}, agentapi.Workspace{Path: t.TempDir()}, &skills, &instructions, &connectors, &contextInstructions, conversation, "turn", request, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(grant.finish)
+	grant.activate()
+	connection, err := capability.ReadConnection(grant.cliContextFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(method, constants.AgentCLIPath+path, strings.NewReader(body))
+		request.RemoteAddr = "127.0.0.1:12345"
+		request.Header.Set("Authorization", "Bearer "+connection.Token)
+		response := httptest.NewRecorder()
+		manager.agent.ServeHTTP(response, request)
+		return response
+	}
+	// 发送 HTTP 请求结束不会结束已经接纳的执行及工具连接。
+	senderFinished()
+	if response := call(http.MethodGet, "/capabilities", ""); response.Code != http.StatusOK {
+		t.Fatalf("sending caller owned the admitted grant: %d %s", response.Code, response.Body)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		call(http.MethodPost, "/commands", `{"operation":"im.targets.list","params":{}}`)
+	}()
+	var commandContext context.Context
+	select {
+	case commandContext = <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("tool call did not enter")
+	}
+	manager.CancelExecution(conversation.ID, "turn")
+	if !manager.IsExecutionActive(conversation.ID, "turn") {
+		t.Fatal("test lost the native settlement window")
+	}
+	if commandContext.Err() != context.Canceled {
+		t.Fatal("execution cancellation did not synchronously cancel the in-flight command")
+	}
+	if response := call(http.MethodGet, "/capabilities", ""); response.Code != http.StatusUnauthorized {
+		t.Fatalf("cancelled execution retained tools before native settlement: %d %s", response.Code, response.Body)
+	}
+	unblock()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled command did not finish")
+	}
+}
+
 func TestAgentPreparationFreezesRealReferencedFilesIndependentOfNativeProjection(t *testing.T) {
 	manager := agentPreparationFixture(t)
 	chat := manager.journal.(*agentTestJournal).chat
@@ -329,6 +428,7 @@ func TestAgentPreparationFreezesRealReferencedFilesIndependentOfNativeProjection
 		t.Fatal(err)
 	}
 	defer revoke()
+	reserveAgentTestExecution(t, manager, chat.ID, "turn")
 	activate()
 	files[0] = filepath.Join(root, "unreferenced.txt")
 	connection, err := capability.ReadConnection(preparedContextPath(t, request))
@@ -444,6 +544,44 @@ func TestWorkflowAuthoringPreparationDoesNotOverrideOrdinaryChatOrWorker(t *test
 				}
 			}
 		})
+	}
+}
+
+func TestLocalWorkflowTurnsShareCredentialAndKeepTheCreationPromptLocal(t *testing.T) {
+	manager := agentPreparationFixture(t)
+	journal := manager.journal.(*agentTestJournal)
+	prepare := func(chatID, sessionID string) capability.Connection {
+		t.Helper()
+		journal.chat.ID, journal.chat.ActiveExecutionID = chatID, "turn-"+chatID
+		request := pendingMessage{
+			runtime:            runtimeSelection{RuntimeID: "codex"},
+			localWorkflowTools: true, workflowCreationSessionID: sessionID,
+			toolCapabilities: []ToolCapability{{ID: "workflow.local", Bindings: []capability.Binding{
+				agentPreparationBinding(t, "workflow.source.save"), agentPreparationBinding(t, "workflow.runs.start"),
+			}}},
+		}
+		var skills []agentapi.Skill
+		var instructions, contextInstructions []agentapi.Instruction
+		var connectors []agentapi.ConnectorDeclaration
+		grant, err := manager.prepareAgent(t.Context(), t.Context(), models.RuntimeEnvironment{}, agentapi.Workspace{Path: t.TempDir()}, &skills, &instructions, &connectors, &contextInstructions, journal.chat, journal.chat.ActiveExecutionID, request, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(grant.finish)
+		hasCreationGuide := slices.ContainsFunc(instructions, func(value agentapi.Instruction) bool { return value.Name == "WORKFLOW_AUTHORING.md" })
+		if hasCreationGuide != (sessionID != "") || len(connectors) != 1 || connectors[0].RuntimeKey != "bot_capabilities" {
+			t.Fatalf("incorrect prompt or workflow transport for %s", chatID)
+		}
+		connection, err := capability.ReadConnection(connectors[0].Arguments[3])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return connection
+	}
+	partner := prepare("partner-chat", "")
+	creation := prepare("creation-chat", "creation-session")
+	if partner.Token != creation.Token || partner.GrantID == creation.GrantID {
+		t.Fatal("partner and creation chats did not share one credential with separate connections")
 	}
 }
 

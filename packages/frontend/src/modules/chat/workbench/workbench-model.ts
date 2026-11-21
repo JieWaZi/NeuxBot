@@ -57,6 +57,7 @@ export type WorkbenchTab = {
   canonicalPath?: string;
   rootPath?: string;
   fileMode?: "preview" | "diff";
+  fileChatId?: string;
   executionDiff?: { chatId: string; messageId: string };
   url?: string;
   chatId?: string;
@@ -105,6 +106,7 @@ export type WorkbenchCommand =
       rootPath: string;
       title: string;
       mode?: "preview" | "diff";
+      fileChatId?: string;
       executionDiff?: { chatId: string; messageId: string };
     }
   | { type: "open-sidechat"; title: string; parentChatId?: string }
@@ -453,7 +455,16 @@ export function reduceWorkbench(
     case "open-file":
       return open(
         "file",
-        `${command.canonicalPath ? absoluteFileAddress(command.canonicalPath) : sessionFileAddress(command.rootPath, command.path)}${
+        `${
+          command.fileChatId
+            ? sessionFileAddress(
+                command.fileChatId,
+                command.canonicalPath ?? command.path,
+              )
+            : command.canonicalPath
+              ? absoluteFileAddress(command.canonicalPath)
+              : sessionFileAddress(command.rootPath, command.path)
+        }${
           command.executionDiff?.messageId
             ? `?diff=${encodeURIComponent(command.executionDiff.messageId)}`
             : ""
@@ -464,6 +475,7 @@ export function reduceWorkbench(
           canonicalPath: command.canonicalPath,
           rootPath: command.rootPath,
           fileMode: command.mode,
+          fileChatId: command.fileChatId,
           executionDiff: command.executionDiff,
         },
       );

@@ -41,8 +41,8 @@ type ChannelTaskController interface {
 	UpdateAttemptFields(ctx context.Context, attemptID string, fields map[string]interface{}) error
 	// BindAttemptExecution 把外部已接纳 Execution 原子绑定到未绑定尝试。
 	BindAttemptExecution(ctx context.Context, attemptID string, executionID string, startedAt int64) (bool, error)
-	// ReleaseDispatchClaim 把未完成启动的尝试终结并按围栏重新排队任务。
-	ReleaseDispatchClaim(ctx context.Context, taskID string, attemptID string, fence int, status constants.ExecutionStatus, errorMessage string, updatedAt int64) (bool, error)
+	// ReleaseDispatchClaim 按围栏终结未启动的尝试，重新排队或取消当前任务。
+	ReleaseDispatchClaim(ctx context.Context, taskID string, attemptID string, fence int, status constants.ExecutionStatus, taskStatus constants.ChannelTaskStatus, errorMessage string, updatedAt int64) (bool, error)
 	// FailRunningAttempt 在调用方事务内按当前围栏把无法继续监听的运行尝试和任务提交为失败。
 	FailRunningAttempt(ctx context.Context, taskID string, attemptID string, fence int, errorMessage string, updatedAt int64) (bool, error)
 	// GetCurrentAttempt 返回与任务当前围栏匹配的尝试。
@@ -55,6 +55,10 @@ type ChannelTaskController interface {
 	CreateFollowUp(ctx context.Context, followUp models.ChannelTaskFollowUp) error
 	// ListPendingFollowUps 按创建顺序返回任务尚未交付的用户补充。
 	ListPendingFollowUps(ctx context.Context, taskID string) ([]models.ChannelTaskFollowUp, error)
+	// DeletePendingFollowUp 按对话和提交身份撤回尚未被尝试领取的补充。
+	DeletePendingFollowUp(ctx context.Context, threadID, submissionID string) error
+	// FindDeliveredFollowUp 按原提交返回已被尝试领取的补充，不读取其他团队的输入。
+	FindDeliveredFollowUp(ctx context.Context, threadID, submissionID string) (models.ChannelTaskFollowUp, bool, error)
 	// ListTimelineFollowUps 按团队和可见性读取时间游标之前的有界补充窗口。
 	ListTimelineFollowUps(ctx context.Context, threadID string, taskIDs []string, beforeCreatedAt int64, beforeRole constants.MessageRole, beforeID string, limit int) ([]models.ChannelTaskFollowUp, error)
 	// MarkFollowUpsDelivered 把一批用户补充原子归属到指定任务尝试。
@@ -446,13 +450,14 @@ func (c *channelTaskController) BindAttemptExecution(
 	return result.RowsAffected == 1, nil
 }
 
-// ReleaseDispatchClaim 把未完成启动的尝试终结并按围栏重新排队任务。
+// ReleaseDispatchClaim 按围栏终结未启动的尝试，重新排队或取消当前任务。
 func (c *channelTaskController) ReleaseDispatchClaim(
 	ctx context.Context,
 	taskID string,
 	attemptID string,
 	fence int,
 	status constants.ExecutionStatus,
+	taskStatus constants.ChannelTaskStatus,
 	errorMessage string,
 	updatedAt int64,
 ) (bool, error) {
@@ -477,6 +482,10 @@ func (c *channelTaskController) ReleaseDispatchClaim(
 	if attemptResult.RowsAffected != 1 {
 		return false, nil
 	}
+	var finishedAt *int64
+	if taskStatus == constants.ChannelTaskStatusCancelled {
+		finishedAt = &updatedAt
+	}
 	result := db.Model(&models.ChannelTask{}).
 		Where(
 			"id = ? AND status = ? AND current_fence = ?",
@@ -485,14 +494,14 @@ func (c *channelTaskController) ReleaseDispatchClaim(
 			fence,
 		).
 		Updates(map[string]interface{}{
-			"status":        constants.ChannelTaskStatusPending,
+			"status":        taskStatus,
 			"started_at":    nil,
-			"finished_at":   nil,
+			"finished_at":   finishedAt,
 			"error_message": "",
 			"updated_at":    updatedAt,
 		})
 	if result.Error != nil {
-		return false, databaseError("requeue_channel_task_dispatch", "task_id="+taskID, result.Error)
+		return false, databaseError("release_channel_task_dispatch", "task_id="+taskID, result.Error)
 	}
 	return result.RowsAffected == 1, nil
 }
@@ -639,6 +648,32 @@ func (c *channelTaskController) ListPendingFollowUps(
 	return followUps, nil
 }
 
+func (c *channelTaskController) DeletePendingFollowUp(ctx context.Context, threadID, submissionID string) error {
+	db := controllerDB(ctx, c.db)
+	tasks := db.Model(&models.ChannelTask{}).Select("id").Where("thread_id = ?", threadID)
+	if err := db.Where("task_id IN (?) AND delivered_at IS NULL", tasks).
+		Where("json_extract(payload, '$.submissionId') = ?", submissionID).
+		Delete(&models.ChannelTaskFollowUp{}).Error; err != nil {
+		return databaseError("delete_pending_channel_follow_up", "thread_id="+threadID, err)
+	}
+	return nil
+}
+
+// FindDeliveredFollowUp 从原投递关系定位需要停止的尝试。
+func (c *channelTaskController) FindDeliveredFollowUp(ctx context.Context, threadID, submissionID string) (models.ChannelTaskFollowUp, bool, error) {
+	db := controllerDB(ctx, c.db)
+	tasks := db.Model(&models.ChannelTask{}).Select("id").Where("thread_id = ?", threadID)
+	var followUp models.ChannelTaskFollowUp
+	result := db.Select("id", "task_id", "delivered_attempt_id").
+		Where("task_id IN (?) AND delivered_at IS NOT NULL AND delivered_attempt_id <> ''", tasks).
+		Where("json_extract(payload, '$.submissionId') = ?", submissionID).
+		Order("created_at DESC, id DESC").Limit(1).Find(&followUp)
+	if result.Error != nil {
+		return models.ChannelTaskFollowUp{}, false, databaseError("find_delivered_channel_follow_up", "thread_id="+threadID, result.Error)
+	}
+	return followUp, result.RowsAffected == 1, nil
+}
+
 // ListTimelineFollowUps 只读取当前团队可公开的待投递用户补充和负责人协调消息。
 func (c *channelTaskController) ListTimelineFollowUps(
 	ctx context.Context,
@@ -708,13 +743,17 @@ func (c *channelTaskController) MarkFollowUpsDelivered(
 	if len(ids) == 0 || attemptID == "" {
 		return nil
 	}
-	if err := controllerDB(ctx, c.db).Model(&models.ChannelTaskFollowUp{}).
+	result := controllerDB(ctx, c.db).Model(&models.ChannelTaskFollowUp{}).
 		Where("id IN ? AND delivered_at IS NULL", ids).
 		Updates(map[string]interface{}{
 			"delivered_at":         deliveredAt,
 			"delivered_attempt_id": attemptID,
-		}).Error; err != nil {
-		return databaseError("deliver_channel_task_follow_ups", "follow_up_count", err)
+		})
+	if result.Error != nil {
+		return databaseError("deliver_channel_task_follow_ups", "follow_up_count", result.Error)
+	}
+	if result.RowsAffected != int64(len(ids)) {
+		return status_error.ChannelTaskStateConflict
 	}
 	return nil
 }
@@ -841,17 +880,24 @@ func (c *channelTaskController) UpdateNotifications(
 	if len(ids) == 0 {
 		return nil
 	}
+	if leadExecutionID == "" {
+		return status_error.BadRequest
+	}
 	db := controllerDB(ctx, c.db).Model(&models.ChannelLeadNotification{}).
 		Where("id IN ?", ids)
+	nextExecutionID := leadExecutionID
 	if status == constants.ChannelNotificationStatusDelivering {
 		db = db.Where("status = ?", constants.ChannelNotificationStatusPending)
 	} else {
-		db = db.Where("status = ?", constants.ChannelNotificationStatusDelivering)
+		db = db.Where("status = ? AND lead_execution_id = ?", constants.ChannelNotificationStatusDelivering, leadExecutionID)
+		if status == constants.ChannelNotificationStatusPending {
+			nextExecutionID = ""
+		}
 	}
 	if err := db.
 		Updates(map[string]interface{}{
 			"status":            status,
-			"lead_execution_id": leadExecutionID,
+			"lead_execution_id": nextExecutionID,
 			"updated_at":        updatedAt,
 		}).Error; err != nil {
 		return databaseError("update_channel_lead_notifications", "notification_count", err)

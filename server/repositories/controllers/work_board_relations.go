@@ -84,7 +84,7 @@ func boardWorkflowRuns(db *gorm.DB, ids []string) (map[string]models.WorkflowRun
 				next = append(next, id)
 			}
 		}
-		rows, err := readRelatedRows[models.WorkflowRun](db, "id", "id,definition_id,root_run_id,parent_run_id,joined,status,deadline_at,updated_at,history_deleted_at", next)
+		rows, err := readRelatedRows[models.WorkflowRun](db, "id", "id,definition_id,root_run_id,parent_run_id,joined,status,deadline_at,updated_at,history_deleted_at,source_chat_id", next)
 		if err != nil {
 			return nil, err
 		}

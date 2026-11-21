@@ -45,8 +45,8 @@ func TestWorkflowCreationForwardsHostCapabilityScope(t *testing.T) {
 	if boundary.intent.Options.AllowedAgentDomains == nil || !slices.Equal(*boundary.intent.Options.AllowedAgentDomains, []string{"memory", "interaction"}) || boundary.intent.Options.AllowedConnectorIDs != nil {
 		t.Fatalf("host capability scope was changed into a native connector allowlist: %+v", boundary.intent.Options)
 	}
-	if len(boundary.intent.Options.ToolCapabilities) != 1 || boundary.intent.Options.ToolCapabilities[0].ID != "workflow.authoring" {
-		t.Fatal("creation lost its explicitly granted workflow tools")
+	if boundary.intent.Options.WorkflowCreationSessionID != session.ID || len(boundary.intent.Options.ToolCapabilities) != 0 {
+		t.Fatal("creation did not forward the default target through the common execution entry")
 	}
 }
 
@@ -271,29 +271,6 @@ func TestCreationContinuationKeepsLastSelectionAndAcceptsExplicitChanges(t *test
 	}
 }
 
-func TestWorkflowConsumerValidationPreservesResolvedNativeDefaults(t *testing.T) {
-	environment := &mutableAdmissionEnvironment{}
-	s, _ := openCoreWorkflowPorts(t, t.TempDir(), &fixtureRuntime{}, environment)
-	storage, _ := workflowTestService(t)
-	config := storage.Config
-	config.Executions, config.Chats = s.Executions, s.Chats
-	consumer := workflowTestNew(config)
-	consumer.State.AgentBindings = consumer.AgentBindings
-	definition := savedTestWorkflow(t, consumer, workflowTestSource(t))
-	environment.mutex.Lock()
-	environment.changed = true
-	environment.mutex.Unlock()
-	intent := execution.WorkIntent{ClientRequestID: "resolved-consumer", Chat: execution.ChatTarget{Create: &execution.CreateChatSpec{WakerID: "fixture-waker"}}, Input: execution.WorkInput{Content: "使用流程"}, Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: "codex", PermissionLevel: constants.PermissionLevelDefault}}
-	bound, err := consumer.BindConsumer(t.Context(), intent, []string{definition.ID})
-	if err != nil || !bound.Options.ConfigurationResolved || bound.Options.AccountID != "" || bound.Options.Model != "" {
-		t.Fatalf("consumer validation reinterpreted resolved native defaults: %+v %v", bound.Options, err)
-	}
-	intent.Options.ConfigurationResolved = false
-	if _, err := consumer.BindConsumer(t.Context(), intent, []string{definition.ID}); workflowstate.ErrorKey(err) != status_error.AIAccountNotFound.Key() {
-		t.Fatalf("unresolved consumer bypassed current account default validation: %v", err)
-	}
-}
-
 func TestWorkflowCreationReusesExistingBot(t *testing.T) {
 	directory := t.TempDir()
 	runtime := &fixtureRuntime{}
@@ -434,8 +411,8 @@ func TestCreationForwardsCompleteChatInputAndSessionTransition(t *testing.T) {
 	if options.SessionPolicy != constants.RuntimeSessionPolicyNew || options.HistoryTurns != 7 || options.HistoryMode != constants.HistoryModeSummary || options.SummaryModel != command.SummaryModel || options.SummaryReasoning != command.SummaryReasoning {
 		t.Fatalf("creation admission lost session transition: %+v", options)
 	}
-	if len(options.ToolCapabilities) != 1 || options.ToolCapabilities[0].ID != "workflow.authoring" {
-		t.Fatal("common chat admission lost workflow-scoped tool authority")
+	if options.WorkflowCreationSessionID == "" || len(options.ToolCapabilities) != 0 {
+		t.Fatal("common chat admission lost the creation session default target")
 	}
 }
 

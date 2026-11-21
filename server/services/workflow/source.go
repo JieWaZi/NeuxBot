@@ -16,10 +16,10 @@ import (
 
 // SaveSourceCommand 是源码保存和恢复共同遵守的 CAS 命令。
 type SaveSourceCommand struct {
-	// CreationExecutionID 是工具所在回合，事务内再次验证，阻止旧回合迟到保存。
-	CreationExecutionID string `json:"-"`
-	// CreationToken 是只用于事务内隔离校验的能力凭证。
-	CreationToken string `json:"-"`
+	// ExecutionID 是工具所在回合，事务内再次验证，阻止旧回合迟到保存。
+	ExecutionID string `json:"-"`
+	// ExecutionChatID 是从本地伙伴对话调用保存时的原 Chat。
+	ExecutionChatID string `json:"-"`
 	// DefinitionID 是允许写入的工作流。
 	DefinitionID string `json:"-"`
 	// RequestID 是同一保存内容的幂等身份。
@@ -92,11 +92,8 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 		command.Source = source
 	}
 	// 编译不持有数据库事务；任何诊断都不产生版本或保存成功事件。
-	compiled, diagnostics, err := workflowdsl.Compile(command.Source)
+	compiled, diagnostics, err := CompileSource(command.Source)
 	if err != nil {
-		return workflowdsl.SaveReceipt{}, diagnostics, err
-	}
-	if err := s.validateSourcePolicies(ctx, compiled.Manifest); err != nil {
 		return workflowdsl.SaveReceipt{}, diagnostics, err
 	}
 	s.state.Commands.Lock()
@@ -112,13 +109,20 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 			if err != nil {
 				return err
 			}
-			if session.DefinitionID != command.DefinitionID || session.ActiveExecutionID != command.CreationExecutionID {
+			if session.DefinitionID != command.DefinitionID {
 				return status_error.WorkflowAuthoringSuperseded
 			}
-			if err := s.validateCreationExecution(ctx, session, command.CreationToken); err != nil {
+			if err := s.validateCreationExecution(ctx, session, command.ExecutionID); err != nil {
 				return err
 			}
 			configuration = &session.Defaults
+		} else if command.ExecutionChatID != "" {
+			actual, _, err := s.readWorkflowExecution(ctx, command.ExecutionChatID, command.ExecutionID)
+			if err != nil {
+				return err
+			}
+			defaults := workflowExecutionDefaults(actual)
+			configuration = &defaults
 		}
 		receipt, found, err := s.store.FindReceipt(ctx, command.DefinitionID, command.RequestID)
 		if err != nil {
@@ -204,39 +208,33 @@ func (s *Service) saveReceipt(ctx context.Context, command SaveSourceCommand, di
 	return capability.Commit(ctx, result)
 }
 
-// validateSourcePolicies 在源码提交前核验强制策略及伙伴绑定，避免保存不可运行的限制。
-func (s *Service) validateSourcePolicies(ctx context.Context, manifest workflowdsl.Manifest) error {
+// CompileSource 为源码校验和保存提供一致的编译结果与宿主策略诊断。
+func CompileSource(source string) (workflowdsl.Compilation, []workflowdsl.Diagnostic, error) {
+	compiled, diagnostics, err := workflowdsl.Compile(source)
+	if err != nil {
+		return compiled, diagnostics, err
+	}
+	if diagnostic, err := validateSourcePolicies(compiled.Manifest); err != nil {
+		return compiled, append(diagnostics, diagnostic), err
+	}
+	return compiled, diagnostics, nil
+}
+
+// validateSourcePolicies 拒绝原生执行无法强制实施的节点策略。
+func validateSourcePolicies(manifest workflowdsl.Manifest) (workflowdsl.Diagnostic, error) {
 	for _, node := range manifest.Nodes {
 		if node.Kind != "worker" {
 			continue
 		}
-		allowed, err := workerConnectorAllowlist(node.Options)
-		if err != nil {
-			return err
-		}
-		if allowed == nil || len(*allowed) == 0 {
-			continue
-		}
-		if s.connectors == nil {
-			return status_error.WorkflowResourceInvalid
-		}
-		resolve, _ := node.Options["resolve"].(map[string]any)
-		wakerID, _ := resolve["wakerId"].(string)
-		bound, err := s.connectors.ListEnabled(ctx, wakerID)
-		if err != nil {
-			return err
-		}
-		ids := map[string]bool{}
-		for _, connector := range bound {
-			ids[connector.ID] = true
-		}
-		for _, id := range *allowed {
-			if !ids[id] {
-				return status_error.WorkflowResourceInvalid.WithField("connectorId", id)
-			}
+		if field, err := validateWorkerToolPolicy(node.Options); err != nil {
+			return workflowdsl.Diagnostic{
+				Code: "WORKER_TOOL_POLICY_UNSUPPORTED", Severity: "error",
+				Message: "Worker connector and native tool policies only support inherit.",
+				NodeID:  node.ID, Field: field, Range: node.Range,
+			}, err
 		}
 	}
-	return nil
+	return workflowdsl.Diagnostic{}, nil
 }
 
 func verifyRevision(revision models.WorkflowRevision) error {
@@ -274,6 +272,9 @@ func (s *Service) ValidateTargetConfiguration(ctx context.Context, definitionID,
 		return definition, revision, err
 	}
 	if err := verifyRevision(revision); err != nil {
+		return definition, revision, err
+	}
+	if _, err := validateSourcePolicies(revision.Manifest); err != nil {
 		return definition, revision, err
 	}
 	if defaults.PermissionLevel == "" {

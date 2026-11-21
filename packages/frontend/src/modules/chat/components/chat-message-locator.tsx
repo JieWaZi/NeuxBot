@@ -59,9 +59,13 @@ export function useChatMessageLocator({
           )
         : Array.from(
             container.querySelectorAll<HTMLElement>(
-              "[data-chat-elicitation-card]",
+              "[data-chat-elicitation-card], [data-chat-interaction-id]",
             ),
-          ).find((card) => card.dataset.messageId === id);
+          ).find(
+            (card) =>
+              card.dataset.messageId === id ||
+              card.dataset.chatInteractionId === id,
+          );
       if (target) {
         target.scrollIntoView({ block: "start" });
         moved = true;

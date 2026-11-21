@@ -73,7 +73,7 @@ it("缺少权威对话标识的成功响应仍需确认，原请求明确缺失�
   expect(finished).toHaveBeenCalledTimes(1);
 });
 
-it.each(["WakerNotFound", "ProjectNotFound"])(
+it.each(["WakerNotFound", "ProjectNotFound", "OperationCanceled"])(
   "回执未确认后收到 %s，允许重新选择伙伴或项目",
   async (code) => {
     const body: CreateChatData["body"] = {

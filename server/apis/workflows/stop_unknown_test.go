@@ -8,6 +8,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -125,7 +126,7 @@ func TestLostWorkerReceiptFailsWithoutUserReconciliationOrResend(t *testing.T) {
 	if effect.Status != constants.WorkflowStepStatusUnknown || state.Instances[0].Status != constants.WorkflowStepStatusFailed || state.Run.Failure == nil || state.Run.CompletedAt == nil {
 		t.Fatal("uncertainty was not retained as failure evidence", state)
 	}
-	bindings := service.State.AgentBindings(effect.ID, effect.AuthToken, constants.WorkflowCapabilityScopeResult)
+	bindings := service.AgentBindings(workflowtool.Scope{Key: effect.ID, Token: effect.AuthToken, Kind: constants.WorkflowCapabilityScopeResult})
 	var callErr error
 	for _, binding := range bindings {
 		if binding.Operation == "workflow.results.submit" {

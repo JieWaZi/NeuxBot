@@ -215,7 +215,8 @@ func (c *workBoardController) ExecutorAttentionFacts(ctx context.Context, reader
 	db := controllerDB(ctx, c.db)
 	for _, branch := range []string{workBoardChatSelect, workBoardThreadSelect} {
 		var entries []models.WorkBoardEntry
-		if err := db.Table("(?) board", db.Raw(branch)).Where("executor_id IN ?", executors).Find(&entries).Error; err != nil {
+		// 工作流创作会话在看板保留原入口，伙伴导航只聚合自己的会话。
+		if err := db.Table("(?) board", db.Raw(branch)).Where("executor_id IN ? AND workflow_id = ''", executors).Find(&entries).Error; err != nil {
 			return value, databaseError("list_executor_attention_chats", "", err)
 		}
 		value.Chats = append(value.Chats, entries...)

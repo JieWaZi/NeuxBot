@@ -165,7 +165,7 @@ func TestWorkflowWaitingKeepsSlotAndPinnedPolicyRejectsWrongOwner(t *testing.T) 
 	}
 }
 
-func TestWorkflowDefinitionDeletionProtectsDisabledTriggerDependencies(t *testing.T) {
+func TestWorkflowDefinitionDeletionLeavesTriggerToReportMissingDefinition(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	data, err := os.ReadFile("../../internal/workflow/dsl/testdata/f0.workflow.js")
@@ -178,8 +178,22 @@ func TestWorkflowDefinitionDeletionProtectsDisabledTriggerDependencies(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := deleteWorkflowFixture(h, ctx, definition.ID, definition.CurrentRevisionID); util.ErrorCode(err, status_error.AutomaticTaskServiceInvalid.Key()) != status_error.WorkflowStateConflict.Key() {
-		t.Fatal("disabled trigger lost definition", err)
+	config.Enabled, config.Name = true, "仍启用的工作流引用"
+	enabled, err := h.service.SaveConfiguration(ctx, h.wakerID, "", 0, config, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deleteWorkflowFixture(h, ctx, definition.ID, definition.CurrentRevisionID); err != nil {
+		t.Fatal("trigger reference prevented explicit workflow deletion", err)
+	}
+	if _, err := h.workflowStore.GetDefinition(ctx, definition.ID); util.ErrorCode(err, status_error.AutomaticTaskServiceInvalid.Key()) != status_error.WorkflowNotFound.Key() {
+		t.Fatalf("deleted definition remains available: %v", err)
+	}
+	if _, err := h.service.Get(ctx, h.wakerID, saved.TaskID); err != nil {
+		t.Fatalf("deleting a definition repaired or removed its referencing task: %v", err)
+	}
+	if _, err := h.api.TriggerManual(ctx, h.wakerID, enabled.TaskID, "after-definition-deletion", map[string]any{"text": "input"}); util.ErrorCode(err, status_error.AutomaticTaskServiceInvalid.Key()) != status_error.WorkflowNotFound.Key() {
+		t.Fatalf("referencing task did not report the deleted workflow: %v", err)
 	}
 	if err := h.api.Delete(ctx, h.wakerID, saved.TaskID); err != nil {
 		t.Fatal(err)

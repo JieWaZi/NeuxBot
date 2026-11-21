@@ -133,7 +133,10 @@ function validGlobalEventResource(
     case "team":
       return resource.kind === "thread" && Boolean(resource.parentId);
     case "workflow":
-      return resource.kind === "workflow";
+      return (
+        resource.kind === "workflow" ||
+        (resource.kind === "chat" && !resource.parentId)
+      );
     case "account-login":
       return resource.kind === "account" && Boolean(resource.parentId);
     case "work-board":

@@ -112,7 +112,7 @@ type SendCreationMessageCommand struct {
 
 // sendCreationMessage 先提交输入锚点，再通过既有 Core 接纳创作工作。
 func sendCreationMessage(ctx context.Context, d *workflowDependencies, command SendCreationMessageCommand) (SendWorkflowCreationMessageResponse, error) {
-	if d.CreationSessions == nil || d.Executions == nil || d.State.AgentBindings == nil {
+	if d.CreationSessions == nil || d.Executions == nil {
 		return SendWorkflowCreationMessageResponse{}, status_error.WorkflowCapabilityUnsupported
 	}
 	if strings.TrimSpace(command.Content) == "" || len(command.Content) > constants.WorkflowSourceLimitBytes || command.RequestID == "" || len(command.RequestID) > constants.InputSubmissionIDMaximumLength {
@@ -284,7 +284,6 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 			session.ContextInstructions = append(session.ContextInstructions, workinput.Instruction{Name: "WORKFLOW_RUN_REFERENCE.md", Content: string(encoded)})
 		}
 		session.Defaults = resolvedDefaults
-		session.AuthToken = util.New() + util.New()
 		if command.SessionID == "" {
 			err = d.CreationSessions.CreateCreationSession(ctx, session)
 		} else {
@@ -376,10 +375,8 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 			PermissionLevel: session.Defaults.PermissionLevel, SessionPolicy: sessionPolicy,
 			HistoryTurns: command.HistoryTurns, HistoryMode: command.HistoryMode,
 			SummaryModel: command.SummaryModel, SummaryReasoning: command.SummaryReasoning,
-			AllowedAgentDomains: &[]string{"memory", "interaction"},
-			ToolCapabilities: []execution.ToolCapability{{
-				ID: "workflow.authoring", Name: "工作流创作", Bindings: d.State.AgentBindings(session.ID, session.AuthToken, constants.WorkflowCapabilityScopeCreation),
-			}},
+			AllowedAgentDomains:       &[]string{"memory", "interaction"},
+			WorkflowCreationSessionID: session.ID,
 		},
 		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
 	})

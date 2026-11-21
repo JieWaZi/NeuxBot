@@ -4,6 +4,7 @@ package capability
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -63,8 +64,12 @@ type Binding struct {
 
 // GrantSpec freezes the exact operations available to an execution and its current identity validation.
 type GrantSpec struct {
+	// Lifecycle belongs to the admitted execution; nil leaves revocation to the explicit owner.
+	Lifecycle context.Context
 	// ExecutionID is the stable identity of the admitted execution.
 	ExecutionID string
+	// SharedLocalToken uses the Core credential for an interactive local chat connection.
+	SharedLocalToken bool
 	// Bindings is the set of exact invocations granted by domain entry points.
 	Bindings []Binding
 	// FileRoots freezes directory access during execution preparation and rejects HTTP overrides.
@@ -125,12 +130,14 @@ type lease struct {
 type Registry struct {
 	// mutex protects connections, execution scopes, and closure state.
 	mutex sync.Mutex
-	// connections maps managed file paths to token digests.
+	// connections maps managed file paths to their registry keys.
 	connections map[string]string
-	// codexShellAliases maps a resident token digest to its currently bound native alias.
+	// codexShellAliases maps a resident connection key to its currently bound native alias.
 	codexShellAliases map[string]string
-	// leases indexes grants by token digest without retaining plaintext transport tokens.
+	// leases indexes grants by their credential digest and, for shared credentials, connection ID.
 	leases map[string]*lease
+	// localToken is the Core-lifetime credential shared by interactive local chats.
+	localToken string
 	// epoch distinguishes grants across Core restarts.
 	epoch string
 	// closed reports whether the root lifecycle has ended.
@@ -141,7 +148,7 @@ type Registry struct {
 
 // New creates an empty grant registry without starting goroutines or listeners.
 func New(guide func(string) (string, error)) *Registry {
-	return &Registry{connections: map[string]string{}, codexShellAliases: map[string]string{}, leases: map[string]*lease{}, epoch: util.New(), guide: guide}
+	return &Registry{connections: map[string]string{}, codexShellAliases: map[string]string{}, leases: map[string]*lease{}, localToken: util.New() + util.New(), epoch: util.New(), guide: guide}
 }
 
 func tokenKey(token string) string {
@@ -149,9 +156,17 @@ func tokenKey(token string) string {
 	return hex.EncodeToString(hash[:])
 }
 
+func (r *Registry) connectionKey(token, connectionID string) string {
+	key := tokenKey(token)
+	if subtle.ConstantTimeCompare([]byte(token), []byte(r.localToken)) == 1 {
+		return key + ":" + connectionID
+	}
+	return key
+}
+
 // Prepare prepares an inactive grant; both returned activation and revocation functions are idempotent.
 func (r *Registry) Prepare(spec GrantSpec) (Grant, func(), func(), error) {
-	grant := r.newGrant()
+	grant := r.newGrant(false)
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	activate, finish, err := r.bindExecutionLocked(tokenKey(grant.Token), spec)
@@ -161,8 +176,12 @@ func (r *Registry) Prepare(spec GrantSpec) (Grant, func(), func(), error) {
 	return grant, activate, finish, nil
 }
 
-func (r *Registry) newGrant() Grant {
-	return Grant{ID: util.New(), Token: util.New() + util.New(), Epoch: r.epoch}
+func (r *Registry) newGrant(shared bool) Grant {
+	token := r.localToken
+	if !shared {
+		token = util.New() + util.New()
+	}
+	return Grant{ID: util.New(), Token: token, Epoch: r.epoch}
 }
 
 // PrepareConnection opens or reuses a Core-owned connection and stages the next execution scope.
@@ -178,8 +197,8 @@ func (r *Registry) PrepareConnection(root, identity, endpoint string, spec Grant
 	key, exists := r.connections[path]
 	var grant Grant
 	if !exists {
-		grant = r.newGrant()
-		key = tokenKey(grant.Token)
+		grant = r.newGrant(spec.SharedLocalToken)
+		key = r.connectionKey(grant.Token, grant.ID)
 	}
 	activate, finish, err := r.bindExecutionLocked(key, spec)
 	if err != nil {
@@ -217,7 +236,11 @@ func (r *Registry) bindExecutionLocked(key string, spec GrantSpec) (func(), func
 		}
 		bindings[binding.Operation] = binding
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	lifecycle := spec.Lifecycle
+	if lifecycle == nil {
+		lifecycle = context.Background()
+	}
+	ctx, cancel := context.WithCancel(lifecycle)
 	current := &lease{
 		executionID:  spec.ExecutionID,
 		bindings:     bindings,
@@ -408,7 +431,7 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	// admission. Only this metadata route accepts a prepared, inactive grant.
 	catalog := request.Method == http.MethodGet && request.URL.Path == constants.AgentCLIPath+constants.AgentCLIMCPCatalogPath
 	r.mutex.Lock()
-	current := r.leases[tokenKey(provided)]
+	current := r.leases[r.connectionKey(provided, request.Header.Get(constants.AgentCLIConnectionHeader))]
 	valid := found && provided != "" && current != nil && current.ctx.Err() == nil && (current.active || catalog) && !r.closed
 	if valid {
 		current.calls.Add(1)
@@ -423,11 +446,11 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 		writeSuccess(w, "execution", constants.AgentCLICompletionImmediate, Result{Data: current.executionID})
 		return
 	}
-	ctx, cancel := context.WithCancel(request.Context())
+	ctx, cancel := context.WithCancel(current.ctx)
 	ctx = context.WithValue(ctx, fileRootsKey{}, current.fileRoots)
 	ctx = context.WithValue(ctx, filePathsKey{}, current.filePaths)
 	ctx = context.WithValue(ctx, managedSpaceKey{}, current.managedSpace)
-	stop := context.AfterFunc(current.ctx, cancel)
+	stop := context.AfterFunc(request.Context(), cancel)
 	defer func() { stop(); cancel() }()
 	if current.ctx.Err() != nil {
 		writeFailure(w, "", status_error.AgentContextUnauthorized)
@@ -592,7 +615,12 @@ func writeSuccess(w http.ResponseWriter, operation, completion string, result Re
 		writeFailure(w, operation, status_error.AgentConnectionUnavailable)
 		return
 	}
-	if _, err := w.Write(append(encoded, '\n')); err != nil {
+	body := append(encoded, '\n')
+	written, err := w.Write(body)
+	if err == nil && written != len(body) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
 		logx.Errorf("write agent command response failed: operation=%s error=%v", operation, err)
 	}
 }
@@ -620,6 +648,14 @@ func DecodeParams(params map[string]any, target any) error {
 
 // Page slices the current resource list within explicit bounds without claiming complete coverage.
 func Page[T any](items []T, params map[string]any) (map[string]any, error) {
+	return PageFrom(params, func(offset, size int) ([]T, int, error) {
+		start := min(offset, len(items))
+		return items[start:min(start+size, len(items))], len(items), nil
+	})
+}
+
+// PageFrom applies the shared pagination contract to a bounded query and its total count.
+func PageFrom[T any](params map[string]any, read func(offset, size int) ([]T, int, error)) (map[string]any, error) {
 	var query struct {
 		// Cursor is the offset explicitly returned by the previous page.
 		Cursor string `json:"cursor"`
@@ -651,15 +687,16 @@ func Page[T any](items []T, params map[string]any) (map[string]any, error) {
 		}
 		start = value
 	}
-	if start > len(items) {
-		start = len(items)
+	items, total, err := read(start, query.PageSize)
+	if err != nil {
+		return nil, err
 	}
-	end := min(start+query.PageSize, len(items))
+	end := start + len(items)
 	next := ""
-	if end < len(items) {
+	if end < total {
 		next = strconv.Itoa(end)
 	}
-	return map[string]any{"nextCursor": next, "items": items[start:end], "total": len(items), "pageNum": query.PageNum, "pageSize": query.PageSize}, nil
+	return map[string]any{"nextCursor": next, "items": items, "total": total, "pageNum": query.PageNum, "pageSize": query.PageSize}, nil
 }
 
 // Observe subscribes to exact events before reading authoritative state, with explicit exit, deadline, and buffer-invalidity semantics.
@@ -712,7 +749,7 @@ type Connection struct {
 	Endpoint string `json:"endpoint"`
 	// CoreEpoch distinguishes Core lifecycles.
 	CoreEpoch string `json:"coreEpoch"`
-	// GrantID identifies the published connection credential.
+	// GrantID selects the published connection when multiple connections share a credential.
 	GrantID string `json:"grantId"`
 	// Token is a credential stored only in the managed file and request headers.
 	Token string `json:"token"`

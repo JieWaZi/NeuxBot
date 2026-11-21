@@ -357,6 +357,8 @@ func (v StatusError) Key() string {
 		return "AgentCommandOutcomeUnknown"
 	case AgentCommandRequestConflict:
 		return "AgentCommandRequestConflict"
+	case BotCLIInstallationConflict:
+		return "BotCLIInstallationConflict"
 	case WakerOnboardingStateChanged:
 		return "WakerOnboardingStateChanged"
 	case WakerOnboardingIncomplete:
@@ -553,6 +555,8 @@ func (v StatusError) Key() string {
 		return "WorkspaceGitFailed"
 	case AgentContextStorageError:
 		return "AgentContextStorageError"
+	case BotCLIInstallationFailed:
+		return "BotCLIInstallationFailed"
 	case WakerProfileTokenizationFailed:
 		return "WakerProfileTokenizationFailed"
 	case KnowledgeStorageError:
@@ -806,6 +810,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeVersionUnknown:                "the current version is unknown; whether an update is needed cannot be determined",
 			AgentCommandOutcomeUnknown:           "command outcome is uncertain; inspect the original request receipt",
 			AgentCommandRequestConflict:          "command request identifier was already used with different content",
+			BotCLIInstallationConflict:           "another file already occupies the botcli installation path",
 			WakerOnboardingStateChanged:          "partner onboarding changed; continue setup",
 			WakerOnboardingIncomplete:            "the partner profile has not been saved; continue setup",
 			WakerOnboardingInterviewPending:      "the onboarding interview is pending or already answered",
@@ -904,6 +909,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkspaceStorageFailed:               "workspace storage operation failed",
 			WorkspaceGitFailed:                   "workspace git operation failed",
 			AgentContextStorageError:             "capability context file could not be safely prepared or read",
+			BotCLIInstallationFailed:             "botcli could not be installed for the current user",
 			WakerProfileTokenizationFailed:       "the partner profile token count could not be calculated",
 			KnowledgeStorageError:                "knowledge storage failed",
 			IntegrationCredentialError:           "integration credential generation failed",
@@ -1096,6 +1102,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeVersionUnknown:                "无法确认当前版本，暂不能判断是否需要更新",
 			AgentCommandOutcomeUnknown:           "软件能力命令提交结果尚不确定，请查询原请求回执",
 			AgentCommandRequestConflict:          "同一命令请求标识不能用于不同内容",
+			BotCLIInstallationConflict:           "botcli 安装路径已被其他文件占用",
 			WakerOnboardingStateChanged:          "伙伴建档状态已变化，请继续设置",
 			WakerOnboardingIncomplete:            "伙伴档案还未保存，请继续设置",
 			WakerOnboardingInterviewPending:      "建档问答正在等待回复或已经回答",
@@ -1194,6 +1201,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkspaceStorageFailed:               "工作区文件操作失败",
 			WorkspaceGitFailed:                   "Git 操作失败",
 			AgentContextStorageError:             "软件能力连接文件无法安全准备或读取",
+			BotCLIInstallationFailed:             "无法为当前用户安装 botcli",
 			WakerProfileTokenizationFailed:       "暂时无法计算伙伴档案的 token 数",
 			KnowledgeStorageError:                "知识存储访问失败",
 			IntegrationCredentialError:           "无法生成 API Key，请稍后重试",

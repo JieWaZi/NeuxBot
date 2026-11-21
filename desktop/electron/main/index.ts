@@ -8,6 +8,7 @@ import {
   powerMonitor,
   powerSaveBlocker,
 } from "electron";
+import { execFile } from "node:child_process";
 import path from "node:path";
 import { mkdir } from "node:fs/promises";
 import { CoreSupervisor } from "./core-supervisor";
@@ -164,6 +165,22 @@ else {
     .whenReady()
     .then(async () => {
       configureApplicationIcon(app);
+      if (app.isPackaged && process.env.NEUXBOT_SKIP_BOTCLI_INSTALL !== "1") {
+        const executable = path.join(
+          process.resourcesPath,
+          "bin",
+          process.platform === "win32" ? "botcli.exe" : "botcli",
+        );
+        execFile(
+          executable,
+          ["install"],
+          { timeout: 10000, windowsHide: true },
+          (error, _stdout, stderr) => {
+            if (error)
+              void log(`botcli 安装失败：${stderr.trim() || error.message}`);
+          },
+        );
+      }
       const dist = path.join(__dirname, "../dist");
       protocol.handle("bot", async (request) => {
         try {

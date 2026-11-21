@@ -67,12 +67,9 @@ func workflowAPIDependencies(s *workflowFixture) *workflowDependencies {
 		SaveSource: func(ctx context.Context, definitionID, requestID, expectedID, source, restoredFrom string) (workflowdsl.SaveReceipt, []workflowdsl.Diagnostic, error) {
 			return s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definitionID, RequestID: requestID, ExpectedRevisionID: expectedID, Source: source, SDK: constants.WorkflowSDKIdentifier, RestoredFromRevisionID: restoredFrom})
 		},
-		RetryStart: func(ctx context.Context, previous models.WorkflowRun, requestID string) (models.WorkflowRun, error) {
-			return s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: previous.DefinitionID, RevisionID: previous.RevisionID, Args: previous.Args, Defaults: previous.Defaults, WorkerConfigurations: previous.WorkerConfigurations, ApprovedScope: &previous.ScopeBinding, RequestID: requestID, RetrySourceRunID: previous.ID})
+		RetryStart: func(ctx context.Context, previous models.WorkflowRun, requestID, _ string) (models.WorkflowRun, error) {
+			return s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: previous.DefinitionID, RevisionID: previous.RevisionID, Args: previous.Args, Defaults: previous.Defaults, WorkerConfigurations: previous.WorkerConfigurations, ApprovedScope: &previous.ScopeBinding, RequestID: requestID, RetrySourceRunID: previous.ID, ExpectedSourceVersion: previous.Version})
 		},
-	}
-	if s.Worker != nil {
-		deps.WorkerCancel = s.Worker.Cancel
 	}
 	return deps
 }

@@ -78,6 +78,9 @@ func TestRunHistoryProtectsActiveRunsAndPrunesWhenTheyEnd(t *testing.T) {
 	if err != nil || active.HistoryDeletedAt != nil {
 		t.Fatalf("等待中的运行仍是活跃事实: %+v %v", active, err)
 	}
+	if err := db.Model(&models.WorkflowRun{}).Where("id = ?", "flow-000").Updates(map[string]any{"source_chat_id": "chat", "source_execution_id": "turn"}).Error; err != nil {
+		t.Fatal(err)
+	}
 	run, err := runs.GetRun(ctx, "flow-000")
 	if err != nil {
 		t.Fatal(err)
@@ -96,6 +99,10 @@ func TestRunHistoryProtectsActiveRunsAndPrunesWhenTheyEnd(t *testing.T) {
 	completed, err := runs.GetRun(ctx, run.ID)
 	if err != nil || completed.HistoryDeletedAt == nil || completed.Result == nil {
 		t.Fatalf("隐藏入口不得删除真实完成结果: %+v %v", completed, err)
+	}
+	pending, err := runs.ListPendingChatDeliveries(ctx, "", 16)
+	if err != nil || len(pending) != 1 || pending[0].ID != run.ID {
+		t.Fatalf("原回合的正式交付须在历史清理后继续: %+v %v", pending, err)
 	}
 
 }

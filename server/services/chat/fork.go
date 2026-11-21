@@ -268,6 +268,15 @@ func (m *service) prepareFork(ctx context.Context, input ForkInput) (chatstorage
 			}
 		}
 	}
+	// 交付可以晚于所选回合，只有已纳入分叉的消息能够继承交付结果。
+	for _, record := range records[selected.end:] {
+		if record.Type != constants.ChatEventTypeExecutionDelivery || builder.MessageRevision(record.MessageID) == 0 {
+			continue
+		}
+		if _, err := builder.Apply(record); err != nil {
+			return chatstorage.ForkOperation{}, err
+		}
+	}
 	messages := builder.Messages()
 	// 晚到文件结果不属于后续对话轮次，按已包含消息身份补齐其当前不可变引用。
 	references := map[string]*eventlog.FileChangesData{}

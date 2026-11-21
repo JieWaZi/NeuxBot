@@ -3,7 +3,6 @@ package workflows
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -47,6 +46,8 @@ type RetryRunCommand struct {
 	RequestID string `json:"requestId" validate:"required,max=128"`
 	// 运行版本
 	ExpectedVersion int64 `json:"expectedVersion" validate:"min=1"`
+	// 来源聊天
+	ChatID string `json:"chatId,omitempty" validate:"max=32"`
 }
 
 // retryRun 只允许已确定结果的失败重跑，结果不确定时须通过优化分析并调整流程。
@@ -58,18 +59,12 @@ func retryRun(ctx context.Context, d *workflowDependencies, command RetryRunComm
 	if command.RequestID == "" || len(command.RequestID) > 128 {
 		return run, status_error.BadRequest
 	}
-	if run.Version != command.ExpectedVersion || run.Status != constants.WorkflowRunStatusFailed && run.Status != constants.WorkflowRunStatusCancelled {
+	if command.ChatID != "" && (run.SourceChatID != command.ChatID || run.HistoryDeletedAt != nil) {
+		return models.WorkflowRun{}, status_error.WorkflowNotFound
+	}
+	if run.Version != command.ExpectedVersion {
 		return models.WorkflowRun{}, status_error.WorkflowStateConflict
 	}
-	state, err := d.Runs.LoadRunState(ctx, run.ID)
-	if err != nil {
-		return models.WorkflowRun{}, err
-	}
-	for _, effect := range state.Effects {
-		if effect.Status == constants.WorkflowStepStatusUnknown {
-			return models.WorkflowRun{}, status_error.WorkflowStateConflict.WithField("reason", "optimize_uncertain_run")
-		}
-	}
 	requestID := requestidempotency.Identity{ID: command.RequestID}.ResourceID("workflow-retry", run.ID)
-	return d.RetryStart(ctx, run, requestID)
+	return d.RetryStart(ctx, run, requestID, command.ChatID)
 }

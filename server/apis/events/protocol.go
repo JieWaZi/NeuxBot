@@ -107,7 +107,7 @@ func validResourceShape(topic string, resource eventhub.Resource) bool {
 	case "team":
 		return resource.Kind == "thread" && resource.ParentID != ""
 	case "workflow":
-		return resource.Kind == "workflow"
+		return resource.Kind == "workflow" || (resource.Kind == "chat" && resource.ParentID == "")
 	case "account-login":
 		return resource.Kind == "account" && resource.ParentID != ""
 	case "work-board":

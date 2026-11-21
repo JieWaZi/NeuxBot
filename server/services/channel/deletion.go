@@ -33,13 +33,6 @@ func (s *service) DeleteThread(ctx context.Context, channelID string, threadID s
 			map[string]interface{}{"ThreadID": threadID},
 		)
 	}
-	active, err := s.threads.CountActiveWork(ctx, threadID)
-	if err != nil {
-		return err
-	}
-	if active > 0 {
-		return status_error.ChannelHasActiveWork
-	}
 	chatIDs, err := s.threads.ListChatIDs(ctx, threadID)
 	if err != nil {
 		return err
@@ -63,13 +56,6 @@ func (s *service) DeleteChannel(ctx context.Context, channelID string) error {
 	defer release()
 	if _, err := s.channels.Get(ctx, channelID); err != nil {
 		return err
-	}
-	active, err := s.channels.CountActiveWork(ctx, channelID)
-	if err != nil {
-		return err
-	}
-	if active > 0 {
-		return status_error.ChannelHasActiveWork
 	}
 	threadIDs, err := s.threads.ListIDsByChannel(ctx, channelID)
 	if err != nil {

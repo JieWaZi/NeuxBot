@@ -40,6 +40,8 @@ func (v ChatEventType) String() string {
 		return "execution.completed"
 	case ChatEventTypeExecutionCreated:
 		return "execution.created"
+	case ChatEventTypeExecutionDelivery:
+		return "execution.delivery"
 	case ChatEventTypeExecutionFailed:
 		return "execution.failed"
 	case ChatEventTypeExecutionStarted:
@@ -86,6 +88,8 @@ func (v ChatEventType) Label() string {
 		return "ChatEventTypeExecutionCompleted 表示一次执行已经成功结束。"
 	case ChatEventTypeExecutionCreated:
 		return "ChatEventTypeExecutionCreated 表示一次执行已经建立。"
+	case ChatEventTypeExecutionDelivery:
+		return "ChatEventTypeExecutionDelivery 附上已确认的领域产出或补写摘要，原执行结果由原生终态保有。"
 	case ChatEventTypeExecutionFailed:
 		return "ChatEventTypeExecutionFailed 表示一次执行因错误结束。"
 	case ChatEventTypeExecutionStarted:
@@ -105,7 +109,7 @@ func (v ChatEventType) Label() string {
 }
 
 func (v ChatEventType) Values() []enum.Enum {
-	return []enum.Enum{ChatEventTypeUnspecified, ChatEventTypeAgentCommandCommitted, ChatEventTypeApprovalRequested, ChatEventTypeApprovalResolved, ChatEventTypeAssistantMessage, ChatEventTypeCreated, ChatEventTypeRetentionProtectionUpdated, ChatEventTypeTitleUpdated, ChatEventTypeElicitationRequested, ChatEventTypeElicitationResolved, ChatEventTypeExecutionCanceled, ChatEventTypeExecutionCompleted, ChatEventTypeExecutionCreated, ChatEventTypeExecutionFailed, ChatEventTypeExecutionStarted, ChatEventTypeMessageInherited, ChatEventTypeUserMessageCreated, ChatEventTypeRuntimeEvent, ChatEventTypeToolMessage, ChatEventTypeFileChanges}
+	return []enum.Enum{ChatEventTypeUnspecified, ChatEventTypeAgentCommandCommitted, ChatEventTypeApprovalRequested, ChatEventTypeApprovalResolved, ChatEventTypeAssistantMessage, ChatEventTypeCreated, ChatEventTypeRetentionProtectionUpdated, ChatEventTypeTitleUpdated, ChatEventTypeElicitationRequested, ChatEventTypeElicitationResolved, ChatEventTypeExecutionCanceled, ChatEventTypeExecutionCompleted, ChatEventTypeExecutionCreated, ChatEventTypeExecutionDelivery, ChatEventTypeExecutionFailed, ChatEventTypeExecutionStarted, ChatEventTypeMessageInherited, ChatEventTypeUserMessageCreated, ChatEventTypeRuntimeEvent, ChatEventTypeToolMessage, ChatEventTypeFileChanges}
 }
 
 func (v ChatEventType) Type() string {
@@ -114,7 +118,7 @@ func (v ChatEventType) Type() string {
 
 func (v ChatEventType) MarshalText() ([]byte, error) {
 	switch v {
-	case ChatEventTypeUnspecified, ChatEventTypeAgentCommandCommitted, ChatEventTypeApprovalRequested, ChatEventTypeApprovalResolved, ChatEventTypeAssistantMessage, ChatEventTypeCreated, ChatEventTypeRetentionProtectionUpdated, ChatEventTypeTitleUpdated, ChatEventTypeElicitationRequested, ChatEventTypeElicitationResolved, ChatEventTypeExecutionCanceled, ChatEventTypeExecutionCompleted, ChatEventTypeExecutionCreated, ChatEventTypeExecutionFailed, ChatEventTypeExecutionStarted, ChatEventTypeMessageInherited, ChatEventTypeUserMessageCreated, ChatEventTypeRuntimeEvent, ChatEventTypeToolMessage, ChatEventTypeFileChanges:
+	case ChatEventTypeUnspecified, ChatEventTypeAgentCommandCommitted, ChatEventTypeApprovalRequested, ChatEventTypeApprovalResolved, ChatEventTypeAssistantMessage, ChatEventTypeCreated, ChatEventTypeRetentionProtectionUpdated, ChatEventTypeTitleUpdated, ChatEventTypeElicitationRequested, ChatEventTypeElicitationResolved, ChatEventTypeExecutionCanceled, ChatEventTypeExecutionCompleted, ChatEventTypeExecutionCreated, ChatEventTypeExecutionDelivery, ChatEventTypeExecutionFailed, ChatEventTypeExecutionStarted, ChatEventTypeMessageInherited, ChatEventTypeUserMessageCreated, ChatEventTypeRuntimeEvent, ChatEventTypeToolMessage, ChatEventTypeFileChanges:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -149,6 +153,8 @@ func (v *ChatEventType) UnmarshalText(text []byte) error {
 		*v = ChatEventTypeExecutionCompleted
 	case ChatEventTypeExecutionCreated.String():
 		*v = ChatEventTypeExecutionCreated
+	case ChatEventTypeExecutionDelivery.String():
+		*v = ChatEventTypeExecutionDelivery
 	case ChatEventTypeExecutionFailed.String():
 		*v = ChatEventTypeExecutionFailed
 	case ChatEventTypeExecutionStarted.String():

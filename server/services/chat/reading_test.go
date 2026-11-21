@@ -10,7 +10,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -33,6 +35,128 @@ func TestReadingPublicMessageQualification(t *testing.T) {
 		if got := messageview.ReadingKind(tc.message); got != tc.want {
 			t.Errorf("reading kind of %+v = %q, want %q", tc.message, got, tc.want)
 		}
+	}
+}
+
+func TestReadingIndexesLateSummaryAtOriginalMessage(t *testing.T) {
+	ctx := t.Context()
+	db, chats := newRecoveryTestService(t, t.TempDir())
+	reading := controllers.NewChatReadingController(db)
+	chats.queryIndexes.reading = reading
+	const chatID = "e11d33e74ca7483b8978cdcc46be867e"
+	const executionID = "exec"
+	workspace := t.TempDir()
+	if _, err := chats.CreateDormantChats(ctx, []DormantChat{{Chat: models.Chat{ID: chatID, WakerID: "reader", WorkspaceDirectory: workspace, AdditionalWorkingDirectories: []string{workspace}}}}); err != nil {
+		t.Fatal(err)
+	}
+	created, err := chats.AppendExecutionFacts(ctx, chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: []byte(`{}`)},
+		{Type: constants.ChatEventTypeExecutionCanceled, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCanceled})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := reading.Get(ctx, constants.LocalReaderID, chatID)
+	if err != nil || before.UnreadMessageCount != 0 {
+		t.Fatalf("cancel without an answer was readable: %+v, %v", before, err)
+	}
+	delivery := ExecutionDelivery{ChatID: chatID, ExecutionID: executionID, SourceID: "run", Summary: "Workflow finished in the background"}
+	if err := chats.PublishExecutionDelivery(ctx, delivery); err != nil {
+		t.Fatal(err)
+	}
+	page, err := chats.ReadMessageHistory(ctx, chatID, 0, 1)
+	if err != nil || len(page.Resources) != 1 {
+		t.Fatalf("delivered answer missing: %+v, %v", page, err)
+	}
+	answer := page.Resources[0]
+	if answer.ID != executionID || answer.Content != delivery.Summary || !answer.Readable || answer.Status != constants.ExecutionStatusCanceled {
+		t.Errorf("summary was not a readable body on the original answer: %+v", answer)
+	}
+	after, err := reading.Get(ctx, constants.LocalReaderID, chatID)
+	if err != nil || after.UnreadMessageCount != 1 || after.FirstUnreadMessageID != executionID {
+		t.Fatalf("incremental index omitted the background summary: %+v, %v", after, err)
+	}
+	if err := reading.MarkRead(ctx, constants.LocalReaderID, chatID, executionID, after.UnreadGeneration, constants.ReadingIntentExplicit); err != nil {
+		t.Fatal(err)
+	}
+	delivery.Summary = "Updated workflow summary"
+	if err := chats.PublishExecutionDelivery(ctx, delivery); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := reading.Get(ctx, constants.LocalReaderID, chatID)
+	if err != nil || updated.UnreadMessageCount != 0 || updated.ThroughSequence != created[0].Sequence {
+		t.Fatalf("summary update changed the reading identity: %+v, %v", updated, err)
+	}
+}
+
+func TestReadingProjectionKeepsNewerCheckpointForNextWindow(t *testing.T) {
+	ctx := t.Context()
+	db, chats := newRecoveryTestService(t, t.TempDir())
+	reading := controllers.NewChatReadingController(db)
+	chats.queryIndexes.reading = reading
+	const chatID = "93c6d3c853ac45978e1afe5ab8285d17"
+	const executionID = "execution"
+	workspace := t.TempDir()
+	if _, err := chats.CreateDormantChats(ctx, []DormantChat{{Chat: models.Chat{
+		ID: chatID, WakerID: "reader", WorkspaceDirectory: workspace, AdditionalWorkingDirectories: []string{workspace},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := chats.AppendExecutionFacts(ctx, chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: []byte("{}")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store := chats.logStore.(*conversationJournal).Store
+	checkpoint := func(kind constants.RuntimeEventType, text string) int64 {
+		t.Helper()
+		change := conversationfixture.NativeMessage(t, store, chatID, executionID, agent.MessageChange{
+			Kind: agent.MessageAppend, ContentType: kind, Text: text,
+		})
+		records, err := conversationfixture.Commit(ctx, store, chatID, []agent.ConversationChange{change})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return records[0].Sequence
+	}
+	first := checkpoint(constants.RuntimeEventTypeCommentaryDelta, "先检查任务板")
+	last := checkpoint(constants.RuntimeEventTypeTextDelta, "任务安排完成")
+	if err := chats.catchUpProjectionThrough(ctx, chatID, first); err != nil {
+		t.Fatalf("covered window could not advance: %v", err)
+	}
+	indexed, err := chats.queryIndexes.chatController.Get(ctx, chatID)
+	if err != nil || indexed.LatestSequence != first {
+		t.Fatalf("first window advanced beyond its cursor: sequence=%d err=%v", indexed.LatestSequence, err)
+	}
+	before, err := reading.Get(ctx, constants.LocalReaderID, chatID)
+	if err != nil || before.UnreadMessageCount != 0 {
+		t.Fatalf("later answer became readable in the first window: %+v, %v", before, err)
+	}
+	summary, err := chats.GetChatSummary(ctx, chatID)
+	if err != nil || summary.Chat.LatestSequence != last {
+		t.Fatalf("later window did not advance: sequence=%d err=%v", summary.Chat.LatestSequence, err)
+	}
+	after, err := reading.Get(ctx, constants.LocalReaderID, chatID)
+	if err != nil || after.UnreadMessageCount != 1 || after.FirstUnreadMessageID != executionID {
+		t.Fatalf("later answer missing at its original message: %+v, %v", after, err)
+	}
+
+	again := checkpoint(constants.RuntimeEventTypeCommentaryDelta, "核对任务回执")
+	latest := checkpoint(constants.RuntimeEventTypeTextDelta, "已核对")
+	if err := chats.catchUpProjectionThrough(ctx, chatID, again); err != nil {
+		t.Fatal(err)
+	}
+	held, err := reading.Get(ctx, constants.LocalReaderID, chatID)
+	if err != nil || held.UnreadMessageCount != 1 || held.FirstUnreadMessageID != executionID {
+		t.Fatalf("superseded window removed the original reading row: %+v, %v", held, err)
+	}
+	summary, err = chats.GetChatSummary(ctx, chatID)
+	if err != nil || summary.Chat.LatestSequence != latest {
+		t.Fatalf("updated answer did not advance: sequence=%d err=%v", summary.Chat.LatestSequence, err)
+	}
+	updated, err := reading.Get(ctx, constants.LocalReaderID, chatID)
+	if err != nil || updated.UnreadMessageCount != 1 || updated.FirstUnreadMessageID != executionID {
+		t.Fatalf("updated answer changed its reading identity: %+v, %v", updated, err)
 	}
 }
 

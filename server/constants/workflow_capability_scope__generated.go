@@ -16,8 +16,6 @@ func (v WorkflowCapabilityScope) String() string {
 	switch v {
 	case WorkflowCapabilityScopeConsumer:
 		return "consumer"
-	case WorkflowCapabilityScopeCreation:
-		return "creation"
 	case WorkflowCapabilityScopeResult:
 		return "result"
 	}
@@ -28,8 +26,6 @@ func (v WorkflowCapabilityScope) Label() string {
 	switch v {
 	case WorkflowCapabilityScopeConsumer:
 		return "WorkflowCapabilityScopeConsumer 只允许当前执行获准的工作流调用。"
-	case WorkflowCapabilityScopeCreation:
-		return "WorkflowCapabilityScopeCreation 只允许当前工作流的创作操作。"
 	case WorkflowCapabilityScopeResult:
 		return "WorkflowCapabilityScopeResult 只允许当前节点尝试查询格式和提交结果。"
 	}
@@ -37,7 +33,7 @@ func (v WorkflowCapabilityScope) Label() string {
 }
 
 func (v WorkflowCapabilityScope) Values() []enum.Enum {
-	return []enum.Enum{WorkflowCapabilityScopeConsumer, WorkflowCapabilityScopeCreation, WorkflowCapabilityScopeResult}
+	return []enum.Enum{WorkflowCapabilityScopeConsumer, WorkflowCapabilityScopeResult}
 }
 
 func (v WorkflowCapabilityScope) Type() string {
@@ -46,7 +42,7 @@ func (v WorkflowCapabilityScope) Type() string {
 
 func (v WorkflowCapabilityScope) MarshalText() ([]byte, error) {
 	switch v {
-	case WorkflowCapabilityScopeConsumer, WorkflowCapabilityScopeCreation, WorkflowCapabilityScopeResult:
+	case WorkflowCapabilityScopeConsumer, WorkflowCapabilityScopeResult:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -57,8 +53,6 @@ func (v *WorkflowCapabilityScope) UnmarshalText(text []byte) error {
 	switch string(text) {
 	case WorkflowCapabilityScopeConsumer.String():
 		*v = WorkflowCapabilityScopeConsumer
-	case WorkflowCapabilityScopeCreation.String():
-		*v = WorkflowCapabilityScopeCreation
 	case WorkflowCapabilityScopeResult.String():
 		*v = WorkflowCapabilityScopeResult
 	default:

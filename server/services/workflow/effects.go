@@ -83,7 +83,8 @@ func (s *Service) dispatchChild(ctx context.Context, run models.WorkflowRun, eff
 		revisionID, _ := options["revisionId"].(string)
 		mode, _ := options["mode"].(string)
 		joined := mode != "detached"
-		child, err = s.StartRun(ctx, StartRunCommand{AutomaticRunID: run.AutomaticRunID, DefinitionID: target, RequestID: effect.ID, RevisionID: revisionID, Args: options["args"], Defaults: run.Defaults, ParentRunID: run.ID, Joined: joined, Depth: run.Depth + 1, TriggerSource: "workflow"})
+		child, err = s.StartRun(ctx, StartRunCommand{AutomaticRunID: run.AutomaticRunID, DefinitionID: target, RequestID: effect.ID, RevisionID: revisionID, Args: options["args"], Defaults: run.Defaults, ParentRunID: run.ID,
+			Joined: joined, Depth: run.Depth + 1, TriggerSource: "workflow"})
 	}
 	if err != nil {
 		s.finishEffect(ctx, effect, WorkerReceipt{}, err)
@@ -100,14 +101,15 @@ func (s *Service) dispatchChild(ctx context.Context, run models.WorkflowRun, eff
 		}
 	}
 	childResult := child.Result
+	var childSchema map[string]any
 	if effect.Boundary.Primitive != "startWorkflow" && !timedOut && child.Status == constants.WorkflowRunStatusSucceeded {
-		childResult, err = s.freezeChildResult(ctx, run, effect, child)
+		childResult, childSchema, err = s.freezeChildResult(ctx, run, effect, child)
 		if err != nil {
 			s.finishEffect(ctx, effect, WorkerReceipt{}, err)
 			return
 		}
 	}
-	err = s.state.MutateEffect(ctx, run.ID, effect.ID, func(ctx context.Context, _ *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
+	err = s.commitOutputEffect(ctx, effect, childSchema, func(ctx context.Context, _ *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
 		if workflowstate.StepTerminal(current.Status) {
 			return nil
 		}
@@ -145,30 +147,38 @@ func (s *Service) dispatchChild(ctx context.Context, run models.WorkflowRun, eff
 }
 
 // freezeChildResult 在状态事务外把子流程明确声明的文件复制到父流程内部目录。
-func (s *Service) freezeChildResult(ctx context.Context, parent models.WorkflowRun, effect models.WorkflowEffect, child models.WorkflowRun) (any, error) {
+func (s *Service) freezeChildResult(ctx context.Context, parent models.WorkflowRun, effect models.WorkflowEffect, child models.WorkflowRun) (any, map[string]any, error) {
+	if child.ParentRunID != parent.ID {
+		return nil, nil, status_error.WorkflowStateConflict
+	}
 	revision, err := s.store.GetRevision(ctx, child.DefinitionID, child.RevisionID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	schema := revision.Manifest.Meta.OutputSchema
 	if len(workflowdsl.FileValues(schema, child.Result)) == 0 {
-		return child.Result, nil
+		return child.Result, nil, nil
 	}
 	parentWorkspace, err := runWorkspace(parent)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	childWorkspace, err := runWorkspace(child)
-	if err != nil {
-		return nil, err
-	}
-	roots := []string{childWorkspace.RootDirectory, child.ScopeBinding.WorkingDirectory}
-	return workflowdsl.MapFiles(schema, child.Result, func(pointer, reference string) (string, error) {
+	result, err := workflowdsl.MapFiles(schema, child.Result, func(pointer, _ string) (string, error) {
 		// 一个父运行可以接收多个子效果；字段身份同时绑定效果与子运行，避免成果互相覆盖。
 		identity := workflowstate.Digest([]any{effect.ID, child.ID, pointer})
-		frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, nil, childWorkspace.ResolveRunReference(reference), parentWorkspace.RootDirectory, parent.ID, identity, "")
+		file, found := child.OutputFiles[pointer]
+		if !found || file.Partial || file.Error != "" {
+			return "", status_error.WorkflowFileInvalid.WithField("field", pointer)
+		}
+		content, _, err := s.openOutputSnapshot(child, file)
+		if err != nil {
+			return "", err
+		}
+		defer content.Close()
+		frozen, err := workflowfiles.ForwardFrozenFile(ctx, content, file.Name, parentWorkspace.RootDirectory, parent.ID, identity, file.Digest)
 		return frozen.Path, err
 	})
+	return result, schema, err
 }
 
 // childResultObserved 表示失败已交给源码的 await/catch，而非无 join 的跟随任务。
@@ -184,7 +194,7 @@ func childResultObserved(effects []models.WorkflowEffect, childID string) bool {
 func (s *Service) dispatchDeterministic(ctx context.Context, run models.WorkflowRun, effect models.WorkflowEffect, cancelling bool) {
 	revision, err := s.store.GetRevision(ctx, run.DefinitionID, run.RevisionID)
 	if err != nil {
-		s.completeDeterministic(ctx, effect, nil, err)
+		s.completeDeterministic(ctx, effect, nil, err, nil)
 		return
 	}
 	options := workflowstate.BoundaryOptions(effect.Boundary)
@@ -200,7 +210,7 @@ func (s *Service) dispatchDeterministic(ctx context.Context, run models.Workflow
 		return
 	}
 	if cancelling {
-		s.completeDeterministic(ctx, effect, nil, status_error.WorkflowCancelled)
+		s.completeDeterministic(ctx, effect, nil, status_error.WorkflowCancelled, nil)
 		return
 	}
 	err = s.state.MutateEffect(ctx, run.ID, effect.ID, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
@@ -221,12 +231,13 @@ func (s *Service) dispatchDeterministic(ctx context.Context, run models.Workflow
 	operationCtx, cancel := context.WithDeadline(ctx, time.UnixMilli(effect.DeadlineAt))
 	defer cancel()
 	var value any
+	var outputSchema map[string]any
 	var httpOutcomeUnknown bool
 	var processLogs []workflowfunction.ProcessResult
 	if effect.Boundary.Primitive == "functionTask" {
 		workspace, workspaceErr := runWorkspace(run)
 		if workspaceErr != nil {
-			s.completeDeterministic(ctx, effect, nil, workspaceErr)
+			s.completeDeterministic(ctx, effect, nil, workspaceErr, nil)
 			return
 		}
 		language, _ := options["language"].(string)
@@ -242,8 +253,8 @@ func (s *Service) dispatchDeterministic(ctx context.Context, run models.Workflow
 			processLogs = append(processLogs, process)
 		}
 		if err == nil {
-			schema, _ := options["outputSchema"].(map[string]any)
-			err = workflowdsl.ValidateJSON(schema, value)
+			outputSchema, _ = options["outputSchema"].(map[string]any)
+			err = workflowdsl.ValidateJSON(outputSchema, value)
 		}
 	} else {
 		declaration, actionErr := workflowstate.EffectAction(revision.Manifest, effect)
@@ -264,7 +275,8 @@ func (s *Service) dispatchDeterministic(ctx context.Context, run models.Workflow
 			}
 			if err == nil {
 				result, _ := value.(map[string]any)
-				err = workflowdsl.ValidateJSON(declaration.OutputSchema, result["data"])
+				outputSchema = declaration.OutputSchema
+				err = workflowdsl.ValidateJSON(outputSchema, result["data"])
 				if err == nil {
 					if schema, ok := options["schema"].(map[string]any); ok {
 						err = workflowdsl.ValidateJSON(schema, result["data"])
@@ -282,7 +294,7 @@ func (s *Service) dispatchDeterministic(ctx context.Context, run models.Workflow
 		if httpOutcomeUnknown {
 			s.recordUnknownDeterministic(receiptCtx, effect, value, err)
 		} else {
-			s.completeDeterministic(receiptCtx, effect, value, err, processLogs...)
+			s.completeDeterministic(receiptCtx, effect, value, err, outputSchema, processLogs...)
 		}
 	}
 }
@@ -293,7 +305,7 @@ func (s *Service) recordUnknownDeterministic(ctx context.Context, effect models.
 		if workflowstate.StepTerminal(current.Status) || current.Status == constants.WorkflowStepStatusUnknown {
 			return nil
 		}
-		failure := map[string]any{"code": "EFFECT_OUTCOME_UNKNOWN"}
+		failure := map[string]any{"code": constants.WorkflowFailureEffectOutcomeUnknown}
 		if cause != nil {
 			failure["cause"] = failureFromError(cause, &current.Boundary, result).Data
 		}
@@ -310,8 +322,8 @@ func (s *Service) recordUnknownDeterministic(ctx context.Context, effect models.
 	}
 }
 
-func (s *Service) completeDeterministic(ctx context.Context, effect models.WorkflowEffect, result any, failure error, logs ...workflowfunction.ProcessResult) {
-	err := s.state.MutateEffect(ctx, effect.RunID, effect.ID, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
+func (s *Service) completeDeterministic(ctx context.Context, effect models.WorkflowEffect, result any, failure error, outputSchema map[string]any, logs ...workflowfunction.ProcessResult) {
+	err := s.commitOutputEffect(ctx, effect, outputSchema, func(ctx context.Context, state *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
 		if current.Status == constants.WorkflowStepStatusUnknown {
 			return nil
 		}

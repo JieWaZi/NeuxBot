@@ -18,6 +18,7 @@ const admissionRejections = new Set([
   "ProjectNotFound",
   "MessageAttachmentInvalid",
   "SkillUnavailable",
+  "OperationCanceled",
 ]);
 
 /** 首发只能确认原命令或重放同一份输入，不能重新解析草稿配置。 */

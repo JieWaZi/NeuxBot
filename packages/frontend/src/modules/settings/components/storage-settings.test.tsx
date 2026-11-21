@@ -134,9 +134,9 @@ it("存储总览合并底层分类，只显示磁盘剩余容量", async () => {
     http.get(root + "/usage", () =>
       HttpResponse.json({
         ...usage,
-        totalBytes: 8192,
+        totalBytes: 8270,
         categories: [
-          ...usage.categories,
+          { category: "work_files", bytes: 1102 },
           { category: "conversations", bytes: 1024 },
           { category: "shared_native", bytes: 1024 },
           { category: "knowledge", bytes: 1024 },

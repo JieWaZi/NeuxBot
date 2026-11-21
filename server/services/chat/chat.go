@@ -681,6 +681,22 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 		return operationErr
 	}
 	defer releaseOperation()
+	if retention == nil {
+		if m.prepareDelete != nil {
+			if err := m.queryIndexes.transactionController.Transaction(ctx, func(tx context.Context) error {
+				return m.prepareDelete(tx, uniqueChatIDs(chatIDs))
+			}); err != nil {
+				return err
+			}
+		}
+		if m.stopExecution != nil {
+			for _, chatID := range uniqueChatIDs(chatIDs) {
+				if err := m.stopExecution(ctx, chatID); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	targets := make([]chatDeletionTarget, 0, len(chatIDs))
 	var imAdmissions []models.Execution
 	seen := make(map[string]struct{}, len(chatIDs))
@@ -1064,6 +1080,11 @@ func (m *service) deleteAggregatesAtomically(
 		return err
 	}
 	commitFacts := func(transactionContext context.Context) error {
+		if retention != nil && m.prepareDelete != nil {
+			if err := m.prepareDelete(transactionContext, canonicalChatIDs); err != nil {
+				return err
+			}
+		}
 		if finalize != nil {
 			if err := finalize(transactionContext); err != nil {
 				return err

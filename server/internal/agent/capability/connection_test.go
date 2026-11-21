@@ -36,7 +36,7 @@ func TestCodexShellConnectionMaintainsNativeOwnership(t *testing.T) {
 	prepare := func(chat, execution string) (string, func()) {
 		t.Helper()
 		file, activate, finish, err := r.PrepareConnection(contextRoot, chat, endpoint, GrantSpec{
-			ExecutionID: execution,
+			ExecutionID: execution, SharedLocalToken: true,
 			Validate: func(context.Context) error {
 				return nil
 			},

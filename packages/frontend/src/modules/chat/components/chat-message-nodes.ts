@@ -27,24 +27,32 @@ export type ChatMessageView = {
 
 /** 领域事件随消息历史窗口呈现，避免把未加载的旧委派挤到最新一页。 */
 export function timelineEventsInMessageWindow<
-  T extends { createdAt: number; beforeMessageId?: string },
+  T extends {
+    createdAt: number;
+    beforeMessageId?: string;
+    afterMessageId?: string;
+  },
 >(
   events: readonly T[],
   messages: readonly Pick<BotChatMessage, "id" | "createdAt">[],
   hasEarlierMessages: boolean,
 ): readonly T[] {
-  if (!hasEarlierMessages && events.every((event) => !event.beforeMessageId))
+  if (
+    !hasEarlierMessages &&
+    events.every((event) => !event.beforeMessageId && !event.afterMessageId)
+  )
     return events;
   const messageIds = new Set(messages.map((message) => message.id));
   const earliest = messages.reduce(
     (oldest, message) => Math.min(oldest, message.createdAt ?? Infinity),
     Infinity,
   );
-  return events.filter((event) =>
-    event.beforeMessageId
-      ? messageIds.has(event.beforeMessageId)
-      : !hasEarlierMessages || event.createdAt >= earliest,
-  );
+  return events.filter((event) => {
+    const anchor = event.beforeMessageId ?? event.afterMessageId;
+    return anchor
+      ? messageIds.has(anchor)
+      : !hasEarlierMessages || event.createdAt >= earliest;
+  });
 }
 
 export function isTerminalMessage(message: BotChatMessage): boolean {
@@ -125,7 +133,8 @@ export class ChatMessageProjection {
     message: BotChatMessage,
     previous?: ChatMessageView,
   ): ChatMessageView {
-    if (previous) {
+    const completed = message.status === "completed";
+    if (previous && completed === (previous.message.status === "completed")) {
       if (message.displayParts === previous.message.displayParts) {
         const view = {
           ...previous,
@@ -139,8 +148,10 @@ export class ChatMessageProjection {
         if (positions) this.textPositions.set(view, positions);
         return view;
       }
-      const fast = this.textAppend(key, message, previous);
-      if (fast) return fast;
+      if (!completed) {
+        const fast = this.textAppend(key, message, previous);
+        if (fast) return fast;
+      }
     }
     const leaves = new Map<string, ChatPartNode>();
     const groups = new Map<string, ChatToolGroup | ChatProcessGroup>();
@@ -176,6 +187,13 @@ export class ChatMessageProjection {
       this.measured?.node?.();
       return [{ key: nodeKey, part }];
     });
+    // 部分 CLI 把进度当作正文发出。完成时仅把最后连续的一段正文留在过程外。
+    const finalTextEnd = completed
+      ? parts.findLastIndex((node) => node.part.type === "text") + 1
+      : 0;
+    let finalTextStart = finalTextEnd;
+    while (parts[finalTextStart - 1]?.part.type === "text") finalTextStart--;
+
     const segments: ChatMessageSegment[] = [];
     let process: ChatProcessNode[] = [];
     let tools: ChatPartNode[] = [];
@@ -194,7 +212,10 @@ export class ChatMessageProjection {
     };
     const flushProcess = () => {
       flushTools();
-      const first = process[0];
+      // 用首个原有过程节点维持执行完成前后的展开容器身份。
+      const first = process.find(
+        (node) => "kind" in node || node.part.type !== "text",
+      );
       if (!first) return;
       const groupKey = `${first.key}:process`;
       const old = groups.get(groupKey);
@@ -206,8 +227,12 @@ export class ChatMessageProjection {
       }
       process = [];
     };
-    for (const node of parts) {
-      if (node.part.type === "text") {
+    for (const [index, node] of parts.entries()) {
+      if (completed && index >= finalTextStart && index < finalTextEnd) {
+        flushTools();
+        continue;
+      }
+      if (!completed && node.part.type === "text") {
         flushProcess();
         segments.push(node);
       } else if (node.part.type === "tool") tools.push(node);
@@ -217,6 +242,7 @@ export class ChatMessageProjection {
       }
     }
     flushProcess();
+    if (completed) segments.push(...parts.slice(finalTextStart, finalTextEnd));
     const view: ChatMessageView = {
       key,
       message,

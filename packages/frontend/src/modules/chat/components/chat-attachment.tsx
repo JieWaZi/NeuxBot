@@ -23,6 +23,7 @@ export type ChatFileOpenRequest = {
   name: string;
   path: string;
   rootPath?: string;
+  sourceChatId?: string;
 };
 
 function sourcePathPreviewOf(
@@ -130,11 +131,18 @@ export function ChatMessageAttachments({
   attachments?: NonNullable<BotChatMessage["attachments"]>;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
 }) {
+  const { t } = useTranslation("chat");
+  const seenPaths = new Set<string>();
   return (
     <>
       {attachments.map((attachment, index) => {
         const path = attachment.path ?? "";
         const name = attachment.name ?? path;
+        const label = attachment.partial
+          ? t("workflow.partialFile", { name })
+          : name;
+        if (path && seenPaths.has(path)) return null;
+        if (path) seenPaths.add(path);
         return (
           <span
             key={`${path}:${index}`}
@@ -146,10 +154,10 @@ export function ChatMessageAttachments({
                 className="max-w-40 truncate text-left"
                 onClick={() => onOpenFile({ name, path })}
               >
-                {name}
+                {label}
               </button>
             ) : (
-              <span className="max-w-40 truncate">{name}</span>
+              <span className="max-w-40 truncate">{label}</span>
             )}
           </span>
         );

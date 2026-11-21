@@ -89,7 +89,7 @@ func (c *workflowCreationController) updateCreationSession(ctx context.Context, 
 			linking = previous.ChatID != value.ChatID
 		}
 	}
-	result := controllerDB(ctx, c.db).Model(&value).Where("id = ?", value.ID).Select("chat_id", "active_execution_id", "accepted_execution_id", "request_id", "content", "context_instructions", "defaults", "auth_token").Updates(&value)
+	result := controllerDB(ctx, c.db).Model(&value).Where("id = ?", value.ID).Select("chat_id", "active_execution_id", "accepted_execution_id", "request_id", "content", "context_instructions", "defaults").Updates(&value)
 	if result.Error != nil {
 		return databaseError("update_workflow_creation", value.ID, result.Error)
 	}

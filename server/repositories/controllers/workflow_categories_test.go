@@ -14,14 +14,18 @@ func TestWorkflowCategoriesFilterBeforeCursorAndPreserveRevision(t *testing.T) {
 	ctx := context.Background()
 	for index, categories := range [][]string{{"设计", "开发"}, {"开发工具"}, {}} {
 		id := []string{"matching", "different", "untagged"}[index]
-		if err := store.CreateDefinition(ctx, models.WorkflowDefinition{ID: id, Title: "流程", CurrentRevisionID: "revision", Ordinal: 4, Categories: categories, UpdatedAt: int64(100 - index)}); err != nil {
+		if err := store.CreateDefinition(ctx, models.WorkflowDefinition{ID: id, Title: "流程", WhenToUse: "发布验收", CurrentRevisionID: "revision", Ordinal: 4, Categories: categories, UpdatedAt: int64(100 - index)}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	category := "开发"
-	items, err := store.ListDefinitions(ctx, "流程", 0, "", 1, &category)
+	items, err := store.ListDefinitions(ctx, "流程", 0, "", 1, 0, &category)
 	if err != nil || len(items) != 1 || items[0].ID != "matching" {
 		t.Fatalf("category did not filter before pagination: %+v %v", items, err)
+	}
+	items, err = store.ListDefinitions(ctx, "发布验收", 0, "", 1, 1, nil)
+	if err != nil || len(items) != 1 || items[0].ID != "different" {
+		t.Fatalf("usage search or page offset changed: %+v %v", items, err)
 	}
 	if err := store.UpdateCategories(ctx, "matching", []string{"研究"}); err != nil {
 		t.Fatal(err)
@@ -34,11 +38,11 @@ func TestWorkflowCategoriesFilterBeforeCursorAndPreserveRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	category = ""
-	items, err = store.ListDefinitions(ctx, "", 0, "", 10, &category)
+	items, err = store.ListDefinitions(ctx, "", 0, "", 10, 0, &category)
 	if err != nil || len(items) != 2 {
 		t.Fatalf("cleared and untagged workflows missing: %+v %v", items, err)
 	}
-	items, err = store.ListDefinitions(ctx, "", 99, "different", 10, nil)
+	items, err = store.ListDefinitions(ctx, "", 99, "different", 10, 0, nil)
 	if err != nil || len(items) != 1 || items[0].ID != "untagged" {
 		t.Fatalf("cursor order changed: %+v %v", items, err)
 	}

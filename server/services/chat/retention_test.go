@@ -35,6 +35,16 @@ func TestRetentionProtectionRecoveryAndExpiredDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	activity := created[0].CreatedAt
+	runs := controllers.NewWorkflowRunController(db)
+	const runID = "retention-source-run"
+	if err := db.Create(&models.WorkflowRun{ID: runID, DefinitionID: "workflow", RevisionID: "revision", SourceChatID: id,
+		Status: constants.WorkflowRunStatusWaiting, Version: 1, Context: map[string]any{}, WorkerConfigurations: map[string]models.WorkflowExecutionDefaults{}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	chats.prepareDelete = func(tx context.Context, ids []string) error {
+		_, err := runs.FailChatRuns(tx, ids, time.Now().UnixMilli())
+		return err
+	}
 	cutoff := activity + 1
 	candidates := func() []controllers.ChatRetentionCandidate {
 		t.Helper()
@@ -111,8 +121,14 @@ func TestRetentionProtectionRecoveryAndExpiredDeletion(t *testing.T) {
 	if err := db.Delete(&link).Error; err != nil {
 		t.Fatal(err)
 	}
+	if run, err := runs.GetRun(ctx, runID); err != nil || run.Status != constants.WorkflowRunStatusWaiting {
+		t.Fatalf("rejected retention deletion changed related work: %+v %v", run, err)
+	}
 	if ok, err := chats.DeleteChatIfExpired(ctx, current, cutoff, yes); !ok || err != nil {
 		t.Fatalf("expired delete: %v %v", ok, err)
+	}
+	if run, err := runs.GetRun(ctx, runID); err != nil || run.Status != constants.WorkflowRunStatusFailed || run.ChatDeliveryFinishedAt == nil {
+		t.Fatalf("committed retention deletion left related work active: %+v %v", run, err)
 	}
 	if _, err := os.Stat(cwd); err != nil {
 		t.Fatal(err)

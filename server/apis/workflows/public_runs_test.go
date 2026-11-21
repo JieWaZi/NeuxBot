@@ -192,7 +192,7 @@ func TestPublicRunAcceptanceAndRetryKeepIndependentRunEvidence(t *testing.T) {
 			}
 		}
 	}
-	explicit, err := s.StartRun(context.Background(), workflow.StartRunCommand{DefinitionID: definition.ID, RevisionID: failed.RevisionID, RequestID: "explicit-source", RetrySourceRunID: runID, TriggerSource: "api"})
+	explicit, err := s.StartRun(context.Background(), workflow.StartRunCommand{DefinitionID: definition.ID, RevisionID: failed.RevisionID, RequestID: "explicit-source", RetrySourceRunID: runID, ExpectedSourceVersion: failed.Version, TriggerSource: "api"})
 	if err != nil || explicit.Context["triggerSource"] != "api" {
 		t.Fatalf("retry replaced an explicit origin: %+v %v", explicit, err)
 	}

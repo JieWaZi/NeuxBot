@@ -5,6 +5,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -45,7 +46,7 @@ func (o *ValidateWorkflowSource) Output(ctx *gin.Context) (interface{}, error) {
 	if o.Body.SDK != constants.WorkflowSDKIdentifier {
 		return nil, ginx.WithStack(status_error.WorkflowSourceInvalid)
 	}
-	compiled, diagnostics, err := workflowdsl.Compile(o.Body.Source)
+	compiled, diagnostics, err := workflow.CompileSource(o.Body.Source)
 	response := WorkflowValidationResponse{Valid: err == nil, Diagnostics: diagnostics}
 	if err == nil {
 		canvas := workflowdsl.ExportCanvas(compiled.Manifest)

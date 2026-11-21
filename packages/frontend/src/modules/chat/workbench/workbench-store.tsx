@@ -49,6 +49,7 @@ const tabSchema = z.object({
     .optional(),
   path: z.string().optional(),
   canonicalPath: z.string().optional(),
+  fileChatId: z.string().optional(),
   rootPath: z.string().optional(),
   fileMode: z.enum(["preview", "diff"]).optional(),
   executionDiff: z

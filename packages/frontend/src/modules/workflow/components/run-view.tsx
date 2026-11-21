@@ -1,7 +1,7 @@
 import { RetryRunDialog } from "./retry-run-dialog";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
-import { Square, WandSparkles } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ListChecks, Square, WandSparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -9,6 +9,7 @@ import { useQueryEvents } from "@/shared/api/use-query-events";
 import {
   localApiErrorMessage,
   withLocalErrorMutation,
+  withLocalErrorSurface,
 } from "@/shared/api/local-error-surface";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
@@ -17,10 +18,12 @@ import { cn } from "@/shared/lib/cn";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import {
   cancelWorkflowRunMutation,
-  getWorkflowRunOptions,
+  getWorkflowInstanceOptions,
   getWorkflowRunQueryKey,
   listWorkflowRunsQueryKey,
+  workflowRunDetailsOptions,
 } from "../api/workflow-queries";
+import { useResolveWorkflowRunDecisionDrafts } from "../model/human-answer-draft";
 import { OperationRequestCard } from "./operation-request";
 import { HumanRequestCard } from "./human-request";
 import { WorkflowCanvas } from "./workflow-canvas";
@@ -31,26 +34,40 @@ import { RunInputValues } from "./run-input-values";
 import { WorkflowInputNode } from "./workflow-input-node";
 import { WorkflowQueryError } from "./query-feedback";
 
+type RunViewNavigation = {
+  params: URLSearchParams;
+  replace: (update: (previous: URLSearchParams) => URLSearchParams) => void;
+  chatId?: string;
+  onRetryAccepted?: (runId: string) => void;
+};
+
 export function WorkflowRunView({
   id,
   runId,
   actionsContainer,
   active: visible = true,
+  navigation,
 }: {
   id: string;
   runId: string;
   actionsContainer?: HTMLElement | null;
   active?: boolean;
+  navigation?: RunViewNavigation;
 }) {
   const { t } = useTranslation("workflow");
-  const { t: boardText } = useTranslation("workBoard");
   const sceneActive = useRouteSceneActive();
   const active = sceneActive && visible;
-  const [params, setParams] = useSearchParams();
+  const [routeParams, setRouteParams] = useSearchParams();
+  const replaceRouteParams = useCallback<RunViewNavigation["replace"]>(
+    (update) => setRouteParams(update, { replace: true }),
+    [setRouteParams],
+  );
+  const params = navigation?.params ?? routeParams;
+  const setParams = navigation?.replace ?? replaceRouteParams;
   const offset = Number(params.get("offset") ?? 0);
   const selected = params.get("instance");
   const query = useQuery({
-    ...getWorkflowRunOptions({
+    ...workflowRunDetailsOptions({
       path: { id, runId },
       query: {
         offset: Number.isSafeInteger(offset) && offset >= 0 ? offset : 0,
@@ -74,15 +91,38 @@ export function WorkflowRunView({
     eventTypes: ["workflow.run.changed", "workflow.worker.skip_requested"],
   });
   const switching = query.isPlaceholderData;
-  const run = switching ? undefined : query.data?.run;
+  const snapshot = switching ? undefined : query.data;
+  const run = snapshot?.run;
+  useResolveWorkflowRunDecisionDrafts(id, runId, snapshot);
   const instances = useMemo(
     () => (switching ? [] : (query.data?.instances ?? [])),
     [query.data?.instances, switching],
   );
-  const instance = instances.find((item) => item.id === selected);
-  const instanceId = selected || instance?.id;
-
   const resultOpen = params.get("result") === "1";
+  const instanceId = selected || undefined;
+  const listedInstance = instanceId
+    ? instances.find((item) => item.id === instanceId)
+    : undefined;
+  const listedNode =
+    params.get("node") ??
+    listedInstance?.nodeId ??
+    (instanceId
+      ? snapshot?.nodeCounts?.find((item) => item.instanceId === instanceId)
+          ?.nodeId
+      : undefined);
+  const resolveExactInstance = Boolean(
+    active && run && !resultOpen && instanceId && !listedNode,
+  );
+  const exactInstance = useQuery({
+    ...getWorkflowInstanceOptions(
+      withLocalErrorSurface({
+        path: { id, runId, instanceId: instanceId ?? "" },
+      }),
+    ),
+    enabled: resolveExactInstance,
+  });
+  const instance = listedInstance ?? exactInstance.data?.instance;
+  const selectedNode = listedNode ?? instance?.nodeId;
   const waiting = useMemo(
     () =>
       (switching
@@ -108,22 +148,16 @@ export function WorkflowRunView({
     expectedInstanceId?: string,
     answeredRequestId?: string,
   ) => {
-    setParams(
-      (previous) => {
-        if (
-          expectedInstanceId &&
-          previous.get("instance") !== expectedInstanceId
-        )
-          return previous;
-        const next = new URLSearchParams(previous);
-        next.delete("instance");
-        next.delete("node");
-        if (answeredRequestId && next.get("request") === answeredRequestId)
-          next.delete("request");
-        return next;
-      },
-      { replace: true },
-    );
+    setParams((previous) => {
+      if (expectedInstanceId && previous.get("instance") !== expectedInstanceId)
+        return previous;
+      const next = new URLSearchParams(previous);
+      next.delete("instance");
+      next.delete("node");
+      if (answeredRequestId && next.get("request") === answeredRequestId)
+        next.delete("request");
+      return next;
+    });
   };
   const selectNode = (nodeId: string, actualId?: string) => {
     const priority = [
@@ -144,51 +178,46 @@ export function WorkflowRunView({
           (a, b) =>
             priority.indexOf(a.status ?? "") - priority.indexOf(b.status ?? ""),
         )[0]?.instanceId;
-    setParams(
-      (previous) => {
-        const next = new URLSearchParams(previous);
-        next.set("node", nodeId);
-        next.delete("result");
-        if (actual) next.set("instance", actual);
-        else next.delete("instance");
-        return next;
-      },
-      { replace: true },
-    );
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set("node", nodeId);
+      next.delete("result");
+      if (actual) next.set("instance", actual);
+      else next.delete("instance");
+      return next;
+    });
   };
   const prompted = useRef(new Set<string>());
+  const embedded = Boolean(navigation);
   const requestedId = params.get("request") ?? undefined;
-  const requestedGone = Boolean(
-    requestedId &&
-    run &&
-    !query.isFetching &&
-    !query.isError &&
-    ![...waiting, ...operations].some((item) => item.id === requestedId),
-  );
   useEffect(() => {
-    if (!active || switching || params.has("node")) return;
+    if (
+      embedded ||
+      !active ||
+      switching ||
+      params.has("node") ||
+      params.has("result")
+    )
+      return;
     const request = requestedId
       ? [...waiting, ...operations].find((item) => item.id === requestedId)
       : [...waiting, ...operations].find(
           (item) => item.id && !prompted.current.has(item.id),
         );
-    if (!request?.id || !request.instanceId) return;
+    const instanceId = request?.instanceId;
+    if (!request?.id || !instanceId) return;
     const nodeId =
-      instances.find((item) => item.id === request.instanceId)?.nodeId ||
-      query.data?.nodeCounts?.find(
-        (item) => item.instanceId === request.instanceId,
-      )?.nodeId;
+      instances.find((item) => item.id === instanceId)?.nodeId ||
+      query.data?.nodeCounts?.find((item) => item.instanceId === instanceId)
+        ?.nodeId;
     if (!nodeId) return;
     prompted.current.add(request.id);
-    setParams(
-      (previous) => {
-        const next = new URLSearchParams(previous);
-        next.set("node", nodeId);
-        next.set("instance", request.instanceId ?? "");
-        return next;
-      },
-      { replace: true },
-    );
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set("node", nodeId);
+      next.set("instance", instanceId);
+      return next;
+    });
   }, [
     active,
     switching,
@@ -199,11 +228,31 @@ export function WorkflowRunView({
     instances,
     query.data?.nodeCounts,
     setParams,
+    embedded,
   ]);
+  const changeResult = (open: boolean) =>
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (open) next.set("result", "1");
+      else next.delete("result");
+      return next;
+    });
   const actions = (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap justify-end gap-2">
+      {embedded && terminal ? (
+        <Button size="sm" variant="surface" onClick={() => changeResult(true)}>
+          <ListChecks />
+          {t("runResult")}
+        </Button>
+      ) : null}
       {terminal && run?.status !== "succeeded" ? (
-        <RetryRunDialog id={id} runId={runId} manifest={query.data?.manifest} />
+        <RetryRunDialog
+          id={id}
+          runId={runId}
+          manifest={query.data?.manifest}
+          chatId={navigation?.chatId}
+          onAccepted={navigation?.onRetryAccepted}
+        />
       ) : null}
       {terminal && run?.status !== "succeeded" ? (
         <Button size="sm" variant="surface" asChild>
@@ -235,7 +284,9 @@ export function WorkflowRunView({
         {actionsContainer ? (
           createPortal(actions, actionsContainer)
         ) : (
-          <div className="absolute top-4 right-4 z-10">{actions}</div>
+          <div className="absolute top-4 right-4 z-10 max-w-[calc(100%-2rem)]">
+            {actions}
+          </div>
         )}
         {query.isError ? (
           <WorkflowQueryError
@@ -244,19 +295,13 @@ export function WorkflowRunView({
             retrying={query.isFetching}
             onRetry={() => void query.refetch()}
           />
-        ) : null}
-        {requestedGone ? (
-          <div
-            role="status"
-            className="text-content-muted type-ui flex items-center gap-3 px-5 py-3"
-          >
-            {boardText("requestGone")}
-            <Button variant="ghost" size="sm" asChild>
-              <Link to="/work-board?mode=action">
-                {boardText("backToBoard")}
-              </Link>
-            </Button>
-          </div>
+        ) : resolveExactInstance && exactInstance.isError ? (
+          <WorkflowQueryError
+            error={exactInstance.error}
+            className="p-5"
+            retrying={exactInstance.isFetching}
+            onRetry={() => void exactInstance.refetch()}
+          />
         ) : null}
         {query.data?.manifest ? (
           <div
@@ -288,16 +333,14 @@ export function WorkflowRunView({
               }}
               nodeCounts={query.data.nodeCounts ?? []}
               selected={
-                active && !switching && !resultOpen
-                  ? (params.get("node") ?? instance?.nodeId)
-                  : undefined
+                active && !switching && !resultOpen ? selectedNode : undefined
               }
               onDismiss={closeDetails}
+              dismissWithinCanvas={embedded}
               onSelect={(node) => selectNode(node.id ?? "")}
               nodeHeading={(node) => {
-                const actual = instances.find(
-                  (item) => item.id === instanceId && item.nodeId === node.id,
-                );
+                const actual =
+                  instance?.nodeId === node.id ? instance : undefined;
                 return { title: actual?.label, status: actual?.status };
               }}
               nodeContent={(node) => (
@@ -328,6 +371,7 @@ export function WorkflowRunView({
                         key={operation.id}
                         id={id}
                         runId={runId}
+                        chatId={navigation?.chatId}
                         operation={operation}
                       />
                     ))}
@@ -338,6 +382,7 @@ export function WorkflowRunView({
                         key={human.id}
                         id={id}
                         runId={runId}
+                        chatId={navigation?.chatId}
                         human={human}
                         onAnswered={() => {
                           if (human.id) prompted.current.add(human.id);
@@ -365,14 +410,11 @@ export function WorkflowRunView({
                       variant="ghost"
                       size="sm"
                       onClick={() =>
-                        setParams(
-                          (previous) => {
-                            const next = new URLSearchParams(previous);
-                            next.set("offset", String(query.data.nextOffset));
-                            return next;
-                          },
-                          { replace: true },
-                        )
+                        setParams((previous) => {
+                          const next = new URLSearchParams(previous);
+                          next.set("offset", String(query.data.nextOffset));
+                          return next;
+                        })
                       }
                     >
                       {t("nextPage")}
@@ -397,17 +439,7 @@ export function WorkflowRunView({
         id={id}
         runId={runId}
         open={active && resultOpen}
-        onOpenChange={(open) =>
-          setParams(
-            (previous) => {
-              const next = new URLSearchParams(previous);
-              if (open) next.set("result", "1");
-              else next.delete("result");
-              return next;
-            },
-            { replace: true },
-          )
-        }
+        onOpenChange={changeResult}
       />
       <Dialog
         open={active && stopRunId === runId && !switching}

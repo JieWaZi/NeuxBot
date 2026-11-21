@@ -1,9 +1,16 @@
 import type { HumanRequest } from "../model/types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
+import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import {
   afterAll,
@@ -16,6 +23,13 @@ import {
 } from "vitest";
 import "@/shared/i18n";
 import { client } from "@/shared/api/generated/client.gen";
+import {
+  getChatQueryKey,
+  getWorkflowInstanceQueryKey,
+} from "@/shared/api/generated/@tanstack/react-query.gen";
+import { useErrorNotices } from "@/shared/api/error-notices";
+import { initializeApi } from "@/shared/api/runtime";
+import { configurePlatform, platform } from "@/shared/platform";
 import { InstanceDetails } from "./instance-details";
 
 const origin = "http://instance-feedback.test";
@@ -99,7 +113,10 @@ beforeEach(() => {
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-function renderInstance(human?: HumanRequest) {
+function renderInstance(
+  human?: HumanRequest,
+  request?: ComponentProps<typeof InstanceDetails>["request"],
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -111,12 +128,88 @@ function renderInstance(human?: HumanRequest) {
           runId="run"
           instanceId="instance"
           human={human}
+          request={request}
         />
       </MemoryRouter>
     </QueryClientProvider>,
   );
   return queryClient;
 }
+
+it.each(["instance", "worker"] as const)(
+  "%s 详情失败只在原位置显示，并沿原查询重试",
+  async (kind) => {
+    configurePlatform({
+      ...platform(),
+      getConnection: async () => ({ baseUrl: origin }),
+    });
+    await initializeApi();
+    const worker = kind === "worker";
+    let healthy = false;
+    server.use(
+      http.get(worker ? `${origin}/api/v1/chats/worker-chat` : endpoint, () =>
+        healthy
+          ? HttpResponse.json(worker ? snapshot.chat : snapshot)
+          : HttpResponse.json({ message: "unavailable" }, { status: 500 }),
+      ),
+    );
+    const { result: notices } = renderHook(useErrorNotices);
+    const queryClient = renderInstance(
+      undefined,
+      worker
+        ? {
+            id: "approval-current",
+            chatId: "worker-chat",
+            kind: "approval",
+            active: true,
+            onSettled: () => undefined,
+          }
+        : undefined,
+    );
+    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(notices.current).toHaveLength(0);
+    healthy = true;
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
+    expect(
+      await screen.findByRole("button", { name: /允许本次/ }),
+    ).toBeVisible();
+    const queryKey = worker
+      ? getChatQueryKey({ path: { chatId: "worker-chat" } })
+      : getWorkflowInstanceQueryKey({
+          path: { id: "flow", runId: "run", instanceId: "instance" },
+        });
+    expect(queryClient.getQueryState(queryKey)?.status).toBe("success");
+  },
+);
+
+it("聊天内的工作流审批读取时显示骨架，响应后展示审批操作", async () => {
+  let release = () => {};
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.get(`${origin}/api/v1/chats/worker-chat`, async () => {
+      await ready;
+      return HttpResponse.json(snapshot.chat);
+    }),
+  );
+  renderInstance(undefined, {
+    id: "approval-current",
+    chatId: "worker-chat",
+    kind: "approval",
+    active: true,
+    onSettled: () => undefined,
+  });
+  try {
+    const loading = screen.getByRole("status", { name: "正在读取工作流…" });
+    expect(loading).toHaveAttribute("aria-busy", "true");
+    expect(loading.querySelector(".agent-grid-spinner")).toBeNull();
+    expect(loading.querySelector(".animate-pulse")).toBeInTheDocument();
+  } finally {
+    release();
+  }
+  expect(await screen.findByRole("button", { name: /允许本次/ })).toBeVisible();
+});
 
 it("真实空返回说明没有返回内容，不制造 null 指令和输出块", async () => {
   server.use(

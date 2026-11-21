@@ -2,6 +2,8 @@
 
 从 [Releases](https://github.com/JieWaZi/NeuxBot/releases) 获取已发布的当前平台安装包。若尚无版本，可按根目录 CONTRIBUTING.md 从源码运行。
 
+Linux 使用本机 Web 包。解压后运行 `node start-web.mjs`，使用 Node.js 22 或更新版本。
+
 1. 安装并启动 NeuxBot。
 2. 准备至少一种支持的智能体 CLI，完成对应产品要求的登录或账号配置。
 3. 首次引导确认实际安装版本、模型和默认权限。

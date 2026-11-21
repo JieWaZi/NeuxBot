@@ -363,6 +363,11 @@ func Digest(directory string) (string, error) {
 	return validateStagedTree(directory)
 }
 
+// SelectedDigests 一次读取并校验完整技能，同时计算所选内容的摘要。
+func SelectedDigests(directory string, include func(string) bool) (string, string, error) {
+	return skillArchive.SelectedDigests(directory, include)
+}
+
 // CopyVersion 通过同文件系统 staging 原子保存一个不可变技能版本目录。
 func CopyVersion(dataDirectory string, packageID string, version string, sourceDirectory string) (string, string, error) {
 	dataDirectory = strings.TrimSpace(dataDirectory)
@@ -406,8 +411,12 @@ func CopyVersion(dataDirectory string, packageID string, version string, sourceD
 	return relative, digest, nil
 }
 
-// CopyDirectory 安全复制完整技能包目录并保留软链接、拒绝其他特殊文件。
 // CopyDirectory 安全复制完整技能目录并保持原有执行位规则。
 func CopyDirectory(source, target string) error { return skillArchive.CopyDirectory(source, target) }
+
+// CopySelectedDirectory 保留技能的相对路径，仅物化筛选所选中的内容。
+func CopySelectedDirectory(source, target string, include func(string) bool) error {
+	return skillArchive.CopySelectedDirectory(source, target, include)
+}
 
 var skillArchive = packagefiles.Archive{Invalid: status_error.SkillContentInvalid, Limit: status_error.SkillContentLimitExceeded, IO: status_error.SkillImportFailed}

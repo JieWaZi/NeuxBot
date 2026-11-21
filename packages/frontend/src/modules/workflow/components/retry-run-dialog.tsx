@@ -4,10 +4,10 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  getWorkflowRunOptions,
   getWorkflowRetryPlanOptions,
   retryWorkflowRunMutation,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
+import { workflowRunDetailsOptions } from "../api/workflow-queries";
 import {
   withLocalErrorSurface,
   withLocalErrorMutation,
@@ -23,11 +23,15 @@ export function RetryRunDialog({
   runId,
   manifest,
   runNumber,
+  chatId,
+  onAccepted,
 }: {
   id: string;
   runId: string;
   manifest?: Manifest;
   runNumber?: number;
+  chatId?: string;
+  onAccepted?: (runId: string) => void;
 }) {
   const { t } = useTranslation("workflow");
   const navigate = useNavigate();
@@ -42,13 +46,7 @@ export function RetryRunDialog({
   });
   // 执行记录可能属于旧版本，标题只读取该次运行的冻结快照。
   const source = useQuery({
-    ...getWorkflowRunOptions(
-      withLocalErrorSurface({
-        path: { id, runId },
-        query: { offset: 0 },
-        throwOnError: true,
-      }),
-    ),
+    ...workflowRunDetailsOptions({ path: { id, runId }, query: { offset: 0 } }),
     enabled: open && !manifest,
   });
   const frozenManifest = manifest ?? source.data?.manifest;
@@ -56,13 +54,22 @@ export function RetryRunDialog({
   const submit = async () => {
     if (!plan.data?.allowed) return;
     try {
+      const command = {
+        requestId,
+        expectedVersion: plan.data.expectedVersion,
+        chatId,
+      };
       const run = await retry.mutateAsync({
         path: { id, runId },
-        body: { requestId, expectedVersion: plan.data.expectedVersion },
+        body: command,
       });
       if (run.id) {
         setOpen(false);
-        navigate(`/workflows/${id}/runs/${run.id}`, { state: location.state });
+        if (onAccepted) onAccepted(run.id);
+        else
+          navigate(`/workflows/${id}/runs/${run.id}`, {
+            state: location.state,
+          });
       }
     } catch {
       /* Preserve the plan and command identity for retry. */

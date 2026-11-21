@@ -47,9 +47,9 @@ type ChannelThreadController interface {
 	// MarkReady 标记全部成员 Chat 和团队对话首发事实已经完成。
 	MarkReady(ctx context.Context, threadID string, provisioningID string, leadExecutionID string, readyAt int64) error
 	// BeginCanceling 原子写入停止意图并冻结新的任务名额与派发。
-	BeginCanceling(ctx context.Context, threadID string, cancelingAt int64) (bool, error)
+	BeginCanceling(ctx context.Context, threadID string, stopGeneration, cancelingAt int64) (bool, error)
 	// FinishCanceling 在停止收敛事务末尾按原意图清除冻结状态。
-	FinishCanceling(ctx context.Context, threadID string, cancelingAt int64, updatedAt int64) (bool, error)
+	FinishCanceling(ctx context.Context, threadID string, stopGeneration, updatedAt int64) (bool, error)
 	// ListCanceling 返回服务启动时必须继续收敛的停止意图。
 	ListCanceling(ctx context.Context) ([]models.ChannelThread, error)
 	// ListInitializing 返回服务启动时需要核对接纳回执的未就绪首发锚点。
@@ -58,8 +58,10 @@ type ChannelThreadController interface {
 	Touch(ctx context.Context, threadID string, updatedAt int64) error
 	// DeleteInitializing 删除仍处于首发补偿窗口的团队对话及成员快照。
 	DeleteInitializing(ctx context.Context, threadID string) error
-	// CountActiveWork 统计阻止删除的待执行任务、运行任务、负责人输入和活跃 Chat Execution。
+	// CountActiveWork 统计仍拥有团队对话的任务、负责人输入、Chat 执行和工作流。
 	CountActiveWork(ctx context.Context, threadID string) (int64, error)
+	// CountActiveWorkflows 统计独立于 Chat 执行结算的在途工作流。
+	CountActiveWorkflows(ctx context.Context, threadID string) (int64, error)
 	// Delete 删除一个团队对话的全部结构化编排事实。
 	Delete(ctx context.Context, threadID string) error
 	// DeleteByChannel 删除一个团队下全部团队对话的结构化编排事实。
@@ -80,6 +82,8 @@ type ChannelThreadController interface {
 	FailLeadInput(ctx context.Context, id string, errorCode string, updatedAt int64) (bool, error)
 	// UpdateLeadInputs 推进一批负责人输入的投递状态和 Execution 映射。
 	UpdateLeadInputs(ctx context.Context, ids []string, status constants.ChannelInputStatus, leadExecutionID string, updatedAt int64) error
+	// CancelLeadInput 取消指定且尚未消费的负责人输入。
+	CancelLeadInput(ctx context.Context, id string, updatedAt int64) error
 	// CancelOpenLeadInputs 取消团队对话尚未消费的负责人用户输入。
 	CancelOpenLeadInputs(ctx context.Context, threadID string, updatedAt int64) error
 	// RecoverLeadInputs 收尾中断投递并返回仍有待处理输入的团队对话标识。
@@ -559,11 +563,12 @@ func (c *channelThreadController) MarkReady(
 func (c *channelThreadController) BeginCanceling(
 	ctx context.Context,
 	threadID string,
+	stopGeneration int64,
 	cancelingAt int64,
 ) (bool, error) {
 	result := controllerDB(ctx, c.db).Model(&models.ChannelThread{}).
-		Where("id = ? AND ready_at IS NOT NULL AND canceling_at IS NULL", threadID).
-		Updates(map[string]interface{}{"canceling_at": cancelingAt, "updated_at": cancelingAt})
+		Where("id = ? AND ready_at IS NOT NULL AND canceling_at IS NULL AND stop_generation = ?", threadID, stopGeneration).
+		Updates(map[string]interface{}{"canceling_at": cancelingAt, "stop_generation": gorm.Expr("stop_generation + 1"), "updated_at": cancelingAt})
 	if result.Error != nil {
 		return false, databaseError("begin_channel_thread_canceling", "thread_id="+threadID, result.Error)
 	}
@@ -577,11 +582,11 @@ func (c *channelThreadController) BeginCanceling(
 func (c *channelThreadController) FinishCanceling(
 	ctx context.Context,
 	threadID string,
-	cancelingAt int64,
+	stopGeneration int64,
 	updatedAt int64,
 ) (bool, error) {
 	result := controllerDB(ctx, c.db).Model(&models.ChannelThread{}).
-		Where("id = ? AND canceling_at = ?", threadID, cancelingAt).
+		Where("id = ? AND stop_generation = ? AND canceling_at IS NOT NULL", threadID, stopGeneration).
 		Updates(map[string]interface{}{"canceling_at": nil, "updated_at": updatedAt})
 	if result.Error != nil {
 		return false, databaseError("finish_channel_thread_canceling", "thread_id="+threadID, result.Error)
@@ -653,7 +658,7 @@ func (c *channelThreadController) DeleteInitializing(
 	return c.deleteThreadFacts(db, threadID, true)
 }
 
-// CountActiveWork 统计阻止删除的待执行任务、负责人输入与成员（含负责人）活跃 Chat Execution。
+// CountActiveWork 统计团队对话中仍在进行的工作。
 func (c *channelThreadController) CountActiveWork(
 	ctx context.Context,
 	threadID string,
@@ -689,12 +694,34 @@ func (c *channelThreadController) CountActiveWork(
 			return 0, databaseError("count_channel_thread_active_executions", "thread_id="+threadID, err)
 		}
 	}
-	return taskCount + inputCount + executionCount, nil
+	workflowCount, err := c.CountActiveWorkflows(ctx, threadID)
+	if err != nil {
+		return 0, err
+	}
+	notificationCount, err := countOpenLeadNotifications(db.Where("thread_id = ?", threadID), threadID)
+	return taskCount + inputCount + executionCount + workflowCount + notificationCount, err
+}
+
+func countOpenLeadNotifications(scope *gorm.DB, ownerID string) (int64, error) {
+	var count int64
+	err := scope.Model(&models.ChannelLeadNotification{}).Where("status IN ?", []constants.ChannelNotificationStatus{
+		constants.ChannelNotificationStatusPending, constants.ChannelNotificationStatusDelivering,
+	}).Count(&count).Error
+	if err != nil {
+		return 0, databaseError("count_open_channel_lead_notifications", ownerID, err)
+	}
+	return count, nil
+}
+
+// CountActiveWorkflows 读取由该团队对话接纳且尚未结算的工作流。
+func (c *channelThreadController) CountActiveWorkflows(ctx context.Context, threadID string) (int64, error) {
+	return countActiveTeamChatRuns(controllerDB(ctx, c.db).Where("source_thread_id = ?", threadID), threadID)
 }
 
 // Delete 删除一个团队对话的全部结构化编排事实。
 func (c *channelThreadController) Delete(ctx context.Context, threadID string) error {
-	if err := c.deleteThreadFacts(controllerDB(ctx, c.db), threadID, false); err != nil {
+	db := controllerDB(ctx, c.db)
+	if err := c.deleteThreadFacts(db, threadID, false); err != nil {
 		return err
 	}
 	publishWorkRequestRecheck(ctx, c.db, eventsResource("team_thread", threadID))
@@ -872,7 +899,7 @@ func (c *channelThreadController) CreateLeadInput(
 	ctx context.Context,
 	input models.ChannelLeadInput,
 ) error {
-	if input.Payload.Content == "" {
+	if input.Payload.Content == "" && (input.Payload.Workflow == nil || input.Payload.Workflow.RevisionID == "") {
 		return status_error.BadRequest
 	}
 	if err := controllerDB(ctx, c.db).Create(&input).Error; err != nil {
@@ -894,7 +921,7 @@ func (c *channelThreadController) ListLeadInputs(
 	}
 	err := controllerDB(ctx, c.db).
 		Where("thread_id = ? AND status IN ?", threadID, statuses).
-		Order("created_at ASC, id ASC").
+		Order("rowid ASC").
 		Limit(limit).
 		Find(&inputs).Error
 	if err != nil {
@@ -959,8 +986,16 @@ func (c *channelThreadController) CancelOpenLeadInputs(
 	threadID string,
 	updatedAt int64,
 ) error {
-	if err := controllerDB(ctx, c.db).Model(&models.ChannelLeadInput{}).
-		Where("thread_id = ? AND status IN ?", threadID, []constants.ChannelInputStatus{
+	return cancelLeadInputs(controllerDB(ctx, c.db).Where("thread_id = ?", threadID), updatedAt)
+}
+
+func (c *channelThreadController) CancelLeadInput(ctx context.Context, id string, updatedAt int64) error {
+	return cancelLeadInputs(controllerDB(ctx, c.db).Where("id = ?", id), updatedAt)
+}
+
+func cancelLeadInputs(db *gorm.DB, updatedAt int64) error {
+	if err := db.Model(&models.ChannelLeadInput{}).
+		Where("status IN ?", []constants.ChannelInputStatus{
 			constants.ChannelInputStatusPending,
 			constants.ChannelInputStatusDelivering,
 		}).
@@ -969,7 +1004,7 @@ func (c *channelThreadController) CancelOpenLeadInputs(
 			"lead_execution_id": "",
 			"updated_at":        updatedAt,
 		}).Error; err != nil {
-		return databaseError("cancel_channel_lead_inputs", "thread_id="+threadID, err)
+		return databaseError("cancel_channel_lead_inputs", "channel_input", err)
 	}
 	return nil
 }

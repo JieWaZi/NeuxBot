@@ -11,6 +11,7 @@ import { type PropsWithChildren } from "react";
 import { ThemeProvider } from "@/shared/theme";
 import { ChatQueueProvider } from "@/modules/chat/runtime/chat-queue-store";
 import { WorkbenchProvider } from "@/modules/chat/workbench/workbench-store";
+import { WorkflowAnswerDraftProvider } from "@/modules/workflow/model/human-answer-draft";
 
 export const appQueryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -28,7 +29,11 @@ export function AppProviders({ children }: PropsWithChildren) {
       <QueryClientProvider client={appQueryClient}>
         <ChatQueueProvider>
           <WorkbenchProvider>
-            <Tooltip.Provider delayDuration={400}>{children}</Tooltip.Provider>
+            <WorkflowAnswerDraftProvider>
+              <Tooltip.Provider delayDuration={400}>
+                {children}
+              </Tooltip.Provider>
+            </WorkflowAnswerDraftProvider>
           </WorkbenchProvider>
         </ChatQueueProvider>
       </QueryClientProvider>

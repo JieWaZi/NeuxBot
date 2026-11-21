@@ -35,7 +35,7 @@ type ChannelTask struct {
 	RequiresHumanReview bool `gorm:"column:requires_human_review;not null;default:false" json:"requiresHumanReview"`
 	// DirectDelivery 表示负责人允许单项完整成果直接进入团队主时间线，无需再次生成汇总。
 	DirectDelivery bool `gorm:"column:direct_delivery;not null;default:false" json:"directDelivery"`
-	// CancelRequestedAt 是 CLI 持久接纳停止当前尝试的时间。
+	// CancelRequestedAt 是持久接纳停止当前尝试的时间。
 	CancelRequestedAt *int64 `json:"cancelRequestedAt,omitempty"`
 	// CancelRequestedFence 保证停止意图不能作用于后续尝试。
 	CancelRequestedFence int `gorm:"not null;default:0" json:"-"`

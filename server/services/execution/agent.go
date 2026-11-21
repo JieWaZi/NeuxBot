@@ -29,6 +29,8 @@ func agentIdentity(value string) string {
 type preparedAgentConnection struct {
 	// cliContextFile 是 CLI 分支交给原生进程的连接文件路径。
 	cliContextFile string
+	// cliExecutable 是 CLI 分支使用的已发布系统技能可执行文件。
+	cliExecutable string
 	// mcpOperations 是内部 MCP 公布的有序工具身份，用于原生历史兼容判断。
 	mcpOperations []string
 	// activate 在业务接纳后启用本轮工具范围。
@@ -37,7 +39,7 @@ type preparedAgentConnection struct {
 	finish func()
 }
 
-func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEnvironment, workspace agentapi.Workspace, skills *[]agentapi.Skill, instructions *[]agentapi.Instruction, connectors *[]agentapi.ConnectorDeclaration, contextInstructions *[]agentapi.Instruction, chat models.Chat, executionID string, request pendingMessage, requestReferencedFiles []string) (preparedAgentConnection, error) {
+func (m *service) prepareAgent(ctx, executionContext context.Context, environment models.RuntimeEnvironment, workspace agentapi.Workspace, skills *[]agentapi.Skill, instructions *[]agentapi.Instruction, connectors *[]agentapi.ConnectorDeclaration, contextInstructions *[]agentapi.Instruction, chat models.Chat, executionID string, request pendingMessage, requestReferencedFiles, uploadedFiles []string) (preparedAgentConnection, error) {
 	if m.agent == nil {
 		return preparedAgentConnection{}, nil
 	}
@@ -120,7 +122,10 @@ func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEn
 	for _, binding := range bindings {
 		if strings.HasPrefix(binding.Operation, "workflow.") {
 			hasWorkflowCapabilities = true
-			break
+		}
+		if binding.Operation == "workflow.runs.start" && len(uploadedFiles) != 0 {
+			// 仅授权本轮已接纳的附件路径，附件父目录继续隔离。
+			requestReferencedFiles = append(slices.Clone(requestReferencedFiles), uploadedFiles...)
 		}
 	}
 	baseRuntimeID := nativeProvider(environment)
@@ -132,7 +137,7 @@ func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEn
 	m.appendAgentInstructions(instructions, useMCP, binary, skill)
 	// 工具绑定是确定的场景事实，不让模型从用户短句猜测当前入口。
 	for _, binding := range bindings {
-		if binding.Operation == "workflow.source.save" {
+		if binding.Operation == "workflow.source.save" && (!request.localWorkflowTools || request.workflowCreationSessionID != "") {
 			// 创作角色与正式指南进入稳定指令，本轮只补充当前引用。
 			guide, err := builtinskills.Guide("workflow.authoring")
 			if err != nil {
@@ -145,6 +150,9 @@ func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEn
 	}
 	// 原生 MCP 连接会保留工具结构，操作集合变化时使用独立连接。
 	identity := []string{chat.ID, request.runtime.RuntimeID, request.runtime.AccountID}
+	if request.localWorkflowTools {
+		identity = append(identity, "local-workflow")
+	}
 	var mcpOperations []string
 	if useMCP {
 		mcpOperations = make([]string, 0, len(bindings))
@@ -155,16 +163,14 @@ func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEn
 		identity = append(identity, mcpOperations...)
 	}
 	key := agentIdentity(strings.Join(identity, "\x00"))
-	path, activate, finish, err := m.agent.PrepareConnection(filepath.Join(root, constants.AgentCLIContextDirectory), key, m.agentEndpoint, capability.GrantSpec{ExecutionID: executionID, Bindings: bindings, FileRoots: roots, FilePaths: requestReferencedFiles, ManagedSpace: workspace.Path, Record: func(ctx context.Context, op capability.Operation, result capability.Result) error {
+	path, activate, finish, err := m.agent.PrepareConnection(filepath.Join(root, constants.AgentCLIContextDirectory), key, m.agentEndpoint, capability.GrantSpec{Lifecycle: executionContext, ExecutionID: executionID, SharedLocalToken: request.localWorkflowTools, Bindings: bindings, FileRoots: roots, FilePaths: requestReferencedFiles, ManagedSpace: workspace.Path, Record: func(ctx context.Context, op capability.Operation, result capability.Result) error {
+		fact := eventlog.AgentCommandData{CommandID: result.CommandID, Operation: op.ID, Completion: op.Completion}
 		_, err := m.journal.AppendExecutionFacts(ctx, chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeAgentCommandCommitted,
-			ExecutionID: executionID, InvocationID: executionID, Data: marshalData(eventlog.AgentCommandData{CommandID: result.CommandID, Operation: op.ID, Completion: op.Completion})}})
+			ExecutionID: executionID, InvocationID: executionID, Data: marshalData(fact)}})
 		return err
-	}, Validate: func(ctx context.Context) error {
-		current, err := m.journal.LoadExecutionChat(ctx, chat.ID)
-		if err != nil {
-			return err
-		}
-		if current.WakerID != chat.WakerID || current.ActiveExecutionID != executionID {
+	}, Validate: func(context.Context) error {
+		// 能力在接纳后激活，生命周期由原执行占位持有。
+		if !m.IsExecutionActive(chat.ID, executionID) {
 			return status_error.AgentContextUnauthorized
 		}
 		return nil
@@ -180,13 +186,14 @@ func (m *service) prepareAgent(ctx context.Context, environment models.RuntimeEn
 	prepared := preparedAgentConnection{mcpOperations: mcpOperations, activate: activate, finish: finish}
 	if !useMCP {
 		prepared.cliContextFile = path
+		prepared.cliExecutable = binary
 	}
 	return prepared, nil
 }
 
 // appendAgentInstructions 提供稳定的工具说明，连接由宿主交付。
 func (m *service) appendAgentInstructions(instructions *[]agentapi.Instruction, useMCP bool, binary, skill string) {
-	discovery := fmt.Sprintf("Its executable is %q; invoke this exact quoted path with capabilities to discover the current authorized commands. The host provides the active connection.", binary)
+	discovery := fmt.Sprintf("Run `botcli capabilities` to discover the current authorized commands. If the shell cannot resolve the bundled `botcli`, invoke the executable at %q with the same arguments. The host provides the active connection.", binary)
 	if useMCP {
 		discovery = "Use the injected bot_capabilities MCP tools for NeuxBot operations in this execution. Their schemas define the current inputs; use capabilities or guide only when discovery or relevant guidance is missing. Use requestId for mutations. Recover uncertain outcomes with receipts_get using the original operation and requestId; do not create a replacement request. Preserve actual tool errors and follow their retryAdvice. Do not run CLI discovery or switch to CLI after a tool error."
 	}

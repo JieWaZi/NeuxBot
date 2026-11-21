@@ -517,6 +517,8 @@ func (*unavailableIMLeadExecution) Start(context.Context, execution.WorkIntent) 
 	return execution.AcceptedExecution{}, status_error.RuntimeUnavailable
 }
 
+func (*unavailableIMLeadExecution) IsSubmissionStopped(string, string) bool { return false }
+
 // imRecoveryQueuedResult 替代团队派发，队列接纳由真实 SQLite 保持。
 type imRecoveryQueuedResult struct {
 	// Service 提供用例中未调用的团队端口。

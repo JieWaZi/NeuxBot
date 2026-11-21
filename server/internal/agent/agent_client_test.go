@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -602,6 +603,31 @@ func TestNativeLaunchEnvironmentExcludesHostCLIConfiguration(t *testing.T) {
 	}
 	if values["PATH"] != "/native/tools" || values["PLUGIN_RESOURCE"] != "ready" {
 		t.Fatalf("ordinary runtime environment changed: %v", values)
+	}
+}
+
+func TestNativeLaunchEnvironmentPrependsBundledBotCLIToResourcePath(t *testing.T) {
+	root := t.TempDir()
+	bundled := filepath.Join(root, "bundled")
+	plugin := filepath.Join(root, "plugin")
+	inherited := filepath.Join(root, "inherited")
+	separator := string(filepath.ListSeparator)
+	launch := ProviderLaunch{
+		BaseEnvironment:   map[string]string{"PATH": inherited},
+		BotCLIContextFile: filepath.Join(root, "connection.json"),
+		BotCLIExecutable:  filepath.Join(bundled, constants.AgentCLIBinaryName),
+	}
+	resources := ResourceLease{Environment: map[string]string{"PATH": strings.Join([]string{plugin, inherited, bundled}, separator)}}
+	env, err := nativeLaunchEnvironment(constants.RuntimeIDPi, launch, AccountLease{}, LaunchAuthLease{}, resources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Join([]string{bundled, plugin, inherited}, separator)
+	if !slices.Contains(env, "PATH="+want) {
+		t.Fatalf("native PATH should resolve the bundled CLI before resource and inherited tools: %q", env)
+	}
+	if launch.BaseEnvironment["PATH"] != inherited || resources.Environment["PATH"] != strings.Join([]string{plugin, inherited, bundled}, separator) {
+		t.Fatal("native PATH setup changed its input environments")
 	}
 }
 

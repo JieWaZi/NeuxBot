@@ -6,8 +6,6 @@ package constants
 type WorkflowCapabilityScope string
 
 const (
-	// WorkflowCapabilityScopeCreation 只允许当前工作流的创作操作。
-	WorkflowCapabilityScopeCreation WorkflowCapabilityScope = "creation"
 	// WorkflowCapabilityScopeResult 只允许当前节点尝试查询格式和提交结果。
 	WorkflowCapabilityScopeResult WorkflowCapabilityScope = "result"
 	// WorkflowCapabilityScopeConsumer 只允许当前执行获准的工作流调用。

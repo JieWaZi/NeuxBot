@@ -1,21 +1,23 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useMemo } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 
 import { i18n } from "@/shared/i18n";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import type { BotChatMessage } from "../runtime/chat-projection";
 import { ChatMessageProjection } from "./chat-message-nodes";
-import { AssistantMessage } from "./chat-thread";
-import { ChatMessageContributionProvider } from "./chat-contributions";
+import { AssistantMessage, ChatMessageList } from "./chat-thread";
+import type { ChatFileOpenRequest } from "./chat-attachment";
 
 function MessageHarness({
   message,
   showUsageMetrics = true,
+  onOpenFile,
 }: {
   message: BotChatMessage;
   showUsageMetrics?: boolean;
+  onOpenFile?: (file: ChatFileOpenRequest) => void;
 }) {
   const view = useMemo(
     () => new ChatMessageProjection().update([message])[0],
@@ -31,6 +33,7 @@ function MessageHarness({
           latest
           last
           showUsageMetrics={showUsageMetrics}
+          onOpenFile={onOpenFile}
         />
       </TooltipProvider>
     </MemoryRouter>
@@ -86,21 +89,85 @@ it("等待输出和纯空白不显示空卡，有实际工具过程或正文后�
   expect(screen.queryByText("飞速运转")).toBeNull();
 });
 
-it("仅有领域贡献成果时仍展示消息卡", () => {
+it("只包含正式附件的助手消息可以打开受管成果", () => {
+  const onOpenFile = vi.fn();
   render(
-    <ChatMessageContributionProvider value={() => <p>工作流成果</p>}>
-      <MessageHarness
-        message={{
-          id: "contribution-only",
-          role: "assistant",
-          status: "running",
-        }}
-      />
-    </ChatMessageContributionProvider>,
+    <MessageHarness
+      message={{
+        id: "workflow-result",
+        role: "assistant",
+        status: "completed",
+        attachments: [
+          {
+            name: "审核报告.md",
+            path: "attachments/generated/review.md",
+            managed: true,
+          },
+        ],
+      }}
+      onOpenFile={onOpenFile}
+    />,
   );
+  fireEvent.click(screen.getByRole("button", { name: "审核报告.md" }));
+  expect(onOpenFile).toHaveBeenCalledWith({
+    name: "审核报告.md",
+    path: "attachments/generated/review.md",
+  });
+});
+
+it("用户卡和回复卡使用等高的操作栏，回复行没有额外的底部留白", () => {
+  const views = new ChatMessageProjection().update([
+    { id: "input", role: "user", content: "你是谁" },
+    {
+      id: "reply",
+      role: "assistant",
+      status: "completed",
+      displayParts: [{ type: "text", text: "我是你的伙伴。" }],
+    },
+    { id: "next", role: "user", content: "继续" },
+  ]);
+  const { container } = render(<ChatMessageList views={views} name="伙伴" />);
+  for (const id of ["reply", "input", "next"]) {
+    const row = container.querySelector(`[data-message-id="${id}"]`);
+    const footer = row?.querySelector("footer");
+    expect(row).toHaveClass("mt-1");
+    expect(row).not.toHaveClass("pb-4");
+    expect(footer).toHaveClass("mt-1", "flex", "min-h-control-sm");
+  }
+});
+
+it("一条已有接纳回执的运行位于来源输入之后，即使下一条聊天输入先显示", () => {
+  const views = new ChatMessageProjection().update([
+    { id: "origin", role: "user", content: "执行评审", createdAt: 10 },
+    { id: "later", role: "user", content: "下个任务", createdAt: 20 },
+  ]);
+  render(
+    <MemoryRouter>
+      <TooltipProvider>
+        <ChatMessageList
+          name="验收伙伴"
+          views={views}
+          timelineEvents={[
+            {
+              id: "received-run",
+              createdAt: 30,
+              afterMessageId: "origin",
+              content: <button>评审 · 执行中</button>,
+            },
+          ]}
+        />
+      </TooltipProvider>
+    </MemoryRouter>,
+  );
+  const source = screen.getByText("执行评审");
+  const marker = screen.getByRole("button", { name: "评审 · 执行中" });
+  const next = screen.getByText("下个任务");
   expect(
-    screen.getByText("工作流成果").closest("[data-chat-message-card]"),
-  ).not.toBeNull();
+    source.compareDocumentPosition(marker) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    marker.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
 });
 
 it("思考后的纯换行不占段落高度，也不把连续网络工具拆成多个活动组", () => {

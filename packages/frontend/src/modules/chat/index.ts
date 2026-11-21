@@ -44,17 +44,6 @@ export { ChatGroupHeader } from "./components/chat-group-header";
 
 export { RetainedChatPageContent } from "./pages/retained-chat-page";
 
-export {
-  ChatContributionsProvider,
-  ChatMessageContributionProvider,
-  useOpenWorkbenchContent,
-} from "./components/chat-contributions";
-export type {
-  ChatContributionScopeProps,
-  WorkbenchContributionProps,
-} from "./components/chat-contributions";
-export type { WorkbenchContentReference } from "./workbench/workbench-model";
-
 export { ChatComposerPanel } from "./components/chat-composer-panel";
 export { NewChatComposer } from "./components/new-chat-composer";
 

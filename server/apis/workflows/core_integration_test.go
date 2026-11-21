@@ -4,6 +4,7 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -12,22 +13,28 @@ import (
 	"testing"
 	"time"
 
+	chatsapi "github.com/JieWaZi/NeuxBot/server/apis/chats"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/agent/agentfixture"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
+	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -180,7 +187,16 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime workflowFixtu
 	if err != nil {
 		t.Fatal(err)
 	}
-	chats, err := chatservice.New(chatservice.Config{StorageDirectory: directory, Conversations: conversations, Projects: projects, QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: transactions}})
+	var fixture *workflowFixture
+	var core execution.Core
+	chats, err := chatservice.New(chatservice.Config{StorageDirectory: directory, Conversations: conversations, Projects: projects,
+		PrepareDelete: func(ctx context.Context, chatIDs []string) error {
+			return fixture.FailChatRuns(ctx, chatIDs)
+		},
+		StopExecution: func(ctx context.Context, chatID string) error {
+			return core.CancelAndWait(ctx, chatID)
+		},
+		QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: transactions}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +216,10 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime workflowFixtu
 	}
 	providers := agentapi.NewProviderRuntime(providerOptions)
 	threads := agentapi.NewThreadLifecycle(providers, conversations)
-	core, err := execution.New(execution.Config{
+	core, err = execution.New(execution.Config{
+		BindLocalWorkflowTurn: func(ctx context.Context, chat models.Chat, executionID string, selected *workinput.WorkflowReference, creationSessionID string) (execution.WorkflowTurnBinding, error) {
+			return fixture.BindLocalWorkflowTurn(ctx, chat, executionID, selected, creationSessionID)
+		},
 		Threads: threads, Accounts: accounts, ResolveAccount: resolve, RuntimeSummaries: catalog.Runtimes(),
 		Journal: chats, DormantChats: chats,
 		Agent: registry, AgentEndpoint: endpoint.URL + constants.AgentCLIPath, AgentBinary: fixtureCLIBinary, Events: hub,
@@ -218,7 +237,8 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime workflowFixtu
 	if len(domain) != 0 && domain[0] {
 		worker = domainWorkflowWorker{CoreWorkerAdapter: workflow.CoreWorkerAdapter{Executions: core, Chats: chats}, model: runtime}
 	}
-	s := workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Events: hub, Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), CreationSessions: controllers.NewWorkflowCreationController(database.DB), Transactions: transactions, Executions: core, Chats: chats, Worker: worker, Wakers: wakers, Projects: projects, DataDirectory: directory})
+	s := workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Events: hub, Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Transactions: transactions, Executions: core, Chats: chats, Worker: worker, Wakers: wakers, Projects: projects, DataDirectory: directory})
+	fixture = s
 	if err := s.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -286,6 +306,128 @@ func awaitFixtureState(t *testing.T, s *workflowFixture, id string, ready func(c
 	}
 	t.Fatalf("fixture timed out: runStatus=%s frames=%v", state.Run.Status, frames)
 	return state
+}
+
+// waitingWorkflowAfterSourceTurn 用真实日志接纳工作流，并结束先于它完成的原生回合。
+func waitingWorkflowAfterSourceTurn(t *testing.T, s *workflowFixture) (models.Chat, models.Execution, string) {
+	t.Helper()
+	ctx := t.Context()
+	definition := savedTestWorkflow(t, s, humanSource)
+	directory := filepath.Join(s.DataDirectory, "Agents", "fixture-waker")
+	if err := workspace.EnsureAgentWorkspace(directory, "fixture-waker"); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := filepath.EvalSymlinks(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceChat := models.Chat{ID: util.New(), WakerID: "fixture-waker", Title: "来源对话", WorkspaceDirectory: directory, AdditionalWorkingDirectories: []string{directory}}
+	sourceExecution := models.Execution{ID: util.New(), ChatID: sourceChat.ID, UserMessageID: util.New(), SubmissionID: "source-submission", RuntimeID: "codex", Model: "fixture", PermissionLevel: constants.PermissionLevelDefault, Status: constants.ExecutionStatusRunning}
+	encode := func(value any) json.RawMessage {
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+	facts := []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeCreated, Data: encode(eventlog.ChatCreatedData{WakerID: sourceChat.WakerID, WorkspaceDirectory: directory, AdditionalWorkingDirectories: []string{directory}, Title: sourceChat.Title})},
+		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: sourceExecution.UserMessageID, Data: encode(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: "运行人工关卡"})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: sourceExecution.ID, Data: encode(eventlog.ExecutionCreatedData{UserMessageID: sourceExecution.UserMessageID, SubmissionID: sourceExecution.SubmissionID, RuntimeID: "codex", Model: "fixture", PermissionLevel: constants.PermissionLevelDefault})},
+		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: sourceExecution.ID},
+	}
+	accepted, err := s.Chats.CommitAcceptedTurn(ctx, chatservice.StartedTurn{NewChat: true, Chat: sourceChat, Execution: sourceExecution, Facts: facts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, err := s.BindLocalWorkflowTurn(ctx, accepted.Chat, sourceExecution.ID, workinput.SelectWorkflow(definition.ID), "")
+	if err != nil || bound.Capability == nil {
+		t.Fatalf("workflow binding: %+v %v", bound, err)
+	}
+	var result capability.Result
+	for _, binding := range bound.Capability.Bindings {
+		if binding.Operation == "workflow.runs.start" {
+			result, err = binding.Call(ctx, capability.Request{Operation: binding.Operation, RequestID: "start-waiting-run", Params: map[string]any{"definitionId": definition.ID, "revisionId": definition.CurrentRevisionID, "args": map[string]any{}}})
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := result.Data.(map[string]any)
+	runID, _ := data["runId"].(string)
+	if runID == "" {
+		t.Fatalf("workflow has no accepted identity: %+v", result)
+	}
+	awaitFixtureState(t, s, runID, func(state controllers.WorkflowRunState) bool {
+		return state.Run.Status == constants.WorkflowRunStatusWaiting && len(state.Humans) > 0
+	})
+	terminal, err := s.Chats.CommitTerminal(ctx, chatservice.TerminalFact{Execution: sourceExecution, Type: constants.ChatEventTypeExecutionCompleted, Status: constants.ExecutionStatusCompleted, Data: encode(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Chats.PublishTerminal(terminal)
+	if summary, err := s.Chats.GetChatSummary(ctx, sourceChat.ID); err != nil || summary.Chat.ActiveExecutionID != "" {
+		t.Fatalf("source turn did not finish: %+v %v", summary, err)
+	}
+	return sourceChat, sourceExecution, runID
+}
+
+func TestDeletingSourceChatDirectlyFailsItsWaitingWorkflow(t *testing.T) {
+	ctx := t.Context()
+	s, _ := openCoreWorkflowPorts(t, t.TempDir(), &fixtureRuntime{calls: map[string]int{}}, fixtureEnvironment{})
+	sourceChat, _, runID := waitingWorkflowAfterSourceTurn(t, s)
+	previousExecution, previousChats, previousCreation, previousStorage := global.ExecutionService, global.ChatService, global.WorkflowCreationControllerManager, global.StorageService
+	global.ExecutionService, global.ChatService, global.WorkflowCreationControllerManager, global.StorageService = s.Executions, s.Chats, s.CreationSessions, nil
+	t.Cleanup(func() {
+		global.ExecutionService, global.ChatService, global.WorkflowCreationControllerManager, global.StorageService = previousExecution, previousChats, previousCreation, previousStorage
+	})
+	request, _ := gin.CreateTestContext(httptest.NewRecorder())
+	request.Request = httptest.NewRequest("DELETE", "/chats/"+sourceChat.ID, nil).WithContext(ctx)
+	if _, err := (&chatsapi.DeleteChat{ChatID: sourceChat.ID}).Output(request); err != nil {
+		t.Fatal(err)
+	}
+	state, err := s.Runs.LoadRunState(ctx, runID)
+	if err != nil || state.Run.Status != constants.WorkflowRunStatusFailed || state.Run.CompletedAt == nil || state.Run.ChatDeliveryFinishedAt == nil || state.Humans[0].Status != constants.WorkflowStepStatusFailed {
+		t.Fatalf("deleted source left a running or recoverable workflow: %+v %v", state, err)
+	}
+	if _, err := s.Chats.GetChatSummary(ctx, sourceChat.ID); workflowstate.ErrorKey(err) != status_error.ChatNotFound.Key() {
+		t.Fatalf("source chat was not deleted: %v", err)
+	}
+}
+
+func TestPublicChatCancelStopsWorkflowAfterSourceExecutionEnded(t *testing.T) {
+	for _, identity := range []string{"execution", "submission"} {
+		t.Run(identity, func(t *testing.T) {
+			ctx := t.Context()
+			s, _ := openCoreWorkflowPorts(t, t.TempDir(), &fixtureRuntime{calls: map[string]int{}}, fixtureEnvironment{})
+			sourceChat, sourceExecution, runID := waitingWorkflowAfterSourceTurn(t, s)
+			previousExecution, previousChats, previousWorkflow := global.ExecutionService, global.ChatService, global.WorkflowService
+			global.ExecutionService, global.ChatService, global.WorkflowService = s.Executions, s.Chats, s.Service
+			t.Cleanup(func() {
+				global.ExecutionService, global.ChatService, global.WorkflowService = previousExecution, previousChats, previousWorkflow
+			})
+			request, _ := gin.CreateTestContext(httptest.NewRecorder())
+			request.Request = httptest.NewRequest("POST", "/chats/"+sourceChat.ID+"/cancel", nil).WithContext(ctx)
+			operator := &chatsapi.CancelChatExecution{ChatID: sourceChat.ID}
+			if identity == "execution" {
+				operator.ExecutionID = sourceExecution.ID
+			} else {
+				operator.SubmissionID = sourceExecution.SubmissionID
+			}
+			if err := operator.Validate(request); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := operator.Output(request); err != nil {
+				t.Fatal(err)
+			}
+			awaitFixtureState(t, s, runID, func(state controllers.WorkflowRunState) bool {
+				return state.Run.Status == constants.WorkflowRunStatusCancelled
+			})
+			if _, err := s.Chats.GetChatSummary(ctx, sourceChat.ID); err != nil {
+				t.Fatalf("explicit cancellation deleted its source chat: %v", err)
+			}
+		})
+	}
 }
 
 func TestF1DomainWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T) {
@@ -374,12 +516,12 @@ func TestF1DomainWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T) {
 	}
 }
 
-func TestWorkerScopedConnectorPolicyRejectsBeforeNativeDispatch(t *testing.T) {
+func TestWorkerInheritedConnectorPolicyKeepsDispatchAndResults(t *testing.T) {
 	directory := t.TempDir()
 	runtime := &fixtureRuntime{calls: map[string]int{}}
-	s, _ := openCoreWorkflowFixture(t, directory, runtime)
+	s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{}, true)
 	ctx := context.Background()
-	source := `export const meta={sdk:'bot.workflow',title:'内部能力',description:'系统结果提交不属于业务工具白名单',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('整理',{id:'facts',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object'},toolPolicy:{connectors:{mode:'allowlist',connectorIds:[]}}});`
+	source := `export const meta={sdk:'bot.workflow',title:'内部能力',description:'通过原生执行交付工作流结果',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('整理',{id:'facts',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object'},toolPolicy:{connectors:{mode:'inherit'},nativeTools:{mode:'inherit'}}});`
 	definition := savedTestWorkflow(t, s, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "system-reference", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture", PermissionLevel: constants.PermissionLevelFullAccess}})
 	if err != nil {
@@ -388,16 +530,12 @@ func TestWorkerScopedConnectorPolicyRejectsBeforeNativeDispatch(t *testing.T) {
 	state := awaitFixtureState(t, s, run.ID, func(state controllers.WorkflowRunState) bool {
 		return workflowstate.TerminalRun(state.Run.Status)
 	})
-	if len(state.Effects) != 1 || state.Effects[0].Failure == nil || state.Run.Status != constants.WorkflowRunStatusFailed {
-		t.Fatalf("scoped worker escaped resource admission: %+v", state.Effects)
-	}
-	failure, _ := state.Effects[0].Failure.Data.(map[string]any)
-	if failure["code"] != status_error.RuntimePolicyUnsupported.Key() || state.Effects[0].Candidate != nil {
-		t.Fatalf("unexpected scope failure: %+v", failure)
+	if len(state.Effects) != 1 || state.Effects[0].Failure != nil || state.Run.Status != constants.WorkflowRunStatusSucceeded || state.Run.Result == nil {
+		t.Fatalf("inherited policy failed dispatch or results: status=%s result=%+v", state.Run.Status, state.Run.Result)
 	}
 	runtime.mutex.Lock()
 	defer runtime.mutex.Unlock()
-	if len(runtime.calls) != 0 {
-		t.Fatal("rejected worker submitted a native prompt")
+	if len(runtime.calls) != 1 || runtime.calls["facts"] != 1 {
+		t.Fatalf("inherited policy did not dispatch the intended worker: %v", runtime.calls)
 	}
 }

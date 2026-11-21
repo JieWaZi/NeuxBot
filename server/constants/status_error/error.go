@@ -70,6 +70,15 @@ const (
 )
 
 const (
+	// @errZH 无法为当前用户安装 botcli
+	// @errEN botcli could not be installed for the current user
+	BotCLIInstallationFailed StatusError = http.StatusInternalServerError*1e8 + 9002
+	// @errZH botcli 安装路径已被其他文件占用
+	// @errEN another file already occupies the botcli installation path
+	BotCLIInstallationConflict StatusError = http.StatusConflict*1e8 + 9003
+)
+
+const (
 	// @errZH 正在处理其他数据，请稍后重试
 	// @errEN processing other data; please try again later
 	DatabaseBusy StatusError = http.StatusServiceUnavailable*1e8 + 1001

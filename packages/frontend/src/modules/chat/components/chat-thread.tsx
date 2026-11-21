@@ -22,7 +22,6 @@ import {
   usePresentedChatBoundary,
   useVisibleScene,
 } from "@/shared/api/chat-reading";
-import { useChatMessageContribution } from "./chat-contributions";
 import { ChatForkContext, MessageForkAction } from "./chat-fork";
 import {
   Link,
@@ -155,6 +154,12 @@ import {
   type ChatComposerDraftReference,
   type ChatComposerContextReference,
 } from "./chat-composer-input";
+import type { ChatWorkflowPicker } from "./chat-workflow-reference";
+import { ChatMessageReferenceChip } from "./chat-reference-chip";
+import {
+  CancelWorkflowInvocation,
+  type WorkflowInvocationStop,
+} from "./chat-workflow-cancel";
 import { chatContentColumnClassName } from "./chat-layout";
 import {
   ChatMessageConnectorReferences,
@@ -210,6 +215,7 @@ type ChatThreadProps = {
   /** 团队作者索引；空索引沿用当前成员身份，并保留历史回复的身份展示。 */
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
   timelineEvents?: readonly ChatTimelineEvent[];
+  workflowInvocation?: WorkflowInvocationStop;
   activityStatus?: ReactNode;
   isRunning?: boolean;
   isWorkRunning?: boolean;
@@ -237,6 +243,8 @@ type ChatThreadProps = {
   composerSkillsError?: boolean;
   composerPlugins?: ChatPluginOption[];
   composerPluginsError?: boolean;
+  composerWorkflowPicker?: ChatWorkflowPicker;
+  composerSendBlocked?: boolean;
   selectedPluginIds?: string[];
   onPluginSelectionChange?: (ids: string[]) => void;
   composerConnectors?: ChatConnectorOption[];
@@ -281,6 +289,7 @@ type ChatThreadProps = {
   isLoadingEarlier: boolean;
   onLoadEarlier: () => Promise<void>;
   warning?: string;
+  warningAction?: ReactNode;
   requestedInteractionId?: string;
   pendingApprovals?: PendingApproval[];
   approvalSubmissionState?: ApprovalSubmissionState;
@@ -298,6 +307,7 @@ export type ChatTimelineEvent = {
   id: string;
   createdAt: number;
   beforeMessageId?: string;
+  afterMessageId?: string;
   content: ReactNode;
 };
 
@@ -764,6 +774,7 @@ const MessageWorkProcess = memo(function MessageWorkProcess({
   terminal,
   metrics,
   showUsageMetrics,
+  focusedProcessElementRef,
 }: {
   group: ChatProcessGroup;
   currentKey?: string;
@@ -771,6 +782,7 @@ const MessageWorkProcess = memo(function MessageWorkProcess({
   terminal: boolean;
   metrics?: ChatRunMetrics;
   showUsageMetrics: boolean;
+  focusedProcessElementRef: RefObject<Element | null>;
 }) {
   const { t } = useTranslation("chat");
   const durationMs = metrics?.durationMs;
@@ -779,16 +791,23 @@ const MessageWorkProcess = memo(function MessageWorkProcess({
     () => reading?.get(group.key) ?? false,
   );
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const focusedInside = useRef(false);
   // 完成前后保留同一容器，让 open → closed 触发现有高度退出动画。
   const open = !completed || expanded;
   const contentId = useId();
   useLayoutEffect(() => {
-    if (!open && focusedInside.current && !document.hidden) {
+    const focused = focusedProcessElementRef.current;
+    // 完成时多个过程段会合并，焦点也可能来自已卸载的后续过程段。
+    if (
+      !open &&
+      focused &&
+      !document.hidden &&
+      (document.activeElement === focused ||
+        document.activeElement === document.body)
+    ) {
+      focusedProcessElementRef.current = null;
       triggerRef.current?.focus({ preventScroll: true });
-      focusedInside.current = false;
     }
-  }, [open]);
+  }, [open, focusedProcessElementRef]);
   const label =
     durationMs !== undefined
       ? t("completedProcessDuration", {
@@ -825,15 +844,16 @@ const MessageWorkProcess = memo(function MessageWorkProcess({
         trigger
       )}
       <CollapsibleContent
-        onFocusCapture={() => {
-          focusedInside.current = true;
+        onFocusCapture={(event) => {
+          focusedProcessElementRef.current = event.target;
         }}
         onBlurCapture={(event) => {
           if (
+            focusedProcessElementRef.current === event.target &&
             event.relatedTarget instanceof Node &&
             !event.currentTarget.contains(event.relatedTarget)
           )
-            focusedInside.current = false;
+            focusedProcessElementRef.current = null;
         }}
         id={contentId}
         data-motion={completed ? "presence" : "none"}
@@ -894,8 +914,7 @@ function ChatMessageParts({
   showUsageMetrics: boolean;
 }) {
   const terminal = isTerminalMessage(view.message);
-  // 总用时属于整次执行；分散在正文之间的过程段不能各自重复认领。
-  const metricsGroup = view.segments.find((segment) => "kind" in segment);
+  const focusedProcessElementRef = useRef<Element | null>(null);
   const finalSegment = view.segments.at(-1);
   const finalNode =
     finalSegment && "kind" in finalSegment
@@ -915,8 +934,9 @@ function ChatMessageParts({
             currentKey={currentKey}
             completed={view.message.status === "completed"}
             terminal={terminal}
-            metrics={segment === metricsGroup ? metrics : undefined}
+            metrics={metrics}
             showUsageMetrics={showUsageMetrics}
+            focusedProcessElementRef={focusedProcessElementRef}
           />
         ) : (
           <ChatPart key={segment.key} node={segment} terminal={terminal} />
@@ -1100,6 +1120,9 @@ export function MessageRunStatus({
   );
 }
 
+const messageFooterLayoutClassName =
+  "mt-1 flex min-h-control-sm items-center gap-1";
+
 function UserMessage({
   message,
   availableSkillIds,
@@ -1134,7 +1157,7 @@ function UserMessage({
       data-role="user"
       className="group/user-message mt-1 px-6"
     >
-      <div className="ml-auto grid w-fit max-w-[78%] min-w-0 justify-items-end gap-1">
+      <div className="ml-auto grid w-fit max-w-[78%] min-w-0 justify-items-end">
         <div className="bg-user-message-background text-user-message-content type-chat max-w-full min-w-0 overflow-hidden rounded-xl px-4 py-1.5">
           <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
             <ChatMessagePluginReferences
@@ -1151,6 +1174,12 @@ function UserMessage({
               wakerId={wakerId}
               availableConnectorIds={availableConnectorIds}
             />
+            {message.workflow?.name ? (
+              <ChatMessageReferenceChip
+                tone="workflow"
+                label={message.workflow.name}
+              />
+            ) : null}
             <ChatMessageAttachments
               attachments={message.attachments}
               onOpenFile={onOpenFile}
@@ -1182,10 +1211,15 @@ function UserMessage({
             </div>
           </div>
         </div>
-        <div className="duration-quick pointer-events-none opacity-0 transition-opacity group-focus-within/user-message:pointer-events-auto group-focus-within/user-message:opacity-100 group-hover/user-message:pointer-events-auto group-hover/user-message:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+        <footer
+          className={cn(
+            messageFooterLayoutClassName,
+            "duration-quick pointer-events-none opacity-0 transition-opacity group-focus-within/user-message:pointer-events-auto group-focus-within/user-message:opacity-100 group-hover/user-message:pointer-events-auto group-hover/user-message:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+          )}
+        >
           <MessageCopyAction message={message} />
           <MessageReadActions message={message} />
-        </div>
+        </footer>
       </div>
     </div>
   );
@@ -1350,7 +1384,7 @@ function ChatReplyMessage({
       data-role={message.role}
       className={cn(
         "group mt-1",
-        (children || footer) && "pb-4",
+        children && !footer && "pb-4",
         assistantMessageRowClassName,
       )}
     >
@@ -1366,7 +1400,12 @@ function ChatReplyMessage({
           </div>
         ) : null}
         {footer ? (
-          <footer className="duration-quick pointer-events-none mt-1 flex items-center gap-1 opacity-0 transition-opacity group-focus-within/reply:pointer-events-auto group-focus-within/reply:opacity-100 group-hover/reply:pointer-events-auto group-hover/reply:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+          <footer
+            className={cn(
+              messageFooterLayoutClassName,
+              "duration-quick pointer-events-none opacity-0 transition-opacity group-focus-within/reply:pointer-events-auto group-focus-within/reply:opacity-100 group-hover/reply:pointer-events-auto group-hover/reply:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+            )}
+          >
             {footer}
           </footer>
         ) : null}
@@ -1375,15 +1414,18 @@ function ChatReplyMessage({
   );
 }
 
-function ChatQuestionRow({
+export function ChatQuestionRow({
   children,
   compact = false,
+  interactionId,
 }: {
   children: ReactNode;
   compact?: boolean;
+  interactionId?: string;
 }) {
   return (
     <div
+      data-chat-interaction-id={interactionId}
       className={cn("py-2", compact ? "px-6" : assistantMessageRowClassName)}
     >
       <div className={compact ? undefined : "col-start-2 min-w-0"}>
@@ -1401,6 +1443,7 @@ export function AssistantMessage({
   name,
   avatar,
   messageAuthors,
+  onOpenFile,
   onOpenFileChange,
   showUsageMetrics = true,
   showFileChanges = true,
@@ -1412,6 +1455,7 @@ export function AssistantMessage({
   name: string;
   avatar?: string;
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
+  onOpenFile?: (file: ChatFileOpenRequest) => void;
   onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
   showUsageMetrics?: boolean;
   showFileChanges?: boolean;
@@ -1419,7 +1463,6 @@ export function AssistantMessage({
   const { t } = useTranslation("chat");
   const message = view.message;
   const messageID = message.id ?? "";
-  const contribution = useChatMessageContribution(messageID);
   const hasFileChanges =
     showFileChanges &&
     isTerminalMessage(message) &&
@@ -1427,7 +1470,7 @@ export function AssistantMessage({
     (message.fileChangeRecord?.totalFiles ?? 0) > 0;
   const hasContent =
     view.segments.length > 0 ||
-    Boolean(contribution) ||
+    Boolean(message.attachments?.length) ||
     (message.status === "canceled" && !continuation?.continued) ||
     (message.status === "failed" && !last);
   const showFooterActions =
@@ -1520,7 +1563,22 @@ export function AssistantMessage({
               metrics={continuation?.footerMessage.runMetrics}
               showUsageMetrics={showUsageMetrics}
             />
-            {contribution}
+            {message.attachments?.length ? (
+              <div className="flex flex-wrap items-start gap-1 py-1">
+                <ChatMessageAttachments
+                  attachments={message.attachments}
+                  onOpenFile={
+                    author?.sourceChatId && onOpenFile
+                      ? (file) =>
+                          onOpenFile({
+                            ...file,
+                            sourceChatId: author.sourceChatId,
+                          })
+                      : onOpenFile
+                  }
+                />
+              </div>
+            ) : null}
           </div>
           {message.status === "canceled" && !continuation?.continued ? (
             <p className="text-muted-foreground type-body mt-2">
@@ -1609,6 +1667,7 @@ const ChatMessage = memo(function ChatMessage({
       name={name}
       avatar={avatar}
       messageAuthors={messageAuthors}
+      onOpenFile={onOpenFile}
       onOpenFileChange={onOpenFileChange}
       showUsageMetrics={showUsageMetrics}
       showFileChanges={showFileChanges}
@@ -1807,7 +1866,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   const continuations = chatContinuations(views.map((view) => view.message));
   const latest = views.findLast((view) => !view.message.question);
   const events = timelineEvents
-    .filter((event) => !event.beforeMessageId)
+    .filter((event) => !event.beforeMessageId && !event.afterMessageId)
     .sort(
       (left, right) =>
         left.createdAt - right.createdAt || left.id.localeCompare(right.id),
@@ -1856,6 +1915,12 @@ export const ChatMessageList = memo(function ChatMessageList({
       ),
     );
     rows.push(view);
+    if (view.message.id)
+      rows.push(
+        ...timelineEvents.filter(
+          (event) => event.afterMessageId === view.message.id,
+        ),
+      );
   }
   rows.push(...events.slice(cursor));
   return (
@@ -1975,6 +2040,8 @@ const Composer = memo(function Composer({
   skillsError,
   plugins,
   pluginsError,
+  workflowPicker,
+  sendBlocked = false,
   selectedPluginIds,
   onPluginSelectionChange,
   connectors,
@@ -2027,6 +2094,8 @@ const Composer = memo(function Composer({
   skillsError: boolean;
   plugins: ChatPluginOption[];
   pluginsError: boolean;
+  workflowPicker?: ChatWorkflowPicker;
+  sendBlocked?: boolean;
   selectedPluginIds: string[];
   onPluginSelectionChange: (ids: string[]) => void;
   connectors: ChatConnectorOption[];
@@ -2092,7 +2161,8 @@ const Composer = memo(function Composer({
         isRunning: effectiveIsRunning,
         isWorkRunning,
       });
-  const sendDisabled = disabled || (singleSubmission && effectiveIsRunning);
+  const sendDisabled =
+    disabled || sendBlocked || (singleSubmission && effectiveIsRunning);
   const prepareComposerSend = () => {
     if (waitingForAnswer || sendDisabled || !aui.composer.getState().canSend)
       return false;
@@ -2221,12 +2291,15 @@ const Composer = memo(function Composer({
                 disabled={
                   isWorkStopping || disabled || Boolean(currentApproval)
                 }
-                placeholder={t("placeholder")}
+                placeholder={t(
+                  workflowPicker ? "placeholderWithWorkflows" : "placeholder",
+                )}
                 ariaLabel={t("messageInput")}
                 skills={skills}
                 skillsError={skillsError}
                 plugins={plugins}
                 pluginsError={pluginsError}
+                workflowPicker={workflowPicker}
                 selectedPluginIds={selectedPluginIds}
                 onPluginSelectionChange={onPluginSelectionChange}
                 connectors={connectors}
@@ -2339,7 +2412,7 @@ const Composer = memo(function Composer({
                       disabled={
                         waitingForAnswer ||
                         isWorkStopping ||
-                        disabled ||
+                        sendDisabled ||
                         !composerCanSend
                       }
                       onClickCapture={prepareComposerSend}
@@ -2403,6 +2476,7 @@ function ChatThreadContent({
   wakerAvatar,
   messageAuthors,
   timelineEvents = [],
+  workflowInvocation,
   activityStatus,
   isRunning = false,
   isWorkRunning = false,
@@ -2426,6 +2500,8 @@ function ChatThreadContent({
   composerSkillsError = false,
   composerPlugins = emptyList,
   composerPluginsError = false,
+  composerWorkflowPicker,
+  composerSendBlocked,
   selectedPluginIds = emptyList,
   onPluginSelectionChange = ignoreChange,
   composerConnectors = emptyList,
@@ -2469,6 +2545,7 @@ function ChatThreadContent({
   errorScopes = emptyList,
   onRecoverSession,
   warning,
+  warningAction,
   requestedInteractionId,
   pendingApprovals = emptyList,
   approvalSubmissionState = "idle",
@@ -2586,6 +2663,13 @@ function ChatThreadContent({
         waitingForTurn={index > 0}
         onResolve={onResolveElicitation}
       />
+      {index === 0 && fileScopeChatId && workflowInvocation ? (
+        <CancelWorkflowInvocation
+          key={workflowInvocation.executionId}
+          chatId={fileScopeChatId}
+          {...workflowInvocation}
+        />
+      ) : null}
     </ChatQuestionRow>
   ));
   const visibleTimelineEvents = timelineEventsInMessageWindow(
@@ -2831,7 +2915,8 @@ function ChatThreadContent({
                       className="text-destructive size-icon-md mt-0.5 shrink-0"
                       strokeWidth={1.5}
                     />
-                    <span className="min-w-0">{warning}</span>
+                    <span className="min-w-0 flex-1">{warning}</span>
+                    {warningAction}
                   </div>
                 ) : null}
                 <AssistantRuntimeProvider runtime={runtime}>
@@ -2856,6 +2941,8 @@ function ChatThreadContent({
                     skillsError={composerSkillsError}
                     plugins={composerPlugins}
                     pluginsError={composerPluginsError}
+                    workflowPicker={composerWorkflowPicker}
+                    sendBlocked={composerSendBlocked}
                     selectedPluginIds={selectedPluginIds}
                     onPluginSelectionChange={onPluginSelectionChange}
                     connectors={composerConnectors}

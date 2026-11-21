@@ -13,6 +13,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
@@ -152,8 +153,10 @@ type scanner struct {
 	files map[fileIdentity]struct{}
 	// directories 避免同一目录经多个布局或挂载别名重复遍历。
 	directories map[fileIdentity]struct{}
-	// skills 复用本次扫描中的系统技能归属证据。
-	skills skillMeasurements
+	// systemSkillDirectories 缓存各受管工作目录的系统技能投影路径。
+	systemSkillDirectories map[string]map[string]struct{}
+	// systemSkillChatLayout 复用受管根的实际伙伴和团队执行布局。
+	systemSkillChatLayout *chatstorage.Layout
 	// visited 是两根已经检查的目录项总数。
 	visited int
 	// exhausted 标记两根共用的目录项预算耗尽。
@@ -435,7 +438,7 @@ func (s *scanner) addFile(root *os.Root, owner *scanRoot, relative string, name 
 	entry.Bytes = info.Size()
 	entry.ModifiedAt = info.ModTime()
 	entry.identity = identity
-	if entry.WakerID != "" && s.isSystemSkillCopy(owner, root, relative, name, info) {
+	if entry.Category == constants.StorageCategoryWorkFiles && s.isSystemSkillFile(owner, root, relative, name, info) {
 		entry.Category = constants.StorageCategoryPrograms
 	}
 	if _, seen := s.files[identity]; seen {

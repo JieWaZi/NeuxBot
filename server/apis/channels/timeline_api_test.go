@@ -71,6 +71,12 @@ func TestTeamMetadataAndTimelineHaveOneMessageSnapshotOwner(t *testing.T) {
 	if err := database.DB.Create(&models.ChannelThread{ID: "thread", ChannelID: "channel", LeadChatID: "lead-chat", ReadyAt: &ready}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := database.DB.Create(&models.WorkflowRun{
+		ID: "run", DefinitionID: "definition", RevisionID: "revision", SourceThreadID: "thread",
+		SourceChatID: "lead-chat", SourceExecutionID: "source-execution", Status: constants.WorkflowRunStatusWaiting,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := global.ChannelTaskControllerManager.Create(context.Background(), models.ChannelTask{
 		ID: "task", ThreadID: "thread", SenderWakerID: "lead", AssigneeWakerID: "replacement",
 		Status: constants.ChannelTaskStatusPending, ChangedPaths: []string{},
@@ -90,7 +96,11 @@ func TestTeamMetadataAndTimelineHaveOneMessageSnapshotOwner(t *testing.T) {
 	if teams.reads != 0 {
 		t.Fatalf("metadata request secretly read %d full timeline pages", teams.reads)
 	}
-	delegations := metadata.(ChannelThreadDetail).Delegations
+	detail := metadata.(ChannelThreadDetail)
+	if !detail.ActiveWorkflows {
+		t.Fatal("linked workflow was missing from team metadata")
+	}
+	delegations := detail.Delegations
 	if len(delegations) != 1 || delegations[0].AssigneeWakerID != "original" || delegations[0].CreatedAt != ready {
 		t.Fatalf("metadata lost accepted delegation history: %+v", delegations)
 	}

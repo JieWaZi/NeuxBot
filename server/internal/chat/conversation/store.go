@@ -313,6 +313,10 @@ func validChatChange(change agent.ConversationChange) bool {
 			if !validID(f.ExecutionID) && !validID(f.MessageID) {
 				return false
 			}
+		case constants.ChatEventTypeExecutionDelivery:
+			if !validID(f.ExecutionID) || f.ExecutionID != f.MessageID {
+				return false
+			}
 		case constants.ChatEventTypeExecutionCompleted,
 			constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
 			var fields map[string]json.RawMessage

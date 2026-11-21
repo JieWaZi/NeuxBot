@@ -1,4 +1,7 @@
-import { getWakerRecentProjectOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
+import {
+  getWakerRecentProjectOptions,
+  stopFirstChannelWorkMutation,
+} from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useInstalledPluginReferences } from "@/modules/plugin";
 import {
   useExecutionSelection,
@@ -16,6 +19,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type Dispatch,
@@ -55,6 +59,15 @@ import {
   useChatComposerControls,
   type ChatExecutionSelectionPatch,
 } from "../components/chat-composer-controls";
+import {
+  captureTeamComposerDraft,
+  hasChatComposerDraft,
+  useChatWorkflowPicker,
+  useTeamComposerDraftAttachments,
+  type ChatComposerDrafts,
+} from "../components/chat-workflow-reference";
+import { useChatWorkflowTimeline } from "../components/chat-workflow-timeline";
+import { Button } from "@/shared/ui/button";
 import { workspaceFilesOf } from "../model/chat-workspace-files";
 import { resolveGitWorkspaceDirectories } from "../model/git-workspace-directories";
 import { useChatWorkspaceBindings } from "../components/use-chat-workspace-bindings";
@@ -69,6 +82,9 @@ import {
 import { obsoleteTeamMemberTabIds } from "../model/team-member-tabs";
 import { useChatInteractions } from "../model/use-conversation-interactions";
 import { useChatRuntime } from "../runtime/use-chat-runtime";
+import { classifyChatSendFailure } from "../runtime/chat-send-failure";
+import { ApiError } from "@/shared/api/errors";
+import { applicationErrorKey } from "@/shared/api/error-presentation";
 import {
   useRouteSceneActive,
   useScenePresentationKey,
@@ -119,6 +135,40 @@ type TeamDraftConfigurations = Record<
   Record<string, TeamMemberExecutionConfig>
 >;
 
+function teamInputIdentity(requestScope: string, submissionId: string) {
+  const retire = () => clearStableCreateRequest(requestScope, submissionId);
+  return {
+    submissionId,
+    confirmAccepted: retire,
+    confirmRejected: (error: unknown) => {
+      if (!(error instanceof ApiError)) return false;
+      const code = applicationErrorKey(error.code);
+      if (code === "OperationCanceled") {
+        retire();
+        return true;
+      }
+      // 停止流程未结束或原命令仍在结算时，保留同一提交以便核对。
+      if (
+        code === "ChannelTaskStateConflict" ||
+        code === "CreateRequestInProgress" ||
+        code === "CreateRequestConflict"
+      )
+        return false;
+      const { kind } = classifyChatSendFailure(error);
+      if (
+        kind !== "rejected" &&
+        kind !== "active-execution" &&
+        code !== "RuntimeConfigurationInvalid" &&
+        code !== "RuntimePolicyUnsupported"
+      )
+        return false;
+      // 已写入队列的明确失败会按原身份重放，用户重新发送形成新输入。
+      if (error.status !== 429) retire();
+      return true;
+    },
+  };
+}
+
 /** 团队主聊天与成员工作区分别拥有呈现生命周期，首发沿用 Scene 身份。 */
 export function TeamChatPageContent(props: TeamChatPageContentProps) {
   const scopeKey = useScenePresentationKey(props.presentationScopeKey);
@@ -141,6 +191,11 @@ export function TeamChatPageContent(props: TeamChatPageContentProps) {
     if (primary) workspace.dispatch({ type: "select-tab", tabId: primary.id });
   }, [requestedMessage, routeKey, sceneActive, workspace, workspaceScopeKey]);
   const memberConfigurations = useState<TeamDraftConfigurations>({});
+  const [composerDrafts] = useState<ChatComposerDrafts>(() => new Map());
+  const [, notifyComposerDraftRestored] = useReducer(
+    (revision: number) => revision + 1,
+    0,
+  );
   const createdTeamThreadIds = useRef(new Map<ChatScopeKey, string>());
   const member = workspace.snapshot.tabs.find(
     (tab) => tab.id === workspace.snapshot.activeTabId && tab.kind === "member",
@@ -153,6 +208,8 @@ export function TeamChatPageContent(props: TeamChatPageContentProps) {
       workspaceScopeKey={workspaceScopeKey}
       memberConfigurations={memberConfigurations}
       createdTeamThreadIds={createdTeamThreadIds}
+      composerDrafts={composerDrafts}
+      notifyComposerDraftRestored={notifyComposerDraftRestored}
     />
   );
 }
@@ -165,6 +222,8 @@ function TeamChatView({
   workspaceScopeKey,
   memberConfigurations,
   createdTeamThreadIds,
+  composerDrafts,
+  notifyComposerDraftRestored,
 }: TeamChatPageContentProps & {
   workspaceScopeKey: string;
   memberConfigurations: [
@@ -172,6 +231,8 @@ function TeamChatView({
     Dispatch<SetStateAction<TeamDraftConfigurations>>,
   ];
   createdTeamThreadIds: RefObject<Map<ChatScopeKey, string>>;
+  composerDrafts: ChatComposerDrafts;
+  notifyComposerDraftRestored: () => void;
 }) {
   const { t } = useTranslation("chat");
   const sceneActive = useRouteSceneActive();
@@ -276,6 +337,20 @@ function TeamChatView({
   const activeMemberWakerId = activeMemberTab?.wakerId;
   const activeChatId = activeMemberTab?.chatId ?? chatId;
   const isTeamMainChat = !activeMemberTab;
+  const composerDraftKey = JSON.stringify([
+    presentationScopeKey,
+    activeMemberTab?.chatId ?? "team-lead",
+  ]);
+  const {
+    workflow,
+    workflowOnly,
+    picker: workflowPicker,
+  } = useChatWorkflowPicker(composerDrafts, composerDraftKey, true, {
+    preserveTextDraft: true,
+  });
+  const workflowMentionConflict = Boolean(
+    isTeamMainChat && workflow && teamMentionWakerId,
+  );
   const currentChatKey = conversationKeyOf(workspaceScopeKey, activeChatId);
   const resetComposerScope = useCallback(() => {
     setSelectedSkillIDsByWaker({});
@@ -736,6 +811,23 @@ function TeamChatView({
   };
   const sendMemberMessage = useMutation(sendMessageMutation());
   const cancelMemberExecution = useMutation(cancelChatExecutionMutation());
+  const stopFirstWork = useMutation(stopFirstChannelWorkMutation());
+  const stopTeamWork = async (submissionId?: string) => {
+    if (!teamContext.threadId || teamContext.isStopping) return;
+    const operation = `team-stop:${teamContext.threadId}`;
+    const recovery = captureErrorNoticeRecovery(operation);
+    try {
+      await teamContext.onStopWork(submissionId);
+      resolveErrorNoticeRecovery(recovery);
+    } catch (error) {
+      reportChatError(
+        error,
+        `team:${teamContext.threadId}`,
+        t("team.stopWorkFailed"),
+        operation,
+      );
+    }
+  };
   const resolveApproval = useMutation(resolveApprovalMutation());
   const resolveElicitation = useMutation(resolveElicitationMutation());
   const notifyApproval = (approval: PendingApproval) => {
@@ -801,10 +893,19 @@ function TeamChatView({
       connectorIds: selectedConnectorIDs,
       selectedConnectors,
       codeReferences: selectedCodeReferences,
+      workflow,
+      workflowOnly,
     },
     onMessageAccepted: () => {
       clearComposer();
     },
+    captureDraft: (message) =>
+      captureTeamComposerDraft(
+        composerDrafts,
+        composerDraftKey,
+        message,
+        notifyComposerDraftRestored,
+      ),
     onMessageRejected: (selection) => {
       setComposerRestoreRevision((revision) => revision + 1);
       if (!selectedWakerID) return;
@@ -854,6 +955,7 @@ function TeamChatView({
         const body = {
           steerExecutionId: selection?.steerExecutionId,
           text,
+          workflowId: selection?.workflow?.id,
           accountId:
             selection?.accountId ?? executionSelection.selection.accountId,
           runtimeId: selection?.runtimeId ?? "",
@@ -873,9 +975,7 @@ function TeamChatView({
           body,
         );
         return {
-          submissionId,
-          confirmAccepted: () =>
-            clearStableCreateRequest(requestScope, submissionId),
+          ...teamInputIdentity(requestScope, submissionId),
           accept: () =>
             sendMemberMessage.mutateAsync({
               path: { chatId: memberChatId },
@@ -885,6 +985,7 @@ function TeamChatView({
       }
       const body = {
         text,
+        workflowId: selection?.workflow?.id,
         mentionWakerId: selection?.mentionWakerId,
         attachments: attachmentPaths.map((sourcePath) => ({ sourcePath })),
         skillIds: selection?.skillIds ?? [],
@@ -899,9 +1000,7 @@ function TeamChatView({
           body,
         );
         return {
-          submissionId,
-          confirmAccepted: () =>
-            clearStableCreateRequest(requestScope, submissionId),
+          ...teamInputIdentity(requestScope, submissionId),
           accept: () =>
             teamContext
               .onSendMessage({ ...body, submissionId })
@@ -930,12 +1029,13 @@ function TeamChatView({
         workingDirectory: selectedDraftProject ? undefined : workspaceDirectory,
       });
       return {
-        submissionId: createRequest.clientRequestId,
-        confirmAccepted: () =>
-          clearStableCreateRequest(
-            workspaceScopeKey,
-            createRequest.clientRequestId,
-          ),
+        ...teamInputIdentity(workspaceScopeKey, createRequest.clientRequestId),
+        cancel: async () => {
+          await stopFirstWork.mutateAsync({
+            path: { channelId: teamContext.channelId },
+            query: { clientRequestId: createRequest.clientRequestId },
+          });
+        },
         accept: () =>
           teamContext.onCreateThread(createRequest).then((result) => {
             const thread = result.thread;
@@ -966,33 +1066,21 @@ function TeamChatView({
           }),
       };
     },
-    cancel: async () => {
+    cancel: async (target) => {
       const invocation = chatInvocationGuard.capture(
         activeChatId,
         runtimeQueueKey,
       );
       if (!chatInvocationGuard.isCurrent(invocation)) return;
-      if (activeMemberTab?.chatId && invocation.chatId) {
+      if (!isTeamMainChat) {
+        if (!target || !invocation.chatId) return;
         await cancelMemberExecution.mutateAsync({
           path: { chatId: invocation.chatId },
+          query: target,
         });
         return;
       }
-      if (!teamContext.threadId) return;
-      const operation = `team-stop:${teamContext.threadId}`;
-      const recovery = captureErrorNoticeRecovery(operation);
-      try {
-        await teamContext.onStopWork();
-        resolveErrorNoticeRecovery(recovery);
-      } catch (error) {
-        reportChatError(
-          error,
-          `team:${teamContext.threadId}`,
-          t("team.stopWorkFailed"),
-          operation,
-        );
-        throw error;
-      }
+      return stopTeamWork(target?.submissionId);
     },
     onSettled: (result, invocation) => {
       if (!isTeamMainChat)
@@ -1207,6 +1295,49 @@ function TeamChatView({
       member: { chatId: member.chatId, label: member.name, wakerId: member.id },
     });
   };
+  const { addPastedFiles, attachmentsPending } =
+    useTeamComposerDraftAttachments(
+      chatRuntime.runtime.thread.composer,
+      composerDrafts,
+      composerDraftKey,
+    );
+  const mentionedWorkflowMember = workflowMentionConflict
+    ? teamContext.members.find(
+        (member) => member.id === teamMentionWakerId && !member.isLead,
+      )
+    : undefined;
+  const memberDraftKey = mentionedWorkflowMember?.chatId
+    ? JSON.stringify([presentationScopeKey, mentionedWorkflowMember.chatId])
+    : undefined;
+  const memberDraftOccupied = Boolean(
+    memberDraftKey && hasChatComposerDraft(composerDrafts, memberDraftKey),
+  );
+  const moveWorkflowDraft =
+    memberDraftKey && !memberDraftOccupied
+      ? () => {
+          const draft = composerDrafts.get(composerDraftKey);
+          if (
+            !draft?.document ||
+            !mentionedWorkflowMember ||
+            hasChatComposerDraft(composerDrafts, memberDraftKey)
+          )
+            return;
+          composerDrafts.set(memberDraftKey, {
+            ...draft,
+            document: {
+              ...draft.document,
+              content: draft.document.content?.map((block) => ({
+                ...block,
+                content: block.content?.filter(
+                  (node) => node.attrs?.referenceType !== "member",
+                ),
+              })),
+            },
+          });
+          composerDrafts.delete(composerDraftKey);
+          openTeamMember(mentionedWorkflowMember.id);
+        }
+      : undefined;
   const viewingMemberId = activeMemberWakerId ?? teamContext.leadWakerId;
   const delegationEvents = groupTeamDelegations(
     teamContext.delegations ?? [],
@@ -1232,22 +1363,6 @@ function TeamChatView({
       />
     ),
   }));
-  const stopTeamWork = () => {
-    if (!teamContext.threadId || teamContext.isStopping) return;
-    const operation = `team-stop:${teamContext.threadId}`;
-    const recovery = captureErrorNoticeRecovery(operation);
-    void teamContext
-      .onStopWork()
-      .then(() => resolveErrorNoticeRecovery(recovery))
-      .catch((error: unknown) => {
-        reportChatError(
-          error,
-          `team:${teamContext.threadId}`,
-          t("team.stopWorkFailed"),
-          operation,
-        );
-      });
-  };
   const displayedTeamMessages = useMemo(() => {
     if (!isTeamMainChat) return chatRuntime.messages;
     const seen = new Set(
@@ -1270,6 +1385,13 @@ function TeamChatView({
       ...chatRuntime.messages.filter((message) => message.optimistic),
     ];
   }, [chatRuntime.messages, isTeamMainChat, teamContext.timeline]);
+  const workflowTimeline = useChatWorkflowTimeline({
+    chatId: activeChatId,
+    scopeKey: workspaceScopeKey,
+    active: sceneActive,
+    messages: displayedTeamMessages,
+    onOpenWorkbench: () => setChatRightPanel("workspace"),
+  });
   const chatAdapter: ChatWorkspaceAdapter = {
     identity: {
       chatId: activeChatId,
@@ -1306,7 +1428,8 @@ function TeamChatView({
       wakerId: conversationWakerId,
       wakerAvatar: conversationAvatar,
       messageAuthors: teamMessageAuthors,
-      timelineEvents: delegationEvents,
+      timelineEvents: [...delegationEvents, ...workflowTimeline.events],
+      workflowInvocation: workflowTimeline.workflowInvocation,
       activityStatus:
         teamMainChat && teamContext.workProgress.phase !== "idle" ? (
           <TeamWorkStatus
@@ -1342,6 +1465,10 @@ function TeamChatView({
       composerSkillsError: skillsQuery.isError,
       composerPlugins: enabledPlugins,
       composerPluginsError: pluginsQuery.isError,
+      composerWorkflowPicker: workflowPicker
+        ? { ...workflowPicker, addPastedFiles }
+        : undefined,
+      composerSendBlocked: workflowMentionConflict || attachmentsPending,
       selectedPluginIds: selectedPluginIDs,
       onPluginSelectionChange: setSelectedPluginIDs,
       composerConnectors: enabledConnectors,
@@ -1396,7 +1523,18 @@ function TeamChatView({
           : messagesQuery
               .fetchNextPage({ cancelRefetch: false, throwOnError: true })
               .then(() => {}),
-      warning: permissionWarning || undefined,
+      warning: workflowMentionConflict
+        ? t(
+            memberDraftOccupied
+              ? "workflow.memberDraftOccupied"
+              : "workflow.useMemberConversation",
+          )
+        : permissionWarning || undefined,
+      warningAction: moveWorkflowDraft ? (
+        <Button variant="ghost" size="sm" onClick={moveWorkflowDraft}>
+          {t("workflow.moveToMember")}
+        </Button>
+      ) : undefined,
       requestedInteractionId:
         requestedInteraction &&
         (requestedMemberChat

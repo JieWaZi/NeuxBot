@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -36,6 +37,20 @@ type WorkflowRunState struct {
 
 // WorkflowRunController 只暴露接纳、租约、快照提交和有界查询。
 type WorkflowRunController interface {
+	// FailChatRuns 随会话删除直接终结其来源运行及节点任务，返回需要停止的实际执行。
+	FailChatRuns(context.Context, []string, int64) (WorkflowChatFailure, error)
+	// OwnedInputRunIDs identifies the durable runs that own inputs left by interrupted admission.
+	OwnedInputRunIDs(context.Context, string, []string) ([]string, error)
+	// ListChatRunSources 按聊天与明确的发起回合读取运行，包括已移除的历史标记。
+	ListChatRunSources(context.Context, string, []string) ([]models.WorkflowRun, error)
+	// ListVisibleChatRunSources 在同一读事务内读取可用的来源运行窗口和总量。
+	ListVisibleChatRunSources(ctx context.Context, chatID string, offset, limit int) ([]models.WorkflowRun, int64, error)
+	// HasChatRunSources 按聊天身份判断是否存在来源运行，不建立进程内历史状态。
+	HasChatRunSources(context.Context, string) (bool, error)
+	// RequestTeamChatRunStop 按持久来源登记团队工作流停止，保留 Runner 原有租约。
+	RequestTeamChatRunStop(ctx context.Context, threadID string, chatIDs []string, at int64) ([]models.WorkflowRun, error)
+	// ListChatRunRequests 批量读取来源运行及其受管子流程的人工问题与授权。
+	ListChatRunRequests(context.Context, []models.WorkflowRun, int64) (map[string][]WorkflowChatRequest, error)
 	// NodeCounts 读取所有实际实例的按职责和状态分组计数，不用静态节点数估算进度。
 	NodeCounts(context.Context, string) ([]WorkflowNodeCount, error)
 	// CountReservedEffects 统计跨进程事务内预留而尚未终止的真实外部调用槽。
@@ -58,6 +73,8 @@ type WorkflowRunController interface {
 	CountTreeRuns(context.Context, string) (int64, error)
 	// ListJoinedChildren 读取跟随父运行生命周期的子运行。
 	ListJoinedChildren(context.Context, string) ([]models.WorkflowRun, error)
+	// ListJoinedRetryConflicts 返回已有未知效果的 joined 分支入口。
+	ListJoinedRetryConflicts(context.Context, models.WorkflowRun) ([]string, error)
 	// ReleaseLeases 在关闭时释放当前服务的非终态租约。
 	ReleaseLeases(context.Context, string, int64) error
 	// CreateRun 在接纳事务中插入运行和根帧。
@@ -76,6 +93,13 @@ type WorkflowRunController interface {
 	DeleteRunHistory(context.Context, string, string, int64) error
 	// ListRunnable 返回仍需调度或对账的有界运行。
 	ListRunnable(context.Context, int) ([]models.WorkflowRun, error)
+	// ListPendingChatDeliveries 返回终态后尚未结算附件的来源运行身份。
+	ListPendingChatDeliveries(context.Context, string, int) ([]models.WorkflowRun, error)
+	// FinishChatRunFiles 结算附件交付，并保存原快照验证新发现的错误。
+	FinishChatRunFiles(ctx context.Context, chatID, runID, errorCode string, files map[string]models.WorkflowOutputFile, at int64) error
+	// FinishChatRunSummary 记录原回合已完成的手动补写。
+	FinishChatRunSummary(ctx context.Context, chatID, runID string, at int64) error
+
 	// AcquireLease 续期或取得过期租约，首次接管增加 fence。
 	AcquireLease(context.Context, string, string, int64, int64) (models.WorkflowRun, bool, error)
 	// LoadRunState 读取一个运行全部持久执行事实。
@@ -191,6 +215,61 @@ func (c *workflowRunController) ListJoinedChildren(ctx context.Context, id strin
 	}
 	return values, nil
 }
+
+func (c *workflowRunController) ListJoinedRetryConflicts(ctx context.Context, source models.WorkflowRun) ([]string, error) {
+	rootID := source.RootRunID
+	if rootID == "" {
+		rootID = source.ID
+	}
+	db := controllerDB(ctx, c.db)
+	var links []models.WorkflowRun
+	if err := db.Select("id", "parent_run_id").Where("root_run_id = ? AND joined = ?", rootID, true).
+		Limit(constants.WorkflowMaxChildren + 1).Find(&links).Error; err != nil {
+		return nil, databaseError("list_workflow_retry_tree", rootID, err)
+	}
+	if len(links) > constants.WorkflowMaxChildren {
+		return nil, status_error.WorkflowStateInvalid
+	}
+	children := make(map[string][]string)
+	for _, link := range links {
+		children[link.ParentRunID] = append(children[link.ParentRunID], link.ID)
+	}
+	var descendantIDs []string
+	branches := map[string]string{source.ID: ""}
+	var collect func(string, string)
+	collect = func(id, branch string) {
+		if _, seen := branches[id]; seen {
+			return
+		}
+		branches[id] = branch
+		descendantIDs = append(descendantIDs, id)
+		for _, child := range children[id] {
+			collect(child, branch)
+		}
+	}
+	for _, branch := range children[source.ID] {
+		collect(branch, branch)
+	}
+	if len(descendantIDs) == 0 {
+		return nil, nil
+	}
+	var uncertainEffects []models.WorkflowEffect
+	if err := db.Select("DISTINCT run_id").Where("run_id IN ? AND status = ?", descendantIDs, constants.WorkflowStepStatusUnknown).Find(&uncertainEffects).Error; err != nil {
+		return nil, databaseError("list_workflow_retry_unknown_effects", rootID, err)
+	}
+	var uncertainCalls []models.WorkflowActionCall
+	if err := db.Select("DISTINCT run_id").Where("run_id IN ? AND status = ?", descendantIDs, constants.WorkflowStepStatusUnknown).Find(&uncertainCalls).Error; err != nil {
+		return nil, databaseError("list_workflow_retry_unknown_calls", rootID, err)
+	}
+	var blocked []string
+	for _, effect := range uncertainEffects {
+		blocked = append(blocked, branches[effect.RunID])
+	}
+	for _, call := range uncertainCalls {
+		blocked = append(blocked, branches[call.RunID])
+	}
+	return uniqueRowIDs(blocked), nil
+}
 func (c *workflowRunController) ReleaseLeases(ctx context.Context, owner string, now int64) error {
 	if err := controllerDB(ctx, c.db).Model(&models.WorkflowRun{}).Where("lease_owner = ?", owner).Update("lease_until", now).Error; err != nil {
 		return databaseError("release_workflow_leases", owner, err)
@@ -209,6 +288,19 @@ func NewWorkflowRunController(db *gorm.DB) WorkflowRunController {
 	return &workflowRunController{db: db}
 }
 
+func (c *workflowRunController) OwnedInputRunIDs(ctx context.Context, definitionID string, ids []string) ([]string, error) {
+	var owned []string
+	for batch := range slices.Chunk(uniqueRowIDs(ids), 128) {
+		var found []string
+		if err := controllerDB(ctx, c.db).Model(&models.WorkflowRun{}).Select("id").
+			Where("definition_id = ? AND id IN ?", definitionID, batch).Find(&found).Error; err != nil {
+			return nil, databaseError("read_workflow_input_owners", definitionID, err)
+		}
+		owned = append(owned, found...)
+	}
+	return owned, nil
+}
+
 func (c *workflowRunController) CreateRun(ctx context.Context, run models.WorkflowRun, fiber models.WorkflowFiber) error {
 	db := controllerDB(ctx, c.db)
 	if err := db.Create(&run).Error; err != nil {
@@ -220,6 +312,7 @@ func (c *workflowRunController) CreateRun(ctx context.Context, run models.Workfl
 	if err := c.pruneRunHistory(ctx, run.DefinitionID, time.Now().UnixMilli()); err != nil {
 		return err
 	}
+	publishChatWorkflowChanges(ctx, c.db, []models.WorkflowRun{run})
 	publishCommittedChange(ctx, c.db, "work-board", eventsResource("workflow_run", run.ID))
 	return nil
 }
@@ -252,8 +345,15 @@ func (c *workflowRunController) ListRuns(ctx context.Context, definitionID strin
 // DeleteRunHistory 仅移除终态运行的历史入口，不改写聚合版本或活动时间。
 func (c *workflowRunController) DeleteRunHistory(ctx context.Context, definitionID, runID string, removedAt int64) error {
 	statuses := []constants.WorkflowRunStatus{constants.WorkflowRunStatusSucceeded, constants.WorkflowRunStatusFailed, constants.WorkflowRunStatusCancelled}
-	if err := controllerDB(ctx, c.db).Model(&models.WorkflowRun{}).Where("definition_id = ? AND id = ? AND history_deleted_at IS NULL AND status IN ?", definitionID, runID, statuses).UpdateColumn("history_deleted_at", removedAt).Error; err != nil {
+	result := controllerDB(ctx, c.db).Model(&models.WorkflowRun{}).Where("definition_id = ? AND id = ? AND history_deleted_at IS NULL AND status IN ?", definitionID, runID, statuses).UpdateColumn("history_deleted_at", removedAt)
+	if err := result.Error; err != nil {
 		return databaseError("delete_workflow_run_history", runID, err)
+	}
+	if _, enabled := c.db.Get(eventPublisherSetting); enabled && result.RowsAffected > 0 {
+		runs, err := readRelatedRows[models.WorkflowRun](controllerDB(ctx, c.db), "id", "id,parent_run_id,joined,source_chat_id", []string{runID})
+		if err == nil {
+			publishChatWorkflowChanges(ctx, c.db, runs)
+		}
 	}
 	publishCommittedChange(ctx, c.db, "work-board", eventsResource("global", ""))
 	return nil
@@ -273,7 +373,7 @@ func (c *workflowRunController) pruneRunHistory(ctx context.Context, definitionI
 			break
 		}
 		var oldest []models.WorkflowRun
-		if err := db.Select("id").Where("definition_id = ? AND history_deleted_at IS NULL AND status IN ?", definitionID, statuses).Order("created_at ASC, id ASC").Limit(int(count / 2)).Find(&oldest).Error; err != nil {
+		if err := db.Select("id,parent_run_id,joined,source_chat_id").Where("definition_id = ? AND history_deleted_at IS NULL AND status IN ?", definitionID, statuses).Order("created_at ASC, id ASC").Limit(int(count / 2)).Find(&oldest).Error; err != nil {
 			return databaseError("select_workflow_run_history", definitionID, err)
 		}
 		if len(oldest) == 0 {
@@ -290,6 +390,7 @@ func (c *workflowRunController) pruneRunHistory(ctx context.Context, definitionI
 		if result.RowsAffected == 0 {
 			break
 		}
+		publishChatWorkflowChanges(ctx, c.db, oldest)
 		removed += int(result.RowsAffected)
 	}
 	if removed == 0 {
@@ -313,6 +414,48 @@ func (c *workflowRunController) ListRunnable(ctx context.Context, limit int) ([]
 		return nil, databaseError("list_runnable_workflows", "", err)
 	}
 	return values, nil
+}
+
+func (c *workflowRunController) ListPendingChatDeliveries(ctx context.Context, after string, limit int) ([]models.WorkflowRun, error) {
+	values := []models.WorkflowRun{}
+	statuses := []constants.WorkflowRunStatus{constants.WorkflowRunStatusSucceeded, constants.WorkflowRunStatusFailed, constants.WorkflowRunStatusCancelled}
+	err := controllerDB(ctx, c.db).Select("id", "source_chat_id").
+		Where("source_chat_id <> '' AND source_workbench = false AND id > ? AND status IN ?", after, statuses).
+		Where("chat_delivery_finished_at IS NULL").
+		Order("id ASC").Limit(limit).Find(&values).Error
+	if err != nil {
+		return nil, databaseError("list_pending_chat_workflow_deliveries", "", err)
+	}
+	return values, nil
+}
+
+func (c *workflowRunController) FinishChatRunFiles(ctx context.Context, chatID, runID, errorCode string, files map[string]models.WorkflowOutputFile, at int64) error {
+	fields := map[string]any{"chat_delivery_finished_at": at, "chat_delivery_error": errorCode}
+	if files != nil {
+		encoded, err := json.Marshal(files)
+		if err != nil {
+			return databaseError("encode_workflow_chat_files", runID, err)
+		}
+		fields["chat_files"] = string(encoded)
+	}
+	return c.finishChatRunDelivery(ctx, chatID, runID, fields)
+}
+
+func (c *workflowRunController) FinishChatRunSummary(ctx context.Context, chatID, runID string, at int64) error {
+	return c.finishChatRunDelivery(ctx, chatID, runID, map[string]any{"chat_summary_finished_at": at})
+}
+
+func (c *workflowRunController) finishChatRunDelivery(ctx context.Context, chatID, runID string, fields map[string]any) error {
+	result := controllerDB(ctx, c.db).Model(&models.WorkflowRun{}).
+		Where("id = ? AND source_chat_id = ? AND source_workbench = false", runID, chatID).
+		UpdateColumns(fields)
+	if result.Error != nil {
+		return databaseError("finish_chat_workflow_delivery", runID, result.Error)
+	}
+	if result.RowsAffected > 0 {
+		publishCommittedChange(ctx, c.db, "workflow", eventsResource("chat", chatID))
+	}
+	return nil
 }
 func (c *workflowRunController) AcquireLease(ctx context.Context, id, owner string, now, until int64) (models.WorkflowRun, bool, error) {
 	db := controllerDB(ctx, c.db)
@@ -362,7 +505,15 @@ func (c *workflowRunController) CommitRunState(ctx context.Context, value Workfl
 	if err != nil {
 		return databaseError("encode_workflow_failure", run.ID, err)
 	}
-	result := db.Model(&models.WorkflowRun{}).Where("id = ? AND version = ? AND lease_owner = ? AND fence = ? AND lease_until > ?", run.ID, expected, run.LeaseOwner, run.Fence, now).Updates(map[string]any{"status": run.Status, "result": string(output), "failure": string(failure), "version": run.Version, "completed_at": run.CompletedAt})
+	fields := map[string]any{"status": run.Status, "result": string(output), "failure": string(failure), "version": run.Version, "completed_at": run.CompletedAt}
+	if len(run.OutputFiles) > 0 {
+		files, err := json.Marshal(run.OutputFiles)
+		if err != nil {
+			return databaseError("encode_workflow_output_files", run.ID, err)
+		}
+		fields["chat_files"] = string(files)
+	}
+	result := db.Model(&models.WorkflowRun{}).Where("id = ? AND version = ? AND lease_owner = ? AND fence = ? AND lease_until > ?", run.ID, expected, run.LeaseOwner, run.Fence, now).Updates(fields)
 	if result.Error != nil {
 		return databaseError("commit_workflow_run", run.ID, result.Error)
 	}

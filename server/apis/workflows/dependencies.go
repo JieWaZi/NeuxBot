@@ -27,8 +27,6 @@ type workflowDependencies struct {
 	CreationSessions controllers.WorkflowCreationController
 	// State 共享 API 与 Runner 的命令锁、租约及状态提交边界。
 	State *workflowstate.Coordinator
-	// WorkerCancel 等待对应 Core 执行真实停止。
-	WorkerCancel func(context.Context, models.WorkflowEffect) error
 	// Executions 接纳并派发中立创作工作。
 	Executions execution.Service
 	// Chats 读取创作的权威 Chat 与执行事实。
@@ -42,20 +40,18 @@ type workflowDependencies struct {
 	// SaveSource 复用 HTTP 与 scoped MCP 共同使用的完整源码保存规则。
 	SaveSource func(context.Context, string, string, string, string, string) (workflowdsl.SaveReceipt, []workflowdsl.Diagnostic, error)
 	// RetryStart 复用多入口运行接纳并冻结来源运行的版本、参数与范围。
-	RetryStart func(context.Context, models.WorkflowRun, string) (models.WorkflowRun, error)
+	RetryStart func(context.Context, models.WorkflowRun, string, string) (models.WorkflowRun, error)
 }
 
 // dependencies 在入口装配共享状态边界，不保存另一份命令锁或执行事实。
 func dependencies() *workflowDependencies {
 	chats := global.ChatService
-	worker := workflow.CoreWorkerAdapter{Executions: global.ExecutionService, Chats: chats}
 	return &workflowDependencies{
 		Store:            global.WorkflowControllerManager,
 		Transactions:     global.TransactionControllerManager,
 		Runs:             global.WorkflowRunControllerManager,
 		CreationSessions: global.WorkflowCreationControllerManager,
 		State:            global.WorkflowState,
-		WorkerCancel:     worker.Cancel,
 		Executions:       global.ExecutionService,
 		Chats:            chats,
 		Wakers:           global.WakerControllerManager,
@@ -64,8 +60,12 @@ func dependencies() *workflowDependencies {
 		SaveSource: func(ctx context.Context, definitionID, requestID, expectedID, source, restoredFrom string) (workflowdsl.SaveReceipt, []workflowdsl.Diagnostic, error) {
 			return global.WorkflowService.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definitionID, RequestID: requestID, ExpectedRevisionID: expectedID, Source: source, SDK: constants.WorkflowSDKIdentifier, RestoredFromRevisionID: restoredFrom})
 		},
-		RetryStart: func(ctx context.Context, source models.WorkflowRun, requestID string) (models.WorkflowRun, error) {
-			return global.WorkflowService.StartRun(ctx, workflow.StartRunCommand{DefinitionID: source.DefinitionID, RevisionID: source.RevisionID, Args: source.Args, Defaults: source.Defaults, WorkerConfigurations: source.WorkerConfigurations, ApprovedScope: &source.ScopeBinding, RequestID: requestID, RetrySourceRunID: source.ID})
+		RetryStart: func(ctx context.Context, source models.WorkflowRun, requestID, chatID string) (models.WorkflowRun, error) {
+			command := workflow.StartRunCommand{DefinitionID: source.DefinitionID, RevisionID: source.RevisionID, Args: source.Args, Defaults: source.Defaults, WorkerConfigurations: source.WorkerConfigurations, ApprovedScope: &source.ScopeBinding, RequestID: requestID, RetrySourceRunID: source.ID, ExpectedSourceVersion: source.Version}
+			if chatID != "" {
+				command.ChatSource = &workflow.ChatRunSource{ChatID: chatID, ExecutionID: source.SourceExecutionID, MessageID: source.SourceMessageID, ThreadID: source.SourceThreadID, WakerID: source.SourceWakerID, Name: source.SourceName, RunID: source.ID, Workbench: true}
+			}
+			return global.WorkflowService.StartRun(ctx, command)
 		},
 	}
 }

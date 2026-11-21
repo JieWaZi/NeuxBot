@@ -11,19 +11,12 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
-func TestDeleteProtectsActiveRunAndRetainsHistoricalRevision(t *testing.T) {
+func TestDeleteDefinitionAllowsActiveRunAndRetainsHistoricalRevision(t *testing.T) {
 	s, _ := workflowTestService(t)
 	definition := savedTestWorkflow(t, s, humanSource)
 	ctx := context.Background()
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "run"})
 	if err != nil {
-		t.Fatal(err)
-	}
-	runTicks(t, s, run.ID, 2)
-	if err := deleteDefinition(ctx, workflowAPIDependencies(s), definition.ID, definition.CurrentRevisionID); workflowstate.ErrorKey(err) != status_error.WorkflowStateConflict.Key() {
-		t.Fatal("active definition deleted", err)
-	}
-	if err := s.CancelRun(ctx, run.ID); err != nil {
 		t.Fatal(err)
 	}
 	runTicks(t, s, run.ID, 2)
@@ -41,6 +34,9 @@ func TestDeleteProtectsActiveRunAndRetainsHistoricalRevision(t *testing.T) {
 	}
 	if _, err := s.Runs.GetRun(ctx, run.ID); err != nil {
 		t.Fatal("old run deleted", err)
+	}
+	if _, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "after-deletion"}); workflowstate.ErrorKey(err) != status_error.WorkflowNotFound.Key() {
+		t.Fatalf("new call did not report the deleted definition: %v", err)
 	}
 }
 

@@ -176,11 +176,18 @@ function ComposerControls({
   onCodeReferencesChange,
   clearRevision,
   restoreRevision,
+  workflowPicker,
+  resources,
 }: {
   codeReferenceRequest?: ChatCodeReference;
   onCodeReferencesChange?: (references: ChatCodeReference[]) => void;
   clearRevision?: number;
   restoreRevision?: number;
+  workflowPicker?: ComponentProps<typeof ChatComposerInput>["workflowPicker"];
+  resources?: Pick<
+    ComponentProps<typeof ChatComposerInput>,
+    "connectors" | "skills" | "plugins"
+  >;
 } = {}) {
   const [, refreshComposer] = useReducer((revision: number) => revision + 1, 0);
   return (
@@ -193,6 +200,8 @@ function ComposerControls({
         onCodeReferencesChange={onCodeReferencesChange}
         clearRevision={clearRevision}
         restoreRevision={restoreRevision}
+        workflowPicker={workflowPicker}
+        {...resources}
       />
       <ComposerPrimitive.Send>send</ComposerPrimitive.Send>
     </ComposerPrimitive.Root>
@@ -341,6 +350,8 @@ function ComposerHarness({
   isSendDisabled = false,
   serverManagedQueue = false,
   children,
+  workflowPicker,
+  resources,
 }: {
   activeExecutionId?: string;
   onMessageAccepted?: () => void;
@@ -352,6 +363,11 @@ function ComposerHarness({
   isSendDisabled?: boolean;
   serverManagedQueue?: boolean;
   children?: ReactNode;
+  workflowPicker?: ComponentProps<typeof ChatComposerInput>["workflowPicker"];
+  resources?: Pick<
+    ComponentProps<typeof ChatComposerInput>,
+    "connectors" | "skills" | "plugins"
+  >;
 }) {
   const [clearRevision, clearComposer] = useReducer(
     (revision: number) => revision + 1,
@@ -399,12 +415,134 @@ function ComposerHarness({
             onCodeReferencesChange={onCodeReferencesChange}
             clearRevision={clearRevision}
             restoreRevision={restoreRevision}
+            workflowPicker={workflowPicker}
+            resources={resources}
           />
         )}
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   );
 }
+
+function WorkflowComposerHarness({
+  send,
+  search = async (text) =>
+    [
+      { id: "review", name: "Code review" },
+      { id: "release", name: "Release report" },
+    ].filter(({ id }) => id.includes(text)),
+}: {
+  send: SendMessage;
+  search?: NonNullable<
+    ComponentProps<typeof ChatComposerInput>["workflowPicker"]
+  >["search"];
+}) {
+  const [workflow, setWorkflow] = useState<{ id: string; name: string }>();
+  const [workflowOnly, setWorkflowOnly] = useState(false);
+  return (
+    <ComposerHarness
+      send={send}
+      selection={{
+        runtimeId: "codex",
+        model: "gpt-5",
+        reasoning: "high",
+        permissionLevel: "auto",
+        workflow,
+        workflowOnly,
+      }}
+      workflowPicker={{
+        search,
+        onSelectionChange: (value, only) => {
+          setWorkflow(value);
+          setWorkflowOnly(only);
+        },
+      }}
+      resources={{
+        connectors: [
+          { id: "storage", name: "Remote storage", description: "" },
+        ],
+        skills: [{ id: "skill", name: "Review skill", description: "" }],
+        plugins: [{ id: "plugin", name: "Release plugin", description: "" }],
+      }}
+    />
+  );
+}
+
+it("lists workflows alongside MCP in # and keeps / for skills and plugins", async () => {
+  let answerSearch:
+    ((items: { id: string; name: string }[]) => void) | undefined;
+  const search = vi.fn(
+    () =>
+      new Promise<{ id: string; name: string }[]>((resolve) => {
+        answerSearch = resolve;
+      }),
+  );
+  render(
+    <ChatQueueProvider>
+      <WorkflowComposerHarness send={vi.fn()} search={search} />
+    </ChatQueueProvider>,
+  );
+  const user = userEvent.setup();
+  const input = await screen.findByRole("textbox", { name: "message" });
+  await user.type(input, "/");
+  expect(
+    await screen.findByRole("option", { name: "Review skill" }),
+  ).toBeVisible();
+  expect(screen.getByRole("option", { name: /Release plugin/ })).toBeVisible();
+  expect(search).not.toHaveBeenCalled();
+  await user.clear(input);
+  await user.type(input, "#");
+  const menu = await screen.findByRole("listbox", { name: "引用资源" });
+  expect(
+    within(menu).getByRole("option", { name: "Remote storage" }),
+  ).toBeVisible();
+  expect(
+    within(menu).queryByRole("option", { name: "Review skill" }),
+  ).not.toBeInTheDocument();
+  await act(async () =>
+    answerSearch?.([{ id: "review", name: "Code review" }]),
+  );
+  expect(
+    await within(menu).findByRole("option", { name: "Code review" }),
+  ).toBeVisible();
+  expect(
+    within(menu).getByRole("option", { name: "Remote storage" }),
+  ).toBeVisible();
+});
+
+it("replaces the workflow reference through # and sends it without requiring text", async () => {
+  const send = vi.fn<SendMessage>().mockResolvedValue({
+    execution: { id: "first-workflow-execution", status: "completed" },
+  });
+  render(
+    <ChatQueueProvider>
+      <WorkflowComposerHarness send={send} />
+    </ChatQueueProvider>,
+  );
+  const user = userEvent.setup();
+  const input = await screen.findByRole("textbox", { name: "message" });
+  await user.type(input, "#review");
+  await screen.findByRole("option", { name: "Code review" });
+  await user.keyboard("{Enter}");
+  await user.type(input, " #release");
+  await user.click(
+    await screen.findByRole("option", { name: "Release report" }),
+  );
+  expect(input).not.toHaveTextContent("Code review");
+  expect(input).toHaveTextContent("Release report");
+  await user.click(screen.getByRole("button", { name: "send" }));
+  await waitFor(() =>
+    expect(send).toHaveBeenCalledWith(
+      "",
+      "chat-1",
+      [],
+      expect.objectContaining({
+        workflow: { id: "release", name: "Release report" },
+      }),
+    ),
+  );
+  expect(input).not.toHaveTextContent("Release report");
+});
 
 function CodeReferenceComposerHarness({ send }: { send: SendMessage }) {
   const [codeReferences, setCodeReferences] = useState<ChatCodeReference[]>([]);

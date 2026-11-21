@@ -2,7 +2,10 @@ package channel
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -33,6 +36,77 @@ type taskBoardFailure struct {
 
 func (f taskBoardFailure) ListByThread(context.Context, string) ([]models.ChannelTask, error) {
 	return nil, f.failure
+}
+
+func callTeamTask(svc *service, ctx context.Context, endpoint string, input channeltool.TaskInput) (channeltool.TaskOutput, error) {
+	scope, _ := svc.capabilities.Resolve(endpoint)
+	authorized, err := svc.authorizeTeamTool(ctx, endpoint, scope.LeaseID)
+	if err != nil {
+		return channelToolError(err, "The channel task capability is invalid or expired.")
+	}
+	return svc.toolChannelTasks(ctx, authorized, input)
+}
+
+type incompleteTeamChatSummary struct {
+	// Service 保留读取原执行的窄权威接口。
+	chatservice.Service
+}
+
+func (incompleteTeamChatSummary) GetChatSummary(context.Context, string) (chatservice.ChatSummary, error) {
+	return chatservice.ChatSummary{}, status_error.ReadingProjectionIncomplete
+}
+
+func TestTeamAgentCommandsWorkWithoutChatReadingProjection(t *testing.T) {
+	ctx := t.Context()
+	svc, thread, chats, _ := newDelegationDispatchService(t)
+	chats.executions = map[string]models.Execution{"planning": {IMReplyLinkID: "original-im-link"}}
+	svc.chats = incompleteTeamChatSummary{Service: chats}
+	tool, _, err := svc.mintLeadCapability(ctx, thread, "planning", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := capability.New(nil)
+	grant, activate, release, err := registry.Prepare(capability.GrantSpec{
+		ExecutionID: "planning", Bindings: tool.Bindings,
+		Validate: func(context.Context) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	activate()
+	call := func(body string) capability.Response {
+		request := httptest.NewRequest(http.MethodPost, constants.AgentCLIPath+"/commands", strings.NewReader(body))
+		request.RemoteAddr = "127.0.0.1:12345"
+		request.Header.Set("Authorization", "Bearer "+grant.Token)
+		response := httptest.NewRecorder()
+		registry.ServeHTTP(response, request)
+		var output capability.Response
+		if err := json.Unmarshal(response.Body.Bytes(), &output); err != nil {
+			t.Fatalf("decode team command %s: %v", body, err)
+		}
+		return output
+	}
+	for _, request := range []string{
+		`{"operation":"team.members.list"}`,
+		`{"operation":"team.tasks.list"}`,
+		`{"operation":"team.tasks.create","requestId":"planning-create","params":{"assigneeWakerId":"member","subject":"Prepare report","description":"Summarize the results."}}`,
+	} {
+		if result := call(request); !result.OK {
+			t.Fatalf("team command %s: %+v", request, result.Error)
+		}
+	}
+	tasks, err := svc.tasks.ListByThread(ctx, thread.ID)
+	if err != nil || len(tasks) != 1 || tasks[0].IMReplyLinkID != "original-im-link" {
+		t.Fatalf("created task lost original delivery identity: %+v, %v", tasks, err)
+	}
+	if _, _, err := svc.mintLeadCapability(ctx, thread, "later-turn", true); err != nil {
+		t.Fatal(err)
+	}
+	stale := call(`{"operation":"team.tasks.list"}`)
+	if stale.OK || stale.Error == nil || stale.Error.Code != status_error.AgentContextUnauthorized.Key() {
+		t.Fatalf("superseded team grant was accepted: %+v", stale)
+	}
 }
 
 func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing.T) {
@@ -291,15 +365,15 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 		Subject:         "实现任务面板",
 		Description:     "实现并验证任务面板。",
 	}
-	output, err := service.toolChannelTasks(ctx, threadID, createInput)
+	output, err := callTeamTask(service, ctx, threadID, createInput)
 	if err == nil || output.Message == "" {
 		t.Fatalf("create before list output = %+v, error = %v, want tool error", output, err)
 	}
-	output, err = service.toolChannelTasks(ctx, threadID, channeltool.TaskInput{Action: "list"})
+	output, err = callTeamTask(service, ctx, threadID, channeltool.TaskInput{Action: "list"})
 	if err != nil || output.Message != "" || len(output.Tasks) != 0 {
 		t.Fatalf("list output = %+v, error = %v", output, err)
 	}
-	output, err = service.toolChannelTasks(ctx, threadID, createInput)
+	output, err = callTeamTask(service, ctx, threadID, createInput)
 	if err != nil || output.Message != "" || output.Task == nil ||
 		output.Task.SenderWakerID != leadID || output.Task.AssigneeWakerID != memberID {
 		t.Fatalf("create output = %+v, error = %v", output, err)
@@ -321,7 +395,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 		Subject:         "不应接受 you 别名",
 		Description:     "assigneeWakerId 必须使用 Members 反引号中的 Waker ID。",
 	}
-	output, err = service.toolChannelTasks(ctx, threadID, youAliasInput)
+	output, err = callTeamTask(service, ctx, threadID, youAliasInput)
 	if err == nil || output.Message == "" || output.Task != nil {
 		t.Fatalf("create with you alias output = %+v, error = %v, want tool error", output, err)
 	}
@@ -329,7 +403,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 		t.Fatalf("create with you alias message = %q, want Waker ID guidance", output.Message)
 	}
 	priority := 7
-	output, err = service.toolChannelTasks(ctx, threadID, channeltool.TaskInput{
+	output, err = callTeamTask(service, ctx, threadID, channeltool.TaskInput{
 		Action:      "update",
 		TaskID:      createdTaskID,
 		Subject:     "实现并验证任务面板",
@@ -340,7 +414,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 		output.Task.Subject != "实现并验证任务面板" || output.Task.Priority != priority {
 		t.Fatalf("update output = %+v, error = %v", output, err)
 	}
-	output, err = service.toolChannelTasks(ctx, threadID, channeltool.TaskInput{
+	output, err = callTeamTask(service, ctx, threadID, channeltool.TaskInput{
 		Action:          "update",
 		TaskID:          createdTaskID,
 		AssigneeWakerID: leadID,
@@ -377,7 +451,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 	}); err != nil {
 		t.Fatalf("create failed attempt: %v", err)
 	}
-	output, err = service.toolChannelTasks(ctx, threadID, channeltool.TaskInput{
+	output, err = callTeamTask(service, ctx, threadID, channeltool.TaskInput{
 		Action:          "retry",
 		TaskID:          failedTask.ID,
 		AssigneeWakerID: leadID,
@@ -390,7 +464,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 		failedAfterLeadRetry.AssigneeWakerID != memberID {
 		t.Fatalf("task after rejected lead retry = %+v, error = %v", failedAfterLeadRetry, err)
 	}
-	output, err = service.toolChannelTasks(ctx, threadID, channeltool.TaskInput{
+	output, err = callTeamTask(service, ctx, threadID, channeltool.TaskInput{
 		Action:          "retry",
 		TaskID:          failedTask.ID,
 		AssigneeWakerID: replacementID,
@@ -403,7 +477,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 	createInput.AssigneeWakerID = leadID
 	createInput.Subject = "不应创建的负责人汇总任务"
 	createInput.Description = "最终汇总必须由负责人协调回合直接完成。"
-	output, err = service.toolChannelTasks(ctx, threadID, createInput)
+	output, err = callTeamTask(service, ctx, threadID, createInput)
 	if err == nil || output.Message == "" || output.Task != nil {
 		t.Fatalf("lead assignee output = %+v, error = %v, want tool error", output, err)
 	}
@@ -424,11 +498,11 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 	if err != nil {
 		t.Fatalf("mint read-only capability: %v", err)
 	}
-	if output, err = service.toolChannelTasks(ctx, threadID, channeltool.TaskInput{Action: "list"}); err != nil || output.Message != "" {
+	if output, err = callTeamTask(service, ctx, threadID, channeltool.TaskInput{Action: "list"}); err != nil || output.Message != "" {
 		t.Fatalf("read-only list output = %+v, error = %v", output, err)
 	}
 	createInput.AssigneeWakerID = memberID
-	output, err = service.toolChannelTasks(ctx, threadID, createInput)
+	output, err = callTeamTask(service, ctx, threadID, createInput)
 	if err == nil || output.Message == "" {
 		t.Fatalf("read-only create output = %+v, error = %v, want tool error", output, err)
 	}
@@ -441,7 +515,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 	if err != nil {
 		t.Fatalf("mint mutation capability: %v", err)
 	}
-	if output, err = service.toolChannelTasks(ctx, threadID, channeltool.TaskInput{Action: "list"}); err != nil || output.Message != "" {
+	if output, err = callTeamTask(service, ctx, threadID, channeltool.TaskInput{Action: "list"}); err != nil || output.Message != "" {
 		t.Fatalf("mutation list output = %+v, error = %v", output, err)
 	}
 
@@ -458,7 +532,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 	if err := tasks.Create(ctx, coordinatedTask, nil); err != nil {
 		t.Fatalf("create coordinated task: %v", err)
 	}
-	output, err = service.toolChannelTasks(ctx, threadID, channeltool.TaskInput{
+	output, err = callTeamTask(service, ctx, threadID, channeltool.TaskInput{
 		Action: "follow_up",
 		TaskID: coordinatedTask.ID,
 		Text:   "负责人要求补充验收证据",
@@ -491,7 +565,7 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 	if err := tasks.Create(ctx, reviewTask, nil); err != nil {
 		t.Fatalf("create review task: %v", err)
 	}
-	output, err = service.toolChannelTasks(ctx, threadID, channeltool.TaskInput{
+	output, err = callTeamTask(service, ctx, threadID, channeltool.TaskInput{
 		Action: "cancel",
 		TaskID: reviewTask.ID,
 	})

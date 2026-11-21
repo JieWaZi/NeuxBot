@@ -1955,6 +1955,7 @@ describe("useChatRuntime queue", () => {
         await runtimeAdapter.current?.onCancel?.();
       });
       expect(options.cancel).toHaveBeenCalledTimes(1);
+      expect(options.cancel).toHaveBeenCalledWith({ submissionId: ids[1] });
     },
   );
 
@@ -2873,6 +2874,57 @@ describe("chat send failure", () => {
   );
 });
 
+it("按原首发提交停止，并恢复被明确取消的草稿", async () => {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const options = runtimeOptions("first-send-stop");
+  let rejectSend!: (error: unknown) => void;
+  let submitted: Promise<unknown> | undefined;
+  const firstStop = vi.fn(async () => {});
+  const settleDraft = vi.fn();
+  const { result } = renderHook(
+    () =>
+      useProductionChatRuntime({
+        ...options,
+        chatId: undefined,
+        activeExecutionId: undefined,
+        messageSource: chatMessageSource(queryClient, undefined, {
+          messages: [],
+          latestSequence: 0,
+          ready: true,
+        }),
+        captureDraft: () => settleDraft,
+        prepareSubmission: () => ({
+          submissionId: "first-input",
+          cancel: firstStop,
+          accept: () =>
+            new Promise((_resolve, reject) => {
+              rejectSend = reject;
+            }),
+        }),
+      }),
+    { wrapper: TestProviders },
+  );
+
+  act(() => {
+    submitted = runtimeAdapter.current?.onNew?.(
+      queuedMessage,
+    ) as Promise<unknown>;
+  });
+  expect(result.current.isRunning).toBe(true);
+  await act(async () => {
+    await runtimeAdapter.current?.onCancel?.();
+    rejectSend(new ApiError("已取消", "OperationCanceled", 408));
+    await submitted;
+  });
+  expect(firstStop).toHaveBeenCalledOnce();
+  expect(options.cancel).not.toHaveBeenCalled();
+  expect(settleDraft).toHaveBeenCalledWith(true);
+  expect(result.current.isRunning).toBe(false);
+  expect(result.current.sendFailure.kind).toBe("none");
+});
+
 it.each(["enqueue", "promote"] as const)(
   "%s steer 保留接续身份并在交接时抑制取消收尾",
   async (mode) => {
@@ -2906,6 +2958,7 @@ it.each(["enqueue", "promote"] as const)(
         if (id) runtimeAdapter.current?.queue?.steer(id);
       });
     expect(options.cancel).toHaveBeenCalledTimes(1);
+    expect(options.cancel).toHaveBeenCalledWith({ executionId: "execution-1" });
     act(() =>
       subscriptionOptions.current?.onEvent({
         sequence: 2,

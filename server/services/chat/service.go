@@ -102,6 +102,8 @@ type Service interface {
 
 // Module 是组合根同时交给查询入口和 Execution Core 的完整 Chat 模块。
 type Module interface {
+	// PublishExecutionDelivery 将领域已确认的结果交付给原答复。
+	PublishExecutionDelivery(context.Context, ExecutionDelivery) error
 	// CheckOccupiedWorkspace 拒绝修改仍有执行或文件收尾所有者的伙伴空间。
 	CheckOccupiedWorkspace(ctx context.Context, wakerID string, occupied []string) error
 	// InheritedAttachmentPaths 返回旧分叉已由权威继承事实确认的受管附件路径。
@@ -130,6 +132,10 @@ type service struct {
 	closeIdleNativeThread func(context.Context, string) error
 	// closeNativeThread 在删除围栏内释放会话拥有的原生连接及租约。
 	closeNativeThread func(context.Context, string) error
+	// prepareDelete 在短事务中将关联领域任务置为失败。
+	prepareDelete func(context.Context, []string) error
+	// stopExecution 结束目标会话原生执行并等待其日志收尾。
+	stopExecution func(context.Context, string) error
 	// preserveIMAdmissions 在清理权威日志前保留已接纳的外部收件事实。
 	preserveIMAdmissions func(context.Context, []models.Execution) error
 	// logStore 持久化每个对话的权威追加日志。
@@ -161,6 +167,10 @@ type Config struct {
 	CloseIdleNativeThread func(context.Context, string) error
 	// CloseNativeThread 在文件暂存前关闭目标会话的原生连接。
 	CloseNativeThread func(context.Context, string) error
+	// PrepareDelete 在删除门的短事务中将关联任务置为失败。
+	PrepareDelete func(context.Context, []string) error
+	// StopExecution 结束目标会话原生执行并等待其日志收尾。
+	StopExecution func(context.Context, string) error
 	// PreserveIMAdmissions 以权威回执补齐尚未挂接的 IM 收件。
 	PreserveIMAdmissions func(context.Context, []models.Execution) error
 	// ResetUsageProjection 在权威分片清理后使旧用量投影失效。
@@ -246,6 +256,8 @@ func newService(config Config) (*service, error) {
 		deletions:             deletions,
 		deletionIntents:       config.QueryIndexes.DeletionIntents,
 		closeNativeThread:     config.CloseNativeThread,
+		prepareDelete:         config.PrepareDelete,
+		stopExecution:         config.StopExecution,
 		preserveIMAdmissions:  config.PreserveIMAdmissions,
 		logStore:              logStore,
 		projectController:     config.Projects,

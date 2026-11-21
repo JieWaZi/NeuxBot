@@ -218,6 +218,31 @@ func (s *Store) ReadProjectionPrefix(ctx context.Context, id string, after int64
 	return 0, err
 }
 
+// ReadLatestExecutionID 返回最近接纳的执行标识，供历史消息投影核对分叉边界。
+func (s *Store) ReadLatestExecutionID(ctx context.Context, id string) (string, error) {
+	r, err := s.openChat(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	defer r.close()
+	var row rowIndex
+	err = r.index.query(func(db *gorm.DB) error {
+		return db.Where("stream = ? AND kind = ?", r.index.coverage.Stream, indexExecutionCreated).
+			Order("cursor DESC").Limit(1).Find(&row).Error
+	})
+	if err != nil || row.Cursor == 0 {
+		return "", err
+	}
+	record, err := r.record(ctx, row)
+	if err != nil {
+		return "", err
+	}
+	if fact := record.Change.Fact; fact != nil && fact.Type == constants.ChatEventTypeExecutionCreated {
+		return fact.ExecutionID, nil
+	}
+	return "", status_error.ChatLogIndexCorrupted
+}
+
 func readSelected(ctx context.Context, r chatReader, rows []rowIndex) ([]agent.ConversationRecord, error) {
 	result := make([]agent.ConversationRecord, 0, len(rows))
 	for _, row := range rows {

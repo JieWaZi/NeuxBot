@@ -3,7 +3,6 @@ package builtin
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -40,13 +39,11 @@ func newInstaller(t *testing.T) Installer {
 
 func ordinaryCatalogFixture(t *testing.T) {
 	t.Helper()
-	original := bundle
-	fixture, err := json.Marshal(map[string]any{"skills": []definition{refreshFixture()}})
-	if err != nil {
-		t.Fatal(err)
+	original := definitions
+	definitions = func() ([]managedskills.BuiltinDefinition, error) {
+		return []managedskills.BuiltinDefinition{refreshFixture()}, nil
 	}
-	bundle = fixture
-	t.Cleanup(func() { bundle = original })
+	t.Cleanup(func() { definitions = original })
 }
 
 func TestInstallPreservesCompleteResourcesAndUserChoices(t *testing.T) {
@@ -253,10 +250,10 @@ func TestFailedRefreshKeepsCurrentVersionAndCanRetry(t *testing.T) {
 	}
 }
 
-func refreshFixture() definition {
-	return definition{
+func refreshFixture() managedskills.BuiltinDefinition {
+	return managedskills.BuiltinDefinition{
 		ID: "00000000000000000000000000000099", Directory: "refresh-test", Version: "1.0.0",
-		Files: []resource{
+		Files: []managedskills.BuiltinResource{
 			{Path: "SKILL.md", Data: []byte("---\nname: refresh-test\ndescription: Published instructions\n---\nOriginal instructions.\n")},
 			{Path: "references/guide.md", Data: []byte("Original reference.\n")},
 			{Path: "scripts/check.sh", Data: []byte("#!/bin/sh\nexit 0\n")},

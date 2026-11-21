@@ -686,17 +686,23 @@ func (s *Store) ReadHistoryCandidates(ctx context.Context, q agent.MessageQuery)
 
 // ReadMessage resolves one stable message and its late facts without scanning a conversation.
 func (s *Store) ReadMessage(ctx context.Context, chatID, messageID string) (agent.StoredMessage, error) {
-	message, _, err := s.readMessage(ctx, chatID, messageID, 0, false)
+	message, _, err := s.readMessage(ctx, chatID, messageID, nil)
 	return message, err
 }
 
 // ReadMessageCheckpoint 返回安全实时投影所需的最新工具元数据和正文，不展开独立终端输出。
 // 完整工具输出仍由 ReadMessage/ReadMessages 提供；旧游标只返回获胜检查点身份。
 func (s *Store) ReadMessageCheckpoint(ctx context.Context, chatID, messageID string, at int64) (agent.StoredMessage, int64, error) {
-	return s.readMessage(ctx, chatID, messageID, at, true)
+	return s.readMessage(ctx, chatID, messageID, func(cursor int64) bool { return at <= 0 || at == cursor })
 }
 
-func (s *Store) readMessage(ctx context.Context, chatID, messageID string, at int64, native bool) (agent.StoredMessage, int64, error) {
+// ReadCurrentMessageCheckpointThrough 只在最新检查点未超出上界时读取正文。
+// 上界后的检查点只返回游标，由调用方在自己的下一窗口处理。
+func (s *Store) ReadCurrentMessageCheckpointThrough(ctx context.Context, chatID, messageID string, through int64) (agent.StoredMessage, int64, error) {
+	return s.readMessage(ctx, chatID, messageID, func(cursor int64) bool { return cursor <= through })
+}
+
+func (s *Store) readMessage(ctx context.Context, chatID, messageID string, allowCheckpoint func(int64) bool) (agent.StoredMessage, int64, error) {
 	r, err := s.openChat(ctx, chatID)
 	if err != nil {
 		return agent.StoredMessage{}, 0, err
@@ -710,12 +716,12 @@ func (s *Store) readMessage(ctx context.Context, chatID, messageID string, at in
 		return agent.StoredMessage{}, 0, status_error.ChatMessageNotFound
 	}
 	var checkpoint rowIndex
-	if native {
+	if allowCheckpoint != nil {
 		err = r.index.query(func(db *gorm.DB) error {
 			return db.Where("stream = ? AND message_ref <> 0 AND message_ref = ? AND (display_link OR kind = ?)",
 				r.index.coverage.Stream, anchor.Ref, indexMessageComplete).Order("cursor DESC").Limit(1).Find(&checkpoint).Error
 		})
-		if err != nil || checkpoint.Cursor == 0 || (at > 0 && at != checkpoint.Cursor) {
+		if err != nil || checkpoint.Cursor == 0 || !allowCheckpoint(checkpoint.Cursor) {
 			return agent.StoredMessage{}, checkpoint.Cursor, err
 		}
 	}
@@ -723,7 +729,7 @@ func (s *Store) readMessage(ctx context.Context, chatID, messageID string, at in
 	if err != nil {
 		return agent.StoredMessage{}, 0, err
 	}
-	messages, err := s.projectPage(ctx, r, []messageAnchor{anchor}, groups, !native)
+	messages, err := s.projectPage(ctx, r, []messageAnchor{anchor}, groups, allowCheckpoint == nil)
 	if err != nil {
 		return agent.StoredMessage{}, 0, err
 	}

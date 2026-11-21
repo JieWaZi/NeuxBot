@@ -1,6 +1,30 @@
 package teamcapability
 
-import "testing"
+import (
+	"testing"
+	"testing/synctest"
+	"time"
+)
+
+func TestRegistryKeepsExecutionScopeUntilRevoked(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		registry := NewRegistry()
+		lease, err := registry.Mint("thread", "lead", "waiting-execution", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(25 * time.Hour)
+		registry.MarkListed("thread", lease)
+		scope, exists := registry.Resolve("thread")
+		if !exists || !scope.Listed || scope.ExecutionID != "waiting-execution" {
+			t.Fatalf("waiting execution lost its team tools: %+v, exists=%t", scope, exists)
+		}
+		registry.Revoke(lease)
+		if _, exists := registry.Resolve("thread"); exists {
+			t.Fatal("revoked execution retained its team tools")
+		}
+	})
+}
 
 func TestRegistrySupportsParallelLeaseScopedCapabilities(t *testing.T) {
 	registry := NewRegistry()
@@ -9,7 +33,7 @@ func TestRegistrySupportsParallelLeaseScopedCapabilities(t *testing.T) {
 		t.Fatalf("mint first scope: %v", err)
 	}
 	first, exists := registry.Resolve("thread")
-	if !exists || first.ExecutionID != "execution-1" || first.Fence == 0 {
+	if !exists || first.ExecutionID != "execution-1" || first.LeaseID != firstLease {
 		t.Fatalf("first scope = %+v, exists=%t", first, exists)
 	}
 	secondLease, err := registry.Mint("thread", "lead", "execution-2", false)
@@ -18,8 +42,13 @@ func TestRegistrySupportsParallelLeaseScopedCapabilities(t *testing.T) {
 	}
 	registry.Revoke(firstLease)
 	second, exists := registry.Resolve("thread")
-	if !exists || second.ExecutionID != "execution-2" || second.Fence <= first.Fence {
+	if !exists || second.ExecutionID != "execution-2" || second.LeaseID != secondLease || second.LeaseID == first.LeaseID {
 		t.Fatalf("old lease revoked current scope: %+v, exists=%t", second, exists)
+	}
+	registry.MarkListed("thread", firstLease)
+	second, _ = registry.Resolve("thread")
+	if second.Listed {
+		t.Fatal("old lease marked the new turn's task board as read")
 	}
 	memberLease, err := registry.MintMember(
 		"thread", "member", "execution-3", "task", "attempt",

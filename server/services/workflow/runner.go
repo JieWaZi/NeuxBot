@@ -25,6 +25,16 @@ func (s *Service) Tick(ctx context.Context, id string) error {
 // tick 将本次已经核验的效果和许可交还调度者，不在事务后重复读取完整聚合。
 func (s *Service) tick(ctx context.Context, id string) (controllers.WorkflowRunState, error) {
 	var confirmed controllers.WorkflowRunState
+	err := s.withOutputSnapshots(ctx, &outputFileBatch{}, func(batch *outputFileBatch) error {
+		var err error
+		confirmed, err = s.tickCheckpoint(ctx, id, batch)
+		return err
+	})
+	return confirmed, err
+}
+
+func (s *Service) tickCheckpoint(ctx context.Context, id string, batch *outputFileBatch) (controllers.WorkflowRunState, error) {
+	var confirmed controllers.WorkflowRunState
 	s.state.Commands.Lock()
 	defer s.state.Commands.Unlock()
 	err := s.transactions.Transaction(ctx, func(ctx context.Context) error {
@@ -116,7 +126,7 @@ func (s *Service) tick(ctx context.Context, id string) (controllers.WorkflowRunS
 				if workflowstate.StepTerminal(effect.Status) || effect.Status == constants.WorkflowStepStatusUnknown {
 					continue
 				}
-				if effect.Status == constants.WorkflowStepStatusRunning || effect.Boundary.Primitive == "worker" && effect.ChatID != "" || s.state.EffectActive(effect.ID) {
+				if effect.Status == constants.WorkflowStepStatusRunning || effect.Boundary.Primitive == "worker" || s.state.EffectActive(effect.ID) {
 					waiting = true
 					continue
 				}
@@ -340,6 +350,11 @@ func (s *Service) tick(ctx context.Context, id string) (controllers.WorkflowRunS
 		if len(encoded) > constants.WorkflowSlotsLimitBytes {
 			return s.abortRunState(ctx, state, status_error.WorkflowBudgetExceeded)
 		}
+		if state.Run.Status == constants.WorkflowRunStatusSucceeded && len(revision.Manifest.Meta.OutputSchema) > 0 {
+			if err := batch.attach(&state.Run, "", workflowdsl.FileValues(revision.Manifest.Meta.OutputSchema, state.Run.Result)); err != nil {
+				return err
+			}
+		}
 		return s.state.CommitRun(ctx, state)
 	})
 	if err != nil {
@@ -366,6 +381,9 @@ func prepareEffect(bundle workflowdsl.ProgramBundle, manifest workflowdsl.Manife
 	fiber := &state.Fibers[index]
 	token := util.New() + util.New()
 	effect := models.WorkflowEffect{ID: id, RunID: state.Run.ID, FiberID: fiber.ID, InstanceID: instanceID, Boundary: boundary, Status: constants.WorkflowStepStatusPrepared, AttemptGeneration: 1, ExecutionID: util.New(), AuthToken: token, TokenDigest: workflowdsl.Digest([]byte(token)), DeadlineAt: deadline}
+	if boundary.Primitive == "worker" {
+		effect.ChatID = workerChatID(effect.ID, boundary)
+	}
 	instance := models.WorkflowNodeInstance{ID: instanceID, RunID: state.Run.ID, FiberID: fiber.ID, NodeID: boundary.NodeID, Kind: boundary.Primitive, Path: fiber.Path + workflowdsl.ScopeSuffix(bundle, fiber.State, boundary), Label: label, PhaseID: phaseID, Status: constants.WorkflowStepStatusWaiting, EffectID: id, ExecutionID: effect.ExecutionID, Input: boundary.Arguments, Options: options, GroupID: fiber.GroupID, ItemIndex: fiber.ItemIndex, StageIndex: fiber.StageIndex, AttemptGeneration: effect.AttemptGeneration}
 	operation, err := prepareOperation(manifest, state.Run, &effect)
 	if err != nil {

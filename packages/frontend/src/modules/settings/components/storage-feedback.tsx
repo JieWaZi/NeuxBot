@@ -8,6 +8,10 @@ import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
 
 const number = localizedNumberFormat({ maximumFractionDigits: 1 });
+const lowerBoundNumber = localizedNumberFormat({
+  maximumFractionDigits: 1,
+  roundingMode: "floor",
+});
 const time = localizedDateTimeFormat({
   dateStyle: "medium",
   timeStyle: "short",
@@ -22,13 +26,14 @@ export function storageDate(value: number) {
 export function storageUploadDate(value: number) {
   return uploadTime.format(value);
 }
-export function storageSize(bytes: number) {
+export function storageSize(bytes: number, precision?: "lower-bound") {
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
   const index = Math.min(
     units.length - 1,
     Math.max(0, Math.floor(Math.log(Math.max(1, bytes)) / Math.log(1024))),
   );
-  return number.format(bytes / 1024 ** index) + " " + units[index];
+  const format = precision === "lower-bound" ? lowerBoundNumber : number;
+  return format.format(bytes / 1024 ** index) + " " + units[index];
 }
 
 export function StorageLoading() {

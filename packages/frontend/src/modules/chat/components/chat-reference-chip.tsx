@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Cable, Sparkles, Package } from "lucide-react";
+import { Cable, Sparkles, Package, Workflow } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export const chatComposerReferenceChipClass =
@@ -34,7 +34,7 @@ export function ChatComposerReferenceChip({
 type ChatMessageReferenceChipProps = {
   label: string;
   icon?: ReactNode;
-  tone?: "default" | "connector" | "plugin";
+  tone?: "default" | "connector" | "plugin" | "workflow";
   href?: string;
   unavailable?: boolean;
   unavailableTitle?: string;
@@ -54,8 +54,12 @@ export function ChatMessageReferenceChip({
     tone === "connector"
       ? chatMessageConnectorReferenceChipClass
       : chatMessageReferenceChipClass;
-  const Icon =
-    tone === "connector" ? Cable : tone === "plugin" ? Package : Sparkles;
+  const Icon = {
+    default: Sparkles,
+    connector: Cable,
+    plugin: Package,
+    workflow: Workflow,
+  }[tone];
   const content = (
     <>
       {icon ?? <Icon className="size-icon-xs shrink-0" aria-hidden="true" />}

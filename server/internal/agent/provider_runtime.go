@@ -144,6 +144,8 @@ type ProviderLaunch struct {
 	Environment map[string]string
 	// BotCLIContextFile is the host-selected grant path used by botcli child commands.
 	BotCLIContextFile string `json:",omitempty"`
+	// BotCLIExecutable is the published system-skill executable for this CLI grant.
+	BotCLIExecutable string `json:",omitempty"`
 	// ConfigHome is the default native configuration directory.
 	ConfigHome string
 	// CodexConfig contains native Codex launch configuration overrides.

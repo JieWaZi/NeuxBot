@@ -2,16 +2,29 @@ package execution
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
+
+type missingSubmissionJournal struct {
+	// Journal 提供本测试不调用的其他日志方法。
+	chatservice.Journal
+}
+
+func (missingSubmissionJournal) ReadSubmission(context.Context, string, string) (*models.Execution, error) {
+	return nil, nil
+}
 
 func TestExecutionRegistryCloseWaitsForReservedExecution(t *testing.T) {
 	registry := newExecutionRegistry()
 	registry.start(context.Background())
-	executionContext, err := registry.reserve("chat-1", "execution-1")
+	executionContext, err := registry.reserve("chat-1", "execution-1", "")
 	if err != nil {
 		t.Fatalf("reserve() error = %v", err)
 	}
@@ -40,12 +53,65 @@ func TestExecutionRegistryCloseWaitsForReservedExecution(t *testing.T) {
 	}
 }
 
+func TestCancellationBeforeSubmissionReserveOnlyStopsThatInput(t *testing.T) {
+	ctx := t.Context()
+	registry := newExecutionRegistry()
+	registry.start(ctx)
+	t.Cleanup(registry.close)
+	core := &service{executions: registry, journal: missingSubmissionJournal{}}
+
+	if err := core.CancelSubmissionAndWait(ctx, "chat", "pending-input"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := registry.reserve("chat", "canceled-execution", "pending-input"); !errors.Is(err, status_error.OperationCanceled) {
+		registry.release("chat", "canceled-execution")
+		t.Fatalf("stopped submission reached preparation: %v", err)
+	}
+	if _, err := registry.reserve("chat", "replayed-execution", "pending-input"); !errors.Is(err, status_error.OperationCanceled) {
+		registry.release("chat", "replayed-execution")
+		t.Fatalf("stopped submission replay reached preparation: %v", err)
+	}
+	next, err := registry.reserve("chat", "new-execution", "new-input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer registry.release("chat", "new-execution")
+	if err := core.CancelSubmissionAndWait(ctx, "chat", "pending-input"); err != nil || next.Err() != nil {
+		t.Fatalf("late stop touched a different input: %v, %v", err, next.Err())
+	}
+}
+
+func TestStopNativeExecutionsSignalsAllBeforeWaiting(t *testing.T) {
+	ctx := t.Context()
+	registry := newExecutionRegistry()
+	registry.start(ctx)
+	first, err := registry.reserve("first-chat", "first-execution", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	last, err := registry.reserve("last-chat", "last-execution", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	core := &service{executions: registry}
+	await := core.StopNativeExecutions([]string{"first-chat", "last-chat"})
+	if first.Err() == nil || last.Err() == nil {
+		t.Fatalf("stop waited on an individual execution before signaling the group")
+	}
+	registry.release("first-chat", "first-execution")
+	registry.release("last-chat", "last-execution")
+	if err := await(ctx); err != nil {
+		t.Fatal(err)
+	}
+	registry.close()
+}
+
 func TestExecutionRegistryCloseWaitsForLaunchedExecutionWithoutDoubleRelease(
 	t *testing.T,
 ) {
 	registry := newExecutionRegistry()
 	registry.start(context.Background())
-	executionContext, err := registry.reserve("chat-1", "execution-1")
+	executionContext, err := registry.reserve("chat-1", "execution-1", "")
 	if err != nil {
 		t.Fatalf("reserve() error = %v", err)
 	}
@@ -92,7 +158,7 @@ func TestExecutionRegistryCancelAndWaitCoversCompletionAndTimeout(t *testing.T) 
 		t.Fatalf("cancelAndWait(missing) error = %v", err)
 	}
 
-	if _, err := registry.reserve("chat-complete", "execution-complete"); err != nil {
+	if _, err := registry.reserve("chat-complete", "execution-complete", ""); err != nil {
 		t.Fatalf("reserve(completion) error = %v", err)
 	}
 	go func() {
@@ -103,7 +169,7 @@ func TestExecutionRegistryCancelAndWaitCoversCompletionAndTimeout(t *testing.T) 
 		t.Fatalf("cancelAndWait(completion) error = %v", err)
 	}
 
-	if _, err := registry.reserve("chat-timeout", "execution-timeout"); err != nil {
+	if _, err := registry.reserve("chat-timeout", "execution-timeout", ""); err != nil {
 		t.Fatalf("reserve(timeout) error = %v", err)
 	}
 	timeoutContext, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -116,15 +182,58 @@ func TestExecutionRegistryCancelAndWaitCoversCompletionAndTimeout(t *testing.T) 
 	registry.close()
 }
 
+func TestExecutionCancellationWaitsForNativeSettlement(t *testing.T) {
+	for _, exact := range []bool{false, true} {
+		name := "chat"
+		if exact {
+			name = "execution"
+		}
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				registry := newExecutionRegistry()
+				registry.start(t.Context())
+				defer registry.close()
+				active, err := registry.reserve("chat", "execution", "")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer registry.release("chat", "execution")
+				done := make(chan error, 1)
+				core := &service{executions: registry}
+				go func() {
+					if exact {
+						done <- core.CancelExecutionAndWait(t.Context(), "chat", "execution")
+						return
+					}
+					done <- core.CancelAndWait(t.Context(), "chat")
+				}()
+				synctest.Wait()
+				select {
+				case err := <-done:
+					t.Fatalf("cancel returned before native settlement: %v", err)
+				default:
+				}
+				if active.Err() != context.Canceled {
+					t.Fatalf("native execution did not receive cancellation: %v", active.Err())
+				}
+				registry.release("chat", "execution")
+				if err := <-done; err != nil {
+					t.Fatalf("native cancellation failed after settlement: %v", err)
+				}
+			})
+		})
+	}
+}
+
 func TestCancelExecutionAndWaitCannotCancelNextChatExecution(t *testing.T) {
 	registry := newExecutionRegistry()
 	registry.start(context.Background())
 	defer registry.close()
-	if _, err := registry.reserve("shared-chat", "old-worker"); err != nil {
+	if _, err := registry.reserve("shared-chat", "old-worker", ""); err != nil {
 		t.Fatal(err)
 	}
 	registry.release("shared-chat", "old-worker")
-	next, err := registry.reserve("shared-chat", "new-input")
+	next, err := registry.reserve("shared-chat", "new-input", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,12 +250,12 @@ func TestExecutionRegistryReleasesAdmissionBeforeFileSettlementButDeletionStillW
 	registry := newExecutionRegistry()
 	registry.start(context.Background())
 	defer registry.close()
-	if _, err := registry.reserve("chat", "old"); err != nil {
+	if _, err := registry.reserve("chat", "old", ""); err != nil {
 		t.Fatal(err)
 	}
 	defer registry.release("chat", "old")
 	registry.complete("chat", "old", nil)
-	if _, err := registry.reserve("chat", "next"); err != nil {
+	if _, err := registry.reserve("chat", "next", ""); err != nil {
 		t.Fatalf("file settlement retained model admission: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -175,7 +284,7 @@ func TestExecutionRegistryReleasesContextAfterSettlement(t *testing.T) {
 	registry := newExecutionRegistry()
 	registry.start(context.Background())
 	defer registry.close()
-	ctx, err := registry.reserve("chat", "execution")
+	ctx, err := registry.reserve("chat", "execution", "")
 	if err != nil {
 		t.Fatal(err)
 	}

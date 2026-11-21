@@ -1,12 +1,18 @@
 // Package capability 保存工作流业务场景身份，CLI 契约由 agent/capability 唯一维护。
 package capability
 
-import "github.com/JieWaZi/NeuxBot/server/constants"
+import (
+	"sync"
+
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
+)
 
 // Input 是稳定工具面的结构化动作输入。
 type Input struct {
-	// InputFileRoots 仅由服务端冻结文件适配提供，不接纳模型参数。
-	InputFileRoots []string `json:"-"`
+	// StagedInputs 由宿主签名文件范围完成一次复制，外部参数无法填写。
+	StagedInputs *workflowfiles.StagedInputs `json:"-"`
 	// Action 是统一工具中的操作或按需查询动作。
 	Action string `json:"action"`
 	// Type 只选择本次能力允许的查询内容。
@@ -49,6 +55,8 @@ type Input struct {
 	Kind string `json:"kind,omitempty"`
 	// Cursor 是目录的后续窗口。
 	Cursor string `json:"cursor,omitempty"`
+	// PageParams 保留已验证的运行目录分页参数及显式参数存在性。
+	PageParams map[string]any `json:"-"`
 	// Status 是批注处理状态过滤条件。
 	Status string `json:"status,omitempty"`
 	// BaseRevisionID 是用户要求查看的批注基准。
@@ -59,13 +67,23 @@ type Input struct {
 	ResolvedAnnotationIDs []string `json:"resolvedAnnotationIds,omitempty"`
 }
 
-// Scope 是服务端从 URL 和认证头提取的能力范围。
+// Scope 是 Core 装配 botcli 操作时固定的工作流业务范围。
 type Scope struct {
-	// Key 是服务端校验的创作会话或效果身份。
+	// Key 是创作会话、运行调用回合或节点效果身份。
 	Key string
-	// Token 是需要 constant-time 校验的 bearer 令牌。
+	// ExecutionID 是创作或本地对话固定的执行标识。
+	ExecutionID string
+	// LocalChatID 标识使用共享工作流工具的本地交互对话。
+	LocalChatID string
+	// DefaultWorkflowID 是界面当前工作流或用户引用的默认目标。
+	DefaultWorkflowID string
+	// Selection 固定用户通过聊天引用选择的工作流版本。
+	Selection *workinput.WorkflowReference
+	// SavedRevisions 仅在本次能力生命周期内记录已返回保存回执的版本。
+	SavedRevisions *sync.Map
+	// Token 是节点结果提交使用的尝试凭证。
 	Token string
-	// Kind 是由服务端端点和持久凭据共同校验的能力用途。
+	// Kind 是服务端签发的能力用途。
 	Kind constants.WorkflowCapabilityScope
 }
 
@@ -73,8 +91,6 @@ type Scope struct {
 func Allows(scope constants.WorkflowCapabilityScope, input Input) bool {
 	if input.Action == constants.WorkflowActionQuery {
 		switch scope {
-		case constants.WorkflowCapabilityScopeCreation:
-			return input.Type == constants.WorkflowQuerySDK || input.Type == constants.WorkflowQueryExamples || input.Type == constants.WorkflowQueryResources || input.Type == constants.WorkflowQueryAuthoring
 		case constants.WorkflowCapabilityScopeConsumer:
 			return input.Type == constants.WorkflowQueryWorkflows
 		case constants.WorkflowCapabilityScopeResult:
@@ -82,14 +98,9 @@ func Allows(scope constants.WorkflowCapabilityScope, input Input) bool {
 		}
 	}
 	switch scope {
-	case constants.WorkflowCapabilityScopeCreation:
-		switch input.Action {
-		case constants.WorkflowActionSourceGet, constants.WorkflowActionSourceValidate, constants.WorkflowActionSourceUpsert, constants.WorkflowActionAnnotationsList, constants.WorkflowActionRunsGet:
-			return true
-		}
 	case constants.WorkflowCapabilityScopeConsumer:
 		switch input.Action {
-		case constants.WorkflowActionRunStart, constants.WorkflowActionRunGet, constants.WorkflowActionRunCancel:
+		case constants.WorkflowActionRunStart, constants.WorkflowActionRunGet, constants.WorkflowActionRunCancel, constants.WorkflowActionRunList, constants.WorkflowActionRunRepeat:
 			return true
 		}
 	case constants.WorkflowCapabilityScopeResult:

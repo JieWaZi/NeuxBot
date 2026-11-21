@@ -1346,30 +1346,72 @@ describe("assistant message shell", () => {
       ),
     ).not.toBeNull();
   });
-  it("正文隔开的多个过程段只展示一次整次执行用时", () => {
+  it("完成后用一个入口收起交错的中间文字与工具，保留最后的正文", () => {
     const message: BotChatMessage = {
       id: "multiple-processes",
       role: "assistant",
-      status: "completed",
+      status: "running",
       runMetrics: { durationMs: 32300 },
       displayParts: [
-        { id: "reason-1", type: "reasoning", text: "先检查插件" },
-        { id: "text-1", type: "text", text: "插件已就绪" },
-        { id: "reason-2", type: "reasoning", text: "再确认使用方式" },
-        { id: "text-2", type: "text", text: "可以直接使用" },
+        { id: "text-1", type: "text", text: "先检查插件" },
+        {
+          id: "tool-1",
+          type: "tool",
+          toolCategory: "file_read",
+          toolStatus: "completed",
+        },
+        { id: "text-2", type: "text", text: "插件已就绪" },
+        { id: "reason", type: "reasoning", text: "再确认使用方式" },
+        {
+          id: "tool-2",
+          type: "tool",
+          toolCategory: "network",
+          toolStatus: "completed",
+        },
+        { id: "final-1", type: "text", text: "可以直接使用" },
+        { id: "final-2", type: "text", text: "以下是配置说明" },
+        {
+          id: "progress",
+          type: "process_commentary",
+          text: "正在记录执行情况",
+        },
       ],
     };
-    const view = new ChatMessageProjection().update([message])[0];
-    if (!view) throw new Error("missing test message");
-    render(
-      <TooltipProvider>
-        <PureAssistantMessage name="伙伴" view={view} />
-      </TooltipProvider>,
-    );
-    expect(screen.getAllByText("用时 32.3s")).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "查看过程" }));
-    expect(screen.getByText("再确认使用方式")).toBeVisible();
+    const projection = new ChatMessageProjection();
+    const reply = (message: BotChatMessage) => {
+      const view = projection.update([message])[0];
+      if (!view) throw new Error("missing test message");
+      return (
+        <TooltipProvider>
+          <PureAssistantMessage name="伙伴" view={view} />
+        </TooltipProvider>
+      );
+    };
+    const { rerender } = render(reply(message));
+    expect(screen.getByText("先检查插件")).toBeVisible();
+    screen.getByRole("button", { name: "已访问网络" }).focus();
+
+    rerender(reply({ ...message, status: "completed" }));
+    const toggle = screen.getByRole("button", { name: "用时 32.3s" });
+    expect(toggle).toHaveFocus();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "查看过程" })).toBeNull();
+    expect(screen.queryByText("先检查插件")).toBeNull();
+    expect(screen.queryByText("插件已就绪")).toBeNull();
+    expect(screen.queryByText("正在记录执行情况")).toBeNull();
+    expect(screen.getByText("可以直接使用")).toBeVisible();
+    expect(screen.getByText("以下是配置说明")).toBeVisible();
+
+    fireEvent.click(toggle);
+    expect(screen.getByText("先检查插件")).toBeVisible();
+    expect(screen.getByRole("button", { name: "已读取文件" })).toBeVisible();
     expect(screen.getByText("插件已就绪")).toBeVisible();
+    expect(screen.getByText("再确认使用方式")).toBeVisible();
+    expect(screen.getByRole("button", { name: "已访问网络" })).toBeVisible();
+    expect(screen.getByText("正在记录执行情况")).toBeVisible();
+
+    fireEvent.click(toggle);
+    expect(screen.queryByText("插件已就绪")).toBeNull();
     expect(screen.getByText("可以直接使用")).toBeVisible();
   });
   it("准备和接纳阶段只由头像反馈状态，不显示空消息卡", () => {
@@ -1615,7 +1657,7 @@ describe("团队成员消息折叠", () => {
     );
     expect(reportFooter?.className).toBe(ordinaryFooter?.className);
     for (const row of [reportRow, ordinaryRow]) {
-      expect(row).toHaveClass("pb-4");
+      expect(row).not.toHaveClass("pb-4");
       expect(row?.querySelector("footer")?.parentElement).toHaveClass(
         "group/reply",
       );

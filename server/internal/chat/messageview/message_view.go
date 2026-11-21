@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -45,6 +46,8 @@ type MessageViewBuilder struct {
 	messageIndexes map[string]int
 	// executionMessages 保存执行标识到 Assistant 消息标识的映射。
 	executionMessages map[string]string
+	// deliverySummaries 保留领域交付正文，原生消息内容替换不覆盖此正文。
+	deliverySummaries map[string]string
 	// toolIndexes 按消息与调用复合身份定位工具展示部件。
 	toolIndexes map[string]map[string]int
 	// toolStates 只保留当前工具的安全展示事实，不保留输入正文、输出或历史参数。
@@ -93,6 +96,7 @@ func NewMessageViewBuilder() *MessageViewBuilder {
 		messages:               make([]Message, 0),
 		messageIndexes:         make(map[string]int),
 		executionMessages:      make(map[string]string),
+		deliverySummaries:      make(map[string]string),
 		toolIndexes:            make(map[string]map[string]int),
 		toolStates:             make(map[string]map[string]*toolProjectionState),
 		latestToolKeys:         make(map[string]map[string]string),
@@ -157,6 +161,8 @@ func (p *MessageViewBuilder) Apply(record eventlog.Record) (string, error) {
 		return p.applyRuntimeEvent(record)
 	case constants.ChatEventTypeFileChanges:
 		return p.applyFileChanges(record)
+	case constants.ChatEventTypeExecutionDelivery:
+		return p.applyExecutionDelivery(record)
 	case constants.ChatEventTypeApprovalResolved:
 		return p.applyApprovalResolved(record)
 	case constants.ChatEventTypeAssistantMessage,
@@ -248,7 +254,43 @@ func (p *MessageViewBuilder) snapshotMessage(message Message, public bool) Messa
 		message.Fork = &fork
 	}
 	// 继承消息没有 Runtime 事件或增量工具索引，直接保留权威继承快照中的文件摘要。
-	return cloneMessage(message, public)
+	message = cloneMessage(message, public)
+	if text := p.deliverySummaries[message.ID]; text != "" {
+		if message.Content == "" {
+			message.Content = text
+		} else {
+			message.Content += "\n\n" + text
+		}
+		message.DisplayParts = append(message.DisplayParts, MessageDisplayPart{ID: message.ID + ":delivery", Type: constants.MessageDisplayPartText, Text: text})
+	}
+	message.Readable = ReadingKind(message) != ""
+	return message
+}
+
+func (p *MessageViewBuilder) applyExecutionDelivery(record eventlog.Record) (string, error) {
+	var data eventlog.ExecutionDeliveryData
+	if json.Unmarshal(record.Data, &data) != nil {
+		return "", status_error.ChatLogCorrupted
+	}
+	index, exists := p.messageIndexes[record.MessageID]
+	if !exists {
+		return "", nil
+	}
+	message := &p.messages[index]
+	if message.ExecutionID != record.ExecutionID || message.Role != constants.MessageRoleAssistant {
+		return "", status_error.ChatLogCorrupted
+	}
+	for _, attachment := range data.Attachments {
+		if !slices.ContainsFunc(message.Attachments, func(current eventlog.AttachmentReference) bool { return current.Path == attachment.Path }) {
+			message.Attachments = append(message.Attachments, attachment)
+		}
+	}
+	if data.Summary != "" {
+		p.deliverySummaries[message.ID] = data.Summary
+	}
+	message.Revision = max(message.Revision+1, record.Sequence)
+	message.UpdatedAt = record.RecordedAt
+	return message.ID, nil
 }
 
 // PublicMessage 返回不携带 Runtime 原始事件的指定消息快照。
@@ -320,6 +362,7 @@ func (p *MessageViewBuilder) applyMessageCreated(record eventlog.Record) (string
 		Skills:          append([]eventlog.MessageSkillReference(nil), data.Skills...),
 		Connectors:      append([]eventlog.MessageConnectorReference(nil), data.Connectors...),
 		CodeReferences:  append([]eventlog.CodeReference(nil), data.CodeReferences...),
+		Workflow:        data.Workflow,
 		Revision:        record.Sequence,
 		LiveRevision:    record.Sequence,
 		CreatedSequence: record.Sequence,
@@ -827,7 +870,6 @@ func displayPartID(messageID string, sequence int64) string {
 // cloneMessage 深拷贝可变字段，并按公开视图要求移除 Runtime 原始事件。
 func cloneMessage(message Message, public bool) Message {
 	clone := message
-	clone.Readable = ReadingKind(message) != ""
 	if message.FileChangeRecord != nil {
 		record := *message.FileChangeRecord
 		clone.FileChangeRecord = &record
@@ -882,6 +924,12 @@ func (p *MessageViewBuilder) setForkBoundary(message *Message, boundary agentapi
 // SetCurrentForkSession 提供权威绑定，仅用于当前消息窗口的分叉能力判断。
 func (p *MessageViewBuilder) SetCurrentForkSession(sessionID string) {
 	p.currentForkSessionID = sessionID
+}
+
+// SetCurrentForkBoundary 为单条历史回复补投影时提供原 Chat 的当前分叉边界。
+func (p *MessageViewBuilder) SetCurrentForkBoundary(executionID, sessionID string) {
+	p.forkLatestID = executionID
+	p.SetCurrentForkSession(sessionID)
 }
 
 // LatestForkExecutionID 返回已投影窗口末尾的执行身份，只有最新窗口可作为全会话基线。

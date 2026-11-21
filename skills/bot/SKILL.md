@@ -5,11 +5,9 @@ description: Use NeuxBot's authorized knowledge, delivery, workflow, team, memor
 
 # NeuxBot
 
-Use the skill directory supplied by the application.
-The executable is `scripts/botcli` (`scripts/botcli.exe` on Windows), relative
-to this `SKILL.md`. Invoke its exact quoted absolute path. The host configures
-its connection, so the examples only show the command and its business arguments.
-Resolve reference paths from this skill directory, not the working directory.
+Run `botcli` with the connection supplied by NeuxBot. If the shell cannot
+find `botcli`, use the quoted executable path supplied in the host instructions.
+Resolve reference paths from this skill directory.
 
 ## Read the relevant mode
 
@@ -26,7 +24,7 @@ maintenance task.
 | Ingestion followed by Wiki maintenance | [Combined requests](references/wiki-guide.md#combined-requests) |
 | Observe an admitted knowledge task and deliver its final summary | [Knowledge task results](references/wiki-guide.md#knowledge-task-results) |
 | Host-bound workflow goals from the first message, edits and short follow-ups | [Workflow authoring](references/workflow-authoring.md) |
-| Execute an explicitly authorized existing workflow | [Workflow execution](references/workflow-execution.md) |
+| Run a selected workflow or follow up on one of this chat’s earlier runs | [Workflow execution](references/workflow-execution.md) |
 | Submit the current workflow worker attempt's structured output | [Worker results](references/workflow-results.md) |
 
 For other domains, read the relevant guide advertised by the current capability.
@@ -35,8 +33,7 @@ For other domains, read the relevant guide advertised by the current capability.
 
 When the host selects CLI transport, read the matching reference below before
 the first domain call. These references contain shell examples and complete
-JSON input examples for their tasks. In all shell blocks, replace the leading `botcli` with the exact quoted executable
-path described above. Examples use POSIX shell syntax; use the current shell's
+JSON input examples for their tasks. Examples use POSIX shell syntax; use the current shell's
 quoting and redirection on Windows. Example IDs, paths, versions and request
 identities are fictional: use discovered resources and values from actual reads.
 Create JSON files with the file-writing tool as UTF-8 before invoking `--input`;

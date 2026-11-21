@@ -92,7 +92,7 @@ export function StorageOverview({ active }: { active: boolean }) {
             <p className="type-display text-content-primary font-semibold tabular-nums">
               {data.complete
                 ? storageSize(total)
-                : t("partial", { size: storageSize(total) })}
+                : t("partial", { size: storageSize(total, "lower-bound") })}
             </p>
             <div className="type-ui text-content-secondary flex flex-wrap gap-x-3 gap-y-1">
               {data.scannedAt ? (

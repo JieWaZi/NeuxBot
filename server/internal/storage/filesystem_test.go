@@ -9,8 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 )
 
 func writeMeasuredFile(t *testing.T, root, relative string, size int) string {
@@ -23,6 +27,66 @@ func writeMeasuredFile(t *testing.T, root, relative string, size int) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func TestMeasureClassifiesSystemSkillsOnlyInOwnedExecutionWorkspaces(t *testing.T) {
+	managed := t.TempDir()
+	layout, err := chatstorage.NewLayout(managed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	threadID, chatID, wakerID := util.New(), util.New(), util.New()
+	member, err := layout.TeamMemberWorkspace(threadID, wakerID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared, err := layout.TeamSharedDirectory(threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(shared, "backup")
+	item, err := managedskills.SystemSkillDefinition()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document []byte
+	for _, file := range item.Files {
+		if file.Path == "SKILL.md" {
+			document = file.Data
+		}
+	}
+	if len(document) == 0 {
+		t.Fatal("missing system skill document")
+	}
+	digest := strings.Repeat("f", 64)
+	snapshot := managedskills.MaterializationSnapshotPath(digest) + "/SKILL.md"
+	manifest := fmt.Sprintf(`{"version":1,"targets":{".cursor/skills":{"bot":%q}}}`, digest)
+	for _, directory := range []string{member, backup} {
+		if err := workspace.EnsureThreadMemberExecutionWorkspace(directory, threadID, chatID, wakerID); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, managedskills.MaterializationManifestName), []byte(manifest), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		filename := writeMeasuredFile(t, directory, snapshot, 0)
+		if err := os.WriteFile(filename, document, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := Measure(t.Context(), Roots{Data: t.TempDir(), Managed: managed}, Limits{})
+	if err != nil || !got.Complete {
+		t.Fatalf("measurement=%+v, error=%v", got, err)
+	}
+	categories := make(map[string]constants.StorageCategory)
+	for _, file := range got.Entries {
+		categories[file.Path] = file.Category
+	}
+	if category := categories[filepath.Join(member, snapshot)]; category != constants.StorageCategoryPrograms {
+		t.Fatalf("owned member snapshot: %s", category)
+	}
+	if category := categories[filepath.Join(backup, snapshot)]; category != constants.StorageCategoryWorkFiles {
+		t.Fatalf("shared backup counted as %s", category)
+	}
 }
 
 func TestMeasureDeduplicatesNestedRoots(t *testing.T) {
@@ -194,54 +258,6 @@ func TestDiskReportsRealVolumesAndGroupsRoots(t *testing.T) {
 	if disk.ID == "" || disk.TotalBytes == 0 || disk.AvailableBytes > disk.TotalBytes ||
 		len(disk.Roots) != 2 || disk.Roots[0] != got.Roots.Data || disk.Roots[1] != got.Roots.Managed {
 		t.Fatalf("invalid volume: %+v", disk)
-	}
-}
-
-func TestMeasureVerifiesMaterializedSystemSkillFiles(t *testing.T) {
-	data, managed := t.TempDir(), t.TempDir()
-	published := filepath.Join(data, "system-skills")
-	staging := filepath.Join(published, "fixture")
-	writeMeasuredFile(t, staging, "SKILL.md", 7)
-	writeMeasuredFile(t, staging, "references/guide", 9)
-	writeMeasuredFile(t, staging, "references/missing-copy", 12)
-	digest, err := managedskills.Digest(staging)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(staging, filepath.Join(published, digest)); err != nil {
-		t.Fatal(err)
-	}
-
-	workspace := filepath.Join(managed, "Agents", "waker-a")
-	writeMeasuredFile(t, workspace, ".cursor/skills/bot/SKILL.md", 7)
-	tampered := writeMeasuredFile(t, workspace, ".cursor/skills/bot/references/guide", 9)
-	if err := os.WriteFile(tampered, []byte("different"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	writeMeasuredFile(t, workspace, ".cursor/skills/bot/references/user-notes", 11)
-	writeMeasuredFile(t, workspace, ".agents/skills/bot/SKILL.md", 7)
-	writeMeasuredFile(t, workspace, ".cursor/skills/another/SKILL.md", 8)
-	body := fmt.Sprintf(`{"version":1,"targets":{".cursor/skills":{"bot":%q}}}`, digest)
-	if err := os.WriteFile(filepath.Join(workspace, ".neuxbot-skills.json"), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := Measure(t.Context(), Roots{Data: data, Managed: managed}, Limits{})
-	if err != nil || !got.Complete {
-		t.Fatalf("measurement=%+v, error=%v", got, err)
-	}
-	var internal []string
-	for _, file := range got.Entries {
-		if file.WakerID == "waker-a" && file.Category == "programs" {
-			relative, relErr := filepath.Rel(filepath.Join(got.Roots.Managed, "Agents", "waker-a"), file.Path)
-			if relErr != nil {
-				t.Fatal(relErr)
-			}
-			internal = append(internal, filepath.ToSlash(relative))
-		}
-	}
-	if len(internal) != 1 || internal[0] != ".cursor/skills/bot/SKILL.md" {
-		t.Fatalf("verified system skill files=%v", internal)
 	}
 }
 

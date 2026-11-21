@@ -135,4 +135,37 @@ describe("TeamLiveProjection", () => {
       }),
     ).toBe("task-recovery-failed");
   });
+
+  it("旧负责人回合结束只推进游标，当前回合结束才清空处理状态", () => {
+    const initial = createTeamLiveProjection({
+      ...snapshot,
+      leadActiveExecutionId: "current-execution",
+      leadProcessing: true,
+    });
+    const oldClose = reduceTeamLiveProjection(initial, {
+      type: "event",
+      event: {
+        id: "event-2",
+        threadId: "thread-1",
+        type: "team.leader.processing",
+        createdAt: 2,
+        payload: { active: false, executionId: "prior-execution" },
+      },
+    });
+    expect(oldClose.view).toBe(initial.view);
+    expect(oldClose).toMatchObject({ cursor: "event-2", needsSnapshot: true });
+
+    const currentClose = reduceTeamLiveProjection(oldClose, {
+      type: "event",
+      event: {
+        id: "event-3",
+        threadId: "thread-1",
+        type: "team.leader.processing",
+        createdAt: 3,
+        payload: { active: false, executionId: "current-execution" },
+      },
+    });
+    expect(currentClose.view.leadProcessing).toBe(false);
+    expect(currentClose.view.leadActiveExecutionId).toBeUndefined();
+  });
 });

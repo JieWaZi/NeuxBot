@@ -145,7 +145,7 @@ func (p *queryIndexStore) createChatsIfMissing(ctx context.Context, chats []mode
 			if err != nil {
 				return err
 			}
-			prepared[index], err = p.prepareReading(ctx, chat.ID, records, chat.LatestSequence)
+			prepared[index], err = p.prepareReading(ctx, chat.ID, records, 0, chat.LatestSequence)
 			if err != nil {
 				return err
 			}
@@ -209,7 +209,7 @@ func (p *queryIndexStore) advanceChatReading(ctx context.Context, chatID string,
 	if len(tail) == 0 || tail[len(tail)-1].Sequence != through {
 		return status_error.ChatLogIndexCorrupted
 	}
-	changes, err := p.prepareReading(ctx, chatID, tail, through)
+	changes, err := p.prepareReading(ctx, chatID, tail, afterSequence, through)
 	if err != nil {
 		return err
 	}

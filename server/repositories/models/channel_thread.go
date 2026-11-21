@@ -45,6 +45,8 @@ type ChannelThread struct {
 	ReadyAt *int64 `gorm:"column:ready_at;index" json:"readyAt,omitempty"`
 	// CancelingAt 是停止全部工作开始的 Unix 毫秒时间；非空时禁止接纳或派发新工作。
 	CancelingAt *int64 `gorm:"column:canceling_at;index" json:"cancelingAt,omitempty"`
+	// StopGeneration 隔离停止前读取的派发快照，停止完成后旧快照仍不能接纳执行。
+	StopGeneration int64 `gorm:"not null;default:0" json:"-"`
 	// CreatedAt 是首次发送原子创建对话时的 Unix 毫秒时间。
 	CreatedAt int64 `gorm:"column:created_at;autoCreateTime:milli" json:"createdAt"`
 	// UpdatedAt 是团队对话最近发生持久变化时的 Unix 毫秒时间。

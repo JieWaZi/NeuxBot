@@ -123,16 +123,19 @@ func (s *service) exhaustAttemptWatcher(
 	attempt models.ChannelTaskAttempt,
 	threadID string,
 ) error {
-	if err := s.executions.CancelAndWait(ctx, attempt.ChatID); err != nil {
-		return err
-	}
 	task, err := s.tasks.Get(ctx, attempt.TaskID)
+	if hasStatusErrorCode(err, status_error.ChannelTaskNotFound.Code()) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
 	if task.ThreadID != threadID || task.CurrentFence != attempt.Fence ||
 		task.Status != constants.ChannelTaskStatusInProgress {
 		return nil
+	}
+	if err := s.executions.CancelExecutionAndWait(ctx, attempt.ChatID, attempt.ExecutionID); err != nil {
+		return err
 	}
 	if err := s.failAttempt(
 		ctx,
@@ -193,6 +196,9 @@ func (s *service) handleAttemptTerminal(
 		ctx = context.Background()
 	}
 	task, err := s.tasks.Get(ctx, attempt.TaskID)
+	if hasStatusErrorCode(err, status_error.ChannelTaskNotFound.Code()) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -372,7 +378,8 @@ func (s *service) recoverReservedAttempt(
 		return false, err
 	}
 	if !recorded {
-		return false, s.releaseUnstartedAttempt(ctx, attempt)
+		_, err := s.releaseUnstartedAttempt(ctx, attempt)
+		return false, err
 	}
 	startedAt := time.Now().UnixMilli()
 	err = s.transaction(ctx, func(transactionContext context.Context) error {
@@ -410,6 +417,9 @@ func (s *service) recoverReservedAttempt(
 	attempt.Status = constants.ExecutionStatusRunning
 	attempt.StartedAt = &startedAt
 	s.watchAttempt(attempt, task.ThreadID, "")
+	if taskCancellationRequested(task, attempt.Fence) {
+		s.watchTaskCancellation(attempt)
+	}
 	return true, nil
 }
 

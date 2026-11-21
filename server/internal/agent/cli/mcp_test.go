@@ -215,7 +215,7 @@ func TestMCPBridgeReusesConnectionAcrossExecutionScopes(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	path, activate, finish, err := registry.PrepareConnection(dir, "workflow-authoring", httpServer.URL+constants.AgentCLIPath, capability.GrantSpec{ExecutionID: "first", Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(_ context.Context, req capability.Request) (capability.Result, error) {
+	path, activate, finish, err := registry.PrepareConnection(dir, "workflow-authoring", httpServer.URL+constants.AgentCLIPath, capability.GrantSpec{ExecutionID: "first", SharedLocalToken: true, Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(_ context.Context, req capability.Request) (capability.Result, error) {
 		calls++
 		return capability.Result{Data: map[string]any{"workflowId": "bound", "source": "source", "workspace": workspace}}, nil
 	}}}})
@@ -284,7 +284,7 @@ func TestMCPBridgeReusesConnectionAcrossExecutionScopes(t *testing.T) {
 	if result := call(); !result.IsError || calls != 1 {
 		t.Fatal("finished execution retained MCP access")
 	}
-	nextPath, activateNext, finishNext, err := registry.PrepareConnection(dir, "workflow-authoring", httpServer.URL+constants.AgentCLIPath, capability.GrantSpec{ExecutionID: "second", Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, capability.Request) (capability.Result, error) {
+	nextPath, activateNext, finishNext, err := registry.PrepareConnection(dir, "workflow-authoring", httpServer.URL+constants.AgentCLIPath, capability.GrantSpec{ExecutionID: "second", SharedLocalToken: true, Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, capability.Request) (capability.Result, error) {
 		calls++
 		return capability.Result{Data: map[string]any{"workflowId": "bound", "source": "second-source", "workspace": workspace}}, nil
 	}}}})

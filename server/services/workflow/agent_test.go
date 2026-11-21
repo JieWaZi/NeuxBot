@@ -17,10 +17,83 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	agentcli "github.com/JieWaZi/NeuxBot/server/internal/agent/cli"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 )
+
+type workflowWaitRunStore struct {
+	// WorkflowRunController 读取原运行的其余详情。
+	controllers.WorkflowRunController
+	// hub 在首次读取后发布运行进入终态的变化。
+	hub *events.Hub
+	// reads 记录观察读取的次数。
+	reads int
+}
+
+func (s *workflowWaitRunStore) GetRun(_ context.Context, id string) (models.WorkflowRun, error) {
+	s.reads++
+	if s.reads == 1 {
+		s.hub.Publish(events.Event{Topic: "workflow", Resource: events.Resource{Kind: "workflow", ID: id}})
+		return models.WorkflowRun{ID: id, Status: constants.WorkflowRunStatusRunning}, nil
+	}
+	return models.WorkflowRun{ID: id, Status: constants.WorkflowRunStatusFailed}, nil
+}
+
+func TestAgentWorkflowWaitReturnsTheSnapshotThatReachedTerminal(t *testing.T) {
+	s, _ := workflowTestService(t)
+	hub := events.New()
+	t.Cleanup(hub.Close)
+	s.events = hub
+	store := &workflowWaitRunStore{WorkflowRunController: s.runs, hub: hub}
+	s.runs = store
+	_, call := bindLocalWorkflowFixture(t, s, consumerFixtureChat(t, "observer"), nil)
+	result, err := call("workflow.runs.wait", "", map[string]any{"runId": "observed-run", "timeoutMs": 2000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := result.Data.(map[string]any)
+	run := data["resource"].(map[string]any)["run"].(map[string]any)
+	if data["completed"] != true || run["status"] != constants.WorkflowRunStatusFailed || store.reads != 2 {
+		t.Fatalf("observation returned inconsistent run: %+v, reads = %d", data, store.reads)
+	}
+}
+
+func TestWorkflowRunReadsReturnActiveAndTerminalSnapshots(t *testing.T) {
+	s, _ := workflowTestService(t)
+	hub := events.New()
+	t.Cleanup(hub.Close)
+	s.events = hub
+	conversation := consumerFixtureChat(t, "observer")
+	definition := savedTestWorkflow(t, s, workflowTestSource(t))
+	_, call := bindLocalWorkflowFixture(t, s, conversation, nil)
+	for id, status := range map[string]constants.WorkflowRunStatus{"active": constants.WorkflowRunStatusRunning, "finished": constants.WorkflowRunStatusSucceeded} {
+		insertWorkflowChatHistory(t, s, models.WorkflowRun{ID: id, DefinitionID: definition.ID, RevisionID: definition.CurrentRevisionID, SourceChatID: conversation.ID, Status: status})
+	}
+	for _, operation := range []string{"workflow.runs.get", "workflow.runs.wait"} {
+		for id, status := range map[string]constants.WorkflowRunStatus{"active": constants.WorkflowRunStatusRunning, "finished": constants.WorkflowRunStatusSucceeded} {
+			params := map[string]any{"runId": id}
+			if operation == "workflow.runs.wait" {
+				params["timeoutMs"] = 1
+			}
+			result, err := call(operation, "", params)
+			if err != nil {
+				t.Fatal(err)
+			}
+			details := result.Data.(map[string]any)
+			if operation == "workflow.runs.wait" {
+				if details["completed"] != (status == constants.WorkflowRunStatusSucceeded) {
+					t.Errorf("%s(%s) returned an incorrect wait result: %+v", operation, id, details)
+				}
+				details = details["resource"].(map[string]any)
+			}
+			if run := details["run"].(map[string]any); run["id"] != id || run["status"] != status {
+				t.Errorf("%s(%s) returned the wrong snapshot: %+v", operation, id, run)
+			}
+		}
+	}
+}
 
 func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) {
 	testAgentRunFileScope(t, false)
@@ -28,6 +101,28 @@ func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) 
 
 func TestAgentRunFreezesExactReferencedFileWithoutParentScope(t *testing.T) {
 	testAgentRunFileScope(t, true)
+}
+
+func TestWorkflowValidatesInputFilesWithoutGlobalCommandLock(t *testing.T) {
+	s, _ := workflowTestService(t)
+	definition := savedTestWorkflow(t, s, `export const meta={sdk:'bot.workflow',title:'文件输入',description:'验证文件路径',inputSchema:{type:'object',properties:{file:{type:'string',format:'file',title:'文件',description:'选择已有的文件。'}},required:['file']},phases:[{id:'work',title:'执行',detail:'读取文件',canExit:true}]};phase('work');return args.file;`)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	s.state.Commands.Lock()
+	defer s.state.Commands.Unlock()
+	result := make(chan error, 1)
+	go func() {
+		_, err := s.StartRun(ctx, StartRunCommand{DefinitionID: definition.ID, RequestID: "invalid-input", Args: map[string]any{"file": "missing.txt"}})
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		if err != status_error.WorkflowFileInvalid {
+			t.Fatalf("invalid file did not produce a file error: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("preparing inputs waited for the global workflow command lock")
+	}
 }
 
 func testAgentRunFileScope(t *testing.T, exact bool) {
@@ -50,19 +145,17 @@ func testAgentRunFileScope(t *testing.T, exact bool) {
 			t.Fatal(err)
 		}
 	}
-	lease := models.WorkflowConsumerLease{ID: "execution", ChatID: "chat", AuthToken: "consumer-token", DefinitionIDs: []string{definition.ID}, DeadlineAt: time.Now().Add(time.Hour).UnixMilli()}
-	if err := s.consumers.CreateConsumer(ctx, lease); err != nil {
-		t.Fatal(err)
-	}
+	conversation := consumerFixtureChat(t, "chat")
+	_, lease := bindConsumerFixture(t, s, conversation, definition.ID, "execution", "input")
 	s.executions = consumerExecutionBoundary{}
-	s.chats = &consumerChatBoundary{actual: models.Execution{ID: lease.ID, ChatID: lease.ChatID, Status: constants.ExecutionStatusRunning, PermissionLevel: constants.PermissionLevelDefault}, summary: chat.ChatSummary{Chat: models.Chat{ID: lease.ChatID, ActiveExecutionID: lease.ID, AdditionalWorkingDirectories: []string{root}}}}
+	s.chats = &consumerChatBoundary{actual: models.Execution{ID: lease.ID, ChatID: lease.ChatID, Status: constants.ExecutionStatusRunning, UserMessageID: "input", PermissionLevel: constants.PermissionLevelDefault}, summary: chat.ChatSummary{Chat: models.Chat{ID: lease.ChatID, ActiveExecutionID: lease.ID, AdditionalWorkingDirectories: []string{root}}}}
 	registry := capability.New(nil)
 	defer registry.Close()
 	roots, files := []string{root}, []string(nil)
 	if exact {
 		roots, files = nil, []string{filepath.Join(sub, "report.txt")}
 	}
-	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: lease.ID, FileRoots: roots, FilePaths: files, ManagedSpace: root, Bindings: s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer), Validate: func(context.Context) error { return nil }})
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: lease.ID, FileRoots: roots, FilePaths: files, ManagedSpace: root, Bindings: s.consumerAgentBindings(lease), Validate: func(context.Context) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,9 +227,35 @@ func testAgentRunFileScope(t *testing.T, exact bool) {
 			t.Fatalf("internal space file was frozen through an alias: %+v", rejected)
 		}
 	}
+	concurrent, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	resume := make(chan struct{})
+	release := sync.OnceFunc(func() { close(resume) })
+	defer release()
+	paused := &pausedAgentDefinition{WorkflowController: s.store, paused: make(chan struct{}), resume: resume}
+	s.store = paused
+	loser := make(chan capability.Response, 1)
+	go func() {
+		_, response := call(arguments, params)
+		loser <- response
+	}()
+	select {
+	case <-paused.paused:
+	case <-concurrent.Done():
+		t.Fatal("first candidate never reached run admission")
+	}
 	code, first := call(arguments, params)
+	release()
 	if code != 0 {
 		t.Fatalf("file admission failed: %+v", first.Error)
+	}
+	select {
+	case response := <-loser:
+		if response.CommandID != first.CommandID || response.Data.(map[string]any)["runId"] != first.Data.(map[string]any)["runId"] {
+			t.Fatalf("concurrent file candidate did not replay the winning receipt: %+v", response)
+		}
+	case <-concurrent.Done():
+		t.Fatal("first candidate never returned its receipt")
 	}
 	runID, _ := first.Data.(map[string]any)["runId"].(string)
 	run, err := s.runs.GetRun(ctx, runID)
@@ -156,24 +275,30 @@ func testAgentRunFileScope(t *testing.T, exact bool) {
 	if body, err := os.ReadFile(frozen); err != nil || string(body) != "actual child report" || args["note"] != "report.txt" {
 		t.Fatalf("incorrect input resolution: args=%v body=%q err=%v", args, body, err)
 	}
+	info, err := os.Stat(frozen)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("input lost private file permissions: %v %v", info, err)
+	}
+	code, rejected = call([]string{"workflow", "runs", "start", "--request-id", "second-run", "--input", "-"}, params)
+	if code == 0 || rejected.Error == nil || rejected.Error.Code != status_error.WorkflowRequestConflict.Key() {
+		t.Fatalf("second run escaped the same-turn admission check: %+v", rejected)
+	}
+	acceptedInputs, err := os.ReadDir(filepath.Join(internal, constants.WorkflowInputFileDirectoryName))
+	if err != nil || len(acceptedInputs) != 1 || acceptedInputs[0].Name() != runID {
+		t.Fatalf("losing or rejected candidates retained input files: %+v %v", acceptedInputs, err)
+	}
 	code, replay := call(arguments, params)
 	if code != 0 || !replay.Replayed || replay.CommandID != first.CommandID {
 		t.Fatalf("unchanged files did not replay: %+v", replay)
-	}
-	currentArguments := []string{"workflow", "runs", "start", "--request-id", "current", "--input", "-"}
-	currentParams := map[string]any{"definitionId": definition.ID, "revisionId": "", "args": params["args"]}
-	code, current := call(currentArguments, currentParams)
-	if code != 0 {
-		t.Fatalf("current revision admission failed: %+v", current)
 	}
 	changedSource := strings.Replace(source, "交付本次报告", "交付更新后的报告", 1)
 	saved, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: definition.CurrentRevisionID, RequestID: "new-head", Source: changedSource, SDK: constants.WorkflowSDKIdentifier})
 	if err != nil || saved.RevisionID == definition.CurrentRevisionID {
 		t.Fatalf("new revision was not created: %+v %v", saved, err)
 	}
-	code, currentReplay := call(currentArguments, currentParams)
-	if code != 0 || !currentReplay.Replayed || currentReplay.CommandID != current.CommandID || currentReplay.Data.(map[string]any)["revisionId"] != definition.CurrentRevisionID {
-		t.Fatalf("current revision replay followed a new head: %+v", currentReplay)
+	code, fixedReplay := call(arguments, params)
+	if code != 0 || !fixedReplay.Replayed || fixedReplay.CommandID != first.CommandID || fixedReplay.Data.(map[string]any)["revisionId"] != definition.CurrentRevisionID {
+		t.Fatalf("selected revision replay followed a new head: %+v", fixedReplay)
 	}
 	if err := os.WriteFile("report.txt", []byte("changed report"), 0o600); err != nil {
 		t.Fatal(err)
@@ -192,18 +317,16 @@ func testAgentRunFileScope(t *testing.T, exact bool) {
 	if code != 0 || receipt.CommandID != first.CommandID {
 		t.Fatalf("receipt depended on deleted source file: %+v", receipt)
 	}
-	entries, err := os.ReadDir(filepath.Join(internal, "tmp"))
+	entries, err := os.ReadDir(filepath.Join(internal, constants.WorkflowInputStagingDirectoryName))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), "workflow-input-staging-") {
-			t.Fatal("temporary input snapshot leaked")
-		}
+	if len(entries) != 0 {
+		t.Fatal("temporary input snapshot leaked")
 	}
 }
 
-// pausedAgentDefinition 在读取首个版本快照后暂停，确定性覆盖跨版本并发接纳。
+// pausedAgentDefinition 在读取首个版本快照后暂停，允许并发发布新版和接纳同一个固定版本。
 type pausedAgentDefinition struct {
 	// WorkflowController 保留真实 SQLite 仓储行为。
 	controllers.WorkflowController
@@ -228,26 +351,24 @@ func (s *pausedAgentDefinition) GetDefinition(ctx context.Context, id string) (m
 	return definition, err
 }
 
-func TestAgentConcurrentCurrentRevisionAdmissionReplaysWinner(t *testing.T) {
+func TestAgentConcurrentFixedRevisionAdmissionReplaysWinner(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	s, _ := workflowTestService(t)
 	s.dataDirectory = t.TempDir()
 	source := workflowTestSource(t)
 	definition := savedTestWorkflow(t, s, source)
-	lease := models.WorkflowConsumerLease{ID: "execution", ChatID: "chat", AuthToken: "token", DefinitionIDs: []string{definition.ID}, DeadlineAt: time.Now().Add(time.Hour).UnixMilli()}
-	if err := s.consumers.CreateConsumer(ctx, lease); err != nil {
-		t.Fatal(err)
-	}
+	conversation := consumerFixtureChat(t, "chat")
+	_, lease := bindConsumerFixture(t, s, conversation, definition.ID, "execution", "input")
 	s.executions = consumerExecutionBoundary{}
-	s.chats = &consumerChatBoundary{actual: models.Execution{ID: lease.ID, ChatID: lease.ChatID, Status: constants.ExecutionStatusRunning, PermissionLevel: constants.PermissionLevelDefault}, summary: chat.ChatSummary{Chat: models.Chat{ID: lease.ChatID, ActiveExecutionID: lease.ID, AdditionalWorkingDirectories: []string{t.TempDir()}}}}
+	s.chats = &consumerChatBoundary{actual: models.Execution{ID: lease.ID, ChatID: lease.ChatID, Status: constants.ExecutionStatusRunning, UserMessageID: "input", PermissionLevel: constants.PermissionLevelDefault}, summary: chat.ChatSummary{Chat: models.Chat{ID: lease.ChatID, ActiveExecutionID: lease.ID, WorkspaceDirectory: conversation.WorkspaceDirectory}}}
 	var start capability.Binding
-	for _, binding := range s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer) {
+	for _, binding := range s.consumerAgentBindings(lease) {
 		if binding.Operation == "workflow.runs.start" {
 			start = binding
 		}
 	}
-	request := capability.Request{Operation: start.Operation, RequestID: "same", Params: map[string]any{"definitionId": definition.ID, "revisionId": "", "args": map[string]any{"text": "same"}}}
+	request := capability.Request{Operation: start.Operation, RequestID: "same", Params: map[string]any{"definitionId": definition.ID, "revisionId": definition.CurrentRevisionID, "args": map[string]any{"text": "same"}}}
 	resume := make(chan struct{})
 	release := sync.OnceFunc(func() { close(resume) })
 	defer release()
@@ -275,8 +396,10 @@ func TestAgentConcurrentCurrentRevisionAdmissionReplaysWinner(t *testing.T) {
 	}
 	select {
 	case first := <-firstResults:
-		if err := <-firstErrors; err != nil || first.CommandID != second.CommandID || !first.Replayed || first.Data.(map[string]any)["revisionId"] != saved.RevisionID {
-			t.Fatalf("old revision admission did not replay the winner: first=%+v second=%+v err=%v", first, second, err)
+		if err := <-firstErrors; err != nil || first.CommandID != second.CommandID ||
+			first.Data.(map[string]any)["runId"] != second.Data.(map[string]any)["runId"] ||
+			first.Data.(map[string]any)["revisionId"] != definition.CurrentRevisionID {
+			t.Fatalf("concurrent admission did not replay the selected revision: first=%+v second=%+v err=%v", first, second, err)
 		}
 	case <-ctx.Done():
 		t.Fatal("first admission did not finish")

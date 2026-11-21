@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +19,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	agentcli "github.com/JieWaZi/NeuxBot/server/internal/agent/cli"
+	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -33,10 +38,14 @@ func authoringTestCLI(t *testing.T, s *Service, session models.WorkflowCreationS
 	if err := s.creationSessions.CreateCreationSession(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
+	bound, err := s.BindLocalWorkflowTurn(t.Context(), models.Chat{ID: session.ChatID}, session.ActiveExecutionID, nil, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	registry := capability.New(nil)
 	t.Cleanup(registry.Close)
 	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{
-		ExecutionID: "authoring", Bindings: s.AgentBindings(session.ID, session.AuthToken, constants.WorkflowCapabilityScopeCreation),
+		ExecutionID: session.ActiveExecutionID, Bindings: bound.Capability.Bindings,
 		Validate: func(context.Context) error { return nil },
 	})
 	if err != nil {
@@ -92,7 +101,7 @@ func TestAuthoringCLICombinesPreparationAndSavesWithDurableReceipt(t *testing.T)
 		t.Fatal(err)
 	}
 	call := authoringTestCLI(t, s, models.WorkflowCreationSession{
-		ID: "creation", ActiveExecutionID: "authoring", DefinitionID: definition.ID, AuthToken: "private",
+		ID: "creation", ActiveExecutionID: "authoring", DefinitionID: definition.ID,
 	})
 	code, available := call([]string{"capabilities"}, nil)
 	if code != 0 {
@@ -215,7 +224,7 @@ func TestAuthoringPreparationIncludesOnlySelectedResourcesAndGuides(t *testing.T
 		}
 	}
 	call := authoringTestCLI(t, s, models.WorkflowCreationSession{
-		ID: "creation", ActiveExecutionID: "authoring", DefinitionID: definition.ID, AuthToken: "private",
+		ID: "creation", ActiveExecutionID: "authoring", DefinitionID: definition.ID,
 	})
 	code, response := call([]string{"workflow", "authoring", "prepare", "--primitives", "worker,functionTask", "--features", "files", "--language", "python"}, nil)
 	if code != 0 {
@@ -231,13 +240,14 @@ func TestAuthoringPreparationIncludesOnlySelectedResourcesAndGuides(t *testing.T
 		t.Fatalf("prepared cursor did not reach the remaining annotation: %+v", remaining)
 	}
 	resources := data["resources"].(map[string]any)
-	for _, kind := range []string{"wakers", "runtimes", "accounts", "functionLanguages"} {
+	wantedResources := []string{"wakers", "runtimes", "accounts", "functionLanguages"}
+	for _, kind := range wantedResources {
 		page, ok := resources[kind].(map[string]any)
 		if !ok || page["kind"] != kind || page["items"] == nil {
 			t.Fatalf("missing bounded resource page: %s: %v", kind, resources)
 		}
 	}
-	if len(resources) != 5 || len(data["guideIds"].([]any)) != 2 {
+	if len(resources) != len(wantedResources) || len(data["guideIds"].([]any)) != 2 {
 		t.Fatalf("selected features failed to choose guidance: %v", data)
 	}
 	for _, tc := range []struct {
@@ -266,14 +276,89 @@ func TestAuthoringPreparationIncludesOnlySelectedResourcesAndGuides(t *testing.T
 			}
 		})
 	}
-	for _, scope := range []constants.WorkflowCapabilityScope{
-		constants.WorkflowCapabilityScopeConsumer, constants.WorkflowCapabilityScopeResult,
-	} {
-		for _, binding := range s.AgentBindings("other", "token", scope) {
-			if binding.Operation == "workflow.authoring.prepare" {
-				t.Fatal("authoring preparation escaped its creation scope")
-			}
+}
+
+func TestAuthoringResourcePageIgnoresUnavailableUnrelatedDirectory(t *testing.T) {
+	s, _ := workflowTestService(t)
+	definition := savedTestWorkflow(t, s, workflowTestSource(t))
+	s.projects = unavailableAuthoringProjects{}
+	var loaded []string
+	s.resources = func(_ context.Context, kind string) ([]map[string]any, error) {
+		loaded = append(loaded, kind)
+		return []map[string]any{{"id": kind + "-fixture"}}, nil
+	}
+	session := models.WorkflowCreationSession{DefinitionID: definition.ID}
+	for _, kind := range []string{"runtimes", "accounts", "builtinActions"} {
+		page, err := s.handleCreationTool(t.Context(), session, workflowtool.Input{Action: constants.WorkflowActionQuery, Type: constants.WorkflowQueryResources, Kind: kind})
+		items, _ := page["items"].([]any)
+		if err != nil || page["kind"] != kind || len(items) != 1 || page["nextCursor"] != "" {
+			t.Errorf("%s page depends on the unrelated project directory: %+v, %v", kind, page, err)
 		}
+	}
+	if !slices.Equal(loaded, []string{"runtimes", "accounts"}) {
+		t.Fatalf("device resource loads = %v, want one per requested device category", loaded)
+	}
+	if _, err := s.handleCreationTool(t.Context(), session, workflowtool.Input{Action: constants.WorkflowActionQuery, Type: constants.WorkflowQueryResources, Kind: "projects"}); !errors.Is(err, status_error.DatabaseError) {
+		t.Fatalf("projects page hid its own directory failure: %v", err)
+	}
+}
+
+// unavailableAuthoringProjects 模拟项目读取失败，同时保留真实创作和分页路径。
+type unavailableAuthoringProjects struct {
+	// ProjectController 保留项目目录的其他仓储方法。
+	controllers.ProjectController
+}
+
+func (unavailableAuthoringProjects) ListByWaker(context.Context, string, string, int, int) ([]models.Project, error) {
+	return nil, status_error.DatabaseError
+}
+
+func TestAuthoringPythonResourceProbesOnlyRequestedLanguagePages(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake interpreter uses a POSIX shell")
+	}
+	s, _ := workflowTestService(t)
+	definition := savedTestWorkflow(t, s, workflowTestSource(t))
+	interpreter := filepath.Join(t.TempDir(), "python")
+	if err := os.WriteFile(interpreter, []byte("#!/bin/sh\nprintf 'probe\\n' >> \"$0.calls\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	s.pythonExecutable = interpreter
+	session := models.WorkflowCreationSession{DefinitionID: definition.ID}
+	resources := func(kind string) workflowtool.Input {
+		return workflowtool.Input{Action: constants.WorkflowActionQuery, Type: constants.WorkflowQueryResources, Kind: kind}
+	}
+	prepare := func(primitives []string, language string) workflowtool.Input {
+		return workflowtool.Input{Action: constants.WorkflowActionQuery, Type: constants.WorkflowQueryAuthoring, Primitives: primitives, Language: language}
+	}
+	for _, test := range []struct {
+		// name 标识本次创作查询场景。
+		name string
+		// input 选择实际需要读取的资源目录。
+		input workflowtool.Input
+		// probes 是本次调用允许执行的解释器检查次数。
+		probes int
+	}{
+		{"runtime page", resources("runtimes"), 0},
+		{"worker preparation", prepare([]string{"worker"}, ""), 0},
+		{"IM action preparation", workflowtool.Input{Action: constants.WorkflowActionQuery, Type: constants.WorkflowQueryAuthoring,
+			Primitives: []string{"action"}, Features: []string{"im"}}, 0},
+		{"function language page", resources("functionLanguages"), 1},
+		{"script language page", resources("scriptLanguages"), 1},
+		{"shared language preparation", prepare([]string{"action", "functionTask"}, "python"), 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := os.WriteFile(interpreter+".calls", nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.handleCreationTool(t.Context(), session, test.input); err != nil {
+				t.Fatalf("resource request failed: %v", err)
+			}
+			calls, err := os.ReadFile(interpreter + ".calls")
+			if err != nil || strings.Count(string(calls), "probe\n") != test.probes {
+				t.Fatalf("Python probe calls = %q, %v, want %d checks", calls, err, test.probes)
+			}
+		})
 	}
 }
 
@@ -284,7 +369,7 @@ func TestAuthoringSaveRollbackCannotReturnSavedOrDurableReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := authoringTestCLI(t, s, models.WorkflowCreationSession{
-		ID: "creation", ActiveExecutionID: "authoring", DefinitionID: definition.ID, AuthToken: "private",
+		ID: "creation", ActiveExecutionID: "authoring", DefinitionID: definition.ID,
 	})
 	s.store = receiptFailingStore{WorkflowController: store}
 	code, failed := call([]string{"workflow", "source", "save", "--input", "-", "--request-id", "rollback"}, map[string]any{
@@ -318,7 +403,7 @@ func TestAuthoringCapabilityFollowsExecutionAndRejectsLateSave(t *testing.T) {
 	}
 	s.chats = boundary
 	call := authoringTestCLI(t, s, models.WorkflowCreationSession{
-		ID: "creation", DefinitionID: definition.ID, ChatID: "chat", ActiveExecutionID: "authoring", AuthToken: "private", CreatedAt: old, UpdatedAt: old,
+		ID: "creation", DefinitionID: definition.ID, ChatID: "chat", ActiveExecutionID: "authoring", CreatedAt: old, UpdatedAt: old,
 	})
 	if code, response := call([]string{"workflow", "source", "get"}, nil); code != 0 {
 		t.Fatalf("等待后读取失败: %+v", response)
@@ -331,18 +416,18 @@ func TestAuthoringCapabilityFollowsExecutionAndRejectsLateSave(t *testing.T) {
 		boundary.actual.Status = status
 		boundary.summary.Chat.ActiveExecutionID = ""
 		code, response := call([]string{"workflow", "source", "get"}, nil)
-		if code == 0 || response.Error == nil || response.Error.Code != status_error.WorkflowAuthoringFinished.Key() || response.Error.RetryAdvice != "new_authoring_execution" {
-			t.Fatalf("终态仍有权限或缺少恢复提示: %+v", response)
+		if code == 0 || response.Error == nil || response.Error.Code != status_error.WorkflowStateConflict.Key() {
+			t.Fatalf("终态仍有权限: %+v", response)
 		}
 	}
 	boundary.actual.Status = constants.ExecutionStatusRunning
 	boundary.summary.Chat.ActiveExecutionID = "replacement"
 	code, response := call([]string{"workflow", "source", "get"}, nil)
-	if code == 0 || response.Error == nil || response.Error.Code != status_error.WorkflowAuthoringSuperseded.Key() {
+	if code == 0 || response.Error == nil || response.Error.Code != status_error.WorkflowStateConflict.Key() {
 		t.Fatalf("旧执行仍有权限: %+v", response)
 	}
 	// 直接进入保存事务，模拟初次能力校验后执行才被替换或结束。
-	command := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "late-save", Source: workflowTestSource(t), SDK: constants.WorkflowSDKIdentifier, CreationSessionID: "creation", CreationExecutionID: "authoring", CreationToken: "private"}
+	command := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "late-save", Source: workflowTestSource(t), SDK: constants.WorkflowSDKIdentifier, CreationSessionID: "creation", ExecutionID: "authoring"}
 	if _, _, err := s.SaveSource(ctx, command); err != status_error.WorkflowAuthoringSuperseded {
 		t.Fatalf("迟到保存未阻止: %v", err)
 	}
@@ -356,13 +441,13 @@ func TestAuthoringCapabilityFollowsExecutionAndRejectsLateSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session.AuthToken = "replacement-token"
+	session.ActiveExecutionID = "replacement"
 	if err := s.creationSessions.UpdateCreationSession(ctx, session); err != nil {
 		t.Fatal(err)
 	}
 	code, response = call([]string{"workflow", "source", "get"}, nil)
 	if code == 0 || response.Error == nil || response.Error.Code != status_error.WorkflowAuthoringSuperseded.Key() {
-		t.Fatalf("旧凭证仍有权限: %+v", response)
+		t.Fatalf("创作会话换轮后旧绑定仍有权限: %+v", response)
 	}
 }
 
@@ -379,7 +464,7 @@ func TestAuthoringWorkspaceIsBoundToWorkflow(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			call := authoringTestCLI(t, s, models.WorkflowCreationSession{ID: "creation", ActiveExecutionID: "authoring", DefinitionID: definition.ID, AuthToken: "private"})
+			call := authoringTestCLI(t, s, models.WorkflowCreationSession{ID: "creation", ActiveExecutionID: "authoring", DefinitionID: definition.ID})
 			expected, err := filepath.EvalSymlinks(s.dataDirectory)
 			if err != nil {
 				t.Fatal(err)

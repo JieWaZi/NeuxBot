@@ -4,15 +4,22 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -25,15 +32,47 @@ type stopExecutionFake struct {
 	failChatID string
 	// calls 保存本轮实际尝试取消的全部 Chat。
 	calls []string
+	// beforeWait 检查等待原生执行前已经登记的停止意图。
+	beforeWait func(string)
+	// associatedError 模拟错误使用逐会话停止而非批量原生停止的失败。
+	associatedError error
+	// stoppedChat 和 stoppedSubmission 保存本次停止捕获的准确归属。
+	stoppedChat       string
+	stoppedSubmission string
 }
 
-// CancelAndWait 记录取消，并为指定 Chat 返回可重试错误。
-func (f *stopExecutionFake) CancelAndWait(_ context.Context, chatID string) error {
-	f.calls = append(f.calls, chatID)
-	if chatID == f.failChatID {
-		return status_error.ChatHasActiveExecution
-	}
+func (f *stopExecutionFake) IsSubmissionStopped(chatID, submissionID string) bool {
+	return chatID == f.stoppedChat && submissionID == f.stoppedSubmission
+}
+
+func (f *stopExecutionFake) CancelSubmissionAndWait(_ context.Context, chatID, submissionID string) error {
+	f.stoppedChat, f.stoppedSubmission = chatID, submissionID
 	return nil
+}
+
+// CancelAndWait 模拟等待单个会话的原生收尾。
+func (f *stopExecutionFake) CancelAndWait(ctx context.Context, chatID string) error {
+	if f.associatedError != nil {
+		return f.associatedError
+	}
+	return f.StopNativeExecutions([]string{chatID})(ctx)
+}
+
+// StopNativeExecutions 记录被取消的全部执行，并可暂停原生收尾。
+func (f *stopExecutionFake) StopNativeExecutions(chatIDs []string) func(context.Context) error {
+	f.calls = append(f.calls, chatIDs...)
+	return func(context.Context) error {
+		var failure error
+		for _, chatID := range chatIDs {
+			if f.beforeWait != nil {
+				f.beforeWait(chatID)
+			}
+			if chatID == f.failChatID {
+				failure = status_error.ChatHasActiveExecution
+			}
+		}
+		return failure
+	}
 }
 
 // stopChatFake 补齐启动恢复不需要实际读取的 Chat 接口。
@@ -115,7 +154,7 @@ func TestStartRollsBackPersistedInitializingThread(t *testing.T) {
 	recovered := &service{
 		threads: threads, tasks: tasks, transactions: transactions,
 		chats: chatFake, executions: executionFake,
-		watchers: make(map[string]struct{}), scheduleLocks: make(map[string]*threadScheduleLock),
+		watchers:           make(map[string]struct{}),
 		interactionCursors: make(map[string]int64), capabilities: channeltool.NewRegistry(),
 	}
 	if err := recovered.Start(ctx); err != nil {
@@ -143,6 +182,88 @@ func TestStartRollsBackPersistedInitializingThread(t *testing.T) {
 	if len(executionFake.calls) != 2 || executionFake.calls[0] != leadChatID ||
 		executionFake.calls[1] != memberChatID {
 		t.Fatalf("initializing execution cancellation order = %v", executionFake.calls)
+	}
+}
+
+func TestStopWorkKeepsOtherThreadsInTheTeamWritableWhileCanceling(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, executions := newDelegationDispatchService(t)
+	sibling := thread
+	sibling.ID, sibling.LeadChatID = "other-thread", "other-lead-chat"
+	if err := sut.threads.Create(ctx, sibling, []models.ChannelThreadMember{
+		{ThreadID: sibling.ID, WakerID: "lead", ChatID: sibling.LeadChatID, IsLead: true, RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto},
+		{ThreadID: sibling.ID, WakerID: "member", ChatID: "other-member-chat", RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto, Position: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	chats.summaries[sibling.LeadChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: sibling.LeadChatID}}
+
+	paused, resume, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	sut.executions = &stopExecutionFake{Service: executions, beforeWait: func(chatID string) {
+		if chatID == thread.LeadChatID {
+			close(paused)
+			<-resume
+		}
+	}}
+	var stopErr error
+	go func() {
+		stopErr = sut.StopWork(ctx, thread.ChannelID, thread.ID)
+		close(done)
+	}()
+	defer func() {
+		close(resume)
+		<-done
+		if stopErr != nil {
+			t.Error(stopErr)
+		}
+	}()
+	select {
+	case <-paused:
+	case <-done:
+		t.Fatalf("stop finished before native cancellation was paused: %v", stopErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("native cancellation was not reached")
+	}
+
+	inputCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	accepted, err := sut.sendMessage(inputCtx, SendMessageInput{
+		ThreadID: sibling.ID,
+		Input:    execution.WorkInput{Content: "同团队其他对话继续工作"},
+	})
+	if err != nil || accepted.Execution == nil || accepted.Execution.ChatID != sibling.LeadChatID {
+		t.Fatalf("another thread could not start while stop was waiting: %+v %v", accepted, err)
+	}
+}
+
+func TestStopWorkDrainsMemberExecutionsWhenWorkflowStopFails(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, _, _ := newDelegationDispatchService(t)
+	members, err := sut.threads.ListMembers(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stops := 0
+	sut.stopChatWorkflows = func(_ context.Context, _ string, _ []string, _ int64) error {
+		stops++
+		return status_error.DatabaseBusy
+	}
+	executions := &stopExecutionFake{associatedError: status_error.DatabaseError}
+	sut.executions = executions
+	if err := sut.StopWork(ctx, thread.ChannelID, thread.ID); !errors.Is(err, status_error.DatabaseBusy) {
+		t.Fatalf("stop did not return the bulk workflow error: %v", err)
+	}
+	if stops != 1 || len(executions.calls) != len(members) {
+		t.Fatalf("stop did not drain all member executions after one bulk revoke: stops=%d drained=%v", stops, executions.calls)
+	}
+	for _, member := range members {
+		if !slices.Contains(executions.calls, member.ChatID) {
+			t.Errorf("member execution was not drained: %s", member.ChatID)
+		}
+	}
+	current, err := sut.threads.Get(ctx, thread.ID)
+	if err != nil || current.CancelingAt == nil {
+		t.Fatalf("failed workflow stop did not preserve recovery intent: %+v %v", current, err)
 	}
 }
 
@@ -208,13 +329,67 @@ func TestStopWorkKeepsCancelingIntentUntilStartupRecoveryCompletes(t *testing.T)
 	}); err != nil {
 		t.Fatalf("create attempt: %v", err)
 	}
-	failingExecution := &stopExecutionFake{failChatID: memberChatID}
+	runs := controllers.NewWorkflowRunController(database.DB)
+	store := controllers.NewWorkflowController(database.DB)
+	consumers := controllers.NewWorkflowConsumerController(database.DB)
+	// 原生注册表已无这些回合，持久 Run 仍然活跃，并可能保留崩溃前的租约。
+	leaseUntil := time.Now().Add(time.Hour).UnixMilli()
+	workflowRuns := []models.WorkflowRun{
+		{ID: "lead-workflow", SourceThreadID: threadID, SourceChatID: leadChatID, SourceExecutionID: "stale-lead-exec", Status: constants.WorkflowRunStatusWaiting, Version: 2, LeaseOwner: "old-core", LeaseUntil: leaseUntil},
+		{ID: "member-workflow", SourceThreadID: threadID, SourceChatID: memberChatID, SourceExecutionID: "stale-member-exec", Status: constants.WorkflowRunStatusRunning, Version: 4},
+		{ID: "independent-workbench", SourceThreadID: threadID, SourceChatID: leadChatID, SourceExecutionID: "stale-lead-exec", SourceWorkbench: true, Status: constants.WorkflowRunStatusWaiting},
+		{ID: "foreign-thread", SourceThreadID: "other-thread", SourceChatID: leadChatID, SourceExecutionID: "other-exec", Status: constants.WorkflowRunStatusWaiting},
+		{ID: "foreign-chat", SourceThreadID: threadID, SourceChatID: "other-chat", SourceExecutionID: "foreign-exec", Status: constants.WorkflowRunStatusWaiting},
+		{ID: "terminal-workflow", SourceThreadID: threadID, SourceChatID: leadChatID, SourceExecutionID: "ended-exec", Status: constants.WorkflowRunStatusSucceeded},
+	}
+	if err := database.DB.Create(&workflowRuns).Error; err != nil {
+		t.Fatal(err)
+	}
+	human := models.WorkflowHumanRequest{ID: "awaiting-answer", RunID: "lead-workflow", Status: constants.WorkflowStepStatusWaiting, DeadlineAt: leaseUntil}
+	if err := database.DB.Create(&human).Error; err != nil {
+		t.Fatal(err)
+	}
+	selectedThreadID, selectedChatID := "selection-without-run", "selection-lead-chat"
+	if err := threads.Create(ctx, models.ChannelThread{
+		ID: selectedThreadID, ChannelID: channelID, Title: "已选工作流", LeadWakerID: leadID,
+		LeadChatID: selectedChatID, WorkspaceDirectory: "/tmp/team", MaxParallel: 3, MaxTasks: 12, MaxFailureAttempts: 2, ReadyAt: &readyAt,
+	}, []models.ChannelThreadMember{{ThreadID: selectedThreadID, WakerID: leadID, ChatID: selectedChatID, IsLead: true}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, lease := range []models.WorkflowConsumerLease{
+		{ID: "stale-lead-exec", ChatID: leadChatID, ThreadID: threadID},
+		{ID: "stale-member-exec", ChatID: memberChatID, ThreadID: threadID},
+		{ID: "pending-member-exec", ChatID: memberChatID, ThreadID: threadID},
+		{ID: "other-exec", ChatID: leadChatID, ThreadID: "other-thread"},
+		{ID: "selected-without-run", ChatID: selectedChatID, ThreadID: selectedThreadID,
+			Selection: &workinput.WorkflowReference{ID: "definition", RevisionID: "revision", Name: "准备启动"}},
+	} {
+		if err := consumers.CreateConsumer(ctx, lease); err != nil {
+			t.Fatal(err)
+		}
+	}
+	workflows := workflow.New(workflow.Config{Runs: runs, Store: store, State: workflowstate.New(store, runs, transactions), Consumers: consumers, Transactions: transactions, ChannelThreads: threads})
+	failingExecution := &stopExecutionFake{failChatID: memberChatID, beforeWait: func(chatID string) {
+		if chatID != memberChatID {
+			return
+		}
+		for _, id := range []string{"lead-workflow", "member-workflow"} {
+			run, err := runs.GetRun(ctx, id)
+			if err != nil || run.Status != constants.WorkflowRunStatusCancelling {
+				t.Fatalf("native wait started before linked workflow cancellation: %+v %v", run, err)
+			}
+		}
+	}}
 	first := &service{
 		channels: channels, threads: threads, tasks: tasks, transactions: transactions,
-		executions: failingExecution,
+		executions: failingExecution, stopChatWorkflows: workflows.StopTeamWorkflowTurns,
 	}
 	if err := first.StopWork(ctx, channelID, threadID); !errors.Is(err, status_error.ChatHasActiveExecution) {
 		t.Fatalf("StopWork() error = %v, want ChatHasActiveExecution", err)
+	}
+	first.executions = &stopExecutionFake{failChatID: selectedChatID}
+	if err := first.StopWork(ctx, channelID, selectedThreadID); !errors.Is(err, status_error.ChatHasActiveExecution) {
+		t.Fatalf("StopWork() with pending selection error = %v", err)
 	}
 	interrupted, err := threads.Get(ctx, threadID)
 	if err != nil || interrupted.CancelingAt == nil {
@@ -232,7 +407,8 @@ func TestStopWorkKeepsCancelingIntentUntilStartupRecoveryCompletes(t *testing.T)
 	recovered := &service{
 		channels: channels, threads: threads, tasks: tasks, transactions: transactions,
 		chats: &stopChatFake{}, executions: recoveryExecution,
-		watchers: make(map[string]struct{}), scheduleLocks: make(map[string]*threadScheduleLock),
+		stopChatWorkflows:  workflows.StopTeamWorkflowTurns,
+		watchers:           make(map[string]struct{}),
 		interactionCursors: make(map[string]int64), capabilities: channeltool.NewRegistry(),
 	}
 	if err := recovered.Start(ctx); err != nil {
@@ -251,8 +427,479 @@ func TestStopWorkKeepsCancelingIntentUntilStartupRecoveryCompletes(t *testing.T)
 	if err != nil || attempt.Status != constants.ExecutionStatusCanceled {
 		t.Fatalf("recovered attempt = %+v, error = %v", attempt, err)
 	}
-	if len(recoveryExecution.calls) != 2 || recoveryExecution.calls[0] != memberChatID ||
-		recoveryExecution.calls[1] != leadChatID {
+	memberIndex, leadIndex := slices.Index(recoveryExecution.calls, memberChatID), slices.Index(recoveryExecution.calls, leadChatID)
+	if len(recoveryExecution.calls) != 3 || memberIndex < 0 || leadIndex <= memberIndex || !slices.Contains(recoveryExecution.calls, selectedChatID) {
 		t.Fatalf("startup cancellation order = %v", recoveryExecution.calls)
+	}
+	recoveryExecution.calls = nil
+	if err := recovered.finishStopWork(ctx, interrupted); err != nil || len(recoveryExecution.calls) != 0 {
+		t.Fatalf("stale stop attempted to cancel current chat executions: calls=%v error=%v", recoveryExecution.calls, err)
+	}
+	for _, before := range workflowRuns {
+		run, err := runs.GetRun(ctx, before.ID)
+		wantStatus, wantVersion := before.Status, before.Version
+		if before.ID == "lead-workflow" || before.ID == "member-workflow" {
+			wantStatus, wantVersion = constants.WorkflowRunStatusCancelling, before.Version+1
+		}
+		if err != nil || run.Status != wantStatus || run.Version != wantVersion || run.LeaseOwner != before.LeaseOwner {
+			t.Fatalf("unexpected stop target or changed lease: %+v %v", run, err)
+		}
+	}
+	for _, id := range []string{"stale-lead-exec", "stale-member-exec", "pending-member-exec", "other-exec", "selected-without-run"} {
+		lease, err := consumers.GetConsumer(ctx, id)
+		if err != nil || (lease.StoppedAt == nil) != (id == "other-exec") {
+			t.Fatalf("unexpected revoked authorization for %s: %+v %v", id, lease, err)
+		}
+	}
+	if err := runs.ReleaseLeases(ctx, "old-core", time.Now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"lead-workflow", "member-workflow"} {
+		if err := workflows.Tick(ctx, id); err != nil {
+			t.Fatalf("finalize recovered workflow cancellation: %v", err)
+		}
+		state, err := runs.LoadRunState(ctx, id)
+		if err != nil || state.Run.Status != constants.WorkflowRunStatusCancelled || state.Run.CompletedAt == nil {
+			t.Fatalf("runner did not finalize cancellation: %+v %v", state.Run, err)
+		}
+		if id == human.RunID && (len(state.Humans) != 1 || state.Humans[0].Status != constants.WorkflowStepStatusCancelled) {
+			t.Fatalf("stopped workflow still requests a business answer: %+v", state.Humans)
+		}
+	}
+	newRun := models.WorkflowRun{ID: "later-workflow", SourceThreadID: threadID, SourceChatID: memberChatID, SourceExecutionID: "new-exec", Status: constants.WorkflowRunStatusQueued}
+	if err := database.DB.Create(&newRun).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := workflows.StopTeamWorkflowTurns(ctx, threadID, []string{memberChatID}, *interrupted.CancelingAt); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := runs.GetRun(ctx, newRun.ID)
+	if err != nil || actual.Status != constants.WorkflowRunStatusQueued {
+		t.Fatalf("stale stop changed later workflow: %+v %v", actual, err)
+	}
+}
+
+type pausedLeadStart struct {
+	// postTurnExecutionFake 补齐与准备阶段无关的执行接口。
+	*postTurnExecutionFake
+	// started 标记负责人接纳已经进入可取消的准备。
+	started chan struct{}
+	// canceled 记录停止向负责人发出的原生取消。
+	canceled chan struct{}
+}
+
+func (f *pausedLeadStart) Start(ctx context.Context, _ execution.WorkIntent) (execution.AcceptedExecution, error) {
+	close(f.started)
+	select {
+	case <-f.canceled:
+		return execution.AcceptedExecution{}, status_error.OperationCanceled
+	case <-ctx.Done():
+		return execution.AcceptedExecution{}, ctx.Err()
+	}
+}
+
+// StopNativeExecutions 在任何工作流停止或原生收尾前取消负责人。
+func (f *pausedLeadStart) StopNativeExecutions(chatIDs []string) func(context.Context) error {
+	if slices.Contains(chatIDs, "lead-chat") {
+		close(f.canceled)
+	}
+	return func(context.Context) error { return nil }
+}
+
+func TestStopWorkSignalsAlreadyPreparingLeadInput(t *testing.T) {
+	svc, thread, _, original := newDelegationDispatchService(t)
+	f := &pausedLeadStart{original, make(chan struct{}), make(chan struct{})}
+	svc.executions = f
+	sendCtx, cancelSend := context.WithCancel(t.Context())
+	defer cancelSend()
+	sent := make(chan struct{})
+	go func() {
+		defer close(sent)
+		_, _ = svc.sendMessage(sendCtx, SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{Content: "准备中的负责人输入"}})
+	}()
+	defer func() { cancelSend(); <-sent }()
+	select {
+	case <-f.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("lead input did not enter preparation")
+	}
+	stopCtx, cancelStop := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancelStop()
+	err := svc.StopWork(stopCtx, thread.ChannelID, thread.ID)
+	current, readErr := svc.threads.Get(t.Context(), thread.ID)
+	select {
+	case <-f.canceled:
+		if err != nil {
+			t.Fatalf("stop after cancellation: %v", err)
+		}
+	default:
+		t.Fatalf("stop returned %v without sending cancellation; persisted stop=%v, read err=%v", err, current.CancelingAt != nil, readErr)
+	}
+}
+
+func TestStopWorkRejectsTheOldDispatchSnapshotAfterCompletion(t *testing.T) {
+	ctx := t.Context()
+	svc, thread, _, executions := newDelegationDispatchService(t)
+	svc.executions = &stopExecutionFake{Service: executions}
+	oldDispatch := context.WithValue(ctx, threadWorkSnapshotKey{}, threadWorkSnapshot{thread.ID, thread.StopGeneration})
+	if err := svc.StopWork(ctx, thread.ChannelID, thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	current, err := svc.threads.Get(ctx, thread.ID)
+	if err != nil || current.CancelingAt != nil || current.StopGeneration != thread.StopGeneration+1 {
+		t.Fatalf("stop did not complete its original generation: %+v, %v", current, err)
+	}
+	if _, release, err := svc.AcquireChatInput(oldDispatch, thread.LeadChatID, false); !errors.Is(err, status_error.ChannelTaskStateConflict) {
+		if release != nil {
+			release()
+		}
+		t.Fatalf("old dispatch passed the completed stop: %v", err)
+	}
+	_, release, err := svc.AcquireChatInput(ctx, thread.LeadChatID, true)
+	if err != nil {
+		t.Fatalf("new input after stop was blocked: %v", err)
+	}
+	release()
+}
+
+func TestStopFirstTeamBeforeSendLeavesNoProvisionalThread(t *testing.T) {
+	ctx := t.Context()
+	svc, thread, _, executions := newDelegationDispatchService(t)
+	svc.executions = &stopExecutionFake{Service: executions}
+	const submissionID = "stopped-first-input"
+	if err := svc.StopFirstWork(ctx, thread.ChannelID, submissionID); err != nil {
+		t.Fatal(err)
+	}
+	input := CreateThreadInput{ChannelID: thread.ChannelID, ClientRequestID: submissionID,
+		Input: execution.WorkInput{Content: "原首发输入", SubmissionID: submissionID}}
+	if _, err := svc.createThread(ctx, input); !errors.Is(err, status_error.OperationCanceled) {
+		t.Fatalf("late team first send: %v", err)
+	}
+	if _, exists, err := svc.threads.GetByClientRequestID(ctx, thread.ChannelID, submissionID); err != nil || exists {
+		t.Fatalf("late team first send provisioned a thread: %t, %v", exists, err)
+	}
+}
+
+func TestStopWorkBeforeSendOnlyRejectsOriginalSubmission(t *testing.T) {
+	ctx := t.Context()
+	svc, thread, _, executions := newDelegationDispatchService(t)
+	stop := &stopExecutionFake{Service: executions}
+	svc.executions = stop
+	if err := svc.StopWorkForSubmission(ctx, thread.ChannelID, thread.ID, "stopped-input"); err != nil {
+		t.Fatal(err)
+	}
+	input := SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{Content: "原输入", SubmissionID: "stopped-input"}}
+	if _, err := svc.sendMessage(ctx, input); !errors.Is(err, status_error.OperationCanceled) {
+		t.Fatalf("late stopped input: %v", err)
+	}
+	if _, exists, err := svc.threads.GetLeadInput(ctx, LeadInputID(thread.ID, input.Input.SubmissionID)); err != nil || exists {
+		t.Fatalf("late stopped input entered queue: %t, %v", exists, err)
+	}
+	input.Input.SubmissionID = "other-input"
+	if result, err := svc.sendMessage(ctx, input); err != nil || result.QueuedInput == nil {
+		t.Fatalf("next input could not enter queue: %+v, %v", result, err)
+	}
+	if err := svc.StopWorkForSubmission(ctx, thread.ChannelID, thread.ID, "stopped-input"); err != nil {
+		t.Fatal(err)
+	}
+	current, err := svc.threads.Get(ctx, thread.ID)
+	if err != nil || current.StopGeneration != thread.StopGeneration || len(stop.calls) != 0 {
+		t.Fatalf("submission stop stopped the whole team: %+v, chats=%v, err=%v", current, stop.calls, err)
+	}
+}
+
+func TestStopTeamSubmissionCancelsOnlyItsLeadQueueEntry(t *testing.T) {
+	ctx := t.Context()
+	svc, thread, _, executions := newDelegationDispatchService(t)
+	stop := &stopExecutionFake{Service: executions}
+	svc.executions = stop
+	for _, submissionID := range []string{"stopped", "another"} {
+		err := svc.threads.CreateLeadInput(ctx, models.ChannelLeadInput{
+			ID: LeadInputID(thread.ID, submissionID), ThreadID: thread.ID,
+			Status:  constants.ChannelInputStatusPending,
+			Payload: execution.WorkInput{Content: submissionID, SubmissionID: submissionID},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := svc.StopWorkForSubmission(ctx, thread.ChannelID, thread.ID, "stopped"); err != nil {
+		t.Fatal(err)
+	}
+	stopped, _, err := svc.threads.GetLeadInput(ctx, LeadInputID(thread.ID, "stopped"))
+	if err != nil || stopped.Status != constants.ChannelInputStatusCancelled {
+		t.Fatalf("target input = %+v, %v", stopped, err)
+	}
+	another, _, err := svc.threads.GetLeadInput(ctx, LeadInputID(thread.ID, "another"))
+	if err != nil || another.Status != constants.ChannelInputStatusPending || len(stop.calls) != 0 {
+		t.Fatalf("other input = %+v, stopped chats = %v, err = %v", another, stop.calls, err)
+	}
+}
+
+func TestStopTeamSubmissionWithdrawsOnlyItsPendingFollowUp(t *testing.T) {
+	ctx := t.Context()
+	svc, thread, _, executions := newDelegationDispatchService(t)
+	svc.executions = &stopExecutionFake{Service: executions}
+	task := models.ChannelTask{ID: "parent-task", ThreadID: thread.ID, AssigneeWakerID: "member",
+		Status: constants.ChannelTaskStatusInProgress}
+	if err := svc.tasks.Create(ctx, task, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, submissionID := range []string{"withdrawn", "another"} {
+		if err := svc.tasks.CreateFollowUp(ctx, models.ChannelTaskFollowUp{
+			ID: submissionID, TaskID: task.ID, Text: submissionID, Actor: constants.ChannelMessageActorUser,
+			Payload: execution.WorkInput{Content: submissionID, SubmissionID: submissionID},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := svc.StopWorkForSubmission(ctx, thread.ChannelID, thread.ID, "withdrawn"); err != nil {
+		t.Fatal(err)
+	}
+	followUps, err := svc.tasks.ListPendingFollowUps(ctx, task.ID)
+	if err != nil || len(followUps) != 1 || followUps[0].ID != "another" {
+		t.Fatalf("pending follow-ups = %+v, %v", followUps, err)
+	}
+	task, err = svc.tasks.Get(ctx, task.ID)
+	if err != nil || task.Status != constants.ChannelTaskStatusInProgress {
+		t.Fatalf("original task = %+v, %v", task, err)
+	}
+}
+
+func TestStopTeamSubmissionTargetsDeliveredFollowUpAttempt(t *testing.T) {
+	for _, status := range []constants.ChannelTaskStatus{constants.ChannelTaskStatusInProgress, constants.ChannelTaskStatusInReview} {
+		for _, currentFence := range []int{1, 2} {
+			name := string(status) + "/delivered_attempt_is_current"
+			if currentFence == 2 {
+				name = string(status) + "/later_attempt_is_current"
+			}
+			t.Run(name, func(t *testing.T) {
+				ctx := t.Context()
+				svc, thread, _, executions := newDelegationDispatchService(t)
+				svc.executions = &stopExecutionFake{Service: executions}
+				task := models.ChannelTask{ID: "follow-up-task", ThreadID: thread.ID, AssigneeWakerID: "member",
+					Status: status, CurrentFence: currentFence,
+					DirectInput: &execution.WorkInput{Content: "原任务", SubmissionID: "original"}}
+				if err := svc.tasks.Create(ctx, task, nil); err != nil {
+					t.Fatal(err)
+				}
+				first := models.ChannelTaskAttempt{ID: "delivered-attempt", TaskID: task.ID, ChatID: "member-chat",
+					ExecutionID: "delivered-execution", AssigneeWakerID: "member", Fence: 1, Status: constants.ExecutionStatusRunning}
+				if currentFence == 2 || status == constants.ChannelTaskStatusInReview {
+					first.Status, first.FinishedAt = constants.ExecutionStatusCompleted, testTimestamp(10)
+				}
+				if currentFence == 2 {
+					later := models.ChannelTaskAttempt{ID: "later-attempt", TaskID: task.ID,
+						ChatID: first.ChatID, ExecutionID: "later-execution", AssigneeWakerID: "member", Fence: 2, Status: constants.ExecutionStatusRunning}
+					if status == constants.ChannelTaskStatusInReview {
+						later.Status, later.FinishedAt = constants.ExecutionStatusCompleted, testTimestamp(20)
+					}
+					if err := svc.tasks.CreateAttempt(ctx, later); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := svc.tasks.CreateAttempt(ctx, first); err != nil {
+					t.Fatal(err)
+				}
+				if err := svc.tasks.CreateFollowUp(ctx, models.ChannelTaskFollowUp{ID: "delivered-follow-up", TaskID: task.ID,
+					Text: "用户补充", Actor: constants.ChannelMessageActorUser,
+					Payload:     execution.WorkInput{Content: "用户补充", SubmissionID: "follow-up-submission"},
+					DeliveredAt: testTimestamp(10), DeliveredAttemptID: first.ID}); err != nil {
+					t.Fatal(err)
+				}
+				var stoppedWorkflowExecutions []string
+				svc.stopWorkflowTurn = func(_ context.Context, chatID, executionID string) error {
+					if chatID != first.ChatID {
+						t.Fatalf("workflow stop targeted another chat: %s", chatID)
+					}
+					stoppedWorkflowExecutions = append(stoppedWorkflowExecutions, executionID)
+					return nil
+				}
+				if err := svc.StopWorkForSubmission(ctx, thread.ChannelID, thread.ID, "follow-up-submission"); err != nil {
+					t.Fatal(err)
+				}
+				current, err := svc.tasks.Get(ctx, task.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if currentFence == 1 {
+					if !slices.Equal(executions.canceledExecutions, []string{first.ExecutionID}) ||
+						!slices.Equal(stoppedWorkflowExecutions, []string{first.ExecutionID}) {
+						t.Fatalf("delivered attempt stop was lost: task=%+v native=%v workflow=%v", current, executions.canceledExecutions, stoppedWorkflowExecutions)
+					}
+					if status == constants.ChannelTaskStatusInReview {
+						if current.Status != constants.ChannelTaskStatusCancelled {
+							t.Fatalf("review task was not cancelled: %+v", current)
+						}
+					} else if current.CancelRequestedAt == nil || current.CancelRequestedFence != first.Fence {
+						t.Fatalf("running attempt lost its cancellation: %+v", current)
+					}
+				} else if current.CancelRequestedAt != nil || current.Status != status || len(executions.canceledExecutions) != 0 || len(stoppedWorkflowExecutions) != 0 {
+					t.Fatalf("old submission stopped later work: task=%+v native=%v workflow=%v", current, executions.canceledExecutions, stoppedWorkflowExecutions)
+				}
+			})
+		}
+	}
+}
+
+func TestStopTeamSubmissionUsesOriginalLeadReceiptForWorkflowStop(t *testing.T) {
+	for _, first := range []bool{false, true} {
+		name := "continued_input"
+		if first {
+			name = "first_input"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			svc, thread, chats, executions := newDelegationDispatchService(t)
+			stop := &stopExecutionFake{Service: executions}
+			svc.executions = stop
+			submissionID := "source-input"
+			chatID := thread.LeadChatID
+			if first {
+				chatID = initialLeadChatID(thread.ChannelID, requestidempotency.Identity{ID: submissionID})
+			}
+			chats.executions = map[string]models.Execution{
+				"accepted-source": {ID: "accepted-source", ChatID: chatID, SubmissionID: submissionID,
+					Status: constants.ExecutionStatusCompleted, CompletedAt: testTimestamp(10)},
+			}
+			var stopped []string
+			svc.stopWorkflowTurn = func(_ context.Context, actualChat, executionID string) error {
+				if actualChat != chatID || stop.stoppedChat != chatID || stop.stoppedSubmission != submissionID {
+					t.Fatalf("workflow stopped before its native submission: chat=%s native=%s/%s", actualChat, stop.stoppedChat, stop.stoppedSubmission)
+				}
+				stopped = append(stopped, executionID)
+				return nil
+			}
+			stopInput := func(id string) error {
+				if first {
+					return svc.StopFirstWork(ctx, thread.ChannelID, id)
+				}
+				return svc.StopWorkForSubmission(ctx, thread.ChannelID, thread.ID, id)
+			}
+			if err := stopInput(submissionID); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(stopped, []string{"accepted-source"}) {
+				t.Fatalf("workflow stop did not use the durable source: %v", stopped)
+			}
+			if err := stopInput("never-admitted"); err != nil || len(stopped) != 1 {
+				t.Fatalf("unadmitted submission stopped a workflow: calls=%v err=%v", stopped, err)
+			}
+		})
+	}
+}
+
+func TestStopOriginalMentionDoesNotCancelLaterAttempt(t *testing.T) {
+	ctx := t.Context()
+	svc, thread, _, executions := newDelegationDispatchService(t)
+	svc.executions = &stopExecutionFake{Service: executions}
+	task := models.ChannelTask{ID: "retried-task", ThreadID: thread.ID, AssigneeWakerID: "member",
+		Status: constants.ChannelTaskStatusInProgress, CurrentFence: 2,
+		DirectInput: &execution.WorkInput{Content: "原始输入", SubmissionID: "original"}}
+	if err := svc.tasks.Create(ctx, task, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.tasks.CreateAttempt(ctx, models.ChannelTaskAttempt{ID: "later-attempt", TaskID: task.ID,
+		ChatID: "member-chat", ExecutionID: "later-execution", Fence: 2, AssigneeWakerID: "member", Status: constants.ExecutionStatusRunning}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.StopWorkForSubmission(ctx, thread.ChannelID, thread.ID, "original"); err != nil {
+		t.Fatal(err)
+	}
+	current, err := svc.tasks.Get(ctx, task.ID)
+	if err != nil || current.CancelRequestedAt != nil || current.Status != constants.ChannelTaskStatusInProgress || len(executions.canceledExecutions) != 0 {
+		t.Fatalf("original mention stopped later work: task=%+v native=%v err=%v", current, executions.canceledExecutions, err)
+	}
+}
+
+func TestStopReviewTaskStopsWorkflowsFromItsCompletedAttempt(t *testing.T) {
+	ctx := t.Context()
+	svc, thread, _, executions := newDelegationDispatchService(t)
+	task := models.ChannelTask{ID: "review-task", ThreadID: thread.ID, AssigneeWakerID: "member",
+		Status: constants.ChannelTaskStatusInReview, CurrentFence: 1}
+	if err := svc.tasks.Create(ctx, task, nil); err != nil {
+		t.Fatal(err)
+	}
+	attempt := models.ChannelTaskAttempt{ID: "review-attempt", TaskID: task.ID, ChatID: "member-chat",
+		ExecutionID: "completed-source", Fence: 1, AssigneeWakerID: "member", Status: constants.ExecutionStatusCompleted}
+	if err := svc.tasks.CreateAttempt(ctx, attempt); err != nil {
+		t.Fatal(err)
+	}
+	var stopped []string
+	svc.stopWorkflowTurn = func(_ context.Context, chatID, executionID string) error {
+		if chatID != attempt.ChatID {
+			t.Fatalf("review task stopped another chat: %s", chatID)
+		}
+		stopped = append(stopped, executionID)
+		return nil
+	}
+	if err := svc.StopTask(ctx, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	current, err := svc.tasks.Get(ctx, task.ID)
+	if err != nil || current.Status != constants.ChannelTaskStatusCancelled ||
+		!slices.Equal(stopped, []string{attempt.ExecutionID}) || !slices.Equal(executions.canceledExecutions, []string{attempt.ExecutionID}) {
+		t.Fatalf("review cancellation lost its source attempt: task=%+v workflow=%v native=%v err=%v", current, stopped, executions.canceledExecutions, err)
+	}
+}
+
+func TestStopFirstTeamCancelsMentionBeforePublication(t *testing.T) {
+	ctx := t.Context()
+	svc, thread, _, executions := newDelegationDispatchService(t)
+	svc.executions = &stopExecutionFake{Service: executions}
+	submissionID := "initial-mention"
+	thread.ID, thread.ReadyAt, thread.ClientRequestID = "unpublished-thread", nil, &submissionID
+	thread.LeadChatID = initialLeadChatID(thread.ChannelID, requestidempotency.Identity{ID: submissionID})
+	if err := svc.threads.Create(ctx, thread, []models.ChannelThreadMember{
+		{ThreadID: thread.ID, WakerID: "lead", ChatID: thread.LeadChatID, IsLead: true},
+		{ThreadID: thread.ID, WakerID: "member", ChatID: "unpublished-member-chat"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	task := models.ChannelTask{ID: "unpublished-task", ThreadID: thread.ID, AssigneeWakerID: "member",
+		Status: constants.ChannelTaskStatusPending, DirectInput: &execution.WorkInput{Content: "原提及", SubmissionID: submissionID},
+	}
+	if err := svc.tasks.Create(ctx, task, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.StopFirstWork(ctx, thread.ChannelID, submissionID); err != nil {
+		t.Fatal(err)
+	}
+	current, err := svc.tasks.Get(ctx, task.ID)
+	if err != nil || current.Status != constants.ChannelTaskStatusCancelled {
+		t.Fatalf("unpublished task = %+v, %v", current, err)
+	}
+}
+
+func TestStopWorkRecoversWithoutRestartAfterTransientWorkflowFailure(t *testing.T) {
+	ctx := t.Context()
+	svc, thread, _, executions := newDelegationDispatchService(t)
+	svc.executions = &stopExecutionFake{Service: executions}
+	var attempts atomic.Int32
+	svc.stopChatWorkflows = func(context.Context, string, []string, int64) error {
+		if attempts.Add(1) == 1 {
+			return status_error.DatabaseBusy
+		}
+		return nil
+	}
+	if err := svc.StopWork(ctx, thread.ChannelID, thread.ID); !errors.Is(err, status_error.DatabaseBusy) {
+		t.Fatalf("initial failure = %v", err)
+	}
+	deadline := time.After(3 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-deadline:
+			t.Fatalf("background owner did not settle stop, attempts=%d", attempts.Load())
+		case <-ticker.C:
+			current, err := svc.threads.Get(ctx, thread.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if current.CancelingAt == nil {
+				return
+			}
+		}
 	}
 }

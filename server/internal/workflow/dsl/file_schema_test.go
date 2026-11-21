@@ -17,6 +17,10 @@ func TestFileSchemaTraversesReferencesArraysAndSelectedBranches(t *testing.T) {
 			"note": map[string]any{"type": "string"},
 		},
 	}
+	unused := map[string]any{"type": "string", "default": "report.txt", "$defs": schema["$defs"]}
+	if len(FileValues(unused, "report.txt")) != 0 {
+		t.Fatal("unused file definitions were treated as output fields")
+	}
 	value := map[string]any{"docs/~": []any{"first.xlsx", "second.docx"}, "choice": map[string]any{"kind": "text", "data": "text.docx"}, "note": "private.txt"}
 	expected := map[string]string{"/docs~1~0/0": "first.xlsx", "/docs~1~0/1": "second.docx"}
 	if got := FileValues(schema, value); !reflect.DeepEqual(got, expected) {

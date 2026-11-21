@@ -98,6 +98,36 @@ func TestChannelTaskDelegationAttemptsPreserveAcceptedAssignments(t *testing.T) 
 	}
 }
 
+func TestFindDeliveredFollowUpKeepsSubmissionWithinThread(t *testing.T) {
+	ctx := t.Context()
+	controller := NewChannelTaskController(newTestDB(t))
+	deliveredAt := int64(1)
+	for _, task := range []models.ChannelTask{
+		{ID: "owned-task", ThreadID: "owned-thread"},
+		{ID: "foreign-task", ThreadID: "foreign-thread"},
+	} {
+		if err := controller.Create(ctx, task, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, followUp := range []models.ChannelTaskFollowUp{
+		{ID: "owned", TaskID: "owned-task", Payload: workinput.Input{SubmissionID: "submission"}, DeliveredAt: &deliveredAt, DeliveredAttemptID: "owned-attempt", CreatedAt: 1},
+		{ID: "pending", TaskID: "owned-task", Payload: workinput.Input{SubmissionID: "submission"}, CreatedAt: 2},
+		{ID: "foreign", TaskID: "foreign-task", Payload: workinput.Input{SubmissionID: "submission"}, DeliveredAt: &deliveredAt, DeliveredAttemptID: "foreign-attempt", CreatedAt: 3},
+	} {
+		if err := controller.CreateFollowUp(ctx, followUp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	followUp, found, err := controller.FindDeliveredFollowUp(ctx, "owned-thread", "submission")
+	if err != nil || !found || followUp.TaskID != "owned-task" || followUp.DeliveredAttemptID != "owned-attempt" {
+		t.Fatalf("delivered follow-up = %+v, found=%t, err=%v", followUp, found, err)
+	}
+	if _, found, err := controller.FindDeliveredFollowUp(ctx, "owned-thread", "missing"); err != nil || found {
+		t.Fatalf("missing submission = %t, %v", found, err)
+	}
+}
+
 func TestChannelTaskDispatchClaimIsAtomicAndQuotaBound(t *testing.T) {
 	database := newTestDB(t)
 	controller := NewChannelTaskController(database)
@@ -298,6 +328,7 @@ func TestChannelTaskReservationReleaseRestoresOwnedFollowUps(t *testing.T) {
 		attempt.ID,
 		attempt.Fence,
 		constants.ExecutionStatusCanceled,
+		constants.ChannelTaskStatusPending,
 		"not started",
 		300,
 	)
@@ -667,12 +698,39 @@ func TestChannelStopDeliveryStateCannotBeOverwrittenByLateWatcher(t *testing.T) 
 	if err := tasks.ConsumeOpenNotifications(ctx, threadID, 100); err != nil {
 		t.Fatalf("ConsumeOpenNotifications() error = %v", err)
 	}
-	if err := tasks.UpdateNotifications(ctx, []string{notification.ID}, constants.ChannelNotificationStatusPending, "", 200); err != nil {
+	if err := tasks.UpdateNotifications(ctx, []string{notification.ID}, constants.ChannelNotificationStatusPending, "execution-a", 200); err != nil {
 		t.Fatalf("late UpdateNotifications() error = %v", err)
 	}
 	pending, err := tasks.ListPendingNotifications(ctx, threadID, 10)
 	if err != nil || len(pending) != 0 {
 		t.Fatalf("late watcher restored notifications = %+v, error = %v", pending, err)
+	}
+}
+
+func TestChannelNotificationRejectsAnotherExecutionsLateSettlement(t *testing.T) {
+	tasks := NewChannelTaskController(newTestDB(t))
+	ctx := t.Context()
+	notification := models.ChannelLeadNotification{
+		ID: "notification", ThreadID: "thread", TaskID: "task", AttemptID: "attempt",
+		Status: constants.ChannelNotificationStatusDelivering, LeadExecutionID: "new-execution",
+	}
+	if err := tasks.CreateNotification(ctx, notification); err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{notification.ID}
+	if err := tasks.UpdateNotifications(ctx, ids, constants.ChannelNotificationStatusPending, "old-execution", 100); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := tasks.ListPendingNotifications(ctx, notification.ThreadID, 10)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("old watcher reopened the new execution's notification: %+v, %v", pending, err)
+	}
+	if err := tasks.UpdateNotifications(ctx, ids, constants.ChannelNotificationStatusPending, "new-execution", 200); err != nil {
+		t.Fatal(err)
+	}
+	pending, err = tasks.ListPendingNotifications(ctx, notification.ThreadID, 10)
+	if err != nil || len(pending) != 1 || pending[0].LeadExecutionID != "" {
+		t.Fatalf("owner did not release its own notification: %+v, %v", pending, err)
 	}
 }
 
