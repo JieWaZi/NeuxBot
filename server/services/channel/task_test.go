@@ -1518,6 +1518,7 @@ func TestDirectMentionOnlySupplementsInProgressAndReviewRequiresExplicitDecision
 	chatFake := &postTurnChatFake{summaries: map[string]chatservice.ChatSummary{
 		memberChatID: {Chat: models.Chat{ID: memberChatID, ActiveExecutionID: "external-member-work"}},
 	}}
+	executions := &postTurnExecutionFake{}
 	service := &service{
 		channels:     channels,
 		threads:      threads,
@@ -1525,7 +1526,7 @@ func TestDirectMentionOnlySupplementsInProgressAndReviewRequiresExplicitDecision
 		transactions: transactions,
 		wakers:       wakers,
 		chats:        chatFake,
-		executions:   &postTurnExecutionFake{},
+		executions:   executions,
 		watchers:     make(map[string]struct{}),
 		capabilities: channeltool.NewRegistry(),
 	}
@@ -1615,6 +1616,15 @@ func TestDirectMentionOnlySupplementsInProgressAndReviewRequiresExplicitDecision
 	if err := tasks.Create(ctx, cancellableReview, nil); err != nil {
 		t.Fatalf("create cancellable review task: %v", err)
 	}
+	reviewAttempt := models.ChannelTaskAttempt{
+		ID: "55555555555555555555555555555555", TaskID: cancellableReview.ID,
+		ChatID: memberChatID, ExecutionID: "66666666666666666666666666666666", AssigneeWakerID: memberID,
+		Fence: cancellableReview.CurrentFence, Reason: constants.ChannelAttemptReasonInitial,
+		Status: constants.ExecutionStatusCompleted, StartedAt: testTimestamp(now + 2), FinishedAt: testTimestamp(now + 3),
+	}
+	if err := tasks.CreateAttempt(ctx, reviewAttempt); err != nil {
+		t.Fatalf("create completed review attempt: %v", err)
+	}
 	if err := service.StopTask(ctx, cancellableReview.ID); err != nil {
 		t.Fatalf("StopTask(in_review) error = %v", err)
 	}
@@ -1624,6 +1634,9 @@ func TestDirectMentionOnlySupplementsInProgressAndReviewRequiresExplicitDecision
 	}
 	if cancelled.Status != constants.ChannelTaskStatusCancelled || cancelled.FinishedAt == nil {
 		t.Fatalf("cancelled review task = %+v", cancelled)
+	}
+	if len(executions.canceledExecutions) != 1 || executions.canceledExecutions[0] != reviewAttempt.ExecutionID {
+		t.Fatalf("review cancellation stopped another member execution: %v", executions.canceledExecutions)
 	}
 }
 

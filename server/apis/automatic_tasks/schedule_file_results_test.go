@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowinput "github.com/JieWaZi/NeuxBot/server/internal/workflow/input"
 )
@@ -75,10 +76,14 @@ func TestTaskFileUploadRunResultAndDownload(t *testing.T) {
 		t.Fatal("input was not materialized")
 	}
 	downloadURL := base + "/runs/" + accepted.RunID + "/files/" + result.Files[0].ID
-	download := callLocal(&h.api, http.MethodGet, downloadURL, saved.Token, "", "")
-	if download.Code != http.StatusOK || !bytes.Equal(download.Body.Bytes(), content) || download.Header().Get("Content-Disposition") == "" {
-		t.Fatalf("download bytes: %d %v", download.Code, download.Body.Bytes())
+	assertDownload := func() {
+		t.Helper()
+		download := callLocal(&h.api, http.MethodGet, downloadURL, saved.Token, "", "")
+		if download.Code != http.StatusOK || !bytes.Equal(download.Body.Bytes(), content) || download.Header().Get("Content-Disposition") == "" {
+			t.Fatalf("download bytes: %d %v", download.Code, download.Body.Bytes())
+		}
 	}
+	assertDownload()
 	if denied := callLocal(&h.api, http.MethodGet, downloadURL, "bad-token", "", ""); denied.Code != http.StatusUnauthorized {
 		t.Fatalf("token bypass: %d", denied.Code)
 	}
@@ -98,6 +103,7 @@ func TestTaskFileUploadRunResultAndDownload(t *testing.T) {
 	if err := os.WriteFile(path, []byte("changed after run"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	assertDownload()
 	replay := callLocal(&h.api, http.MethodPost, base+"/runs", saved.Token, "file-run", string(payload))
 	if replay.Code != http.StatusAccepted {
 		t.Fatalf("replay: %s", replay.Body.String())
@@ -109,8 +115,37 @@ func TestTaskFileUploadRunResultAndDownload(t *testing.T) {
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
+	assertDownload()
+	// 业务原件即使重新出现，也不能替代本次确认的成果收据。
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	workflowRun, err := h.api.config.WorkflowRuns.GetRun(ctx, run.WorkflowRunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, found := workflowRun.OutputFiles["/report"]
+	if !found || receipt.Path == "" || receipt.Digest == "" {
+		t.Fatalf("missing output receipt: %+v", workflowRun.OutputFiles)
+	}
+	snapshot := filepath.Join(h.api.config.ManagedFilesDirectory, constants.WorkflowFileDirectoryName, workflowRun.DefinitionID, "chat-results", workflowRun.ID, receipt.Path)
+	if err := os.WriteFile(snapshot, []byte("corrupted snapshot"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	corrupted := callLocal(&h.api, http.MethodGet, downloadURL, saved.Token, "", "")
+	var failure map[string]string
+	if corrupted.Code != status_error.WorkflowFileInvalid.StatusCode() || json.Unmarshal(corrupted.Body.Bytes(), &failure) != nil || failure["errorCode"] != status_error.WorkflowFileInvalid.Key() {
+		t.Fatalf("corrupted snapshot: %d %s", corrupted.Code, corrupted.Body.String())
+	}
+	if err := os.Remove(snapshot); err != nil {
+		t.Fatal(err)
+	}
 	missing := callLocal(&h.api, http.MethodGet, downloadURL, saved.Token, "", "")
-	if missing.Code != http.StatusNotFound {
-		t.Fatalf("missing file: %d", missing.Code)
+	if missing.Code != http.StatusNotFound || json.Unmarshal(missing.Body.Bytes(), &failure) != nil || failure["errorCode"] != status_error.WorkflowFileNotFound.Key() {
+		t.Fatalf("missing snapshot: %d %s", missing.Code, missing.Body.String())
+	}
+	response = callLocal(&h.api, http.MethodGet, base+"/runs/"+accepted.RunID+"/result", saved.Token, "", "")
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil || len(result.Files) != 1 || result.Files[0].Available {
+		t.Fatalf("missing snapshot metadata: %d %s", response.Code, response.Body.String())
 	}
 }
