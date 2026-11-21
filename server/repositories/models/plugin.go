@@ -153,6 +153,12 @@ type PluginReference struct {
 	Version string `json:"version"`
 	// 版本标识
 	VersionID string `json:"versionId"`
+	// 软件图标
+	Icon string `json:"icon,omitempty"`
+	// 主题图标
+	Icons *plugins.ThemeValues `json:"icons,omitempty"`
+	// SourceKey 是仅用于核验同源目录的内部身份。
+	SourceKey string `json:"-"`
 }
 
 // PluginBrowseVersion 只保存真实安装版本所需的公开展示与身份缓存查询字段。
@@ -207,9 +213,43 @@ type PluginAccount struct {
 	Generation int64 `gorm:"column:generation;not null" json:"generation"`
 	// DeliveryMaterials 是按固定版本、组件和端点加密保存的私有材料。
 	DeliveryMaterials []MCPSecretDefinition `gorm:"column:delivery_materials;type:text;serializer:json" json:"-"`
+	// HostedOAuthRevision 独立比较同一账号下的并发令牌轮换。
+	HostedOAuthRevision int64 `gorm:"column:hosted_oauth_revision;not null;default:0" json:"-"`
+	// HostedOAuthResource 是托管凭据可交付的确切 MCP 地址。
+	HostedOAuthResource string `gorm:"column:hosted_oauth_resource;not null;default:''" json:"-"`
+	// HostedOAuthCiphertext 是与插件和 OAuth 资源绑定的加密凭据。
+	HostedOAuthCiphertext string `gorm:"column:hosted_oauth_ciphertext;type:text;not null;default:''" json:"-"`
+	// HostedOAuthReadiness 保存无需解密即可读取的授权摘要。
+	HostedOAuthReadiness PluginHostedOAuthReadiness `gorm:"column:hosted_oauth_readiness;type:text;serializer:json" json:"-"`
 	// UpdatedAt 是最近一次账号代次变更的 Unix 毫秒时间。
 	UpdatedAt int64 `gorm:"column:updated_at;autoUpdateTime:milli" json:"updatedAt"`
 }
 
 // TableName 返回独立共享账号表名。
 func (PluginAccount) TableName() string { return "plugin_accounts" }
+
+// PluginHostedOAuth 是授权和实际 MCP 请求专用的共享账号私有投影。
+type PluginHostedOAuth struct {
+	// PluginID 是共享账号所属的唯一插件身份。
+	PluginID string `json:"-"`
+	// Generation 是登入、退出和身份变更的公开并发代次。
+	Generation int64 `json:"-"`
+	// Revision 是当前托管凭据的私有并发修订。
+	Revision int64 `json:"-"`
+	// Resource 是凭据可交付的确切 MCP 地址。
+	Resource string `json:"-"`
+	// Secret 是从存储解密的 OAuth 记录，由调用方在当前用例内使用。
+	Secret string `json:"-"`
+	// Readiness 是与凭据原子更新的本地授权事实。
+	Readiness PluginHostedOAuthReadiness `json:"-"`
+}
+
+// PluginHostedOAuthReadiness 保存托管授权的非秘密事实，交付时仍由远端验证。
+type PluginHostedOAuthReadiness struct {
+	// ExpiresAt 是访问令牌过期的 Unix 毫秒时间，零值表示服务未声明。
+	ExpiresAt int64 `json:"expiresAt,omitempty"`
+	// Renewable 表示授权响应曾签发续期令牌。
+	Renewable bool `json:"renewable"`
+	// Scopes 是授权响应记录的权限。
+	Scopes []string `json:"scopes,omitempty"`
+}

@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -52,6 +52,9 @@ export function PluginPresentation({
   const [prompt, setPrompt] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>(wakerId ? [wakerId] : []);
   const [installing, setInstalling] = useState(false);
+  const pendingDraft = useRef<ReturnType<typeof chatPromptDestination> | null>(
+    null,
+  );
   const active = useRouteSceneActive();
   const pluginId = detail?.plugin?.id;
   const current = useQuery({
@@ -91,8 +94,12 @@ export function PluginPresentation({
   );
   const openDraft = (text: string, target: string, attached?: string) => {
     const destination = chatPromptDestination(text, target, attached);
-    // Scene 导航后仍保留挂载，消费提示以关闭选择框，保留伙伴选择。
-    setPrompt(null);
+    if (prompt !== null) {
+      // 先让选择框退出，避免导航挂起当前 Scene 时保留鼠标锁。
+      pendingDraft.current = destination;
+      setPrompt(null);
+      return;
+    }
     navigate(destination.to, { state: destination.state });
   };
   if (detail?.packageStatus === "unsupported") return null;
@@ -115,7 +122,17 @@ export function PluginPresentation({
           if (!open) setPrompt(null);
         }}
       >
-        <DialogContent title={t("chooseExamplePartner")} layout="form">
+        <DialogContent
+          title={t("chooseExamplePartner")}
+          layout="form"
+          onCloseAutoFocus={(event) => {
+            const destination = pendingDraft.current;
+            if (!destination) return;
+            pendingDraft.current = null;
+            event.preventDefault();
+            navigate(destination.to, { state: destination.state });
+          }}
+        >
           <div className="grid gap-4 px-6 pb-4">
             <p className="type-resource-body whitespace-pre-wrap">{prompt}</p>
             <PartnerPicker

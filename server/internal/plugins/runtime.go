@@ -73,6 +73,9 @@ func resolveServer(pkg Package, input Server, root, data string, values map[stri
 	if err := ValidateContract(pkg); err != nil {
 		return result, err
 	}
+	if auth := pkg.Integration.Authentication; auth != nil && auth.Strategy == constants.PluginAuthHostedStrategy {
+		return result, status_error.PluginCapabilityUnsupported
+	}
 	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return result, storageFailure(err)

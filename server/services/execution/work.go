@@ -131,6 +131,8 @@ type pendingMessage struct {
 	create *pendingChat
 	// message 是本轮用户输入。
 	message userMessage
+	// messagePlugins 仅附加到公开用户消息，不参与当前执行的插件选择。
+	messagePlugins []plugins.Snapshot
 	// runtime 是本轮 Runtime 选择。
 	runtime runtimeSelection
 	// parentExecutionID 是编排产生的可选父执行标识。
@@ -174,6 +176,7 @@ func normalizePendingMessage(input pendingMessage) pendingMessage {
 	}
 	input.message.Attachments = append([]AttachmentInput(nil), input.message.Attachments...)
 	input.toolCapabilities = cloneToolCapabilities(input.toolCapabilities)
+	input.messagePlugins = slices.Clone(input.messagePlugins)
 	input.allowedAgentDomains = cloneConnectorAllowlist(input.allowedAgentDomains)
 	input.allowedConnectorIDs = cloneConnectorAllowlist(input.allowedConnectorIDs)
 	input.historyMessageIDsToOmit = append([]string(nil), input.historyMessageIDsToOmit...)
@@ -290,6 +293,9 @@ func (m *service) startMessage(
 		}
 		if request.imReplyLinkID != "" {
 			content = append(content, map[string]string{"imReplyLinkId": request.imReplyLinkID})
+		}
+		if len(request.messagePlugins) != 0 {
+			content = append(content, request.messagePlugins)
 		}
 		identity, err := requestidempotency.NewSubmission(request.submissionID, content)
 		if err != nil {
@@ -660,6 +666,9 @@ func createRequestContent(request pendingMessage) []interface{} {
 	}
 	if request.automaticRunID != "" {
 		content = append(content, map[string]any{"automaticRunId": request.automaticRunID})
+	}
+	if len(request.messagePlugins) != 0 {
+		content = append(content, request.messagePlugins)
 	}
 	if request.allowedConnectorIDs != nil {
 		content = append(content, map[string]any{"allowedConnectorIds": *request.allowedConnectorIDs})

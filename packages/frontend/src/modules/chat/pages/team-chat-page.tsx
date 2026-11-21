@@ -249,9 +249,7 @@ function TeamChatView({
   const [selectedSkillIDsByWaker, setSelectedSkillIDsByWaker] = useState<
     Record<string, string[]>
   >({});
-  const [selectedPluginIDsByWaker, setSelectedPluginIDsByWaker] = useState<
-    Record<string, string[]>
-  >({});
+  const [selectedPluginIDs, setSelectedPluginIDs] = useState<string[]>([]);
   const [selectedConnectorIDsByWaker, setSelectedConnectorIDsByWaker] =
     useState<Record<string, string[]>>({});
   const [composerRestoreRevision, setComposerRestoreRevision] = useState(0);
@@ -356,7 +354,7 @@ function TeamChatView({
   const currentChatKey = conversationKeyOf(workspaceScopeKey, activeChatId);
   const resetComposerScope = useCallback(() => {
     setSelectedSkillIDsByWaker({});
-    setSelectedPluginIDsByWaker({});
+    setSelectedPluginIDs([]);
     setSelectedConnectorIDsByWaker({});
     setTeamMentionWakerId("");
   }, []);
@@ -449,21 +447,18 @@ function TeamChatView({
     }),
     enabled: Boolean(workspaceOwnerWakerId),
   });
-  const pluginsQuery = useInstalledPluginReferences(selectedWakerID);
+  const mentionedExecutorId = isTeamMainChat
+    ? teamMentionWakerId || undefined
+    : undefined;
+  const pluginsQuery = useInstalledPluginReferences(
+    mentionedExecutorId ?? selectedWakerID,
+    sceneActive,
+  );
   const enabledPlugins = pluginsQuery.plugins;
   // 已选插件失效时保留明确意图，由 Core 拒绝；候选刷新不能静默降级发送。
-  const selectedPluginIDs =
-    selectedPluginIDsByWaker[selectedWakerID ?? ""] ?? [];
   const selectedPlugins = enabledPlugins.filter((plugin) =>
     selectedPluginIDs.includes(plugin.id),
   );
-  const setSelectedPluginIDs = (ids: string[]) => {
-    if (selectedWakerID)
-      setSelectedPluginIDsByWaker((current) => ({
-        ...current,
-        [selectedWakerID]: ids,
-      }));
-  };
   const skillsQuery = useQuery({
     ...listWakerSkillsOptions({
       path: { wakerId: selectedWakerID ?? "pending" },
@@ -892,6 +887,7 @@ function TeamChatView({
       permissionLevel: selectedPermissionLevel,
       skillIds: selectedSkillIDs,
       selectedSkills,
+      mentionWakerId: mentionedExecutorId,
       pluginIds: selectedPluginIDs,
       selectedPlugins,
       connectorIds: selectedConnectorIDs,
@@ -922,15 +918,9 @@ function TeamChatView({
           ]),
         ),
       }));
-      setSelectedPluginIDsByWaker((current) => ({
-        ...current,
-        [selectedWakerID]: Array.from(
-          new Set([
-            ...(current[selectedWakerID] ?? []),
-            ...(selection.pluginIds ?? []),
-          ]),
-        ),
-      }));
+      setSelectedPluginIDs((current) =>
+        Array.from(new Set([...current, ...(selection.pluginIds ?? [])])),
+      );
       setSelectedConnectorIDsByWaker((current) => ({
         ...current,
         [selectedWakerID]: Array.from(
@@ -996,7 +986,7 @@ function TeamChatView({
       const body = {
         text,
         workflowId: selection?.workflow?.id,
-        mentionWakerId: teamMentionWakerId || undefined,
+        mentionWakerId: selection?.mentionWakerId,
         attachments: attachmentPaths.map((sourcePath) => ({ sourcePath })),
         skillIds: selection?.skillIds ?? [],
         pluginIds: selection?.pluginIds ?? [],
@@ -1492,9 +1482,6 @@ function TeamChatView({
             name: member.name,
           })),
       availableSkillIds: availableSkillIDs,
-      availablePluginIds: pluginsQuery.data
-        ? new Set(enabledPlugins.map((plugin) => plugin.id))
-        : undefined,
       availableConnectorIds: availableConnectorIDs,
       selectedSkillIds: selectedSkillIDs,
       selectedConnectorIds: selectedConnectorIDs,

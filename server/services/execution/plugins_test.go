@@ -283,8 +283,24 @@ func TestPluginIntentAndVersionSurviveAdmissionAndHistory(t *testing.T) {
 	if _, err = manager.execution.Start(context.Background(), intent); !errors.Is(err, status_error.CreateRequestConflict) {
 		t.Fatalf("plugin intent absent from idempotency hash: %v", err)
 	}
-	if len(manager.nativeCalls(t, "turn/start")) != 1 || !strings.Contains(string(manager.nativeCalls(t, "turn/start")[0]), "p1") {
-		t.Fatalf("explicit intent missing from native frame: %+v", manager.nativeCalls(t, "turn/start"))
+	frames := manager.nativeCalls(t, "turn/start")
+	if len(frames) != 1 {
+		t.Fatalf("native turn count = %d, want 1", len(frames))
+	}
+	var frame struct {
+		// Input is the product text sent to the Codex fixture.
+		Input []struct {
+			// Text contains the user's message and runtime instructions.
+			Text string `json:"text"`
+		} `json:"input"`
+	}
+	if err := json.Unmarshal(frames[0], &frame); err != nil || len(frame.Input) != 1 {
+		t.Fatalf("unexpected native input: %s, error=%v", frames[0], err)
+	}
+	prompt := frame.Input[0].Text
+	if !strings.Contains(prompt, `Use "办公" to carry out this request.`) ||
+		!strings.Contains(prompt, "(MCP: mcp__bot_plugin_") {
+		t.Fatalf("explicit plugin intent missing from native prompt: %s", prompt)
 	}
 }
 
@@ -612,10 +628,10 @@ func TestHotPluginDeclarationsIgnoreManagementPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hot declaration accessed unused payload: %v", err)
 	}
-	if !slices.Equal(frozen.pluginIDs, []string{"active"}) || len(frozen.selected) != 1 || frozen.selected[0].Name != "办公" {
+	if !slices.Equal(frozen.pluginIDs, []string{"active"}) {
 		t.Fatalf("wrong enabled fixed resources: %+v", frozen)
 	}
-	if len(frozen.declarations) != 1 || frozen.declarations[0].VersionID != "pinned" || frozen.declarations[0].Digest != "fixed-digest" || frozen.declarations[0].TrustedAt != 7 || frozen.declarations[0].ConfigurationRevision != 3 || frozen.declarations[0].AccountGeneration != 7 {
+	if len(frozen.declarations) != 1 || frozen.declarations[0].Name != "办公" || frozen.declarations[0].VersionID != "pinned" || frozen.declarations[0].Digest != "fixed-digest" || frozen.declarations[0].TrustedAt != 7 || frozen.declarations[0].ConfigurationRevision != 3 || frozen.declarations[0].AccountGeneration != 7 {
 		t.Fatalf("static declaration lost fixed version, trust or revision: %+v", frozen.declarations)
 	}
 	if !slices.Equal(frozen.declarations[0].ConfiguredSecrets, []string{"TOKEN"}) {

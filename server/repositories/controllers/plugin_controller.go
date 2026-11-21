@@ -27,6 +27,8 @@ type PluginController interface {
 	ContentReferences(context.Context) ([]string, error)
 	// InstalledReferences 只读取伙伴已启用安装的展示身份和固定版本。
 	InstalledReferences(context.Context, string) ([]models.PluginReference, error)
+	// ReferenceIcons 批量读取现存全局插件的公开图标，不检查伙伴启停。
+	ReferenceIcons(context.Context, []string) ([]models.PluginReference, error)
 	// ExecutionDeclarations 在短读事务内声明伙伴启用安装的固定版本与配置修订。
 	ExecutionDeclarations(context.Context, string) ([]models.PluginExecutionDeclaration, error)
 	// ExecutionConfiguration 在冷资源取得时解密共享配置，不读取私有授权交付材料。
@@ -55,6 +57,8 @@ type PluginController interface {
 	Installations(context.Context, string, string) ([]models.WakerPlugin, error)
 	// InstalledVersionsExcept 返回移除指定伙伴关系或整个资源后仍被安装引用的版本。
 	InstalledVersionsExcept(context.Context, string, string) ([]models.PluginVersion, error)
+	// InstalledVersions 批量读取当前插件被引用的版本及授权声明。
+	InstalledVersions(context.Context, string) ([]models.PluginVersion, error)
 	// SetEnabled 修改已有安装的启停。
 	SetEnabled(context.Context, string, string, bool) error
 	// SwitchVersion 按旧版本条件切换已有安装。
@@ -73,6 +77,16 @@ type PluginController interface {
 	Account(context.Context, string) (models.PluginAccount, error)
 	// UpdateAccount 按预期代次原子替换加密材料并推进账号代次。
 	UpdateAccount(context.Context, models.PluginAccount, int64) error
+	// HostedOAuth 只返回托管 OAuth 操作所需的私有凭据和并发修订。
+	HostedOAuth(context.Context, string) (models.PluginHostedOAuth, error)
+	// HostedOAuthBinding 只读取固定资源和并发代次，支持无需解密的账号重置。
+	HostedOAuthBinding(context.Context, string) (models.PluginHostedOAuth, error)
+	// HostedOAuthReadiness 仅读取资源匹配的授权摘要，不查询或解密凭据。
+	HostedOAuthReadiness(context.Context, string, string) (models.PluginHostedOAuthReadiness, bool, error)
+	// UpdateHostedOAuth 使用已读取的公共代次和私有修订条件更新。
+	UpdateHostedOAuth(context.Context, models.PluginHostedOAuth, bool) error
+	// ResetAuthorization 按代次清除转版前的私有授权。
+	ResetAuthorization(context.Context, string, int64) error
 	// Delete 删除资源和关联元数据，由调用用例控制事务和活跃内容回收。
 	Delete(context.Context, string) error
 	// DeleteByWaker 删除伙伴安装关系，由伙伴聚合删除事务调用。
@@ -231,6 +245,17 @@ func (c *pluginController) InstalledVersionsExcept(ctx context.Context, plugin, 
 	versions := []models.PluginVersion{}
 	if err := db.Select("id", "plugin_id", "package").Where("id IN (?)", installed).Find(&versions).Error; err != nil {
 		return nil, databaseError("remaining_plugin_installation_versions", plugin, err)
+	}
+	return versions, nil
+}
+
+// InstalledVersions 用子查询批量取得所有当前安装引用的版本，包含停用关系。
+func (c *pluginController) InstalledVersions(ctx context.Context, plugin string) ([]models.PluginVersion, error) {
+	db := controllerDB(ctx, c.db)
+	installed := db.Model(&models.WakerPlugin{}).Select("version_id").Where("plugin_id = ?", plugin)
+	versions := []models.PluginVersion{}
+	if err := db.Select("id", "plugin_id", "version", "package").Where("plugin_id = ? AND id IN (?)", plugin, installed).Find(&versions).Error; err != nil {
+		return nil, databaseError("read_installed_plugin_versions", plugin, err)
 	}
 	return versions, nil
 }
@@ -621,7 +646,7 @@ func (c *pluginController) ContentReferences(ctx context.Context) ([]string, err
 	return paths, nil
 }
 
-// InstalledReferences 以三次单表窄列查询读取输入引用，不读取包、配置、账号或使用状态。
+// InstalledReferences 以三次单表窄列查询读取输入引用与安全图标，不读取完整包、配置、账号或使用状态。
 // 调用方以短读事务固定三个查询的一致性；IN 子查询复用伙伴安装的索引。
 func (c *pluginController) InstalledReferences(ctx context.Context, waker string) ([]models.PluginReference, error) {
 	db := controllerDB(ctx, c.db)
@@ -637,26 +662,27 @@ func (c *pluginController) InstalledReferences(ctx context.Context, waker string
 		return db.Model(&models.WakerPlugin{}).Select(column).Where("waker_id = ? AND enabled = ?", waker, true)
 	}
 	var resources []models.Plugin
-	if err := db.Select("id", "name", "description").Where("id IN (?)", installed("plugin_id")).Order("name, id").Find(&resources).Error; err != nil {
+	if err := db.Select("id", "name", "description", "source_key").Where("id IN (?)", installed("plugin_id")).Order("name, id").Find(&resources).Error; err != nil {
 		return nil, databaseError("plugin_reference_resources", waker, err)
 	}
-	var versions []models.PluginVersion
-	if err := db.Select("id", "plugin_id", "version").Where("id IN (?)", installed("version_id")).Find(&versions).Error; err != nil {
+	versions, err := readPluginReferenceVersions(db, installed("version_id"))
+	if err != nil {
 		return nil, databaseError("plugin_reference_versions", waker, err)
 	}
 	pinned := make(map[string]string, len(installations))
 	for _, relation := range installations {
 		pinned[relation.PluginID] = relation.VersionID
 	}
-	byID := make(map[string]models.PluginVersion, len(versions))
+	byID := make(map[string]pluginReferenceVersion, len(versions))
 	for _, version := range versions {
 		byID[version.ID] = version
 	}
 	for _, resource := range resources {
 		version, exists := byID[pinned[resource.ID]]
-		if exists && version.PluginID == resource.ID {
-			result = append(result, models.PluginReference{ID: resource.ID, Name: resource.Name, Description: resource.Description, Version: version.Version, VersionID: version.ID})
+		if !exists || version.PluginID != resource.ID {
+			continue
 		}
+		result = append(result, version.reference(resource))
 	}
 	return result, nil
 }

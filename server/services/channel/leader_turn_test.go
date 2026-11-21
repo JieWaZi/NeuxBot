@@ -170,6 +170,56 @@ func TestWorkflowOnlyTeamFirstSendUsesTheSelectedName(t *testing.T) {
 	if actual.Chat.ChatID != result.Thread.LeadChatID || actual.Input.Workflow == nil || actual.Input.Workflow.RevisionID != "published" || actual.Input.Content != "" {
 		t.Fatalf("lead first turn did not preserve the original workflow-only input: %+v", actual)
 	}
+	if instructions := actual.Input.ContextInstructions; len(instructions) == 0 || !strings.Contains(instructions[len(instructions)-1].Content, "This is a direct-execution turn") {
+		t.Fatalf("selected workflow lost its direct-execution instruction: %+v", instructions)
+	}
+}
+
+// directedPluginReferenceFixture 返回被点名成员的固定插件展示版本。
+type directedPluginReferenceFixture struct {
+	// PluginController 保留本用例不使用的插件端口。
+	controllers.PluginController
+	// memberID 是允许读取安装引用的唯一成员。
+	memberID string
+}
+
+func (f directedPluginReferenceFixture) InstalledReferences(_ context.Context, wakerID string) ([]models.PluginReference, error) {
+	if wakerID != f.memberID {
+		return nil, status_error.PluginNotReady
+	}
+	return []models.PluginReference{{ID: "member-plugin", Name: "Member plugin", VersionID: "member-plugin-v1", Version: "1.0.0"}}, nil
+}
+
+func TestDirectedFirstTeamInputKeepsMemberPluginAsMessageReference(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, captured := newDelegationDispatchService(t)
+	sut.chatGroups = &leaderTurnChatGroupFake{chats: chats}
+	members, err := sut.threads.ListMembers(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberID := ""
+	for _, member := range members {
+		if !member.IsLead {
+			memberID = member.WakerID
+			break
+		}
+	}
+	sut.plugins = directedPluginReferenceFixture{memberID: memberID}
+	result, err := sut.createThread(ctx, CreateThreadInput{
+		ChannelID: thread.ChannelID, ClientRequestID: "member-plugin-first", MentionWakerID: memberID,
+		Input: execution.WorkInput{Content: "Prepare the report", PluginIDs: []string{"member-plugin"}},
+	})
+	if err != nil || len(result.Tasks) != 1 {
+		t.Fatalf("member plugin first send was not accepted: %+v %v", result, err)
+	}
+	actual := captured.firstStart()
+	if len(actual.Input.PluginIDs) != 0 || len(actual.MessagePlugins) != 1 || actual.MessagePlugins[0].VersionID != "member-plugin-v1" {
+		t.Fatalf("lead lost the member reference or received its plugin capability: %+v", actual)
+	}
+	if input := result.Tasks[0].DirectInput; input == nil || len(input.PluginIDs) != 1 || input.PluginIDs[0] != "member-plugin" {
+		t.Fatalf("member task lost its own plugin selection: %+v", input)
+	}
 }
 
 func TestLeadInputSendDoesNotReturnAnEarlierSubmissionsExecution(t *testing.T) {

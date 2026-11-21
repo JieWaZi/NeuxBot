@@ -5150,7 +5150,7 @@
             ]
           },
           "502": {
-            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
+            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5172,6 +5172,8 @@
               "[PluginAuthorizationFailed][50200006501]",
               "[PluginDependencyUnavailable][50200006503]",
               "[PluginDistributionUnavailable][50200006502]",
+              "[PluginOAuthMetadataUnavailable][50200006505]",
+              "[PluginOAuthServiceUnavailable][50200006504]",
               "[RuntimeInstallationFailed][50200007301]"
             ]
           },
@@ -5651,7 +5653,7 @@
             ]
           },
           "502": {
-            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
+            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5673,6 +5675,8 @@
               "[PluginAuthorizationFailed][50200006501]",
               "[PluginDependencyUnavailable][50200006503]",
               "[PluginDistributionUnavailable][50200006502]",
+              "[PluginOAuthMetadataUnavailable][50200006505]",
+              "[PluginOAuthServiceUnavailable][50200006504]",
               "[RuntimeInstallationFailed][50200007301]"
             ]
           },
@@ -6152,7 +6156,7 @@
             ]
           },
           "502": {
-            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
+            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6174,6 +6178,8 @@
               "[PluginAuthorizationFailed][50200006501]",
               "[PluginDependencyUnavailable][50200006503]",
               "[PluginDistributionUnavailable][50200006502]",
+              "[PluginOAuthMetadataUnavailable][50200006505]",
+              "[PluginOAuthServiceUnavailable][50200006504]",
               "[RuntimeInstallationFailed][50200007301]"
             ]
           },
@@ -6755,7 +6761,7 @@
             ]
           },
           "502": {
-            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
+            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6777,6 +6783,8 @@
               "[PluginAuthorizationFailed][50200006501]",
               "[PluginDependencyUnavailable][50200006503]",
               "[PluginDistributionUnavailable][50200006502]",
+              "[PluginOAuthMetadataUnavailable][50200006505]",
+              "[PluginOAuthServiceUnavailable][50200006504]",
               "[RuntimeInstallationFailed][50200007301]"
             ]
           },

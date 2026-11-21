@@ -599,7 +599,8 @@ func ValidateContract(pkg Package) error {
 	if pkg.Format != constants.PluginFormatPortable || pkg.Manifest.Schema != constants.PluginManifestSchema {
 		return status_error.PluginManifestInvalid
 	}
-	if _, err := neuxExtensionObject(pkg); err != nil {
+	extension, err := neuxExtensionObject(pkg)
+	if err != nil {
 		return err
 	}
 	settings, err := nativeManifest(pkg)
@@ -612,7 +613,17 @@ func ValidateContract(pkg Package) error {
 		}
 	}
 
-	if auth := pkg.Integration.Authentication; auth != nil {
+	auth := pkg.Integration.Authentication
+	if pkg.declaresHostedOAuth() || (auth != nil && auth.Strategy == constants.PluginAuthHostedStrategy) {
+		if !pkg.validHostedOAuthComposition(extension) ||
+			auth == nil || auth.Strategy != constants.PluginAuthHostedStrategy || auth.Protocol != constants.PluginAuthProtocol ||
+			auth.PreferredAction != constants.PluginAuthOpenURLAction || auth.Command != "" || len(auth.Args) != 0 || len(auth.Scopes) != 0 ||
+			len(auth.Bindings) != 0 || len(auth.SkillBindings) != 0 {
+			return status_error.PluginManifestInvalid
+		}
+		return nil
+	}
+	if auth != nil {
 		if auth.Strategy != constants.PluginAuthCommandStrategy || auth.Protocol != constants.PluginAuthProtocol {
 			return status_error.PluginManifestInvalid
 		}
@@ -677,7 +688,12 @@ func parseMCPAuthentication(raw json.RawMessage, server *Server) error {
 		if auth.HeaderScheme != "" || auth.HeaderName != "" {
 			return status_error.PluginManifestInvalid
 		}
-	case "oauth", "mixed":
+	case constants.PluginMCPOAuthMode:
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(value, &fields) != nil || len(fields) != 1 || !stringEquals(fields["type"], constants.PluginMCPOAuthMode) {
+			return status_error.PluginManifestInvalid
+		}
+	case "mixed":
 		return status_error.PluginCapabilityUnsupported
 	case "api_key":
 		if server.Type == "stdio" {
@@ -709,7 +725,7 @@ func validateMCPAuthenticationBindings(pkg Package, extension Extension) error {
 	}
 	for _, server := range pkg.Servers {
 		auth := server.Authentication
-		if auth == nil || auth.Type == "none" {
+		if auth == nil || auth.Type == "none" || auth.Type == constants.PluginMCPOAuthMode {
 			continue
 		}
 		if auth.Type != "api_key" {

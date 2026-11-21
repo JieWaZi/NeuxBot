@@ -20,14 +20,14 @@ export function PluginIcon({
   icon?: string;
   icons?: PluginIcons;
   hero?: boolean;
-  size?: "list" | "detail" | "navigation";
+  size?: "list" | "detail" | "navigation" | "mention";
   category?: string;
 }) {
   const themedIcons = icons ?? pkg?.presentation?.icons;
-  const defaultIcon =
-    themedIcons?.default ?? icon ?? pkg?.icon ?? themedIcons?.dark;
+  const lightIcon = themedIcons?.default ?? icon ?? pkg?.icon;
+  const defaultIcon = lightIcon ?? themedIcons?.dark;
   const darkIcon = themedIcons?.dark ?? defaultIcon;
-  if (!defaultIcon && !hero && size !== "navigation") {
+  if (!defaultIcon && !hero && (size === "list" || size === "detail")) {
     return (
       <ResourceCategoryIcon
         category={category ?? pkg?.presentation?.category}
@@ -35,18 +35,37 @@ export function PluginIcon({
       />
     );
   }
+  const imageSize = hero
+    ? "size-10"
+    : size === "navigation"
+      ? "size-icon-md"
+      : size === "mention"
+        ? "size-icon-inline"
+        : "size-resource-brand-logo";
+  // 用户气泡和应用表面的明暗相反，单套品牌图沿用其原本适配的底色。
+  const mentionSurface =
+    darkIcon !== defaultIcon
+      ? "bg-resource-raised"
+      : lightIcon
+        ? "bg-resource-raised dark:bg-user-message-background"
+        : "bg-user-message-background dark:bg-resource-raised";
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "text-content-primary grid shrink-0 place-items-center",
+        "grid shrink-0 place-items-center",
+        (hero || size !== "mention") && "text-content-primary",
         hero
           ? "[&_svg]:size-icon-xl size-14"
           : size === "detail"
             ? "bg-resource-raised border-resource-border size-resource-detail-icon [&_svg]:size-resource-logo overflow-hidden rounded-lg border"
             : size === "navigation"
               ? "[&_svg]:size-icon-md size-resource-navigation-icon"
-              : "bg-resource-raised border-resource-border size-resource-icon [&_svg]:size-resource-logo overflow-hidden rounded-md border",
+              : size === "mention"
+                ? defaultIcon
+                  ? cn("size-icon-md rounded-xs", mentionSurface)
+                  : "size-icon-inline [&_svg]:size-icon-inline"
+                : "bg-resource-raised border-resource-border size-resource-icon [&_svg]:size-resource-logo overflow-hidden rounded-md border",
       )}
     >
       {defaultIcon ? (
@@ -57,12 +76,7 @@ export function PluginIcon({
             className={cn(
               darkIcon !== defaultIcon && "dark:hidden",
               "col-start-1 row-start-1 object-contain object-center",
-              !hero && size !== "navigation" && "size-resource-brand-logo",
-              hero
-                ? "size-10"
-                : size === "navigation"
-                  ? "size-icon-md"
-                  : undefined,
+              imageSize,
             )}
           />
           {darkIcon && darkIcon !== defaultIcon && (
@@ -72,12 +86,7 @@ export function PluginIcon({
               className={cn(
                 "hidden dark:block",
                 "col-start-1 row-start-1 object-contain object-center",
-                !hero && size !== "navigation" && "size-resource-brand-logo",
-                hero
-                  ? "size-10"
-                  : size === "navigation"
-                    ? "size-icon-md"
-                    : undefined,
+                imageSize,
               )}
             />
           )}

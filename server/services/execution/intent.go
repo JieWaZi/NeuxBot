@@ -10,6 +10,7 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	agentcap "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -57,6 +58,8 @@ type WorkIntent struct {
 	Chat ChatTarget
 	// Input 描述本次用户或系统输入及文件引用。
 	Input WorkInput
+	// MessagePlugins 是上层为公开消息冻结的其他成员插件引用，不授予当前执行插件能力。
+	MessagePlugins []plugins.Snapshot `json:"-"`
 	// Options 描述本次 Runtime、模型和 Session 选择。
 	Options WorkOptions
 	// Admission 描述本次工作何时进入权威事实源。
@@ -257,6 +260,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 			ConnectorIDs:     append([]string(nil), intent.Input.ConnectorIDs...),
 			PluginIDs:        append([]string(nil), intent.Input.PluginIDs...),
 		},
+		messagePlugins: intent.MessagePlugins,
 		runtime: runtimeSelection{
 			ConfigurationResolved: intent.Options.ConfigurationResolved,
 			AccountID:             intent.Options.AccountID,

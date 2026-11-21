@@ -238,6 +238,7 @@ it("global example requires a partner and uses its actual enabled relation", asy
     expect(screen.getByRole("button", { name: "继续填写草稿" })).toBeEnabled(),
   );
   fireEvent.click(screen.getByRole("button", { name: "继续填写草稿" }));
+  expect(await screen.findByText("聊天草稿页")).toBeVisible();
   expect(
     JSON.parse(screen.getByTestId("destination").textContent ?? "{}").state
       .chatDraftIntent.pluginId,
@@ -305,7 +306,7 @@ it("closes its partner dialog when navigation hides the retained scene", async (
     expect(screen.getByRole("button", { name: "继续填写草稿" })).toBeEnabled(),
   );
   fireEvent.click(screen.getByRole("button", { name: "继续填写草稿" }));
-  expect(screen.getByText("聊天草稿页")).toBeVisible();
+  expect(await screen.findByText("聊天草稿页")).toBeVisible();
   expect(screen.getByTestId("retained-plugin-page")).toBeInTheDocument();
   expect(screen.getByTestId("retained-plugin-page")).not.toBeVisible();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -398,6 +399,7 @@ it("references a catalog preview only after matching its local source and immuta
     expect(screen.getByRole("button", { name: "继续填写草稿" })).toBeEnabled(),
   );
   fireEvent.click(screen.getByRole("button", { name: "继续填写草稿" }));
+  expect(await screen.findByText("聊天草稿页")).toBeVisible();
   expect(
     JSON.parse(screen.getByTestId("destination").textContent ?? "{}").state
       .chatDraftIntent.pluginId,

@@ -139,7 +139,7 @@ function show(
   return client;
 }
 describe("shared plugin authorization", () => {
-  it("shows cancelled authorization in a centered notice with a plain retry action", async () => {
+  it("shows cancelled authorization with a primary retry action in the bottom-right footer", async () => {
     fixture.status.account.available = false;
     fixture.status.session.state = "cancelled";
     fixture.status.session.actions = [];
@@ -149,9 +149,8 @@ describe("shared plugin authorization", () => {
     expect(notice).toHaveAttribute("role", "status");
     expect(notice.closest("section")).toHaveClass("text-center");
     const retry = screen.getByRole("button", { name: "重新授权" });
-    expect(retry.parentElement).toHaveClass("justify-center");
-    expect(retry).not.toHaveClass("border", "bg-button-primary");
-    expect(retry).toHaveClass("text-action-quiet");
+    expect(retry.closest("footer")).toHaveClass("justify-end");
+    expect(retry).toHaveClass("bg-button-primary", "h-control-catalog");
   });
 
   it.each(["expired", "failed", "cancelled", ""])(
@@ -608,7 +607,7 @@ it("keeps reauthorization in settings while installation only presents device ac
   expect(screen.getByRole("button", { name: "取消本次认证" })).toBeVisible();
 });
 
-it("places centered challenges before the full-width authorization action regardless of declaration order", async () => {
+it("places centered challenges before the bottom-right authorization action regardless of declaration order", async () => {
   fixture.status.account.available = false;
   fixture.status.session.actions = [
     { type: "open-url", url: "https://example.com/device" },
@@ -619,20 +618,23 @@ it("places centered challenges before the full-width authorization action regard
   const open = await screen.findByRole("button", { name: "打开授权页面" });
   const code = screen.getByText("CODE-1234");
   const qr = screen.getByLabelText("二维码内容");
-  expect(code).toHaveClass("break-all", "max-w-full");
+  expect(
+    code.closest("code")?.querySelector('[aria-hidden="true"]'),
+  ).toHaveTextContent("CODE-1234");
   expect(
     code.compareDocumentPosition(open) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   expect(
     qr.compareDocumentPosition(open) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-  expect(open).toHaveClass("w-full", "bg-success");
+  expect(open.closest("footer")).toHaveClass("justify-end");
+  expect(open).toHaveClass("bg-button-primary", "h-control-catalog");
   expect(
     screen.getByRole("button", { name: "复制验证码" }).querySelector("svg"),
   ).not.toBeNull();
-  const help = screen.getByText("在授权页面输入此一次性验证码：");
+  const help = screen.getByText("在授权页面输入以下验证码");
   expect(
-    code.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING,
+    help.compareDocumentPosition(code) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   expect(
     qr.compareDocumentPosition(

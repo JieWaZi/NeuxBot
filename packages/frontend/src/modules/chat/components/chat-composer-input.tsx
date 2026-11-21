@@ -20,6 +20,7 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { pluginDetailHref } from "@/modules/plugin";
 import {
   hasPlatformService,
   searchWorkspaceFiles,
@@ -38,6 +39,7 @@ import type {
   ChatWorkflowReference,
 } from "./chat-workflow-reference";
 import { chatComposerReferenceChipClass } from "./chat-reference-chip";
+import type { ChatPluginIcon, ChatPluginOption } from "./chat-plugin-reference";
 import type { BotPathFile } from "../runtime/chat-attachment-adapter";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
 import {
@@ -53,9 +55,11 @@ type MentionItem = {
   referenceType:
     "file" | "skill" | "connector" | "plugin" | "code" | "member" | "workflow";
   group?: string;
+  pluginIcon?: ChatPluginIcon;
 };
 const fileReferenceLimit = 20;
 const contextReferenceSync = "chatContextReferenceSync";
+const pluginMentionSelector = "a[data-chat-composer-plugin]";
 
 export type ChatComposerContextReference = {
   id: string;
@@ -82,7 +86,7 @@ type ChatComposerInputProps = {
   className?: string;
   skills?: ChatSkillOption[];
   connectors?: ChatConnectorOption[];
-  plugins?: ChatSkillOption[];
+  plugins?: ChatPluginOption[];
   onPluginSelectionChange?: (pluginIds: string[]) => void;
   selectedPluginIds?: string[];
   pluginsError?: boolean;
@@ -102,6 +106,8 @@ type ChatComposerInputProps = {
   onAttachmentsRemove?: (paths: string[]) => Promise<void> | void;
   onAttachmentsChange?: () => void;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
+  onOpenPlugin?: (pluginId: string) => void;
+  pluginHrefPrefix?: string;
   onSend?: () => void;
   codeReferenceRequest?: ChatCodeReference;
   onCodeReferencesChange?: (references: ChatCodeReference[]) => void;
@@ -113,6 +119,31 @@ type ChatComposerInputProps = {
   restoreRevision?: number;
   disabled?: boolean;
 };
+
+// Tiptap 只为编辑器内的引用保存展示图标，发送仍使用独立的插件 ID。
+function renderPluginMentionIcon(appearance?: ChatPluginIcon) {
+  const light =
+    appearance?.icons?.default ?? appearance?.icon ?? appearance?.icons?.dark;
+  if (!light) return undefined;
+  const dark = appearance?.icons?.dark ?? light;
+  const media = document.createElement("span");
+  media.className = "size-icon-inline grid shrink-0 place-items-center";
+  media.setAttribute("aria-hidden", "true");
+  const append = (src: string, visibility?: string) => {
+    const image = document.createElement("img");
+    image.src = src;
+    image.alt = "";
+    image.draggable = false;
+    image.className = cn(
+      "size-icon-inline col-start-1 row-start-1 object-contain",
+      visibility,
+    );
+    media.append(image);
+  };
+  append(light, light === dark ? undefined : "dark:hidden");
+  if (light !== dark) append(dark, "hidden dark:block");
+  return media;
+}
 
 function extractText(editor: ReturnType<typeof useEditor>) {
   if (!editor) return "";
@@ -303,6 +334,8 @@ function renderSuggestion(
           if (index === selectedIndex) button.classList.add("bg-muted");
           button.setAttribute("role", "option");
           button.setAttribute("aria-selected", String(index === selectedIndex));
+          const icon = renderPluginMentionIcon(item.pluginIcon);
+          if (icon) button.append(icon);
           const text = document.createElement("span");
           text.className = "min-w-0";
           const label = document.createElement("span");
@@ -436,6 +469,8 @@ export function ChatComposerInput({
   onAttachmentsRemove,
   onAttachmentsChange,
   onOpenFile,
+  onOpenPlugin,
+  pluginHrefPrefix,
   onSend,
   codeReferenceRequest,
   onCodeReferencesChange,
@@ -457,6 +492,7 @@ export function ChatComposerInput({
     onAttachmentsRemove,
     onAttachmentsChange,
     onOpenFile,
+    onOpenPlugin,
     onSkillSelectionChange,
     onPluginSelectionChange,
     onConnectorSelectionChange,
@@ -471,6 +507,7 @@ export function ChatComposerInput({
   const skillsRef = useRef(skills);
   const pluginsRef = useRef(plugins);
   const selectedPluginIdsRef = useRef(selectedPluginIds);
+  const pluginHrefPrefixRef = useRef(pluginHrefPrefix);
   const pluginsErrorRef = useRef(pluginsError);
   const workflowPickerRef = useRef(workflowPicker);
   const workflowSearchFailedRef = useRef(false);
@@ -510,6 +547,7 @@ export function ChatComposerInput({
       onAttachmentsRemove,
       onAttachmentsChange,
       onOpenFile,
+      onOpenPlugin,
       onSkillSelectionChange,
       onPluginSelectionChange,
       onConnectorSelectionChange,
@@ -524,6 +562,7 @@ export function ChatComposerInput({
     skillsRef.current = skills;
     pluginsRef.current = plugins;
     selectedPluginIdsRef.current = selectedPluginIds;
+    pluginHrefPrefixRef.current = pluginHrefPrefix;
     pluginsErrorRef.current = pluginsError;
     workflowPickerRef.current = workflowPicker;
     connectorsRef.current = connectors;
@@ -539,6 +578,7 @@ export function ChatComposerInput({
     contextReferences,
     onContextReferencesChange,
     plugins,
+    pluginHrefPrefix,
     selectedPluginIds,
     pluginsError,
     workflowPicker,
@@ -549,6 +589,7 @@ export function ChatComposerInput({
     fileScopePath,
     fileScopeChatId,
     members,
+    onOpenPlugin,
     onAttachmentAdd,
     onAttachmentsRemove,
     onAttachmentsChange,
@@ -738,9 +779,12 @@ export function ChatComposerInput({
           [
             ...pluginsRef.current.map((plugin) => ({
               ...plugin,
-              plugin: true,
+              plugin: true as const,
             })),
-            ...skillsRef.current.map((skill) => ({ ...skill, plugin: false })),
+            ...skillsRef.current.map((skill) => ({
+              ...skill,
+              plugin: false as const,
+            })),
           ]
             .filter((skill) =>
               [skill.id, skill.name, skill.description].some((value) =>
@@ -749,13 +793,14 @@ export function ChatComposerInput({
             )
             .map((skill) => ({
               id: skill.id,
-              label: skill.plugin
-                ? `${t("plugin:plugins")} · ${skill.name}`
-                : skill.name,
+              label: skill.name,
               description: skill.description,
               referenceType: skill.plugin
                 ? ("plugin" as const)
                 : ("skill" as const),
+              pluginIcon: skill.plugin
+                ? { icon: skill.icon, icons: skill.icons }
+                : undefined,
             })),
         command: ({ editor, range, props }) => {
           editor
@@ -767,6 +812,7 @@ export function ChatComposerInput({
                 id: props.id,
                 label: props.label,
                 referenceType: props.referenceType,
+                pluginIcon: props.pluginIcon,
                 mentionSuggestionChar: "/",
               },
             })
@@ -889,6 +935,11 @@ export function ChatComposerInput({
             startLine: { default: 0 },
             endLine: { default: 0 },
             content: { default: "" },
+            pluginIcon: {
+              default: null,
+              rendered: false,
+              parseHTML: () => null,
+            },
           };
         },
         // TipTap keeps these callbacks for the editor lifetime; their refs are refreshed in the effect above.
@@ -897,68 +948,97 @@ export function ChatComposerInput({
         HTMLAttributes: { class: "chat-composer-mention" },
         deleteTriggerWithBackspace: true,
         renderText: ({ node }) => `${node.attrs.label ?? node.attrs.id}`,
-        renderHTML: ({ node }) => [
-          "span",
-          {
-            class: cn(
-              chatComposerReferenceChipClass,
-              node.attrs.referenceType === "skill" &&
-                "bg-accent-surface text-accent-content",
-              node.attrs.referenceType === "connector" &&
-                "bg-success/12 text-success",
-              node.attrs.referenceType === "code" &&
-                "bg-success/12 text-success",
-              node.attrs.referenceType === "member" &&
-                "bg-accent-surface text-accent-content",
-            ),
-            "data-chat-composer-reference": node.attrs.id,
-            title:
-              node.attrs.referenceType === "file" ||
-              node.attrs.referenceType === "code"
-                ? node.attrs.path || node.attrs.id
-                : undefined,
-            "data-chat-composer-reference-type": node.attrs.referenceType,
-            "data-chat-composer-skill":
-              node.attrs.referenceType === "skill" ? node.attrs.id : undefined,
-            "data-chat-composer-plugin":
-              node.attrs.referenceType === "plugin" ? node.attrs.id : undefined,
-            "data-chat-composer-connector":
-              node.attrs.referenceType === "connector"
-                ? node.attrs.id
-                : undefined,
-            "data-chat-composer-code-reference":
-              node.attrs.referenceType === "file" ? node.attrs.id : undefined,
-            "data-chat-composer-member":
-              node.attrs.referenceType === "member" ? node.attrs.id : undefined,
-          },
-          ...(node.attrs.referenceType === "workflow"
-            ? [
-                [
-                  "http://www.w3.org/2000/svg svg",
-                  {
-                    viewBox: "0 0 24 24",
-                    class: "size-icon-xs shrink-0",
-                    fill: "none",
-                    stroke: "currentColor",
-                    "stroke-width": "1.5",
-                    "stroke-linecap": "round",
-                    "stroke-linejoin": "round",
-                    "aria-hidden": "true",
-                  },
+        renderHTML: ({ node }) => {
+          const id = String(node.attrs.id ?? "");
+          const label = String(node.attrs.label ?? id);
+          if (node.attrs.referenceType === "plugin") {
+            const icon = renderPluginMentionIcon(node.attrs.pluginIcon);
+            return [
+              "a",
+              {
+                class:
+                  "bg-action-quiet-hover text-content-primary type-body focus-visible:ring-ring inline-flex max-w-full items-center gap-1 rounded-md px-2 py-0.5 font-medium outline-none hover:underline focus-visible:ring-2",
+                href: pluginHrefPrefixRef.current
+                  ? pluginHrefPrefixRef.current + encodeURIComponent(id)
+                  : pluginDetailHref(id),
+                tabindex: 0,
+                "data-chat-composer-reference": id,
+                "data-chat-composer-reference-type": "plugin",
+                "data-chat-composer-plugin": id,
+              },
+              ...(icon ? [icon] : []),
+              ["span", { class: "truncate" }, label],
+            ];
+          }
+          return [
+            "span",
+            {
+              class: cn(
+                chatComposerReferenceChipClass,
+                node.attrs.referenceType === "skill" &&
+                  "bg-accent-surface text-accent-content",
+                node.attrs.referenceType === "connector" &&
+                  "bg-success/12 text-success",
+                node.attrs.referenceType === "code" &&
+                  "bg-success/12 text-success",
+                node.attrs.referenceType === "member" &&
+                  "bg-accent-surface text-accent-content",
+              ),
+              "data-chat-composer-reference": node.attrs.id,
+              title:
+                node.attrs.referenceType === "file" ||
+                node.attrs.referenceType === "code"
+                  ? node.attrs.path || node.attrs.id
+                  : undefined,
+              "data-chat-composer-reference-type": node.attrs.referenceType,
+              "data-chat-composer-skill":
+                node.attrs.referenceType === "skill"
+                  ? node.attrs.id
+                  : undefined,
+              "data-chat-composer-plugin":
+                node.attrs.referenceType === "plugin"
+                  ? node.attrs.id
+                  : undefined,
+              "data-chat-composer-connector":
+                node.attrs.referenceType === "connector"
+                  ? node.attrs.id
+                  : undefined,
+              "data-chat-composer-code-reference":
+                node.attrs.referenceType === "file" ? node.attrs.id : undefined,
+              "data-chat-composer-member":
+                node.attrs.referenceType === "member"
+                  ? node.attrs.id
+                  : undefined,
+            },
+            ...(node.attrs.referenceType === "workflow"
+              ? [
                   [
-                    "rect",
-                    { x: "3", y: "3", width: "8", height: "8", rx: "2" },
-                  ],
-                  ["path", { d: "M7 11v4a2 2 0 0 0 2 2h4" }],
-                  [
-                    "rect",
-                    { x: "13", y: "13", width: "8", height: "8", rx: "2" },
-                  ],
-                ] as const,
-              ]
-            : []),
-          `${node.attrs.referenceType === "member" ? "@" : ""}${node.attrs.label ?? node.attrs.id}`,
-        ],
+                    "http://www.w3.org/2000/svg svg",
+                    {
+                      viewBox: "0 0 24 24",
+                      class: "size-icon-xs shrink-0",
+                      fill: "none",
+                      stroke: "currentColor",
+                      "stroke-width": "1.5",
+                      "stroke-linecap": "round",
+                      "stroke-linejoin": "round",
+                      "aria-hidden": "true",
+                    },
+                    [
+                      "rect",
+                      { x: "3", y: "3", width: "8", height: "8", rx: "2" },
+                    ],
+                    ["path", { d: "M7 11v4a2 2 0 0 0 2 2h4" }],
+                    [
+                      "rect",
+                      { x: "13", y: "13", width: "8", height: "8", rx: "2" },
+                    ],
+                  ] as const,
+                ]
+              : []),
+            `${node.attrs.referenceType === "member" ? "@" : ""}${node.attrs.label ?? node.attrs.id}`,
+          ];
+        },
         suggestions: [fileSuggestion, skillSuggestion, resourceSuggestion],
       }),
     ],
@@ -987,6 +1067,10 @@ export function ChatComposerInput({
           className,
         ),
       },
+      // 插件标签由下方 DOM click 在当前 Scene 导航，跳过编辑器链接扩展的 window.open。
+      handleClick: (_view, _position, event) =>
+        event.target instanceof Element &&
+        Boolean(event.target.closest(pluginMentionSelector)),
       handleKeyDown: (view, event) => {
         if (disabledRef.current) return true;
         if (
@@ -999,6 +1083,15 @@ export function ChatComposerInput({
         if (compositionGuardRef.current) {
           event.preventDefault();
           return false;
+        }
+        const pluginLink =
+          event.target instanceof Element
+            ? event.target.closest<HTMLAnchorElement>(pluginMentionSelector)
+            : null;
+        if (pluginLink) {
+          pluginLink.click();
+          event.preventDefault();
+          return true;
         }
         if (event.shiftKey) {
           event.preventDefault();
@@ -1015,6 +1108,26 @@ export function ChatComposerInput({
         return true;
       },
       handleDOMEvents: {
+        click: (_view, event) => {
+          const navigate = callbacksRef.current.onOpenPlugin;
+          if (
+            !navigate ||
+            event.button !== 0 ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey ||
+            !(event.target instanceof Element)
+          )
+            return false;
+          const pluginId = event.target
+            .closest(pluginMentionSelector)
+            ?.getAttribute("data-chat-composer-plugin");
+          if (!pluginId) return false;
+          event.preventDefault();
+          navigate(pluginId);
+          return true;
+        },
         compositionstart: () => {
           markCompositionStart();
           return false;
@@ -1153,7 +1266,14 @@ export function ChatComposerInput({
     if (!editor || editor.isDestroyed || !draftReference) return;
     const key = `${draftReference.kind}:${draftReference.id}`;
     if (handledDraftReferenceRef.current === key) return;
-    const options = { skill: skills, plugin: plugins, connector: connectors };
+    const options: Record<
+      ChatComposerDraftReference["kind"],
+      ChatPluginOption[]
+    > = {
+      skill: skills,
+      plugin: plugins,
+      connector: connectors,
+    };
     const option = options[draftReference.kind].find(
       (item) => item.id === draftReference.id,
     );
@@ -1173,6 +1293,10 @@ export function ChatComposerInput({
               id: option.id,
               label: option.name,
               referenceType: draftReference.kind,
+              pluginIcon:
+                draftReference.kind === "plugin"
+                  ? { icon: option.icon, icons: option.icons }
+                  : undefined,
               mentionSuggestionChar:
                 draftReference.kind === "connector" ? "#" : "/",
             },

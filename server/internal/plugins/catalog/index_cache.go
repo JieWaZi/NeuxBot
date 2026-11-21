@@ -141,16 +141,9 @@ func indexCache(source string) string {
 
 func newRemoteIndex(ctx context.Context, source, filename string, changed func()) *remoteIndex {
 	index := &remoteIndex{directory: filepath.Dir(filepath.Dir(filename)), ctx: ctx, source: source, filename: filename, recoveryGate: make(chan struct{}, 1), done: make(chan struct{}), changed: changed, state: SourceState{State: "unavailable"}}
-	if data, err := os.ReadFile(filename); err == nil && len(data) <= 5*1024*1024 {
-		// 仅接受当前持久快照结构，不为旧裸目录增加兼容读取。
-		if json.Unmarshal(data, &index.snapshot) != nil || len(index.snapshot.Content) == 0 {
-			index.snapshot = storedIndex{}
-		}
-		if _, err := parseIndex(index.snapshot.Content); err == nil {
-			index.state = SourceState{State: "cached", FetchedAt: index.snapshot.FetchedAt}
-		} else {
-			index.snapshot = storedIndex{}
-		}
+	index.snapshot = readIndexSnapshot(filename)
+	if len(index.snapshot.Content) != 0 {
+		index.state = SourceState{State: "cached", FetchedAt: index.snapshot.FetchedAt}
 	}
 	if len(index.snapshot.Content) == 0 && !httpAddress(source) {
 		if raw, err := os.ReadFile(filepath.Join(source, "catalog.json")); err == nil {
@@ -161,6 +154,21 @@ func newRemoteIndex(ctx context.Context, source, filename string, changed func()
 		}
 	}
 	return index
+}
+
+func readIndexSnapshot(filename string) storedIndex {
+	data, err := os.ReadFile(filename)
+	if err != nil || len(data) > 5*1024*1024 {
+		return storedIndex{}
+	}
+	var snapshot storedIndex
+	if json.Unmarshal(data, &snapshot) != nil || len(snapshot.Content) == 0 {
+		return storedIndex{}
+	}
+	if _, err := parseIndex(snapshot.Content); err != nil {
+		return storedIndex{}
+	}
+	return snapshot
 }
 
 func remoteSource(source string) *remoteIndex {
@@ -185,30 +193,51 @@ func State(source string) SourceState {
 
 // Snapshot 返回当前可读的轻量目录与同批来源状态，不启动远程同步或下载归档。
 func Snapshot(source string) ([]Entry, SourceState) {
+	entries, state, err := readSnapshot(source)
+	if err != nil {
+		state = SourceState{State: "unavailable", ErrorCode: sourceErrorCode(err)}
+	}
+	return entries, state
+}
+
+// SnapshotEntries 只返回当前可用目录条目，供无需来源状态的公开展示使用。
+func SnapshotEntries(source string) []Entry {
+	entries, _, _ := readSnapshot(source)
+	return entries
+}
+
+func readSnapshot(source string) ([]Entry, SourceState, error) {
+	var data []byte
+	var state SourceState
+	var directory string
 	_, registered := remoteIndexes.Load(source)
 	if !httpAddress(source) && !registered {
-		entries, err := List(source)
+		var err error
+		data, err = readLocalIndex(source)
 		if err != nil {
-			return nil, SourceState{State: "unavailable", ErrorCode: sourceErrorCode(err)}
+			return nil, SourceState{}, err
 		}
-		return entries, SourceState{State: "local"}
-	}
-	index := remoteSource(source)
-	index.mu.RLock()
-	data, state := index.snapshot.Content, index.state
-	index.mu.RUnlock()
-	if len(data) == 0 {
-		return nil, state
+		state = SourceState{State: "local"}
+		directory = cacheRoot(source)
+	} else {
+		index := remoteSource(source)
+		index.mu.RLock()
+		data, state = index.snapshot.Content, index.state
+		index.mu.RUnlock()
+		if len(data) == 0 {
+			return nil, state, nil
+		}
+		directory = index.directory
 	}
 	entries, err := parseIndex(data)
 	if err != nil {
-		return nil, SourceState{State: "unavailable", ErrorCode: sourceErrorCode(err)}
+		return nil, SourceState{}, err
 	}
 	for i := range entries {
 		entries[i].SourceKey = SourceKey(source, entries[i].Key)
-		entries[i].cacheRoot = index.directory
+		entries[i].cacheRoot = directory
 	}
-	return entries, state
+	return entries, state, nil
 }
 
 func sourceErrorCode(err error) string {
@@ -307,15 +336,19 @@ func (index *remoteIndex) runRefresh(ctx context.Context, flight *indexRefresh) 
 	return flight.err
 }
 
+func readLocalIndex(source string) ([]byte, error) {
+	data, err := os.ReadFile(filepath.Join(source, "catalog.json"))
+	if err != nil {
+		logx.Warnf("read local plugin catalog failed: error=%v", err)
+		return nil, status_error.PluginStorageError
+	}
+	return data, nil
+}
+
 func readIndex(source string) ([]byte, error) {
 	_, registered := remoteIndexes.Load(source)
 	if !httpAddress(source) && !registered {
-		data, err := os.ReadFile(filepath.Join(source, "catalog.json"))
-		if err != nil {
-			logx.Warnf("read local plugin catalog failed: error=%v", err)
-			return nil, status_error.PluginStorageError
-		}
-		return data, nil
+		return readLocalIndex(source)
 	}
 	index := remoteSource(source)
 	index.mu.RLock()
@@ -391,45 +424,11 @@ func (index *remoteIndex) fetch(ctx context.Context) error {
 		}
 		next.Content = raw
 	} else {
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, index.source, nil)
+		downloaded, err := fetchRemoteIndex(ctx, index.source, next)
 		if err != nil {
-			return fail(status_error.PluginContentInvalid)
+			return fail(err)
 		}
-		if next.ETag != "" {
-			request.Header.Set("If-None-Match", next.ETag)
-		}
-		if next.LastModified != "" {
-			request.Header.Set("If-Modified-Since", next.LastModified)
-		}
-		client := http.Client{Timeout: 15 * time.Second}
-		started := time.Now()
-		response, err := client.Do(request)
-		if err != nil {
-			logDistributionFailure("index_get", "", index.source, response, started, err)
-			return fail(status_error.PluginDistributionUnavailable)
-		}
-		defer response.Body.Close()
-		switch response.StatusCode {
-		case http.StatusNotModified:
-			if len(next.Content) == 0 {
-				return fail(status_error.PluginContentInvalid)
-			}
-		case http.StatusOK:
-			data, err := io.ReadAll(io.LimitReader(response.Body, 4*1024*1024+1))
-			if err != nil {
-				logDistributionFailure("index_body", "", index.source, response, started, err)
-				return fail(status_error.PluginDistributionUnavailable)
-			}
-			if _, err := parseIndex(data); err != nil {
-				return fail(err)
-			}
-			next.Content = data
-			next.ETag = response.Header.Get("ETag")
-			next.LastModified = response.Header.Get("Last-Modified")
-		default:
-			logDistributionFailure("index_status", "", index.source, response, started, nil)
-			return fail(status_error.PluginDistributionUnavailable)
-		}
+		next = downloaded
 	}
 	if ctx.Err() != nil {
 		return fail(status_error.PluginDistributionUnavailable)
@@ -449,6 +448,50 @@ func (index *remoteIndex) fetch(ctx context.Context) error {
 		index.state.State = "local"
 	}
 	return nil
+}
+
+// fetchRemoteIndex 用同一来源的验证器读取已校验的目录快照。
+func fetchRemoteIndex(ctx context.Context, source string, next storedIndex) (storedIndex, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
+	if err != nil {
+		return storedIndex{}, status_error.PluginContentInvalid
+	}
+	if next.ETag != "" {
+		request.Header.Set("If-None-Match", next.ETag)
+	}
+	if next.LastModified != "" {
+		request.Header.Set("If-Modified-Since", next.LastModified)
+	}
+	client := &http.Client{Timeout: 15 * time.Second}
+	started := time.Now()
+	response, err := client.Do(request)
+	if err != nil {
+		logDistributionFailure("index_get", "", source, response, started, err)
+		return storedIndex{}, status_error.PluginDistributionUnavailable
+	}
+	defer response.Body.Close()
+	switch response.StatusCode {
+	case http.StatusNotModified:
+		if len(next.Content) == 0 {
+			return storedIndex{}, status_error.PluginContentInvalid
+		}
+	case http.StatusOK:
+		data, err := io.ReadAll(io.LimitReader(response.Body, 4*1024*1024+1))
+		if err != nil {
+			logDistributionFailure("index_body", "", source, response, started, err)
+			return storedIndex{}, status_error.PluginDistributionUnavailable
+		}
+		if _, err := parseIndex(data); err != nil {
+			return storedIndex{}, err
+		}
+		next.Content = data
+		next.ETag = response.Header.Get("ETag")
+		next.LastModified = response.Header.Get("Last-Modified")
+	default:
+		logDistributionFailure("index_status", "", source, response, started, nil)
+		return storedIndex{}, status_error.PluginDistributionUnavailable
+	}
+	return next, nil
 }
 
 func (index *remoteIndex) save(next storedIndex) error {

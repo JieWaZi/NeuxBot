@@ -19,6 +19,7 @@ import (
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient/oauthrelay"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
@@ -160,6 +161,10 @@ type service struct {
 	connectorController controllers.MCPConnectorController
 	// pluginInstallations 复用声明驱动身份与安装预检。
 	pluginInstallations *plugininstallation.Service
+	// pluginHostedOAuth 在资源冷获取时读取就绪摘要，并在实际请求时提供固定身份的令牌。
+	pluginHostedOAuth hostedPluginOAuth
+	// pluginOAuthRelay 以私有回环地址向原生客户端投射托管 MCP 授权。
+	pluginOAuthRelay *oauthrelay.Relay
 	// pluginContents 保留进行中执行使用的内容目录。
 	pluginContents *plugins.ContentStore
 	// pluginController 读取插件安装的原子资源快照。
@@ -232,6 +237,10 @@ type Config struct {
 	Connectors controllers.MCPConnectorController
 	// PluginInstallations 提供共享声明驱动身份。
 	PluginInstallations *plugininstallation.Service
+	// PluginHostedOAuth 管理托管 MCP 账号的持久状态和请求时续期。
+	PluginHostedOAuth hostedPluginOAuth
+	// PluginOAuthRelay 提供随原生资源租约回收的回环连接。
+	PluginOAuthRelay *oauthrelay.Relay
 	// PluginContents 保护受管内容使用与延迟回收。
 	PluginContents *plugins.ContentStore
 	// Plugins 读取插件资源和安装。
@@ -336,6 +345,8 @@ func New(config Config) (Core, error) {
 		skillController:        config.Skills,
 		pluginContents:         config.PluginContents,
 		pluginInstallations:    config.PluginInstallations,
+		pluginHostedOAuth:      config.PluginHostedOAuth,
+		pluginOAuthRelay:       config.PluginOAuthRelay,
 		pluginController:       config.Plugins, pluginLauncher: config.PluginLauncher,
 		connectorController: config.Connectors,
 		runtimeEnvironments: config.RuntimeEnvironments,

@@ -9,7 +9,12 @@ import {
   TeamReportGroup,
   type TeamReportGroupRow,
 } from "./team-report-group";
-import { ChatMessagePluginReferences } from "./chat-plugin-reference";
+import {
+  ChatMessagePluginReferences,
+  chatPluginReferences,
+  type ChatPluginIcons,
+  type ChatPluginOption,
+} from "./chat-plugin-reference";
 import { useChatHistoryScroll } from "./use-chat-history-scroll";
 import { useChatMessageLocator } from "./chat-message-locator";
 import {
@@ -18,7 +23,14 @@ import {
   useVisibleScene,
 } from "@/shared/api/chat-reading";
 import { ChatForkContext, MessageForkAction } from "./chat-fork";
-import { Link, useInRouterContext, useLocation } from "react-router-dom";
+import {
+  Link,
+  useHref,
+  useInRouterContext,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import { pluginDetailHref, usePluginReferenceIcons } from "@/modules/plugin";
 import { chatHref } from "@/shared/lib/chat-navigation";
 import {
   reportChatError,
@@ -229,7 +241,7 @@ type ChatThreadProps = {
   renderComposerContextStrip?: () => ReactNode;
   composerSkills?: ChatSkillOption[];
   composerSkillsError?: boolean;
-  composerPlugins?: ChatSkillOption[];
+  composerPlugins?: ChatPluginOption[];
   composerPluginsError?: boolean;
   composerWorkflowPicker?: ChatWorkflowPicker;
   composerSendBlocked?: boolean;
@@ -242,7 +254,6 @@ type ChatThreadProps = {
   composerMembers?: ChatMemberMentionOption[];
   availableSkillIds?: ReadonlySet<string>;
   availableConnectorIds?: ReadonlySet<string>;
-  availablePluginIds?: ReadonlySet<string>;
   selectedSkillIds?: string[];
   selectedConnectorIds?: string[];
   onSkillSelectionChange?: (skillIds: string[]) => void;
@@ -1116,7 +1127,7 @@ function UserMessage({
   message,
   availableSkillIds,
   availableConnectorIds,
-  availablePluginIds,
+  pluginIcons,
   wakerId = "",
   onOpenCodeReference,
   onOpenFile,
@@ -1124,7 +1135,7 @@ function UserMessage({
   message: BotChatMessage;
   availableSkillIds?: ReadonlySet<string>;
   availableConnectorIds?: ReadonlySet<string>;
-  availablePluginIds?: ReadonlySet<string>;
+  pluginIcons?: ChatPluginIcons;
   wakerId?: string;
   onOpenCodeReference?: (reference: ChatCodeReference) => void;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
@@ -1151,8 +1162,7 @@ function UserMessage({
           <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
             <ChatMessagePluginReferences
               plugins={message.plugins}
-              wakerId={wakerId}
-              availablePluginIds={availablePluginIds}
+              pluginIcons={pluginIcons}
             />
             <ChatMessageSkillReferences
               skills={skills}
@@ -1591,7 +1601,7 @@ const ChatMessage = memo(function ChatMessage({
   avatar,
   availableSkillIds,
   availableConnectorIds,
-  availablePluginIds,
+  pluginIcons,
   wakerId,
   onOpenCodeReference,
   onOpenFile,
@@ -1608,7 +1618,7 @@ const ChatMessage = memo(function ChatMessage({
   avatar?: string;
   availableSkillIds?: ReadonlySet<string>;
   availableConnectorIds?: ReadonlySet<string>;
-  availablePluginIds?: ReadonlySet<string>;
+  pluginIcons?: ChatPluginIcons;
   wakerId?: string;
   onOpenCodeReference?: (reference: ChatCodeReference) => void;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
@@ -1641,7 +1651,7 @@ const ChatMessage = memo(function ChatMessage({
         message={message}
         availableSkillIds={availableSkillIds}
         availableConnectorIds={availableConnectorIds}
-        availablePluginIds={availablePluginIds}
+        pluginIcons={pluginIcons}
         wakerId={wakerId}
         onOpenCodeReference={onOpenCodeReference}
         onOpenFile={onOpenFile}
@@ -2057,6 +2067,8 @@ const Composer = memo(function Composer({
   clearRevision,
   restoreRevision,
   onOpenFile,
+  onOpenPlugin,
+  pluginHrefPrefix,
   requestedInteractionId,
   pendingApprovals,
   approvalSubmissionState,
@@ -2080,7 +2092,7 @@ const Composer = memo(function Composer({
   renderContextStrip?: () => ReactNode;
   skills: ChatSkillOption[];
   skillsError: boolean;
-  plugins: ChatSkillOption[];
+  plugins: ChatPluginOption[];
   pluginsError: boolean;
   workflowPicker?: ChatWorkflowPicker;
   sendBlocked?: boolean;
@@ -2109,6 +2121,8 @@ const Composer = memo(function Composer({
   clearRevision?: number;
   restoreRevision?: number;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
+  onOpenPlugin?: (pluginId: string) => void;
+  pluginHrefPrefix?: string;
   requestedInteractionId?: string;
   pendingApprovals: PendingApproval[];
   approvalSubmissionState: ApprovalSubmissionState;
@@ -2305,6 +2319,8 @@ const Composer = memo(function Composer({
                 onAttachmentsChange={refreshComposer}
                 onValueChange={refreshComposer}
                 onOpenFile={onOpenFile}
+                onOpenPlugin={onOpenPlugin}
+                pluginHrefPrefix={pluginHrefPrefix}
                 onAttachmentsRemove={async (paths) => {
                   const removedPaths = new Set(paths);
                   const attachments = aui.composer.getState().attachments;
@@ -2426,6 +2442,8 @@ export function ChatThread(props: ChatThreadProps) {
 
 function RoutedChatThread(props: ChatThreadProps) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const pluginHrefPrefix = useHref(pluginDetailHref(""));
   const messageId = props.readingChatId
     ? (new URLSearchParams(location.search).get("message") ?? undefined)
     : undefined;
@@ -2434,6 +2452,8 @@ function RoutedChatThread(props: ChatThreadProps) {
       {...props}
       messageId={messageId}
       routeKey={location.key}
+      onOpenPlugin={(pluginId) => void navigate(pluginDetailHref(pluginId))}
+      pluginHrefPrefix={pluginHrefPrefix}
     />
   );
 }
@@ -2441,6 +2461,8 @@ function RoutedChatThread(props: ChatThreadProps) {
 function ChatThreadContent({
   messageId,
   routeKey,
+  onOpenPlugin,
+  pluginHrefPrefix,
   fork,
   forkBoundaryMessageId,
   forkSourceChatId,
@@ -2489,7 +2511,6 @@ function ChatThreadContent({
   composerMembers = emptyList,
   availableSkillIds,
   availableConnectorIds,
-  availablePluginIds,
   selectedSkillIds = emptyList,
   selectedConnectorIds = emptyList,
   onSkillSelectionChange = ignoreChange,
@@ -2532,8 +2553,40 @@ function ChatThreadContent({
   pendingElicitations = emptyList,
   elicitationSubmissionState = "idle",
   onResolveElicitation = ignoreChange,
-}: ChatThreadProps & { messageId?: string; routeKey?: string }) {
+}: ChatThreadProps & {
+  messageId?: string;
+  routeKey?: string;
+  onOpenPlugin?: (pluginId: string) => void;
+  pluginHrefPrefix?: string;
+}) {
   const { t } = useTranslation("chat");
+  const candidateIcons = useMemo<ChatPluginIcons>(
+    () =>
+      Object.fromEntries(
+        composerPlugins
+          .filter(({ icon, icons }) => icon || icons?.default || icons?.dark)
+          .map(({ id, icon, icons }) => [id, { icon, icons }]),
+      ),
+    [composerPlugins],
+  );
+  const missingPluginIcons = useMemo(
+    () =>
+      messages
+        .filter((message) => !message.optimistic)
+        .flatMap((message) =>
+          chatPluginReferences(message.plugins).flatMap(({ id }) =>
+            id && id.length <= 32 && !Object.hasOwn(candidateIcons, id)
+              ? [id]
+              : [],
+          ),
+        ),
+    [candidateIcons, messages],
+  );
+  const historyIcons = usePluginReferenceIcons(missingPluginIcons, active);
+  const pluginIcons = useMemo(
+    () => ({ ...historyIcons, ...candidateIcons }),
+    [candidateIcons, historyIcons],
+  );
   const reducedMotion = useReducedMotion();
   const composerLayoutTransition = useMemo(
     () =>
@@ -2799,7 +2852,7 @@ function ChatThreadContent({
                                   avatar={wakerAvatar}
                                   availableSkillIds={availableSkillIds}
                                   availableConnectorIds={availableConnectorIds}
-                                  availablePluginIds={availablePluginIds}
+                                  pluginIcons={pluginIcons}
                                   wakerId={wakerId}
                                   messageAuthors={messageAuthors}
                                   showUsageMetrics={showUsageMetrics}
@@ -2920,6 +2973,8 @@ function ChatThreadContent({
                     restoreRevision={composerRestoreRevision}
                     isRunning={isRunning}
                     onOpenFile={onOpenFile}
+                    onOpenPlugin={onOpenPlugin}
+                    pluginHrefPrefix={pluginHrefPrefix}
                     requestedInteractionId={requestedInteractionId}
                     pendingApprovals={pendingApprovals}
                     approvalSubmissionState={approvalSubmissionState}

@@ -33,6 +33,7 @@ import (
 	integrationapi "github.com/JieWaZi/NeuxBot/server/internal/integration"
 	knowledgebridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient/oauthrelay"
 	"github.com/JieWaZi/NeuxBot/server/internal/memory"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
@@ -371,6 +372,12 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 		}
 	})
 
+	PluginHostedOAuth = plugininstallation.NewHostedOAuth(ctx, PluginControllerManager)
+	PluginOAuthRelay, err = oauthrelay.Listen(oauthrelay.Options{})
+	if err != nil {
+		return mapCoreError("start_plugin_oauth_relay", status_error.CoreChatInitializationFailed, err)
+	}
+
 	ResourceCategoryControllerManager = controllers.NewResourceCategoryController(DB)
 	SkillControllerManager = controllers.NewSkillController(DB)
 	MCPConnectorControllerManager = controllers.NewMCPConnectorController(DB)
@@ -704,8 +711,10 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		OnboardingCommands:     controllers.NewAgentCommandController(DB),
 		Projects:               ProjectControllerManager,
 		Skills:                 SkillControllerManager,
-		PluginInstallations:    plugininstallation.New(plugininstallation.Config{Transactions: TransactionControllerManager, Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager}),
+		PluginInstallations:    plugininstallation.New(plugininstallation.Config{Transactions: TransactionControllerManager, Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, HostedOAuth: PluginHostedOAuth, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager}),
 		PluginContents:         PluginContents, Plugins: PluginControllerManager, PluginLauncher: coreExecutablePath(),
+		PluginOAuthRelay:    PluginOAuthRelay,
+		PluginHostedOAuth:   PluginHostedOAuth,
 		Connectors:          MCPConnectorControllerManager,
 		RuntimeEnvironments: RuntimeEnvironmentControllerManager,
 		SkillDataDirectory:  configuration.DataDirectory,
@@ -761,6 +770,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Tasks:        ChannelTaskControllerManager,
 		Transactions: TransactionControllerManager,
 		Wakers:       WakerControllerManager,
+		Plugins:      PluginControllerManager,
 		Chats:        ChatService,
 		Executions:   ExecutionService,
 		ChatGroups:   executionCore,
@@ -951,6 +961,11 @@ func Close() error {
 		}
 		AgentProviders = nil
 	}
+	if PluginOAuthRelay != nil {
+		PluginOAuthRelay.Close()
+		PluginOAuthRelay = nil
+	}
+	PluginHostedOAuth = nil
 	if PluginBridges != nil {
 		PluginBridges.Close()
 		PluginBridges = nil
@@ -1049,6 +1064,12 @@ func coreExecutablePath() string {
 
 // PluginBridges 管理声明驱动的唯一插件身份。
 var PluginBridges *commandbridge.Registry
+
+// PluginHostedOAuth 拥有 Core 生命周期内的托管账号和实际请求时刷新。
+var PluginHostedOAuth *plugininstallation.HostedOAuth
+
+// PluginOAuthRelay 提供原生客户端和显式连接测试共用的私有回环转发。
+var PluginOAuthRelay *oauthrelay.Relay
 
 // PluginBridgeEnvironment 只包含固定受信程序资产。
 var PluginBridgeEnvironment []string

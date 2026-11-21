@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -21,7 +22,7 @@ type LogoutPluginAuthorization struct {
 // Path 返回官方共享身份退出入口。
 func (*LogoutPluginAuthorization) Path() string { return "/:pluginId/account/logout" }
 
-// Output 在无执行占用时通过官方 CLI 退出共享身份。
+// Output 在无执行占用时通过固定授权驱动退出共享身份。
 func (o *LogoutPluginAuthorization) Output(ctx *gin.Context) (interface{}, error) {
 	if _, err := validateAccountRequest(ctx, o.PluginID, o.WakerID, o.VersionID, o.Body); err != nil {
 		return nil, ginx.WithStack(err)
@@ -33,7 +34,9 @@ func (o *LogoutPluginAuthorization) Output(ctx *gin.Context) (interface{}, error
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if err := auth.Logout(ctx); err != nil {
+	commitctx, publish := events.HoldCommitEvents(ctx)
+	defer publish()
+	if err := auth.Logout(commitctx); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	publishProviderChange("plugin:" + o.PluginID)

@@ -25,6 +25,8 @@ type Config struct {
 	DataDirectory string
 	// Bridges 复用声明驱动的共享身份。
 	Bridges *commandbridge.Registry
+	// HostedOAuth 提供宿主托管账号的授权及就绪投影。
+	HostedOAuth *HostedOAuth
 	// BridgeEnvironment 固定受信程序资产环境。
 	BridgeEnvironment []string
 	// Store 复用唯一共享配置的加密持久化。
@@ -43,7 +45,7 @@ type Service struct {
 func New(config Config) *Service { return &Service{config: config} }
 
 // Summary 在显式配置预检中使用本地配置和精确上下文缓存，不启动外部程序。
-func (s *Service) Summary(version models.PluginVersion, config models.PluginConfiguration, generation int64) (authorization.Account, error) {
+func (s *Service) Summary(ctx context.Context, version models.PluginVersion, config models.PluginConfiguration, generation int64) (authorization.Account, error) {
 	account := authorization.Account{Scopes: []string{}}
 	if err := packageplugin.ValidateContract(version.Package); err != nil {
 		return account, err
@@ -55,7 +57,13 @@ func (s *Service) Summary(version models.PluginVersion, config models.PluginConf
 		return account, err
 	}
 	if declaration := version.Package.Integration.Authentication; declaration != nil {
-		if s.config.Bridges != nil {
+		if _, hosted := version.Package.HostedOAuthServer(); hosted {
+			var err error
+			account, err = s.HostedAccount(ctx, version)
+			if err != nil {
+				return account, err
+			}
+		} else if s.config.Bridges != nil {
 			account, _, _ = s.config.Bridges.CachedAuthorization(version.PluginID, version.Digest+":"+filepath.ToSlash(version.Package.SourcePath), commandbridge.OperationContext{PluginID: version.PluginID, VersionID: version.ID, Digest: version.Digest, ConfigurationRevision: config.Revision, AccountGeneration: generation})
 		}
 		if !account.Available {
@@ -72,7 +80,8 @@ func (s *Service) Summary(version models.PluginVersion, config models.PluginConf
 
 // PrepareVersions 为首次安装和版本切换核验固定内容及拟提交配置，并将私有材料交回同一持久化用例。
 // 全部版本共享同一个身份占用，命令按固定版本顺序执行，返回占用须保留到提交结束。
-func (s *Service) PrepareVersions(ctx context.Context, versions []models.PluginVersion, config *models.PluginConfiguration, preparedAccount *models.PluginAccount) (func(), error) {
+// 托管授权切换独占空闲身份，由调用方在一次事务内替换安装和账号。
+func (s *Service) PrepareVersions(ctx context.Context, versions []models.PluginVersion, config *models.PluginConfiguration, preparedAccount *models.PluginAccount, changingAuthorization bool) (func(), error) {
 	preparedConfig := *config
 	accountMaterials := slices.Clone(preparedAccount.DeliveryMaterials)
 	releases := []func(){}
@@ -96,7 +105,34 @@ func (s *Service) PrepareVersions(ctx context.Context, versions []models.PluginV
 		if err := s.CloseIdle(ctx, version.PluginID); err != nil {
 			return nil, err
 		}
+		if changingAuthorization {
+			if identities[version.PluginID] {
+				continue
+			}
+			if s.config.Bridges == nil {
+				return nil, status_error.PluginNotReady
+			}
+			guard, err := s.config.Bridges.GuardIdleIdentity(version.PluginID)
+			if err != nil {
+				return nil, err
+			}
+			releases = append(releases, guard.Close)
+			identities[version.PluginID] = true
+			continue
+		}
+		if err := s.ValidateAuthorizationBinding(ctx, version); err != nil {
+			return nil, err
+		}
 		if version.Package.Integration.Authentication != nil && !identities[version.PluginID] {
+			if _, hosted := version.Package.HostedOAuthServer(); hosted {
+				_, retained, err := s.IdentityLease(version.PluginID)
+				if err != nil {
+					return nil, err
+				}
+				releases = append(releases, retained)
+				identities[version.PluginID] = true
+				continue
+			}
 			auth, driver, retained, err := s.BridgeLease(ctx, version)
 			if err != nil {
 				return nil, err
@@ -132,7 +168,34 @@ func (s *Service) PrepareVersions(ctx context.Context, versions []models.PluginV
 		if err := packageplugin.ValidateValues(version.Package, preparedConfig.Values, secretValues(preparedConfig)); err != nil {
 			return nil, err
 		}
-		if version.Package.Integration.Authentication == nil {
+		if changingAuthorization || version.Package.Integration.Authentication == nil {
+			continue
+		}
+		if _, hosted := version.Package.HostedOAuthServer(); hosted {
+			if s.config.Store == nil {
+				return nil, status_error.PluginNotReady
+			}
+			revision, err := s.config.Store.ConfigurationRevision(ctx, version.PluginID)
+			if err != nil {
+				return nil, err
+			}
+			if revision != preparedConfig.Revision {
+				return nil, status_error.PluginConfigurationConflict
+			}
+			generation, err := s.config.Store.AccountGeneration(ctx, version.PluginID)
+			if err != nil {
+				return nil, err
+			}
+			if generation != preparedAccount.Generation {
+				return nil, status_error.PluginAccountConflict
+			}
+			account, err := s.HostedAccount(ctx, version)
+			if err != nil {
+				return nil, err
+			}
+			if !account.Available {
+				return nil, status_error.PluginNotReady
+			}
 			continue
 		}
 		command, err := s.commandConfig(ctx, version)

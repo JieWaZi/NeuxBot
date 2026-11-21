@@ -124,6 +124,11 @@ export function PluginOverview({
     (pluginHasAuthorization(pkg) || pluginHasConfiguration(pkg));
   const hasConnections =
     canManage || servers.length > 0 || Boolean(instructions);
+  const account = detail?.account;
+  const connectedName = account?.name || account?.id;
+  const hosted = pkg?.integration?.authentication?.strategy === "mcp-oauth";
+  const connected =
+    account?.available && (hosted || Boolean(account.checkedAt));
   const openComponent = (kind: "skills" | "connectors", key: string) => {
     if (!skillContext || !key) return;
     const base = skillContext.wakerId
@@ -207,14 +212,14 @@ export function PluginOverview({
                     </h3>
                     {pluginHasAuthorization(pkg) && (
                       <p className="type-resource-caption text-resource-muted">
-                        {detail?.account?.checkedAt
-                          ? detail?.account.available
-                            ? t("sharedIdentity", {
-                                name:
-                                  detail?.account.name || detail?.account.id,
-                              })
-                            : t("requiresAuthorization")
-                          : t("accountUnchecked")}
+                        {connected
+                          ? connectedName
+                            ? t("sharedIdentity", { name: connectedName })
+                            : t("accountConnected")
+                          : account?.checkedAt ||
+                              (hosted && account?.configured)
+                            ? t("requiresAuthorization")
+                            : t("accountUnchecked")}
                       </p>
                     )}
                   </div>

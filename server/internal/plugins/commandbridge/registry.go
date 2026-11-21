@@ -32,14 +32,20 @@ type Registry struct {
 	changed func(id string, usageOnly bool)
 }
 
+// ContextDriver 在唯一共享账号上绑定固定版本和配置事实。
+type ContextDriver interface {
+	authorization.Driver
+	OperationContext() OperationContext
+}
+
 // entry 绑定一个已固定入口和唯一共享身份。
 type entry struct {
 	// digest 固定当前桥接实现。
 	digest string
 	// auth 复用既有身份生命周期。
 	auth *authorization.Authorizer
-	// driver 提供组件范围内秘密解析。
-	driver *Driver
+	// driver 固定包内命令或宿主托管授权。
+	driver ContextDriver
 }
 
 // NewRegistry 不启动进程。
@@ -70,35 +76,76 @@ func (r *Registry) Acquire(id, digest string, config Config, scopes []string, us
 func (r *Registry) AcquireIdentity(id string, uses ...authorization.Usage) (func(...authorization.Usage), func(), error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.identityLocked(id).AcquireUsage(uses...)
+}
+
+// GuardIdleIdentity 排斥真实消费者和授权，允许调用方原子切换全部相关安装。
+func (r *Registry) GuardIdleIdentity(id string) (*authorization.ReferenceGuard, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.identityLocked(id).GuardIdleIdentity()
+}
+
+func (r *Registry) identityLocked(id string) *authorization.Authorizer {
 	current, exists := r.entries[id]
 	if !exists {
 		current.auth = authorization.New(r.authorizationConfig(id, nil))
 		current.auth.Open(r.root)
 		r.entries[id] = current
 	}
-	return current.auth.AcquireUsage(uses...)
+	return current.auth
 }
 
 func (r *Registry) getLocked(id, digest string, config Config, scopes []string) (*authorization.Authorizer, *Driver, error) {
-	if previous, ok := r.entries[id]; ok {
-		if previous.digest != digest || previous.driver == nil || previous.driver.OperationContext() != (OperationContext{PluginID: config.PluginID, VersionID: config.VersionID, Digest: config.Digest, ConfigurationRevision: config.ConfigurationRevision, AccountGeneration: config.AccountGeneration}) {
-			config.Scopes = append([]string{}, scopes...)
-			driver := New(config)
-			if err := previous.auth.ReplaceDriver(driver); err != nil {
-				return nil, nil, err
-			}
-			previous.digest = digest
-			previous.driver = driver
-			r.entries[id] = previous
+	expected := OperationContext{PluginID: config.PluginID, VersionID: config.VersionID, Digest: config.Digest, ConfigurationRevision: config.ConfigurationRevision, AccountGeneration: config.AccountGeneration}
+	if previous := r.entries[id]; previous.digest == digest {
+		if driver, ok := previous.driver.(*Driver); ok && driver.OperationContext() == expected {
+			return previous.auth, driver, nil
 		}
-		return previous.auth, previous.driver, nil
 	}
 	config.Scopes = append([]string{}, scopes...)
 	driver := New(config)
-	auth := authorization.New(r.authorizationConfig(id, driver))
-	auth.Open(r.root)
-	r.entries[id] = entry{digest: digest, auth: auth, driver: driver}
+	auth, err := r.bindLocked(id, digest, driver)
+	if err != nil {
+		return nil, nil, err
+	}
 	return auth, driver, nil
+}
+
+// GetHosted 将宿主 OAuth 绑定到与包内命令和实际消费者共用的身份所有者。
+func (r *Registry) GetHosted(id, digest string, driver ContextDriver) (*authorization.Authorizer, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if previous := r.entries[id]; previous.digest == digest && previous.driver != nil {
+		if _, command := previous.driver.(*Driver); !command && previous.driver.OperationContext() == driver.OperationContext() {
+			return previous.auth, nil
+		}
+	}
+	return r.bindLocked(id, digest, driver)
+}
+
+func (r *Registry) bindLocked(id, digest string, driver ContextDriver) (*authorization.Authorizer, error) {
+	current := r.entries[id]
+	if current.auth == nil {
+		current.auth = authorization.New(r.authorizationConfig(id, driver))
+		current.auth.Open(r.root)
+	} else if err := current.auth.ReplaceDriver(driver); err != nil {
+		return nil, err
+	}
+	current.digest = digest
+	current.driver = driver
+	r.entries[id] = current
+	return current.auth, nil
+}
+
+// IdentityUsages 返回共享身份仍在进行中的工作，不要求进程已经构造某个版本的授权驱动。
+func (r *Registry) IdentityUsages(id string) []authorization.Usage {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if current, ok := r.entries[id]; ok {
+		return current.auth.Usages()
+	}
+	return []authorization.Usage{}
 }
 
 func (r *Registry) authorizationConfig(id string, driver authorization.Driver) authorization.Config {
@@ -156,7 +203,10 @@ func (r *Registry) CommitPreparation(expected OperationContext, digest string, r
 	if !ok || current.digest != digest || current.driver == nil || revision < expected.ConfigurationRevision || revision > expected.ConfigurationRevision+1 || generation < expected.AccountGeneration || generation > expected.AccountGeneration+1 {
 		return
 	}
-	driver := current.driver
+	driver, command := current.driver.(*Driver)
+	if !command {
+		return
+	}
 	driver.contextMu.Lock()
 	defer driver.contextMu.Unlock()
 	actual := OperationContext{PluginID: driver.config.PluginID, VersionID: driver.config.VersionID, Digest: driver.config.Digest, ConfigurationRevision: driver.config.ConfigurationRevision, AccountGeneration: driver.config.AccountGeneration}

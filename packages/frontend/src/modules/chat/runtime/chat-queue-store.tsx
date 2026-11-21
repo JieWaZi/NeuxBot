@@ -39,6 +39,8 @@ export type ChatSubmissionPreparer = (
 export type ChatSendSelection = {
   /** 首发时冻结输入框中的档案优化意图，重试不读取后续标签改动。 */
   optimizeProfile?: boolean;
+  /** 团队主聊天显式指定的执行伙伴，与插件引用按同一输入冻结。 */
+  mentionWakerId?: string;
   steerExecutionId?: string;
   /** 原输入尚未取得执行身份时，出队前沿其提交身份解析。 */
   steerSubmissionId?: string;

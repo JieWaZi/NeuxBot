@@ -93,6 +93,8 @@ type Config struct {
 	Transactions controllers.TransactionController
 	// Wakers 读取团队成员面向分派的公开资料投影。
 	Wakers controllers.WakerController
+	// Plugins 读取被点名成员已启用插件的展示版本。
+	Plugins controllers.PluginController
 	// Chats 读取成员 Chat 事件并执行补偿或聚合删除。
 	Chats chat.Service
 	// Executions 建立成员 Chat 并运行负责人或执行伙伴工作。
@@ -129,6 +131,8 @@ type service struct {
 	transactions controllers.TransactionController
 	// wakers 读取团队成员面向分派的公开资料投影。
 	wakers controllers.WakerController
+	// plugins 读取被点名成员已启用插件的展示版本。
+	plugins controllers.PluginController
 	// chats 读取成员 Chat 事件并执行补偿或聚合删除。
 	chats chat.Service
 	// executions 建立成员 Chat 并运行负责人或执行伙伴工作。
@@ -187,6 +191,7 @@ func New(config Config) (Service, error) {
 		tasks:              config.Tasks,
 		transactions:       config.Transactions,
 		wakers:             config.Wakers,
+		plugins:            config.Plugins,
 		chats:              config.Chats,
 		executions:         config.Executions,
 		chatGroups:         config.ChatGroups,

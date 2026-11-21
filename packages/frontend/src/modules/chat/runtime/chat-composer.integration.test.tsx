@@ -891,7 +891,11 @@ describe("chat composer", () => {
           </ComposerHarness>
         </ChatQueueProvider>,
       );
-      const mention = await screen.findByText(option.name);
+      const label = await screen.findByText(option.name);
+      const mention = label.closest<HTMLElement>(
+        `[data-chat-composer-${kind}]`,
+      );
+      if (!mention) throw new Error("missing draft Mention");
       const input = screen.getByRole("textbox", { name: "message" });
       expect(mention).toHaveAttribute(`data-chat-composer-${kind}`, option.id);
       expect(input).toHaveAttribute("contenteditable", "true");

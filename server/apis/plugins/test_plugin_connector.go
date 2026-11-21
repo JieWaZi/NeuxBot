@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"context"
 	"errors"
 	"maps"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/apis/mcp"
@@ -15,6 +17,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient"
+	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient/oauthrelay"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
@@ -141,18 +144,28 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 	if server == nil {
 		return nil, ginx.WithStack(status_error.PluginContentInvalid)
 	}
-	resolved, err := packageplugin.ResolveServer(pkg, *server, root, data, values)
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	connector := models.MCPConnector{ID: result.Connector.ID, Name: o.Key, Transport: result.Connector.Transport, Command: resolved.Server.Command, Arguments: resolved.Server.Args, URL: resolved.Server.URL, TimeoutMS: constants.MCPConnectorDefaultTimeoutMS}
-	for name, value := range resolved.Server.Env {
-		if connector.Transport == constants.MCPTransportStdio {
-			connector.Environment = append(connector.Environment, models.MCPSecretDefinition{Name: name, Value: value, Configured: value != ""})
+	connector := models.MCPConnector{ID: result.Connector.ID, Name: o.Key, Transport: result.Connector.Transport, TimeoutMS: constants.MCPConnectorDefaultTimeoutMS}
+	workingDirectory := ""
+	if hosted, ok := version.Package.HostedOAuthServer(); ok {
+		if hosted.Key != server.Key || hosted.URL != server.URL {
+			return nil, ginx.WithStack(status_error.PluginVersionConflict)
 		}
-	}
-	for name, value := range resolved.Server.Headers {
-		connector.Headers = append(connector.Headers, models.MCPSecretDefinition{Name: name, Value: value, Configured: value != ""})
+		connector.URL = hosted.URL
+	} else {
+		resolved, err := packageplugin.ResolveServer(pkg, *server, root, data, values)
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		workingDirectory = resolved.WorkingDirectory
+		connector.Command, connector.Arguments, connector.URL = resolved.Server.Command, resolved.Server.Args, resolved.Server.URL
+		for name, value := range resolved.Server.Env {
+			if connector.Transport == constants.MCPTransportStdio {
+				connector.Environment = append(connector.Environment, models.MCPSecretDefinition{Name: name, Value: value, Configured: value != ""})
+			}
+		}
+		for name, value := range resolved.Server.Headers {
+			connector.Headers = append(connector.Headers, models.MCPSecretDefinition{Name: name, Value: value, Configured: value != ""})
+		}
 	}
 	generation, err := global.PluginControllerManager.AccountGeneration(ctx, o.PluginID)
 	if err != nil {
@@ -167,7 +180,43 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 			return nil, ginx.WithStack(status_error.PluginContentInvalid)
 		}
 	}
-	if declaration := logical.Package.Integration.Authentication; declaration != nil && slices.ContainsFunc(declaration.Bindings, func(binding packageplugin.AuthenticationBinding) bool { return binding.Server == o.Key }) {
+	var oauthSecrets sync.Map
+	if hosted, ok := logical.Package.HostedOAuthServer(); ok {
+		if hosted.Key != o.Key || hosted.URL != connector.URL || global.PluginHostedOAuth == nil || global.PluginOAuthRelay == nil {
+			return nil, ginx.WithStack(status_error.PluginNotReady)
+		}
+		account, err := installationService().HostedAccount(ctx, logical)
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		if !account.Available {
+			return nil, ginx.WithStack(status_error.PluginNotReady)
+		}
+		_, release, err := installationService().IdentityLease(logical.PluginID)
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		defer release()
+		access := func(ctx context.Context, rejected string) (string, error) {
+			value, err := global.PluginHostedOAuth.AccessToken(ctx, logical.PluginID, hosted.URL, generation, rejected)
+			if err == nil {
+				oauthSecrets.Store(value, struct{}{})
+			}
+			return value, err
+		}
+		lease, err := global.PluginOAuthRelay.CreateLease(oauthrelay.LeaseOptions{
+			Resource:        hosted.URL,
+			AccessToken:     func(ctx context.Context) (string, error) { return access(ctx, "") },
+			RefreshRejected: access,
+			TTL:             time.Duration(connector.TimeoutMS)*time.Millisecond + time.Second,
+		})
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		defer lease.Revoke()
+		connector.URL = lease.URL
+		connector.Headers = []models.MCPSecretDefinition{{Name: "Authorization", Value: "Bearer " + lease.Bearer, Configured: true}}
+	} else if declaration := logical.Package.Integration.Authentication; declaration != nil && slices.ContainsFunc(declaration.Bindings, func(binding packageplugin.AuthenticationBinding) bool { return binding.Server == o.Key }) {
 		auth, bridge, release, err := installationService().BridgeLease(ctx, logical)
 		if errors.Is(err, status_error.PluginBusy) {
 			// 同版本桥接可直接共享；仅入口需切换且被占用时回收闲置消费者，活动工作仍受保护。
@@ -207,7 +256,7 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 		}
 
 	}
-	probe := mcpclient.TestInDirectory(ctx, connector, resolved.WorkingDirectory)
+	probe := mcpclient.TestInDirectory(ctx, connector, workingDirectory)
 	// 配置或伙伴版本变化后，迟到的结果不能覆盖当前详情。
 	latest, err := global.PluginControllerManager.ConfigurationRevision(ctx, o.PluginID)
 	if err != nil {
@@ -232,7 +281,17 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 	result.Connector.TestedAt = time.Now().UnixMilli()
 	result.Connector.TestDurationMS = probe.DurationMS
 	result.Connector.TimeoutMS = connector.TimeoutMS
-	scrub := diagnosticRedactor(connector, secrets)
+	redact := diagnosticRedactor(connector, secrets)
+	scrub := func(value string) string {
+		value = redact(value)
+		oauthSecrets.Range(func(secret, _ any) bool {
+			if token := secret.(string); token != "" {
+				value = strings.ReplaceAll(value, token, "[redacted]")
+			}
+			return true
+		})
+		return value
+	}
 	result.Connector.TestError = scrub(probe.Error)
 	if probe.Status == constants.MCPTestStatusSucceeded {
 		result.Connector.TestToolCount = len(probe.Tools)
