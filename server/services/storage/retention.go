@@ -33,8 +33,6 @@ type Policy struct {
 type policyFile struct {
 	// Policy 是用户设置以及跨重启的下次检查时间。
 	Policy Policy `json:"policy"`
-	// Last 是最近结束的维护摘要。
-	Last *Run `json:"last,omitempty"`
 }
 
 func readPolicy(path string) (policyFile, bool) {
@@ -200,16 +198,13 @@ func (s *Service) schedule() {
 }
 
 func (s *Service) beginRetention(request preview, automatic bool) string {
-	kind := "expired-chats"
-	if automatic {
-		kind = "automatic-retention"
-	}
-	run := s.beginRun(kind)
-	s.bg.Go(func() { s.runRetention(run, request, automatic) })
-	return run.ID
+	runID := s.beginRun(previewChats)
+	s.bg.Go(func() { s.runRetention(runID, request, automatic) })
+	return runID
 }
 
-func (s *Service) runRetention(run Run, request preview, automatic bool) {
+func (s *Service) runRetention(runID string, request preview, automatic bool) {
+	var receipt *ExpiredChatCleanupReceipt
 	if automatic {
 		var lastActivity int64
 		var lastID string
@@ -217,14 +212,14 @@ func (s *Service) runRetention(run Run, request preview, automatic bool) {
 			page, err := s.config.Candidates.ListRetentionCandidates(s.ctx, request.cutoff, lastActivity, lastID, constants.StorageCleanupBatchSize)
 			if err != nil {
 				if s.ctx.Err() == nil {
-					run.Failed++
+					logx.Warnf("read expired chats for storage cleanup: %v", err)
 				}
 				break
 			}
 			if len(page) == 0 {
 				break
 			}
-			s.removeCandidates(&run, request, page, true)
+			s.removeCandidates(request, page, nil)
 			last := page[len(page)-1]
 			lastActivity, lastID = last.LastActivityAt, last.ChatID
 			if len(page) < constants.StorageCleanupBatchSize {
@@ -232,9 +227,10 @@ func (s *Service) runRetention(run Run, request preview, automatic bool) {
 			}
 		}
 	} else {
-		s.removeCandidates(&run, request, request.chats, false)
+		receipt = &ExpiredChatCleanupReceipt{RunID: runID}
+		s.removeCandidates(request, request.chats, receipt)
 	}
-	s.finishRun(run, automatic, request.revision)
+	s.finishRun(nil, receipt, automatic, request.revision)
 }
 
 func (s *Service) retentionAllowed(revision uint64, automatic bool) bool {
@@ -243,25 +239,35 @@ func (s *Service) retentionAllowed(revision uint64, automatic bool) bool {
 	return !s.closed && s.ctx.Err() == nil && s.valid && s.state.Policy.Revision == revision && (!automatic || s.state.Policy.Enabled)
 }
 
-func (s *Service) removeCandidates(run *Run, request preview, candidates []controllers.ChatRetentionCandidate, automatic bool) {
+func (s *Service) removeCandidates(request preview, candidates []controllers.ChatRetentionCandidate, receipt *ExpiredChatCleanupReceipt) {
+	automatic := receipt == nil
 	for i, candidate := range candidates {
 		if !s.retentionAllowed(request.revision, automatic) {
-			run.Skipped += len(candidates) - i
+			if receipt != nil {
+				receipt.Skipped += len(candidates) - i
+			}
 			return
 		}
 		admitted := func(context.Context, string) (bool, error) {
 			return s.retentionAllowed(request.revision, automatic), nil
 		}
 		deleted, err := s.config.DeleteExpired(context.WithoutCancel(s.ctx), candidate, request.cutoff, admitted)
-		if deleted {
-			run.Deleted++
+		if err != nil {
+			logx.Warnf("clean up expired chat %s: %v", candidate.ChatID, err)
+		}
+		if receipt == nil {
+			continue
+		}
+		switch {
+		case deleted:
+			receipt.Deleted++
 			if err != nil {
-				run.Pending++
+				receipt.Pending++
 			}
-		} else if err != nil {
-			run.Failed++
-		} else {
-			run.Skipped++
+		case err != nil:
+			receipt.Failed++
+		default:
+			receipt.Skipped++
 		}
 	}
 }

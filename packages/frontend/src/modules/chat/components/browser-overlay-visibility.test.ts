@@ -1,11 +1,13 @@
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { toast } from "sonner";
 
 import "@/shared/i18n";
-import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
-import { Toaster } from "@/shared/ui/sonner";
+import {
+  NativeOverlayPresence,
+  observeNativeOverlayRegions,
+} from "@/shared/ui/native-overlay";
+import { Toaster, toast } from "@/shared/ui/sonner";
 import { useBrowserOverlayVisible } from "./browser-overlay-visibility";
 
 vi.mock("@/shared/theme", () => ({
@@ -32,19 +34,28 @@ describe("native browser overlay visibility", () => {
     unmount();
   });
 
-  it("keeps native browser content behind visible notifications", async () => {
+  it("registers only the visible notification region for native previews", async () => {
+    let regions: HTMLElement[] = [];
+    const stop = observeNativeOverlayRegions((elements) => {
+      regions = [...elements];
+    });
     const { result, unmount } = renderHook(useBrowserOverlayVisible);
     const toaster = render(createElement(Toaster));
+    try {
+      act(() => {
+        toast.manual("有可用更新");
+      });
+      expect(regions).toEqual([
+        toaster.getByRole("region", { name: "应用通知" }),
+      ]);
+      expect(result.current).toBe(false);
 
-    act(() => {
-      toast.error("保存失败", { duration: Infinity });
-    });
-
-    await waitFor(() => expect(result.current).toBe(true));
-
-    act(() => toast.dismiss());
-    await waitFor(() => expect(result.current).toBe(false));
-    toaster.unmount();
-    unmount();
+      act(() => toast.dismiss());
+      expect(regions).toEqual([]);
+    } finally {
+      toaster.unmount();
+      unmount();
+      stop();
+    }
   });
 });

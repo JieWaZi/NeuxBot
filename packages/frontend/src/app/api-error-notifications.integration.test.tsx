@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import "@/shared/i18n";
+import "@/app/workspace-i18n";
 import type {
   GlobalEventFrame,
   GlobalEventObserver,
@@ -72,8 +72,12 @@ it("reports one global toast per real background failure and ignores resync snap
     errorCode: "PluginDistributionUnavailable",
   });
   expect(fixture.error).toHaveBeenCalledOnce();
-  expect(fixture.error.mock.calls[0]?.[0]).toBe(
-    "插件目录或安装包暂时无法下载，请检查网络后重试",
+  expect(fixture.error).toHaveBeenCalledWith(
+    "请求失败",
+    expect.objectContaining({
+      id: "plugins:catalog-sync",
+      description: "插件目录或安装包暂时无法下载，请检查网络后重试",
+    }),
   );
   act(() => {
     for (const observer of fixture.observers)

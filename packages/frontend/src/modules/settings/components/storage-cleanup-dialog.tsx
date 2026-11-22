@@ -8,6 +8,7 @@ import {
 import { Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { GetStorageMaintenanceResponse } from "@/shared/api/generated/types.gen";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { platform } from "@/shared/platform/provider";
 import { Button } from "@/shared/ui/button";
@@ -21,6 +22,7 @@ import {
 import {
   cleanupCategories,
   storageKeys,
+  storageMaintenanceOptions,
   storageOptions,
   readUsage,
 } from "../api/storage";
@@ -28,7 +30,6 @@ import {
   cleanupItemEmpty,
   confirmStorageCleanup,
   desktopStorageCategories,
-  isCoreCleanup,
   isDesktopCleanup,
   previewCoreCleanup,
   previewDesktopCleanup,
@@ -46,17 +47,8 @@ type Selection = {
   categories: StorageCleanupCategory[];
   retry?: boolean;
   opener: HTMLButtonElement;
-  previousLastId?: string;
-};
-type MaintenanceRun = {
-  id?: string;
-  items?: Array<{ category?: string; failed?: boolean; removedBytes?: number }>;
 };
 type CleanupFailure = { error?: unknown; unavailable?: boolean };
-type TrackedReceipt = {
-  result: CleanupReceipt;
-  previousLastId?: string;
-};
 const resourceGroups = ["cache", "diagnostics", "programs"] as const;
 const resourceGroupByCategory: Record<
   StorageCleanupCategory,
@@ -70,23 +62,31 @@ const resourceGroupByCategory: Record<
 };
 
 function settleReceipt(
-  receipt: TrackedReceipt,
-  last: MaintenanceRun | null | undefined,
-): TrackedReceipt {
-  const { result } = receipt;
-  if (result.state !== "accepted" || last?.id !== result.runId) return receipt;
-  const terminal = last.items?.find((row) => row.category === result.category);
+  result: CleanupReceipt,
+  cleanup: GetStorageMaintenanceResponse["cleanup"],
+): CleanupReceipt {
+  if (result.state !== "accepted" && result.state !== "failed") return result;
+  if (!result.runId || !cleanup?.runId) return result;
+  const sameRun = cleanup.runId === result.runId;
+  if (result.state === "accepted" && !sameRun) return result;
+  if (result.state === "failed" && sameRun) return result;
+  const terminal = cleanup.items?.find(
+    (row) => row.category === result.category,
+  );
   const removed = terminal?.removedBytes;
-  return {
-    previousLastId: last.id,
-    result:
-      terminal?.failed === false &&
-      typeof removed === "number" &&
-      Number.isFinite(removed) &&
-      removed >= 0
-        ? { category: result.category, state: "cleared", removedBytes: removed }
-        : { category: result.category, state: "failed" },
-  };
+  if (
+    terminal?.failed === false &&
+    typeof removed === "number" &&
+    Number.isFinite(removed) &&
+    removed >= 0
+  )
+    return {
+      category: result.category,
+      state: "cleared",
+      removedBytes: removed,
+    };
+  if (result.state === "failed") return result;
+  return { category: result.category, state: "failed", runId: result.runId };
 }
 
 function CleanupConfirmation({
@@ -159,35 +159,31 @@ function CleanupConfirmation({
 }
 
 export function StorageCleanup({
-  disabled,
-  coreBusy,
   active,
-  last,
-  currentRunId,
-  awaitingRunId,
-  onStarted,
+  disabled,
 }: {
-  disabled: boolean;
-  coreBusy: boolean;
   active: boolean;
-  onStarted: (id: string) => void;
-  last?: MaintenanceRun | null;
-  currentRunId?: string;
-  awaitingRunId?: string;
+  disabled: boolean;
 }) {
   const { t } = useTranslation("storage");
   const client = useQueryClient();
   const [selection, setSelection] = useState<Selection>();
   const heading = useRef<HTMLSpanElement>(null);
   const all = useRef<HTMLDivElement>(null);
-  const [receipts, setReceipts] = useState<TrackedReceipt[]>([]);
-  // Core 只保留最近一项维护。读到本次终态后保留结果，避免后续任务覆盖。
-  const settledReceipts = receipts.map((receipt) =>
-    settleReceipt(receipt, last),
+  const [receipts, setReceipts] = useState<CleanupReceipt[]>([]);
+  const [awaitingRunId, setAwaitingRunId] = useState<string>();
+  const maintenance = useQuery({
+    ...storageMaintenanceOptions(),
+    enabled: active,
+  });
+  const currentRunId = maintenance.isError
+    ? undefined
+    : maintenance.data?.currentRunId;
+  const completed = maintenance.data?.cleanup;
+  const awaiting = Boolean(
+    awaitingRunId && !currentRunId && awaitingRunId !== completed?.runId,
   );
-  if (settledReceipts.some((receipt, index) => receipt !== receipts[index])) {
-    setReceipts(settledReceipts);
-  }
+  const coreBusy = Boolean(currentRunId) || awaiting;
   const available = useQuery({
     queryKey: [...storageKeys.cleanup, "core"],
     queryFn: ({ signal }) => previewCoreCleanup(cleanupCategories, signal),
@@ -217,6 +213,25 @@ export function StorageCleanup({
       ? desktop.flatMap((query) => (query.data ? [query.data] : []))
       : []),
   ];
+  // 已确认清空的 Core 类别无需再重试，即使清理由另一页面完成。
+  const emptyCoreCategories =
+    available.isSuccess && !available.isFetching
+      ? available.data.items
+          .filter(cleanupItemEmpty)
+          .map(({ category }) => category)
+      : [];
+  const settledReceipts = receipts
+    .map((receipt) => settleReceipt(receipt, completed))
+    .filter(
+      ({ state, category }) =>
+        state !== "failed" || !emptyCoreCategories.includes(category),
+    );
+  if (
+    settledReceipts.length !== receipts.length ||
+    settledReceipts.some((receipt, index) => receipt !== receipts[index])
+  ) {
+    setReceipts(settledReceipts);
+  }
   const incomplete = items.some((item) => !item.complete);
   const candidates = items.filter((row) => row.available && row.bytes > 0);
   const candidateCategories = candidates.map((row) => row.category);
@@ -234,33 +249,15 @@ export function StorageCleanup({
     .filter((row) => row.categories.length > 0);
   const reclaimableBytes = rows.reduce((total, row) => total + row.bytes, 0);
   const failures = new Map<StorageCleanupCategory, CleanupFailure>();
-  for (const row of last?.items ?? []) {
-    if (
-      row.failed &&
-      isCoreCleanup(row.category) &&
-      !cleanupItemEmpty(items.find((item) => item.category === row.category))
-    ) {
-      failures.set(row.category, {});
-    }
-  }
-  for (const { result, previousLastId } of settledReceipts) {
+  for (const result of settledReceipts) {
     const category = result.category;
     if (result.state === "accepted") {
-      if (currentRunId === result.runId || awaitingRunId === result.runId)
-        failures.delete(category);
-      else failures.set(category, { unavailable: true });
-      continue;
-    }
-    if (
-      isCoreCleanup(category) &&
-      last?.id !== previousLastId &&
-      last?.items?.some((row) => row.category === category)
-    ) {
-      continue;
-    }
-    if (result.state === "failed")
+      if (currentRunId !== result.runId && awaitingRunId !== result.runId) {
+        failures.set(category, { unavailable: true });
+      }
+    } else if (result.state === "failed") {
       failures.set(category, { error: result.error });
-    else failures.delete(category);
+    }
   }
   const failedCategories = [...failures.keys()];
   function blocked(categories: StorageCleanupCategory[]) {
@@ -271,24 +268,26 @@ export function StorageCleanup({
     categories: StorageCleanupCategory[],
     retry = false,
   ) {
-    setSelection({ opener, categories, retry, previousLastId: last?.id });
+    setSelection({ opener, categories, retry });
   }
   function done(results: CleanupReceipt[]) {
     const accepted = results.find((row) => row.state === "accepted");
-    if (accepted) onStarted(accepted.runId);
-    if (selection) {
-      const previousLastId = selection.previousLastId;
-      setReceipts((previous) => [
-        ...previous.filter(
-          ({ result }) =>
-            !results.some((row) => row.category === result.category),
-        ),
-        ...results.map((result) => ({ result, previousLastId })),
-      ]);
-    }
+    if (accepted) setAwaitingRunId(accepted.runId);
+    setReceipts((previous) => [
+      ...previous.filter(
+        ({ category }) => !results.some((row) => row.category === category),
+      ),
+      ...results,
+    ]);
     setSelection(undefined);
-    if (!accepted)
-      void client.invalidateQueries({ queryKey: storageKeys.maintenance });
+    void client
+      .invalidateQueries({ queryKey: storageKeys.maintenance })
+      .finally(() => {
+        if (accepted)
+          setAwaitingRunId((recorded) =>
+            recorded === accepted.runId ? undefined : recorded,
+          );
+      });
     void client.invalidateQueries({ queryKey: storageKeys.cleanup });
     if (
       results.some(
@@ -338,6 +337,17 @@ export function StorageCleanup({
         ) : null
       }
     >
+      {coreBusy ? (
+        <p role="status" className="type-body text-content-secondary">
+          {t(awaiting ? "accepted" : "running")}
+        </p>
+      ) : null}
+      {maintenance.isError ? (
+        <StorageError
+          error={maintenance.error}
+          retry={() => void maintenance.refetch()}
+        />
+      ) : null}
       {loading ? <StorageLoading /> : null}
       {available.isError ? (
         <StorageError

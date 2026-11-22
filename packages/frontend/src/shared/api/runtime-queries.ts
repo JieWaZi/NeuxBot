@@ -1,6 +1,9 @@
-import { queryOptions } from "@tanstack/react-query";
+import { queryOptions, replaceEqualDeep } from "@tanstack/react-query";
 
-import { listRuntimesOptions as generatedListRuntimesOptions } from "./generated/@tanstack/react-query.gen";
+import {
+  getRuntimeInstallationOptions,
+  listRuntimesOptions as generatedListRuntimesOptions,
+} from "./generated/@tanstack/react-query.gen";
 import { getRuntimeModelCatalog } from "./generated/sdk.gen";
 import { withLocalErrorSurface } from "./local-error-surface";
 import type { GlobalEventFrame } from "./global-events";
@@ -29,6 +32,36 @@ export function listRuntimesOptions(
 ) {
   return queryOptions({
     ...generatedListRuntimesOptions(options),
+  });
+}
+
+/** 安装快照按 Core 进程内的修订号合并。 */
+function shareSnapshot(previous: unknown, next: unknown): unknown {
+  if (
+    previous &&
+    next &&
+    typeof previous === "object" &&
+    typeof next === "object" &&
+    "revision" in previous &&
+    "revision" in next &&
+    typeof previous.revision === "number" &&
+    typeof next.revision === "number" &&
+    next.revision < previous.revision
+  )
+    return previous;
+  return replaceEqualDeep(previous, next);
+}
+
+/** 设置和更新通知复用同一个安装快照及修订校验。 */
+export function runtimeInstallationOptions(runtimeId: string) {
+  return queryOptions({
+    ...getRuntimeInstallationOptions(
+      withLocalErrorSurface({ path: { runtimeId } }),
+    ),
+    staleTime: Infinity,
+    retry: false,
+    refetchOnMount: "always",
+    structuralSharing: shareSnapshot,
   });
 }
 

@@ -105,7 +105,10 @@ let notices: ErrorNotice[] = Array.isArray(stored)
           typeof item.createdAt === "number",
       )
       .filter(
-        (item) => item.lifetime !== "session" && !isLegacySessionNotice(item),
+        (item) =>
+          item.scope !== "global" &&
+          item.lifetime !== "session" &&
+          !isLegacySessionNotice(item),
       )
       .map((item) => ({
         ...storedNotice(item),
@@ -120,7 +123,12 @@ function publish() {
   try {
     localStorage.setItem(
       storageKey,
-      JSON.stringify(notices.filter((notice) => notice.lifetime !== "session")),
+      JSON.stringify(
+        notices.filter(
+          (notice) =>
+            notice.scope !== "global" && notice.lifetime !== "session",
+        ),
+      ),
     );
   } catch {
     /* 本地存储不可用时，本次应用运行内仍保留提示。 */
@@ -192,8 +200,13 @@ export function resolveErrorNoticeRecovery(recovery: readonly ErrorNotice[]) {
       .map((notice) => notice.id),
   );
 }
-export function dismissErrorNotice(id: string) {
-  notices = notices.filter((notice) => notice.id !== id);
+export function dismissErrorNotice(id: string, version?: string) {
+  const remaining = notices.filter(
+    (notice) =>
+      notice.id !== id || (version !== undefined && notice.version !== version),
+  );
+  if (remaining.length === notices.length) return;
+  notices = remaining;
   actions.delete(id);
   publish();
 }

@@ -92,13 +92,8 @@ export const storageZh = {
     "超过 {{days}} 天无活动的会话将永久删除，包括聊天记录、上传副本和会话中保存的成果。伙伴空间和项目里的文件会保留。",
   protect: "保留此会话",
   unprotect: "取消保留此会话",
-  maintenance: "维护记录",
   accepted: "请求已接纳，正在读取维护状态。",
-  running: "正在清理 · {{time}}",
-  finished: "最近完成于 {{time}}",
-  result: "已删除 {{deleted}} 项 · 跳过 {{skipped}} 项 · 失败 {{failed}} 项",
-  removed: "已移除文件 {{size}}",
-  pending: "{{count}} 个会话已删除，文件待回收",
+  running: "正在清理…",
 } as const;
 export const storageEn = {
   title: "Storage",
@@ -201,11 +196,6 @@ export const storageEn = {
     "Chats inactive for more than {{days}} days will be permanently deleted, including chat history, uploaded copies, and results saved in those chats. Partner workspace and project files will be kept.",
   protect: "Keep this chat",
   unprotect: "Stop keeping this chat",
-  maintenance: "Maintenance history",
   accepted: "Request accepted. Waiting for maintenance status.",
-  running: "Cleaning · {{time}}",
-  finished: "Last completed {{time}}",
-  result: "Deleted {{deleted}} · Skipped {{skipped}} · Failed {{failed}}",
-  removed: "Removed {{size}} of files",
-  pending: "{{count}} chats deleted, files pending removal",
+  running: "Cleaning…",
 } as const;

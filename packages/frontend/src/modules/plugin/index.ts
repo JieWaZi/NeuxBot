@@ -13,8 +13,16 @@ export { PluginInstallDialog } from "./components/deferred-plugin-dialogs";
 export { invalidatePluginQueries } from "./api/plugin-queries";
 export type { PluginDetail } from "./model/plugin-view";
 export { usePluginBrowse } from "./api/use-plugin-browse";
-export { pluginBrowseHref, pluginDetailHref } from "./model/plugin-browse";
-export type { PluginBrowseEntry } from "./model/plugin-browse";
+export {
+  pluginBrowseCategoryFromParam,
+  pluginBrowseHref,
+  pluginDetailHref,
+  PLUGIN_CATEGORY_LABELS,
+} from "./model/plugin-browse";
+export type {
+  PluginBrowseCategory,
+  PluginBrowseEntry,
+} from "./model/plugin-browse";
 export { PluginIcon } from "./components/plugin-icon";
 
 export { PluginConnectorDetailPage } from "./pages/plugin-connector-detail-page";

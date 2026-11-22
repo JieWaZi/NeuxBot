@@ -1,6 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { ExternalToast } from "sonner";
+import "@/app/workspace-i18n";
+import type { toast } from "@/shared/ui/sonner";
 import { ApiErrorNotifications } from "./api-error-notifications";
 
 const { error, dismissErrorNotice, dismissToast, notices } = vi.hoisted(() => ({
@@ -8,7 +9,14 @@ const { error, dismissErrorNotice, dismissToast, notices } = vi.hoisted(() => ({
   dismissErrorNotice: vi.fn(),
   dismissToast: vi.fn(),
   notices: {
-    current: [{ id: "api-error", scope: "global", message: "保存失败" }],
+    current: [
+      {
+        id: "api-error",
+        version: "failure-1",
+        scope: "global",
+        message: "保存失败",
+      },
+    ],
   },
 }));
 vi.mock("@/shared/api/global-events", () => ({
@@ -30,18 +38,28 @@ describe("API 错误通知", () => {
     rerender(<ApiErrorNotifications />);
     expect(dismissToast).toHaveBeenCalledWith("api-error");
     notices.current = [
-      { id: "api-error", scope: "global", message: "保存失败" },
+      {
+        id: "api-error",
+        version: "failure-1",
+        scope: "global",
+        message: "保存失败",
+      },
     ];
   });
-  it("自动关闭和滑动移除都会清理错误提示记录", () => {
-    render(<ApiErrorNotifications />);
-    const options: ExternalToast = error.mock.lastCall?.[1];
-    expect(options.duration).toBeUndefined();
-    const notice = { id: "api-error" };
-    options.onAutoClose?.(notice);
-    expect(dismissErrorNotice).toHaveBeenCalledWith("api-error");
+  it("只为当前失败启动计时，关闭时按版本清理记录", () => {
+    error.mockClear();
+    const { rerender } = render(<ApiErrorNotifications />);
+    const options: Parameters<typeof toast.error>[1] = error.mock.lastCall?.[1];
+    notices.current = [...notices.current];
+    rerender(<ApiErrorNotifications />);
+    expect(error).toHaveBeenCalledExactlyOnceWith(
+      "请求失败",
+      expect.objectContaining({ id: "api-error", description: "保存失败" }),
+    );
+    options?.onAutoClose?.();
+    expect(dismissErrorNotice).toHaveBeenCalledWith("api-error", "failure-1");
     dismissErrorNotice.mockClear();
-    options.onDismiss?.(notice);
-    expect(dismissErrorNotice).toHaveBeenCalledWith("api-error");
+    options?.onDismiss?.();
+    expect(dismissErrorNotice).toHaveBeenCalledWith("api-error", "failure-1");
   });
 });

@@ -16,6 +16,12 @@ export const PLUGIN_BROWSE_CATEGORIES = [
   "other",
 ] as const;
 
+export type PluginBrowseCategory = (typeof PLUGIN_BROWSE_CATEGORIES)[number];
+
+export function pluginBrowseCategoryFromParam(value: string | null) {
+  return PLUGIN_BROWSE_CATEGORIES.find((category) => category === value);
+}
+
 export const PLUGIN_CATEGORY_LABELS = {
   coding: "categoryCoding",
   design: "categoryDesign",
@@ -28,9 +34,7 @@ export const PLUGIN_CATEGORY_LABELS = {
 } as const;
 
 // 这是宿主的显示分组映射；标准包 category 是自由字符串，不是官方枚举。
-const HOST_CATEGORY_ALIASES: Readonly<
-  Record<string, (typeof PLUGIN_BROWSE_CATEGORIES)[number]>
-> = {
+const HOST_CATEGORY_ALIASES: Readonly<Record<string, PluginBrowseCategory>> = {
   coding: "coding",
   "developer tools": "coding",
   design: "design",

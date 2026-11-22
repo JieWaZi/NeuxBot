@@ -61,6 +61,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   server.resetHandlers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 afterAll(() => server.close());
@@ -165,7 +166,8 @@ it("键盘可以搜索后续页伙伴，打开选择器只读取当前页", asyn
   await waitFor(() => expect(trigger).toHaveFocus());
 });
 
-it("首次读取伙伴时在可输入的草稿旁展示加载状态", async () => {
+it("读取伙伴时草稿可输入且装饰头像已挂载，空列表返回后保持原头像", async () => {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(420);
   server.use(
     http.get(`${origin}/api/v1/wakers`, async () => {
       await delay(100);
@@ -178,5 +180,13 @@ it("首次读取伙伴时在可输入的草稿旁展示加载状态", async () =
     "aria-busy",
     "true",
   );
+  const avatars = () => [
+    ...document.querySelectorAll(
+      "[data-work-board-avatars] [data-pile-avatar]",
+    ),
+  ];
+  const initialAvatars = avatars();
+  expect(initialAvatars).toHaveLength(12);
   expect(await screen.findByText("暂无可选伙伴")).toBeInTheDocument();
+  expect(avatars()).toEqual(initialAvatars);
 });

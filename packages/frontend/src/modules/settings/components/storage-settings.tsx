@@ -1,9 +1,4 @@
-import {
-  useQuery,
-  useInfiniteQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { useState } from "react";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   Navigate,
@@ -20,7 +15,6 @@ import {
   loadMoreStorage,
   storageEntitiesOptions,
   storageKeys,
-  storageMaintenanceOptions,
 } from "../api/storage";
 import {
   SettingsContentShell,
@@ -28,12 +22,7 @@ import {
   SettingsCard,
   SettingsNavigationRow,
 } from "./settings-section-layout";
-import {
-  StorageError,
-  StorageLoading,
-  storageSize,
-  storageDate,
-} from "./storage-feedback";
+import { StorageError, StorageLoading, storageSize } from "./storage-feedback";
 import { StorageCleanup } from "./storage-cleanup-dialog";
 import { StorageRetentionSettings } from "./storage-retention-settings";
 import { StoragePartnerDetails } from "./storage-files";
@@ -143,7 +132,6 @@ export function StorageSettings({
 }) {
   const { t } = useTranslation("storage");
   const active = useRouteSceneActive();
-  const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -166,22 +154,6 @@ export function StorageSettings({
   });
   const offline =
     connection.state === "unavailable" || connection.state === "reconnecting";
-  const maintenance = useQuery({
-    ...storageMaintenanceOptions(),
-    enabled: active && !partnerId && kind !== "chats",
-  });
-  const current = maintenance.isError ? undefined : maintenance.data?.current;
-  const last = maintenance.data?.last;
-  const [receipt, setReceipt] = useState<string>();
-  function recordRun(id: string) {
-    setReceipt(id);
-    void client
-      .invalidateQueries({ queryKey: storageKeys.maintenance })
-      .finally(() =>
-        setReceipt((recorded) => (recorded === id ? undefined : recorded)),
-      );
-  }
-  const awaiting = Boolean(receipt && !current && receipt !== last?.id);
   if (kind === "chats" && id) {
     return <Navigate to={chatHref(id, "")} replace />;
   }
@@ -214,57 +186,8 @@ export function StorageSettings({
         onOpenFiles={openFiles}
       />
       <StorageChatList active={active} disabled={offline} />
-      <StorageCleanup
-        active={active}
-        disabled={offline}
-        coreBusy={Boolean(current) || awaiting}
-        onStarted={recordRun}
-        last={last}
-        currentRunId={current?.id}
-        awaitingRunId={receipt}
-      />
+      <StorageCleanup active={active} disabled={offline} />
       <StorageRetentionSettings active={active} disabled={offline} />
-      {maintenance.isError ? (
-        <StorageError
-          error={maintenance.error}
-          retry={() => void maintenance.refetch()}
-          stale={Boolean(last)}
-        />
-      ) : null}
-      {current || last || awaiting ? (
-        <SettingsGroup title={t("maintenance")}>
-          <SettingsCard className="type-body grid gap-1 p-4" role="status">
-            {awaiting ? <p>{t("accepted")}</p> : null}
-            {current?.startedAt ? (
-              <p>{t("running", { time: storageDate(current.startedAt) })}</p>
-            ) : null}
-            {last ? (
-              <>
-                {last.finishedAt ? (
-                  <p>{t("finished", { time: storageDate(last.finishedAt) })}</p>
-                ) : null}
-                <p>
-                  {t("result", {
-                    deleted: last.deleted ?? 0,
-                    skipped: last.skipped ?? 0,
-                    failed: last.failed ?? 0,
-                  })}
-                </p>
-                {last.kind === "resources" || (last.removedBytes ?? 0) > 0 ? (
-                  <p>
-                    {t("removed", {
-                      size: storageSize(last.removedBytes ?? 0),
-                    })}
-                  </p>
-                ) : null}
-                {last.pending ? (
-                  <p>{t("pending", { count: last.pending })}</p>
-                ) : null}
-              </>
-            ) : null}
-          </SettingsCard>
-        </SettingsGroup>
-      ) : null}
     </SettingsContentShell>
   );
 }

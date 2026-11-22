@@ -7,7 +7,36 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
+
+// TestStartupChecksOnlyInstalledBaseCLIs 验证启动按基础 CLI 检查一次，未安装项不查询官方版本。
+func TestStartupChecksOnlyInstalledBaseCLIs(t *testing.T) {
+	svc, installer, catalog := installationLifecycleFixture(t)
+	svc.cancelLifecycle()
+	installer.latest = "2.0.0"
+	svc.probeProvider = func(ctx context.Context, summary agent.RuntimeSummary, environment models.RuntimeEnvironment, request agent.DetectRequest) agent.DetectionResult {
+		if summary.BaseRuntimeID != constants.RuntimeIDCodex {
+			return agent.DetectionResult{Runtime: summary, State: agent.DetectionStateUnavailable}
+		}
+		result := catalog.probe(ctx, summary, environment, request)
+		result.Version = "1.0.0"
+		return result
+	}
+	if err := svc.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	svc.waitGroup.Wait()
+	if installer.checks != 1 || installer.mutations != 0 {
+		t.Fatalf("startup checks=%d, program mutations=%d", installer.checks, installer.mutations)
+	}
+	snapshot, err := svc.InstallationSnapshot(t.Context(), constants.RuntimeIDCodex)
+	if err != nil || snapshot.CheckState != constants.RuntimeUpdateCheckStateChecked ||
+		snapshot.UpdateAvailable == nil || !*snapshot.UpdateAvailable {
+		t.Fatalf("startup update was not recoverable from installation snapshot: %+v, error=%v", snapshot, err)
+	}
+}
 
 // TestVersionCheckRefreshesLocalReceiptWithoutDownload 验证旧探测快照不会让已手动升级的程序继续显示更新。
 func TestVersionCheckRefreshesLocalReceiptWithoutDownload(t *testing.T) {

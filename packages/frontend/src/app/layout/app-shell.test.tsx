@@ -39,10 +39,13 @@ const render = (ui: ReactElement) =>
 
 import { useSettingsDraftGuard } from "@/modules/settings";
 import { AppShell } from "./app-shell";
-import { getChatOptions } from "@/modules/chat";
+import { getChatOptions, listChatsOptions } from "@/modules/chat";
+import { chatListInfiniteOptions } from "@/modules/chat/api/chat-queries";
+import { teamThreadsInfiniteOptions } from "@/modules/team";
 import type {
   GetChatResponse,
   GetChannelThreadResponse,
+  ListChatsResponse,
 } from "@/shared/api/generated/types.gen";
 import type * as PluginQueries from "@/modules/plugin/api/plugin-queries";
 import type * as WakerModule from "@/modules/waker";
@@ -73,6 +76,14 @@ function queryAllContents() {
 }
 function closeContent(label: string) {
   return screen.getByRole("button", { name: `关闭 ${label}` });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 const teamHistoryRender = vi.hoisted(() => vi.fn());
@@ -135,6 +146,12 @@ vi.mock("@/modules/workspaceattention", () => ({
 }));
 vi.mock("@/modules/chat/pages/team-chat-page", () => ({
   TeamChatPageContent: () => <div>团队历史内容</div>,
+}));
+
+vi.mock("@/modules/chat/pages/chat-page", () => ({
+  ChatPageContent: ({ chatId }: { chatId?: string }) => (
+    <div>{chatId ? `聊天内容 ${chatId}` : "聊天入口"}</div>
+  ),
 }));
 
 vi.mock("@/modules/im", () => ({
@@ -301,9 +318,9 @@ vi.mock("@/modules/chat", () => ({
 }));
 
 vi.mock("@/shared/ui/sonner", () => ({
-  Toaster: ({ position }: { position?: string }) => {
+  Toaster: () => {
     shellChromeRender();
-    return <div aria-label="通知容器" data-position={position} />;
+    return <div aria-label="通知容器" />;
   },
 }));
 
@@ -592,6 +609,9 @@ function LocationView() {
   return (
     <div>
       {`${location.pathname}${location.search}`}
+      {new URLSearchParams(location.search).has("draftId") ? (
+        <textarea aria-label="未发送消息" />
+      ) : null}
       <button
         type="button"
         onClick={() => {
@@ -720,6 +740,25 @@ function TestLifecycleRouteScene({
   );
 }
 
+function renderDataShell(
+  initialEntry: string,
+  routeScene: typeof TestRouteScene,
+  queryClient: QueryClient,
+) {
+  const router = createMemoryRouter(
+    [{ path: "*", element: <AppShell routeScene={routeScene} /> }],
+    { initialEntries: [initialEntry] },
+  );
+  return {
+    router,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    ),
+  };
+}
+
 function renderShell(
   initialEntry = "/chats/chat-a?wakerId=waker-1",
   withTeamPage = false,
@@ -731,22 +770,8 @@ function renderShell(
       defaultOptions: { queries: { retry: false } },
     });
 
-  if (withTeamPage) {
-    const router = createMemoryRouter(
-      [
-        {
-          path: "*",
-          element: <AppShell routeScene={TestTeamRouteScene} />,
-        },
-      ],
-      { initialEntries: [initialEntry] },
-    );
-    return render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
-    );
-  }
+  if (withTeamPage)
+    return renderDataShell(initialEntry, TestTeamRouteScene, queryClient);
 
   return render(
     <QueryClientProvider client={queryClient}>
@@ -1197,6 +1222,147 @@ describe("AppShell 伙伴导航", () => {
     await user.click(screen.getByRole("button", { name: "新建会话" }));
     expect(activeRouteScene()).toHaveTextContent(original ?? "missing");
     expect(screen.getAllByRole("tab", { name: "新会话" })).toHaveLength(1);
+  });
+
+  it("聊天入口退到后台后，最近会话晚到只在返回入口时生效", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const recent = deferred<ListChatsResponse>();
+    const lookup = client.fetchInfiniteQuery({
+      ...chatListInfiniteOptions("waker-1"),
+      queryFn: () => recent.promise,
+    });
+    const { router } = renderDataShell(
+      "/chat?wakerId=waker-1",
+      StatefulProductionScene,
+      client,
+    );
+    const entry = activeRouteScene();
+    expect(within(entry).getByText("聊天入口")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "资源库" }));
+    expect(activeRouteScene()).toHaveTextContent("/resources");
+
+    await act(async () => {
+      recent.resolve({ resources: [{ id: "chat-late", wakerId: "waker-1" }] });
+      await lookup;
+    });
+    expect(
+      await within(entry).findByText("聊天内容 chat-late"),
+    ).not.toBeVisible();
+    expect(router.state.location.pathname).toBe("/resources");
+    expect(activeRouteScene()).toHaveTextContent("/resources");
+
+    await act(async () => router.navigate(-1));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/chats/chat-late"),
+    );
+    expect(screen.getByText("聊天内容 chat-late")).toBeVisible();
+  });
+
+  it.each([
+    {
+      owner: "伙伴一",
+      href: "/chat?draftId=partner-draft&wakerId=waker-1",
+      menu: "资源库",
+      destination: "/resources",
+    },
+    {
+      owner: "团队一",
+      href: "/teams/team-1?draftId=team-draft",
+      menu: "通知，打开任务看板",
+      destination: "/work-board",
+    },
+    {
+      owner: "伙伴一",
+      href: "/chat?draftId=partner-draft&wakerId=waker-1",
+      menu: "资源库",
+      destination: "/resources",
+      alreadyOnDestination: true,
+    },
+  ])(
+    "$owner 的历史查询晚到时保留原草稿与当前页面（$menu，已在目标页：$alreadyOnDestination）",
+    async ({ owner, href, menu, destination, alreadyOnDestination }) => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const recent = deferred<{ resources: [] }>();
+      const lookup =
+        owner === "伙伴一"
+          ? client.fetchQuery({
+              ...listChatsOptions({ query: { wakerId: "waker-1", limit: 1 } }),
+              queryFn: () => recent.promise,
+            })
+          : client.fetchInfiniteQuery({
+              ...teamThreadsInfiniteOptions("team-1"),
+              queryFn: () => recent.promise,
+            });
+      const { router } = renderDataShell(href, TestRouteScene, client);
+      const draft = within(activeRouteScene()).getByRole("textbox", {
+        name: "未发送消息",
+      });
+      fireEvent.change(draft, { target: { value: "保留这段草稿" } });
+      const clickMenu = () =>
+        fireEvent.click(screen.getByRole("button", { name: menu }));
+      if (alreadyOnDestination) clickMenu();
+      fireEvent.click(
+        await within(
+          screen.getByRole("navigation", { name: "伙伴头像栏" }),
+        ).findByRole("button", { name: owner }),
+      );
+      clickMenu();
+      expect(activeRouteScene()).toHaveTextContent(destination);
+
+      await act(async () => {
+        recent.resolve({ resources: [] });
+        await lookup;
+      });
+      expect(router.state.location.pathname).toBe(destination);
+      expect(activeRouteScene()).toHaveTextContent(destination);
+      expect(draft).not.toBeVisible();
+
+      await act(async () => router.navigate(-1));
+      expect(
+        within(activeRouteScene()).getByRole("textbox", { name: "未发送消息" }),
+      ).toBe(draft);
+      expect(draft).toHaveValue("保留这段草稿");
+    },
+  );
+
+  it("已完成的 Router 导航在 React 提交前也不会被迟到的会话查询覆盖", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const recent = deferred<ListChatsResponse>();
+    const options = listChatsOptions({
+      query: { wakerId: "waker-1", limit: 1 },
+    });
+    const lookup = client.fetchQuery({
+      ...options,
+      queryFn: () => recent.promise,
+    });
+    const { router } = renderDataShell(
+      "/chat?draftId=partner-draft&wakerId=waker-1",
+      TestRouteScene,
+      client,
+    );
+    fireEvent.click(
+      await within(
+        screen.getByRole("navigation", { name: "伙伴头像栏" }),
+      ).findByRole("button", { name: "伙伴一" }),
+    );
+
+    const result = { resources: [{ id: "late", wakerId: "waker-1" }] };
+    await act(async () => {
+      await router.navigate("/resources");
+      expect(router.state.location.pathname).toBe("/resources");
+      recent.resolve(result);
+      await lookup;
+    });
+
+    expect(router.state.location.pathname).toBe("/resources");
+    expect(activeRouteScene()).toHaveTextContent("/resources");
+    expect(client.getQueryData(options.queryKey)).toEqual(result);
   });
 
   it("资源 Scene 不显示聊天的新会话加号", () => {
@@ -1799,13 +1965,10 @@ describe("AppShell 伙伴导航", () => {
     expect(screen.queryByText("项目管理员")).not.toBeInTheDocument();
   });
 
-  it("把全局通知挂载在右上角", () => {
+  it("在工作台挂载全局通知容器", () => {
     renderShell();
 
-    expect(screen.getByLabelText("通知容器")).toHaveAttribute(
-      "data-position",
-      "top-right",
-    );
+    expect(screen.getByLabelText("通知容器")).toBeInTheDocument();
   });
   it("伙伴模块入口没有已验证聊天时进入当前伙伴聊天入口", async () => {
     const user = userEvent.setup();

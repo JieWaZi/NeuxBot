@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   dismissErrorNotice,
   reportErrorNotice,
@@ -8,10 +9,11 @@ import { subscribeGlobalEvents } from "@/shared/api/global-events";
 import { applicationErrorKey } from "@/shared/api/error-presentation";
 import { toast } from "@/shared/ui/sonner";
 
-/** 非聊天 API 错误在当前页面通知，超时或滑动移除后清理本地提示。 */
+/** 非聊天 API 错误以自动通知展示，对应操作恢复时提前撤下。 */
 export function ApiErrorNotifications() {
+  const { t } = useTranslation("notification");
   const notices = useErrorNotices();
-  const displayed = useRef(new Set<string>());
+  const displayed = useRef(new Map<string, string>());
   const lastCatalogFailure = useRef("");
   useEffect(
     () =>
@@ -52,21 +54,22 @@ export function ApiErrorNotifications() {
     [],
   );
   useEffect(() => {
-    const current = new Set(
-      notices
-        .filter((notice) => notice.scope === "global")
-        .map((notice) => notice.id),
-    );
-    for (const id of displayed.current) if (!current.has(id)) toast.dismiss(id);
+    const current = new Map<string, string>();
     for (const notice of notices) {
       if (notice.scope !== "global") continue;
-      toast.error(notice.message, {
+      current.set(notice.id, notice.version);
+      if (displayed.current.get(notice.id) === notice.version) continue;
+      const clear = () => dismissErrorNotice(notice.id, notice.version);
+      toast.error(t("inApp.requestFailed"), {
         id: notice.id,
-        onDismiss: () => dismissErrorNotice(notice.id),
-        onAutoClose: () => dismissErrorNotice(notice.id),
+        description: notice.message,
+        onDismiss: clear,
+        onAutoClose: clear,
       });
     }
+    for (const id of displayed.current.keys())
+      if (!current.has(id)) toast.dismiss(id);
     displayed.current = current;
-  }, [notices]);
+  }, [notices, t]);
   return null;
 }

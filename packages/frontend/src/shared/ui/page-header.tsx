@@ -23,7 +23,7 @@ type PageHeaderProps = Omit<ComponentProps<"header">, "title"> & {
   backAction?: { label: string; onClick: () => void };
 };
 
-function PageHeaderBack({
+export function PageHeaderBack({
   action,
 }: {
   action: NonNullable<PageHeaderProps["backAction"]>;

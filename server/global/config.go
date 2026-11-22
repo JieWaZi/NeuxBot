@@ -873,17 +873,16 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 					targets, targetErr := PluginContents.PreviewCachedTargets(ctx)
 					return distribution.Bytes + targets.Bytes, errors.Join(err, targetErr)
 				},
-				Remove: func(ctx context.Context) (storageservice.ResourceCleanup, error) {
+				Remove: func(ctx context.Context) (int64, error) {
 					distribution, err := catalog.ClearCachedArtifacts(ctx, PluginCatalogSource())
 					targets, targetErr := PluginContents.ClearCachedTargets(ctx)
-					return storageservice.ResourceCleanup{Bytes: distribution.Bytes + targets.Bytes, Skipped: distribution.Skipped + targets.Skipped}, errors.Join(err, targetErr)
+					return distribution.Bytes + targets.Bytes, errors.Join(err, targetErr)
 				},
 			},
 			constants.StorageCleanupKindRuntimes: {
 				Preview: func(ctx context.Context) (int64, error) { return RuntimeEnvironmentService.ReclaimPrograms(ctx, false) },
-				Remove: func(ctx context.Context) (storageservice.ResourceCleanup, error) {
-					bytes, err := RuntimeEnvironmentService.ReclaimPrograms(ctx, true)
-					return storageservice.ResourceCleanup{Bytes: bytes}, err
+				Remove: func(ctx context.Context) (int64, error) {
+					return RuntimeEnvironmentService.ReclaimPrograms(ctx, true)
 				},
 			},
 		},

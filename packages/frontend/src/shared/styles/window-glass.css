@@ -214,7 +214,7 @@
     [role="menu"],
     [role="listbox"],
     [role="tooltip"],
-    [data-sonner-toast],
+    [data-notification-viewport],
     [data-workflow-node]
   ) {
   --shell-surface-frame: var(--window-solid-shell-surface-frame);

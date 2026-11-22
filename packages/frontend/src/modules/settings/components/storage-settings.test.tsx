@@ -263,48 +263,164 @@ it("清理区合并同类项目，显示可释放大小并隐藏空项", async (
   }
 });
 
-it("仅确认后清理失败的类别", async () => {
-  const reviews: unknown[] = [],
-    writes: unknown[] = [];
+it("仅确认后重试本次清理失败的类别", async () => {
+  const reviews: unknown[] = [];
+  const writes: unknown[] = [];
   server.use(
     http.get(root + "/maintenance", () =>
-      HttpResponse.json({
-        last: {
-          id: "old",
-          kind: "resources",
-          deleted: 1,
-          skipped: 0,
-          failed: 1,
-          pending: 0,
-          removedBytes: 5,
-          items: [
-            { category: "caches", failed: 0 },
-            { category: "logs", failed: 1 },
-          ],
-        },
-      }),
+      HttpResponse.json(
+        writes.length === 1
+          ? {
+              cleanup: {
+                runId: "r1",
+                items: [
+                  { category: "caches", failed: false, removedBytes: 1024 },
+                  { category: "logs", failed: true, removedBytes: 0 },
+                ],
+              },
+            }
+          : {
+              cleanup: {
+                runId: writes.length ? "r2" : "previous",
+                items: [
+                  { category: "logs", failed: !writes.length, removedBytes: 0 },
+                ],
+              },
+            },
+      ),
     ),
     http.post(root + "/cleanup-preview", async ({ request }) => {
-      reviews.push(await request.json());
+      const body = await request.json();
+      reviews.push(body);
+      const retry =
+        JSON.stringify(body) === JSON.stringify({ categories: ["logs"] });
       return HttpResponse.json({
-        id: "new-resource",
-        items: [{ category: "logs", bytes: 1024, available: true }],
+        id: retry ? "retry-resource" : "first-resource",
+        items: [
+          ...(!retry
+            ? [{ category: "caches", bytes: 1024, available: true }]
+            : []),
+          { category: "logs", bytes: 1024, available: true },
+        ],
       });
     }),
     http.post(root + "/cleanup", async ({ request }) => {
       writes.push(await request.json());
-      return HttpResponse.json({ runId: "r2" });
+      return HttpResponse.json({ runId: writes.length === 1 ? "r1" : "r2" });
     }),
   );
   const user = openSettings();
+  const clear = await screen.findByRole("button", { name: "一键清理" });
+  expect(screen.queryByText("维护记录")).toBeNull();
+  expect(screen.queryByRole("button", { name: "重试失败类别" })).toBeNull();
+  await user.click(clear);
+  await user.click(
+    within(await screen.findByRole("dialog")).getByRole("button", {
+      name: "确认清理",
+    }),
+  );
   await user.click(await screen.findByRole("button", { name: "重试失败类别" }));
   const dialog = await screen.findByRole("dialog");
   expect(dialog).toHaveTextContent("诊断日志");
   expect(reviews).not.toContainEqual({ categories: ["logs"] });
-  expect(writes).toEqual([]);
+  expect(writes).toEqual([{ previewId: "first-resource" }]);
   await user.click(within(dialog).getByRole("button", { name: "确认清理" }));
-  await waitFor(() => expect(writes).toEqual([{ previewId: "new-resource" }]));
+  await waitFor(() =>
+    expect(writes).toEqual([
+      { previewId: "first-resource" },
+      { previewId: "retry-resource" },
+    ]),
+  );
   expect(reviews).toContainEqual({ categories: ["logs"] });
+});
+
+it.each([
+  { proof: "完整空预览", successReceipt: false },
+  { proof: "同类新成功回执", successReceipt: true },
+])("存储事件确认$proof 后撤下旧清理失败", async ({ successReceipt }) => {
+  let runId = "";
+  let bytes = 1024;
+  let complete = true;
+  const publishStorageChange = (revision: number) => {
+    act(() => {
+      for (const observer of events.observers) {
+        observer.onEvent({
+          protocolVersion: 1,
+          epoch: "test-epoch",
+          connectionId: "test-connection",
+          deliverySequence: revision,
+          topic: "storage",
+          type: "storage.changed",
+          resource: { kind: "global" },
+          eventId: `storage-${revision}`,
+          payload: { revision },
+        });
+      }
+    });
+  };
+  server.use(
+    http.get(root + "/maintenance", () =>
+      HttpResponse.json(
+        runId
+          ? {
+              cleanup: {
+                runId,
+                items: [
+                  {
+                    category:
+                      runId === "local" || successReceipt ? "logs" : "caches",
+                    failed: runId === "local",
+                    removedBytes: runId === "local" ? 0 : 1024,
+                  },
+                ],
+              },
+            }
+          : {},
+      ),
+    ),
+    http.post(root + "/cleanup-preview", () =>
+      HttpResponse.json({
+        id: "resource-1",
+        items: [{ category: "logs", available: true, bytes, complete }],
+      }),
+    ),
+    http.post(root + "/cleanup", () => {
+      runId = "local";
+      return HttpResponse.json({ runId });
+    }),
+  );
+  const user = openSettings();
+  await user.click(await screen.findByRole("button", { name: "清理诊断日志" }));
+  await user.click(
+    within(await screen.findByRole("dialog")).getByRole("button", {
+      name: "确认清理",
+    }),
+  );
+  expect(
+    await screen.findByRole("button", { name: "重试失败类别" }),
+  ).toBeVisible();
+
+  bytes = 0;
+  complete = false;
+  publishStorageChange(1);
+  await screen.findByText("部分可清理项目暂时无法读取。");
+  expect(screen.getByRole("button", { name: "重试失败类别" })).toBeVisible();
+
+  runId = "elsewhere";
+  bytes = successReceipt ? 2048 : 0;
+  complete = true;
+  publishStorageChange(2);
+  await screen.findByText(
+    successReceipt ? "预计可释放 2 KB" : "目前没有可清理的项目。",
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "重试失败类别" })).toBeNull(),
+  );
+
+  bytes = 1024;
+  publishStorageChange(3);
+  await screen.findByRole("button", { name: "清理诊断日志" });
+  expect(screen.queryByRole("button", { name: "重试失败类别" })).toBeNull();
 });
 
 it("桌面日志失败后仅重试该类别，页面不显示成功回执", async () => {
@@ -416,11 +532,11 @@ it("Core 维护进行中仍能确认桌面缓存清理", async () => {
   });
   server.use(
     http.get(root + "/maintenance", () =>
-      HttpResponse.json({ current: { id: "other", startedAt: 1700000000000 } }),
+      HttpResponse.json({ currentRunId: "other" }),
     ),
   );
   const user = openSettings();
-  await screen.findByText(/正在清理 ·/);
+  await screen.findByText("正在清理…");
   expect(screen.getByRole("button", { name: "清理诊断日志" })).toBeDisabled();
   const desktop = await screen.findByRole("button", { name: "清理缓存" });
   expect(desktop).toBeEnabled();
@@ -697,6 +813,8 @@ it("直接打开伙伴会话页签时，加载前可返回总览并在读回后�
 });
 
 it("伙伴会话页签只读取本伙伴，确认删除后刷新占用列表", async () => {
+  // 让懒加载聊天模块的编译时间不占用删除弹窗的交互断言窗口。
+  await import("@/modules/chat");
   let deleted = false;
   server.use(
     http.get(root + "/files", () =>

@@ -233,7 +233,7 @@ describe("持久错误通知", () => {
     );
   });
 
-  it("发送新提示和时间流逝不会清除旧错误，只有手动关闭才移除", () => {
+  it("聊天错误持久保存，应用错误只留在当前运行内", () => {
     vi.useFakeTimers();
     const { result } = renderHook(useErrorNotices);
     act(() =>
@@ -256,7 +256,7 @@ describe("持久错误通知", () => {
     expect(result.current.map((notice) => notice.id)).toEqual(["one", "two"]);
     expect(
       JSON.parse(localStorage.getItem("bot:error-notices") ?? "[]"),
-    ).toHaveLength(2);
+    ).toEqual([expect.objectContaining({ id: "one" })]);
     act(() => dismissErrorNotice("one"));
     expect(result.current.map((notice) => notice.id)).toEqual(["two"]);
   });
@@ -396,7 +396,7 @@ it("旧持久通知缺少来源时拒绝正文，已声明的本地提示仍可�
       },
       {
         id: "declared-local",
-        scope: "global",
+        scope: "chat:c1",
         operation: "local",
         version: "local",
         createdAt: 3,
@@ -411,7 +411,6 @@ it("旧持久通知缺少来源时拒绝正文，已声明的本地提示仍可�
   await restoredI18n.changeLanguage("zh-CN");
   const { result, unmount } = renderHook(restored.useErrorNotices);
   expect(result.current.map((notice) => notice.message)).toEqual([
-    "本地服务返回了无法识别的错误",
     "本地服务返回了无法识别的错误",
     "已知本地提示",
   ]);

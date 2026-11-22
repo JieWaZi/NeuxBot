@@ -14287,11 +14287,41 @@ export type GithubComJieWaZiNeuxBotServerServicesStorageExpirationPreview = {
 };
 
 /**
- * MaintenanceState 返回当前和上次维护。
+ * ExpiredChatCleanupReceipt 对账手动提交的过期会话清理。
+ */
+export type GithubComJieWaZiNeuxBotServerServicesStorageExpiredChatCleanupReceipt = {
+    /**
+     * Deleted 是已删除的会话数。
+     */
+    deleted?: number;
+    /**
+     * Failed 是删除失败的会话数。
+     */
+    failed?: number;
+    /**
+     * Pending 是会话已删除但文件仍待回收的数量。
+     */
+    pending?: number;
+    /**
+     * RunID 对应已接纳的清理任务。
+     */
+    runId?: string;
+    /**
+     * Skipped 是未满足删除条件的会话数。
+     */
+    skipped?: number;
+};
+
+/**
+ * MaintenanceState 提供清理互斥状态与资源清理对账回执。
  */
 export type GithubComJieWaZiNeuxBotServerServicesStorageMaintenanceState = {
-    current?: GithubComJieWaZiNeuxBotServerServicesStorageRun & unknown;
-    last?: GithubComJieWaZiNeuxBotServerServicesStorageRun & unknown;
+    cleanup?: GithubComJieWaZiNeuxBotServerServicesStorageResourceCleanupReceipt & unknown;
+    /**
+     * CurrentRunID 当前维护任务。
+     */
+    currentRunId?: string;
+    expiredChats?: GithubComJieWaZiNeuxBotServerServicesStorageExpiredChatCleanupReceipt & unknown;
 };
 
 /**
@@ -14321,49 +14351,17 @@ export type GithubComJieWaZiNeuxBotServerServicesStoragePolicy = {
 };
 
 /**
- * Run 保存一次维护的用户可见结果。
+ * ResourceCleanupReceipt 保存本进程内最近一次资源清理的分项回执。
  */
-export type GithubComJieWaZiNeuxBotServerServicesStorageRun = {
+export type GithubComJieWaZiNeuxBotServerServicesStorageResourceCleanupReceipt = {
     /**
-     * Deleted 已删会话
-     */
-    deleted?: number;
-    /**
-     * Failed 失败数量
-     */
-    failed?: number;
-    /**
-     * FinishedAt 结束时间
-     */
-    finishedAt?: number;
-    /**
-     * ID 运行标识
-     */
-    id?: string;
-    /**
-     * Items 分项结果
+     * Items 分项清理结果。
      */
     items?: Array<GithubComJieWaZiNeuxBotServerServicesStorageCleanupResult>;
     /**
-     * Kind 维护类型
+     * RunID 对应已接纳的清理任务。
      */
-    kind?: string;
-    /**
-     * Pending 待回收数
-     */
-    pending?: number;
-    /**
-     * RemovedBytes 移除大小
-     */
-    removedBytes?: number;
-    /**
-     * Skipped 跳过数量
-     */
-    skipped?: number;
-    /**
-     * StartedAt 开始时间
-     */
-    startedAt?: number;
+    runId?: string;
 };
 
 /**

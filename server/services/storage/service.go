@@ -32,15 +32,7 @@ type CleanupOwner struct {
 	// Preview 只读取当前可移除的小计。
 	Preview func(context.Context) (int64, error)
 	// Remove 重新核验并回收当前可移除的内容。
-	Remove func(context.Context) (ResourceCleanup, error)
-}
-
-// ResourceCleanup 记录一次所有者回收中确实移除的大小和保护项目。
-type ResourceCleanup struct {
-	// Bytes 是已移除文件的逻辑字节。
-	Bytes int64
-	// Skipped 是由于归属或引用保护而保留的项目数。
-	Skipped int
+	Remove func(context.Context) (int64, error)
 }
 
 // Config 装配两个受管根及业务所有者。
@@ -89,16 +81,20 @@ type Service struct {
 	wake chan struct{}
 	// policyPath 是策略与调度的唯一文件。
 	policyPath string
-	// retryAfter 避免维护结果无法落盘时立即重复执行到期检查。
+	// retryAfter 避免下次检查时间无法落盘时立即重复执行到期检查。
 	retryAfter time.Time
-	// state 是当前已持久化的策略和最近结果。
+	// state 是当前已持久化的保留策略。
 	state policyFile
 	// valid 表示当前策略文件已核验。
 	valid bool
 	// previews 保存本进程内有界的确认身份。
 	previews map[string]preview
 	// current 是当前维护，最多一项。
-	current *Run
+	current *activeRun
+	// completedCleanup 只在本进程内保留一份用于对账的资源清理回执。
+	completedCleanup *ResourceCleanupReceipt
+	// completedExpiredChats 只在本进程内保留一份手动会话清理回执。
+	completedExpiredChats *ExpiredChatCleanupReceipt
 	// currentPreviewID 允许正在运行时重放同一个已接纳确认。
 	currentPreviewID string
 	// revision 是当前进程的维护事件顺序。
@@ -173,7 +169,7 @@ func (s *Service) Wake() {
 	}
 }
 
-// Change 通知消费者读取当前维护和快照。
+// Change 通知消费者读取存储状态和快照。
 type Change struct {
 	// Revision 是本进程内的维护顺序。
 	Revision uint64 `json:"revision"`

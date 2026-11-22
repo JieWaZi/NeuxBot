@@ -166,6 +166,7 @@ function showCatalog(withSearch = false, targetPartnerId?: string) {
       <MemoryRouter>
         <PluginResourceCollection
           search=""
+          categoryHref={(category) => `/resources?pluginCategory=${category}`}
           targetPartnerId={targetPartnerId}
           searchField={
             withSearch ? (

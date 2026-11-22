@@ -1,0 +1,112 @@
+/* Sonner 负责卡片位移。用自然高度计算分页视口及偏移，避免缩放后的尺寸参与布局。 */
+[data-notification-viewport] .notification-sonner-list[data-sonner-toaster] {
+  --front-toast-height: var(--notification-height-0, 0px) !important;
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  width: 100%;
+  height: calc(var(--front-toast-height) + var(--gap));
+  transition: height var(--duration-content-swap) var(--ease-ui);
+  overflow-anchor: none;
+}
+
+[data-notification-stacked="true"]
+  .notification-sonner-list[data-sonner-toaster] {
+  height: calc(var(--front-toast-height) + 20px);
+}
+
+[data-notification-expanded="false"] [data-notification-scroll] {
+  overflow: hidden;
+}
+
+[data-notification-expanded="true"]
+  .notification-sonner-list[data-sonner-toaster] {
+  height: var(--notification-page-height, 0px);
+}
+
+.notification-sonner-list [data-sonner-toast].notification-sonner-card {
+  --offset: var(--notification-slot-offset) !important;
+  --initial-height: var(--notification-slot-height) !important;
+  inset-inline: 4px;
+  top: 4px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--duration-content-swap) var(--ease-ui),
+    height var(--duration-content-swap) var(--ease-ui),
+    opacity var(--duration-standard) var(--ease-ui);
+}
+
+.notification-sonner-card > [data-content] {
+  transition: opacity var(--duration-quick) var(--ease-ui);
+}
+
+.notification-sonner-card[data-expanded="true"][data-front="false"]
+  > [data-content] {
+  transition-delay: var(--duration-instant);
+}
+
+.notification-sonner-card[data-expanded="false"][data-front="false"]
+  > [data-content] {
+  opacity: 0;
+}
+
+.notification-sonner-card[data-expanded="false"][data-index="3"] {
+  opacity: 0;
+}
+
+.notification-sonner-card[data-notification-exiting] {
+  pointer-events: none;
+}
+
+.notification-sonner-card[data-notification-exiting]:is(
+    [data-front="true"],
+    [data-expanded="true"]
+  ) {
+  animation: notification-card-exit var(--notification-exit-duration)
+    var(--ease-ui-exit) both;
+}
+
+@keyframes notification-card-exit {
+  from {
+    opacity: 1;
+    translate: 0 0;
+  }
+  to {
+    opacity: 0;
+    translate: 0 -8px;
+  }
+}
+
+.notification-pagination {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--duration-content-swap) var(--ease-ui),
+    opacity var(--duration-quick) var(--ease-ui);
+}
+
+.notification-pagination[data-expanded="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition-delay: 0ms, var(--duration-instant);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-notification-viewport] .notification-sonner-list[data-sonner-toaster],
+  .notification-sonner-list [data-sonner-toast].notification-sonner-card,
+  .notification-sonner-card > [data-content],
+  .notification-pagination {
+    transition: none;
+  }
+
+  .notification-sonner-card[data-notification-exiting]:is(
+      [data-front="true"],
+      [data-expanded="true"]
+    ) {
+    animation: none;
+  }
+}

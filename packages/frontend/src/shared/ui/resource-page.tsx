@@ -10,7 +10,7 @@ import { Slottable } from "@radix-ui/react-slot";
 
 import { cn } from "@/shared/lib/cn";
 import { Button } from "./button";
-import { PageHeader } from "./page-header";
+import { PageHeader, PageHeaderBack } from "./page-header";
 import { SearchField } from "./search-field";
 import {
   Tooltip,
@@ -117,18 +117,30 @@ export function ResourcePageHeader({
   title,
   description,
   actions,
+  backAction,
   appearance = "default",
 }: {
   title: string;
   description: ReactNode;
   actions?: ReactNode;
+  backAction?: ComponentProps<typeof PageHeader>["backAction"];
   appearance?: "default" | "catalog";
 }) {
-  if (appearance === "catalog")
+  if (appearance === "catalog") {
+    const heading = (
+      <h1 className="type-resource-title font-semibold">{title}</h1>
+    );
     return (
       <header className="text-resource-content grid min-w-0 gap-1 pb-6">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-          <h1 className="type-resource-title font-semibold">{title}</h1>
+          {backAction ? (
+            <div className="group/page-title flex min-w-0 items-center">
+              <PageHeaderBack action={backAction} />
+              {heading}
+            </div>
+          ) : (
+            heading
+          )}
           {actions}
         </div>
         {description && (
@@ -136,8 +148,14 @@ export function ResourcePageHeader({
         )}
       </header>
     );
+  }
   return (
-    <PageHeader title={title} description={description} actions={actions} />
+    <PageHeader
+      title={title}
+      description={description}
+      actions={actions}
+      backAction={backAction}
+    />
   );
 }
 

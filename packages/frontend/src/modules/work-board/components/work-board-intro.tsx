@@ -170,9 +170,7 @@ export function WorkBoardIntro({ active }: { active: boolean }) {
           <p className="text-content-secondary type-ui">{t("noPartners")}</p>
         ) : null}
       </section>
-      {partners.length ? (
-        <WorkBoardAvatars partners={partners} active={active} side="right" />
-      ) : null}
+      <WorkBoardAvatars active={active} />
     </header>
   );
 }

@@ -77,28 +77,33 @@ type CleanupPreview struct {
 	ExpiresAt int64 `json:"expiresAt"`
 }
 
-// Run 保存一次维护的用户可见结果。
-type Run struct {
-	// ID 运行标识
-	ID string `json:"id"`
-	// Kind 维护类型
-	Kind string `json:"kind"`
-	// StartedAt 开始时间
-	StartedAt int64 `json:"startedAt"`
-	// FinishedAt 结束时间
-	FinishedAt int64 `json:"finishedAt,omitempty"`
-	// Deleted 已删会话
+type activeRun struct {
+	// id 标识本次运行及其接纳回执。
+	id string
+	// kind 标识确认所属的清理类别。
+	kind previewKind
+}
+
+// ResourceCleanupReceipt 保存本进程内最近一次资源清理的分项回执。
+type ResourceCleanupReceipt struct {
+	// RunID 对应已接纳的清理任务。
+	RunID string `json:"runId"`
+	// Items 分项清理结果。
+	Items []CleanupResult `json:"items"`
+}
+
+// ExpiredChatCleanupReceipt 对账手动提交的过期会话清理。
+type ExpiredChatCleanupReceipt struct {
+	// RunID 对应已接纳的清理任务。
+	RunID string `json:"runId"`
+	// Deleted 是已删除的会话数。
 	Deleted int `json:"deleted"`
-	// Skipped 跳过数量
+	// Skipped 是未满足删除条件的会话数。
 	Skipped int `json:"skipped"`
-	// Failed 失败数量
+	// Failed 是删除失败的会话数。
 	Failed int `json:"failed"`
-	// Pending 待回收数
+	// Pending 是会话已删除但文件仍待回收的数量。
 	Pending int `json:"pending"`
-	// RemovedBytes 移除大小
-	RemovedBytes int64 `json:"removedBytes"`
-	// Items 分项结果
-	Items []CleanupResult `json:"items,omitempty"`
 }
 
 // CleanupResult 返回一种受管资源的实际清理结果。
@@ -111,19 +116,25 @@ type CleanupResult struct {
 	Failed bool `json:"failed"`
 }
 
-// MaintenanceState 返回当前和上次维护。
+// MaintenanceState 提供清理互斥状态与资源清理对账回执。
 type MaintenanceState struct {
-	// Current 当前维护
-	Current *Run `json:"current,omitempty"`
-	// Last 最近结果
-	Last *Run `json:"last,omitempty"`
+	// CurrentRunID 当前维护任务。
+	CurrentRunID string `json:"currentRunId,omitempty"`
+	// Cleanup 资源清理回执。
+	Cleanup *ResourceCleanupReceipt `json:"cleanup,omitempty"`
+	// ExpiredChats 手动过期会话清理回执。
+	ExpiredChats *ExpiredChatCleanupReceipt `json:"expiredChats,omitempty"`
 }
 
-// Maintenance 返回维护状态，由提交事件驱动页面刷新。
+// Maintenance 返回正在运行的维护和用于核对资源清理的回执。
 func (s *Service) Maintenance() MaintenanceState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return MaintenanceState{Current: s.current, Last: s.state.Last}
+	state := MaintenanceState{Cleanup: s.completedCleanup, ExpiredChats: s.completedExpiredChats}
+	if s.current != nil {
+		state.CurrentRunID = s.current.id
+	}
+	return state
 }
 
 func (s *Service) lookupPreview(id string, kind previewKind) (preview, bool) {
@@ -214,8 +225,8 @@ func (s *Service) StartExpiredCleanup(id string) (string, error) {
 	if !s.valid {
 		return "", status_error.StoragePolicyInvalid
 	}
-	if s.current != nil && s.current.Kind == "expired-chats" && s.currentPreviewID == id {
-		return s.current.ID, nil
+	if s.current != nil && s.current.kind == previewChats && id != "" && s.currentPreviewID == id {
+		return s.current.id, nil
 	}
 	saved, valid := s.lookupPreview(id, previewChats)
 	if !valid || saved.revision != s.state.Policy.Revision {
@@ -273,8 +284,8 @@ func (s *Service) StartCleanup(id string) (string, error) {
 	if s.closed {
 		return "", status_error.OperationCanceled
 	}
-	if s.current != nil && s.current.Kind == "resources" && s.currentPreviewID == id {
-		return s.current.ID, nil
+	if s.current != nil && s.current.kind == previewResources && s.currentPreviewID == id {
+		return s.current.id, nil
 	}
 	value, valid := s.lookupPreview(id, previewResources)
 	if !valid {
@@ -285,56 +296,48 @@ func (s *Service) StartCleanup(id string) (string, error) {
 	}
 	delete(s.previews, id)
 	s.currentPreviewID = id
-	run := s.beginRun("resources")
+	runID := s.beginRun(previewResources)
 	s.bg.Go(func() {
+		receipt := &ResourceCleanupReceipt{RunID: runID, Items: make([]CleanupResult, 0, len(value.resources))}
 		for _, kind := range value.resources {
 			if s.ctx.Err() != nil {
-				run.Skipped++
-				continue
+				break
 			}
-			result, err := s.config.Cleanup[kind].Remove(s.ctx)
-			if err != nil {
-				run.Failed++
-			}
-			run.RemovedBytes += result.Bytes
-			run.Skipped += result.Skipped
-			run.Items = append(run.Items, CleanupResult{Category: kind, RemovedBytes: result.Bytes, Failed: err != nil})
+			bytes, err := s.config.Cleanup[kind].Remove(s.ctx)
+			receipt.Items = append(receipt.Items, CleanupResult{Category: kind, RemovedBytes: bytes, Failed: err != nil})
 		}
-		s.finishRun(run, false, 0)
+		s.finishRun(receipt, nil, false, 0)
 	})
-	return run.ID, nil
+	return runID, nil
 }
 
-func (s *Service) beginRun(kind string) Run {
-	run := Run{ID: util.New(), Kind: kind, StartedAt: s.config.Now().UnixMilli()}
-	s.current = &run
+func (s *Service) beginRun(kind previewKind) string {
+	id := util.New()
+	s.current = &activeRun{id: id, kind: kind}
 	s.changed(false)
-	return run
+	return id
 }
 
-func (s *Service) finishRun(run Run, automatic bool, policyRevision uint64) {
-	run.FinishedAt = s.config.Now().UnixMilli()
+func (s *Service) finishRun(receipt *ResourceCleanupReceipt, expiredChats *ExpiredChatCleanupReceipt, automatic bool, policyRevision uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.current = nil
 	s.currentPreviewID = ""
-	next := s.state
-	next.Last = &run
-	advance := automatic && next.Policy.Enabled && next.Policy.Revision == policyRevision && s.ctx.Err() == nil
-	if advance {
-		next.Policy.NextCheckAt = s.config.Now().Add(retentionInterval).UnixMilli()
+	if receipt != nil {
+		s.completedCleanup = receipt
 	}
-	if s.valid {
+	if expiredChats != nil {
+		s.completedExpiredChats = expiredChats
+	}
+	next := s.state
+	if automatic && s.valid && next.Policy.Enabled && next.Policy.Revision == policyRevision && s.ctx.Err() == nil {
+		next.Policy.NextCheckAt = s.config.Now().Add(retentionInterval).UnixMilli()
 		if err := savePolicy(s.policyPath, next); err != nil {
-			run.Failed++
-			next.Policy = s.state.Policy
-			if advance {
-				s.retryAfter = s.config.Now().Add(time.Hour)
-			}
-		} else if advance {
+			s.retryAfter = s.config.Now().Add(time.Hour)
+		} else {
+			s.state = next
 			s.retryAfter = time.Time{}
 		}
 	}
-	s.state = next
 	s.changed(true)
 }

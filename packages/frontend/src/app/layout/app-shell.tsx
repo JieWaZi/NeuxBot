@@ -9,6 +9,7 @@ import {
   type ComponentType,
   lazy,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -18,6 +19,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  UNSAFE_DataRouterContext,
   useLocation,
   useNavigate,
   useNavigationType,
@@ -44,6 +46,7 @@ import {
   discardUnmatchedChatOpenIntent,
 } from "@/shared/api/chat-reading";
 import { workspaceAttentionOpenHref } from "../notifications/workspace-attention-navigation";
+import { RuntimeUpdateNotifications } from "../notifications/runtime-update-notifications";
 import { platform } from "@/shared/platform/provider";
 import { useMissingQueries } from "@/shared/api/use-missing-queries";
 import type {
@@ -223,6 +226,7 @@ function AppShellContent({
   const { t } = useTranslation(["team", "chat", "common", "automaticTask"]);
   const location = useLocation();
   const navigate = useNavigate();
+  const router = useContext(UNSAFE_DataRouterContext)?.router;
   const queryClient = useQueryClient();
   const navigation = resolveAppNavigation(location);
   const appScenes = useAppSceneWorkspace();
@@ -243,6 +247,22 @@ function AppShellContent({
         : undefined;
   const settingsOpen = appScenes.snapshot.activeTabId === "settings";
   const entitySelectionRequestRef = useRef(0);
+  useLayoutEffect(() => {
+    return () => {
+      // 旧的实体选择只属于发起时的路由和页签，离开后查询仍可写入缓存。
+      entitySelectionRequestRef.current += 1;
+    };
+  }, [location.key, appScenes.snapshot.activeTabId]);
+  function beginEntitySelection() {
+    const request = ++entitySelectionRequestRef.current;
+    const route = router?.state.location.key;
+    const pendingRoute = router?.state.navigation.location?.key;
+    // Router 可以在 React 提交前切换地址；晚到的查询要核对实时导航状态。
+    return () =>
+      entitySelectionRequestRef.current === request &&
+      router?.state.location.key === route &&
+      router?.state.navigation.location?.key === pendingRoute;
+  }
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [lastSettingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
@@ -539,8 +559,7 @@ function AppShellContent({
 
   const selectPartner = (partnerId: string) =>
     guardSettingsNavigation(() => {
-      const request = entitySelectionRequestRef.current + 1;
-      entitySelectionRequestRef.current = request;
+      const isCurrent = beginEntitySelection();
       setPreferences((current) => ({
         ...current,
         currentPartnerId: partnerId,
@@ -567,7 +586,7 @@ function AppShellContent({
           staleTime: 0,
         })
         .then((data) => {
-          if (entitySelectionRequestRef.current !== request) return;
+          if (!isCurrent()) return;
           const latestChatId = data.resources?.[0]?.id;
           if (
             !latestChatId &&
@@ -585,15 +604,14 @@ function AppShellContent({
           );
         })
         .catch(() => {
-          if (entitySelectionRequestRef.current !== request) return;
+          if (!isCurrent()) return;
           navigate(chatEntryHref(partnerId), { flushSync: true });
         });
     });
 
   const selectTeam = (channelId: string) =>
     guardSettingsNavigation(() => {
-      const request = entitySelectionRequestRef.current + 1;
-      entitySelectionRequestRef.current = request;
+      const isCurrent = beginEntitySelection();
       setPreferences((current) => ({
         ...current,
         currentRailKey: `team:${channelId}`,
@@ -619,7 +637,7 @@ function AppShellContent({
       return queryClient
         .fetchInfiniteQuery(teamThreadsInfiniteOptions(channelId))
         .then((data) => {
-          if (entitySelectionRequestRef.current !== request) return;
+          if (!isCurrent()) return;
           const latestThreadId = data.pages[0]?.resources?.[0]?.id;
           if (
             !latestThreadId &&
@@ -640,7 +658,7 @@ function AppShellContent({
           );
         })
         .catch(() => {
-          if (entitySelectionRequestRef.current !== request) return;
+          if (!isCurrent()) return;
           const rememberedThreadId = preferences.lastTeamThreads[channelId];
           if (
             !rememberedThreadId &&
@@ -750,6 +768,8 @@ function AppShellContent({
   const navigateModule = (moduleId: AppModuleId) => {
     if (moduleId === "settings" && settingsOpen) return;
     guardSettingsNavigation(() => {
+      // 再次点击当前模块也会覆盖尚未完成的实体选择。
+      entitySelectionRequestRef.current += 1;
       if (moduleId === "settings") {
         openSettings();
         return;
@@ -1248,7 +1268,8 @@ function AppShellContent({
         {creatingTeam ? (
           <TeamFormDialog open onOpenChange={setCreatingTeam} />
         ) : null}
-        <Toaster position="top-right" />
+        <RuntimeUpdateNotifications />
+        <Toaster />
       </div>
     </SceneChromeActionsProvider>
   );

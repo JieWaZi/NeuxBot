@@ -23,6 +23,7 @@ export function PluginCard({
   onInstall,
   onUpdate,
   pending = false,
+  headingLevel = 3,
 }: {
   entry?: PluginBrowseEntry;
   detail?: PluginDetail;
@@ -30,6 +31,7 @@ export function PluginCard({
   onInstall?: () => void;
   onUpdate?: () => void;
   pending?: boolean;
+  headingLevel?: 2 | 3;
 }) {
   const { t } = useTranslation("plugin");
   const pkg = pluginInstalledVersion(detail, wakerId)?.package;
@@ -50,7 +52,7 @@ export function PluginCard({
   return (
     <ResourceListItem
       appearance="row"
-      headingLevel={3}
+      headingLevel={headingLevel}
       title={name}
       description={description}
       descriptionLines={1}

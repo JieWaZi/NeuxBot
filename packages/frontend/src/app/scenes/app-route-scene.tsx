@@ -108,10 +108,14 @@ export function AppRouteScene({
   locationState,
   outletContext,
 }: AppRouteSceneProps) {
+  // Routes 内读取的是保留页签的地址，这里仍能核对前台 Router。
+  const currentLocation = useLocation();
+  const routeCurrent =
+    location === `${currentLocation.pathname}${currentLocation.search}`;
   return (
     <Routes location={{ ...parsePath(location), state: locationState }}>
       <Route element={<RouteSceneOutlet context={outletContext} />}>
-        <Route element={<ChatEntryPage />}>
+        <Route element={<ChatEntryPage routeCurrent={routeCurrent} />}>
           <Route index element={<></>} />
           <Route path="chat" element={<></>} />
           <Route path="chats/:chatId" element={<></>} />

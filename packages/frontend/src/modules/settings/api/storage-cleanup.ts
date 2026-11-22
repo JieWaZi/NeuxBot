@@ -18,13 +18,13 @@ export type CleanupItem = {
   complete: boolean;
 };
 export type CleanupReceipt = { category: StorageCleanupCategory } & (
-  | { state: "failed"; error?: unknown }
+  | { state: "failed"; error?: unknown; runId?: string }
   | { state: "empty" }
   | { state: "accepted"; runId: string }
   | { state: "cleared"; removedBytes: number }
 );
 
-export function isCoreCleanup(value: unknown): value is CleanupCategory {
+function isCoreCleanup(value: unknown): value is CleanupCategory {
   return value === "caches" || value === "logs" || value === "runtimes";
 }
 export function isDesktopCleanup(

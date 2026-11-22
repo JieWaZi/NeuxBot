@@ -29,7 +29,7 @@ type Service interface {
 	ReclaimPrograms(context.Context, bool) (int64, error)
 	// CommitInstallationSelection 在程序维护边界内核验并提交明确的版本选择。
 	CommitInstallationSelection(context.Context, string, string, func(models.RuntimeEnvironment, agent.CLIInstallation) error) error
-	// CheckRuntimeUpdates 显式检查官方版本，不下载程序。
+	// CheckRuntimeUpdates 检查官方版本，不下载程序。
 	CheckRuntimeUpdates(context.Context, string) error
 	// RestartRuntime 排空闲置原生进程并重新探测，活动工作明确拒绝。
 	RestartRuntime(context.Context, string) error
@@ -252,9 +252,11 @@ func (s *service) Start(ctx context.Context) error {
 	s.waitGroup.Add(1)
 	go func() {
 		defer s.waitGroup.Done()
+		probeStartedAt := time.Now().UnixMilli()
 		if err := s.RefreshAll(s.lifecycleContext); err != nil {
 			logx.Errorf("refresh runtime environments on startup failed: error=%v", err)
 		}
+		s.checkInstalledRuntimeUpdates(s.lifecycleContext, probeStartedAt)
 	}()
 	return nil
 }

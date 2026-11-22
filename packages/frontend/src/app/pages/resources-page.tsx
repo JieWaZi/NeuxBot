@@ -9,7 +9,13 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { PluginResourceCollection, PartnerPicker } from "@/modules/plugin";
+import {
+  PartnerPicker,
+  PLUGIN_CATEGORY_LABELS,
+  PluginResourceCollection,
+  pluginBrowseCategoryFromParam,
+  type PluginBrowseCategory,
+} from "@/modules/plugin";
 import { SkillResourceCollection } from "@/modules/skill";
 import { WorkflowResourceCollection } from "@/modules/workflow";
 import { ConnectorResourceCollection } from "@/modules/connector";
@@ -59,6 +65,21 @@ export function ResourcesPage() {
   skillLibraryParams.delete("skillCategory");
   skillLibraryParams.delete("source");
   const skillLibraryHref = `${wakerId ? `/wakers/${wakerId}/resources` : "/resources"}?${skillLibraryParams}`;
+  const pluginCategory =
+    category === "plugins" && !wakerId
+      ? pluginBrowseCategoryFromParam(params.get("pluginCategory"))
+      : undefined;
+  const pluginCategoryName = pluginCategory
+    ? t(PLUGIN_CATEGORY_LABELS[pluginCategory])
+    : undefined;
+  const pluginCategoryHref = (value?: PluginBrowseCategory) => {
+    const next = new URLSearchParams(params);
+    next.set("category", "plugins");
+    next.delete("source");
+    if (value) next.set("pluginCategory", value);
+    else next.delete("pluginCategory");
+    return `${location.pathname}?${next}`;
+  };
   const [installation, setInstallation] = useState<Installation | null>(null);
   const setParam = (key: string, value: string) =>
     setParams((current) => {
@@ -71,34 +92,24 @@ export function ResourcesPage() {
       return next;
     });
 
+  const searchLabel =
+    category === "plugins"
+      ? pluginCategoryName
+        ? t("categorySearch", { name: pluginCategoryName })
+        : t("searchPlugins")
+      : category === "skills"
+        ? skillSearchLabel
+        : category === "connectors"
+          ? t("connector:search")
+          : t("workflow:search");
   const searchField = (
     <SearchField
       appearance="catalog"
       size="md"
       width="full"
       value={search}
-      aria-label={
-        category === "skills"
-          ? skillSearchLabel
-          : t(
-              category === "connectors"
-                ? "connector:search"
-                : category === "workflows"
-                  ? "workflow:search"
-                  : "searchPlugins",
-            )
-      }
-      placeholder={
-        category === "skills"
-          ? skillSearchLabel
-          : t(
-              category === "connectors"
-                ? "connector:search"
-                : category === "workflows"
-                  ? "workflow:search"
-                  : "searchPlugins",
-            )
-      }
+      aria-label={searchLabel}
+      placeholder={searchLabel}
       onChange={(event) => setParam("search", event.target.value)}
     />
   );
@@ -148,48 +159,52 @@ export function ResourcesPage() {
     </Button>
   );
   const targetPartner = params.get("partner") || undefined;
+  const resourceTitle = t(
+    category === "workflows" ? "workflow:title" : category,
+  );
+  const grouping = pluginCategoryName
+    ? { label: pluginCategoryName, parentHref: pluginCategoryHref() }
+    : category === "skills" && skillCategory !== null
+      ? { label: skillCategoryName, parentHref: skillLibraryHref }
+      : undefined;
   return (
     <WakerDetailLayout
       active="resources"
-      showBreadcrumbs={
-        Boolean(wakerId) && !(category === "skills" && skillCategory !== null)
-      }
-      breadcrumbItems={[
-        { label: t(category === "workflows" ? "workflow:title" : category) },
-      ]}
+      showBreadcrumbs={Boolean(wakerId) && !grouping}
+      breadcrumbItems={[{ label: resourceTitle }]}
     >
-      {(!wakerId || (category === "skills" && skillCategory !== null)) && (
+      {(!wakerId || grouping) && (
         <SceneBreadcrumbs
-          ariaLabel={t(category === "workflows" ? "workflow:title" : category)}
+          ariaLabel={resourceTitle}
           items={
-            category === "skills" && skillCategory !== null
+            grouping
               ? [
-                  { label: t("skills"), href: skillLibraryHref },
-                  { label: skillCategoryName },
+                  { label: resourceTitle, href: grouping.parentHref },
+                  { label: grouping.label },
                 ]
-              : [
-                  {
-                    label: t(
-                      category === "workflows" ? "workflow:title" : category,
-                    ),
-                  },
-                ]
+              : [{ label: resourceTitle }]
           }
         />
       )}
-      <ResourcePageSurface appearance="catalog">
+      <ResourcePageSurface key={pluginCategory} appearance="catalog">
         <ResourcePageHeader
           appearance="catalog"
+          backAction={
+            pluginCategory
+              ? {
+                  label: t("back"),
+                  onClick: () => navigate(pluginCategoryHref()),
+                }
+              : undefined
+          }
           title={
-            category === "skills" && skillCategory !== null
-              ? skillCategory || t("skill:category.uncategorized")
-              : wakerId
-                ? t("partnerResources")
-                : t(category === "workflows" ? "workflow:title" : category)
+            grouping?.label ?? (wakerId ? t("partnerResources") : resourceTitle)
           }
           description={
             category === "plugins"
-              ? t("browseDescription")
+              ? grouping
+                ? undefined
+                : t("browseDescription")
               : category === "skills"
                 ? skillCategory === null
                   ? t("skill:libraryDescription")
@@ -243,6 +258,8 @@ export function ResourcesPage() {
             <PluginResourceCollection
               wakerId={wakerId}
               targetPartnerId={targetPartner}
+              category={pluginCategory}
+              categoryHref={pluginCategoryHref}
               searchField={searchField}
               search={search}
             />

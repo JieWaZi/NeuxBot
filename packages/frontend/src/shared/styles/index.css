@@ -7,6 +7,7 @@
 @import "./resource-catalog.css";
 @import "../assets/fonts/inter/inter.css";
 @import "./motion.css";
+@import "./notification.css";
 @import "./welcome.css";
 @import "@ncdai/react-wheel-picker/style.css" layer(components);
 @source "../../../node_modules/streamdown/dist/*.js";

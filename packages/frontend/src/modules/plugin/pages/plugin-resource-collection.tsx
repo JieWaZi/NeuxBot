@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import { ChevronRight, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/shared/ui/button";
 import {
   Tooltip,
@@ -7,7 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/shared/ui/tooltip";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { useQueryEvents } from "@/shared/api/use-query-events";
@@ -19,6 +20,7 @@ import {
   useResourcePages,
   RESOURCE_BATCH_SIZE,
 } from "@/shared/hooks/use-resource-pages";
+import { useResourceWindow } from "@/shared/hooks/use-resource-window";
 import { ResourceInfiniteScroll } from "@/shared/ui/resource-infinite-scroll";
 import { QueryRefreshError, QueryState } from "@/shared/ui/query-state";
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
@@ -35,8 +37,10 @@ import {
 } from "../model/plugin-view";
 import { usePluginBrowsePages } from "../api/use-plugin-browse";
 import {
+  pluginBrowseCategory,
   pluginBrowseGroups,
   PLUGIN_CATEGORY_LABELS,
+  type PluginBrowseCategory,
   type PluginBrowseEntry,
 } from "../model/plugin-browse";
 import { PluginCard } from "../components/plugin-card";
@@ -44,6 +48,9 @@ import {
   PluginUpdateDialog,
   PluginInstallDialog,
 } from "../components/deferred-plugin-dialogs";
+
+const GROUP_LIMIT = 8;
+const CATEGORY_BATCH_SIZE = 24;
 
 type ManageTarget = { pluginId: string; versionId?: string };
 type LoadIntent = { title: string; preview?: PluginBrowseEntry } & (
@@ -53,12 +60,16 @@ type LoadIntent = { title: string; preview?: PluginBrowseEntry } & (
 type Props = {
   wakerId?: string;
   targetPartnerId?: string;
+  category?: PluginBrowseCategory;
+  categoryHref: (category: PluginBrowseCategory) => string;
   search: string;
   searchField?: ReactNode;
 };
 export function PluginResourceCollection({
   wakerId = "",
   targetPartnerId,
+  category,
+  categoryHref,
   search,
   searchField,
 }: Props) {
@@ -67,7 +78,10 @@ export function PluginResourceCollection({
   const groupId = useId();
   const [intent, setIntent] = useState<LoadIntent | null>(null);
   const refresh = useMutation(refreshPluginCatalogMutation());
-  const browse = usePluginBrowsePages({ search, active: active && !wakerId });
+  const browse = usePluginBrowsePages({
+    search,
+    active: active && !wakerId,
+  });
   const installedKey = listWakerPluginsQueryKey(
     withLocalErrorSurface({
       path: { wakerId },
@@ -104,8 +118,32 @@ export function PluginResourceCollection({
   const details = installed.items.filter((detail) =>
     Boolean(detail.plugin?.id),
   );
-  const itemCount = wakerId ? details.length : browse.entries.length;
-  const groups = pluginBrowseGroups(browse.entries);
+  const categoryEntries = category
+    ? browse.entries.filter(
+        (entry) => pluginBrowseCategory(entry.category) === category,
+      )
+    : [];
+  const categoryWindow = useResourceWindow(
+    categoryEntries,
+    JSON.stringify([category, search]),
+    CATEGORY_BATCH_SIZE,
+  );
+  const itemCount = category
+    ? categoryEntries.length
+    : wakerId
+      ? details.length
+      : browse.entries.length;
+  const nextPageError = query.isFetchNextPageError ? query.error : undefined;
+  const seekingCategory = Boolean(
+    category && !itemCount && browse.hasNextPage && !browse.isError,
+  );
+  const { fetchNextPage, isFetching } = browse;
+  const loadedPages = browse.data?.pages.length;
+  useEffect(() => {
+    // 空的匹配批次没有可滚动的列表，继续读取直到找到该分类或确认已读完。
+    if (active && seekingCategory && !isFetching) void fetchNextPage();
+  }, [active, fetchNextPage, isFetching, loadedPages, seekingCategory]);
+  const hasCachedCategoryItems = Boolean(category && categoryWindow.hasMore);
   const manage = (entry: PluginBrowseEntry, kind: "install" | "update") => {
     const title = t(
       kind === "update"
@@ -124,6 +162,19 @@ export function PluginResourceCollection({
         target: { pluginId: entry.pluginId, versionId: entry.versionId },
       });
   };
+  const browseRows = (entries: PluginBrowseEntry[]) => (
+    <ResourceCardGrid appearance="catalog">
+      {entries.map((entry) => (
+        <PluginCard
+          key={entry.sourceKey}
+          entry={entry}
+          headingLevel={category ? 2 : 3}
+          onInstall={() => manage(entry, "install")}
+          onUpdate={() => manage(entry, "update")}
+        />
+      ))}
+    </ResourceCardGrid>
+  );
   return (
     <div className="grid min-w-0 gap-8">
       <div className="flex min-w-0 items-center gap-2">
@@ -158,10 +209,15 @@ export function PluginResourceCollection({
         {query.isPending || itemCount === 0 ? (
           <QueryState
             loadingLayout="rows"
-            pending={query.isPending}
+            pending={
+              query.isPending ||
+              Boolean(category && (isFetching || seekingCategory))
+            }
             error={query.error}
             emptyLabel={t(search ? "noResults" : "empty")}
-            onRetry={() => void query.refetch()}
+            onRetry={() =>
+              void (nextPageError ? query.fetchNextPage() : query.refetch())
+            }
           />
         ) : wakerId ? (
           <ResourceCardGrid appearance="catalog">
@@ -173,51 +229,64 @@ export function PluginResourceCollection({
               />
             ))}
           </ResourceCardGrid>
+        ) : category ? (
+          browseRows(categoryWindow.visible)
         ) : (
-          groups.map((group) => (
-            <ResourceCatalogGroup
-              key={group.category}
-              title={
-                <span id={`${groupId}-${group.category}`}>
-                  {t(PLUGIN_CATEGORY_LABELS[group.category])}
-                </span>
-              }
-              count={
-                browse.total === null || browse.hasNextPage
-                  ? undefined
-                  : group.entries.length
-              }
-              aria-labelledby={`${groupId}-${group.category}`}
-            >
-              <ResourceCardGrid appearance="catalog">
-                {group.entries.map((entry) => (
-                  <PluginCard
-                    key={entry.sourceKey}
-                    entry={entry}
-                    onInstall={() => manage(entry, "install")}
-                    onUpdate={() => manage(entry, "update")}
-                  />
-                ))}
-              </ResourceCardGrid>
-            </ResourceCatalogGroup>
-          ))
+          pluginBrowseGroups(browse.entries).map((group) => {
+            const title = t(PLUGIN_CATEGORY_LABELS[group.category]);
+            const titleId = `${groupId}-${group.category}`;
+            return (
+              <ResourceCatalogGroup
+                key={group.category}
+                title={<span id={titleId}>{title}</span>}
+                count={
+                  browse.total === null || browse.hasNextPage
+                    ? undefined
+                    : group.entries.length
+                }
+                aria-labelledby={titleId}
+                actions={
+                  group.entries.length > GROUP_LIMIT && (
+                    <Button asChild variant="catalog-ghost" size="catalog">
+                      <Link
+                        to={categoryHref(group.category)}
+                        aria-label={t("categoryMoreNamed", { name: title })}
+                      >
+                        {t("categoryMore")}
+                        <ChevronRight aria-hidden="true" />
+                      </Link>
+                    </Button>
+                  )
+                }
+              >
+                {browseRows(group.entries.slice(0, GROUP_LIMIT))}
+              </ResourceCatalogGroup>
+            );
+          })
         )}
-        {itemCount > 0 && query.isError && !query.isFetchNextPageError && (
+        {itemCount > 0 && query.isError && !nextPageError && (
           <QueryRefreshError
             error={query.error}
             pending={query.isFetching}
             onRetry={() => void query.refetch()}
           />
         )}
-        <ResourceInfiniteScroll
-          hasMore={
-            active && Boolean(query.hasNextPage) && !query.isRefetchError
-          }
-          pending={query.isFetching}
-          error={query.isFetchNextPageError ? query.error : undefined}
-          showLoadMoreButton={false}
-          onLoadMore={() => void query.fetchNextPage()}
-        />
+        {(!category || itemCount > 0) && (
+          <ResourceInfiniteScroll
+            hasMore={
+              active &&
+              (hasCachedCategoryItems ||
+                (Boolean(query.hasNextPage) && !query.isRefetchError))
+            }
+            pending={!hasCachedCategoryItems && query.isFetching}
+            error={hasCachedCategoryItems ? undefined : nextPageError}
+            showLoadMoreButton={false}
+            onLoadMore={() => {
+              if (category) categoryWindow.loadMore();
+              if (!hasCachedCategoryItems) void query.fetchNextPage();
+            }}
+          />
+        )}
       </div>
       {intent && (
         <PluginResourceActionDialog

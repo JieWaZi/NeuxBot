@@ -89501,37 +89501,80 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesStorageExpirationPreview",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/storage.ExpirationPreview"
       },
+      "GithubComJieWaZiNeuxBotServerServicesStorageExpiredChatCleanupReceipt": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Deleted 是已删除的会话数。",
+            "x-go-field-name": "Deleted"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Failed 是删除失败的会话数。",
+            "x-go-field-name": "Failed"
+          },
+          "pending": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Pending 是会话已删除但文件仍待回收的数量。",
+            "x-go-field-name": "Pending"
+          },
+          "runId": {
+            "type": "string",
+            "description": "RunID 对应已接纳的清理任务。",
+            "x-go-field-name": "RunID"
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Skipped 是未满足删除条件的会话数。",
+            "x-go-field-name": "Skipped"
+          }
+        },
+        "description": "ExpiredChatCleanupReceipt 对账手动提交的过期会话清理。",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesStorageExpiredChatCleanupReceipt",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/storage.ExpiredChatCleanupReceipt"
+      },
       "GithubComJieWaZiNeuxBotServerServicesStorageMaintenanceState": {
         "type": "object",
         "properties": {
-          "current": {
+          "cleanup": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesStorageRun"
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesStorageResourceCleanupReceipt"
               },
               {
-                "description": "Current 当前维护",
-                "x-go-field-name": "Current",
+                "description": "Cleanup 资源清理回执。",
+                "x-go-field-name": "Cleanup",
                 "x-go-star-level": 1,
-                "x-tag-json": "current,omitempty"
+                "x-tag-json": "cleanup,omitempty"
               }
             ]
           },
-          "last": {
+          "currentRunId": {
+            "type": "string",
+            "description": "CurrentRunID 当前维护任务。",
+            "x-go-field-name": "CurrentRunID",
+            "x-tag-json": "currentRunId,omitempty"
+          },
+          "expiredChats": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesStorageRun"
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesStorageExpiredChatCleanupReceipt"
               },
               {
-                "description": "Last 最近结果",
-                "x-go-field-name": "Last",
+                "description": "ExpiredChats 手动过期会话清理回执。",
+                "x-go-field-name": "ExpiredChats",
                 "x-go-star-level": 1,
-                "x-tag-json": "last,omitempty"
+                "x-tag-json": "expiredChats,omitempty"
               }
             ]
           }
         },
-        "description": "MaintenanceState 返回当前和上次维护。",
+        "description": "MaintenanceState 提供清理互斥状态与资源清理对账回执。",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesStorageMaintenanceState",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/storage.MaintenanceState"
       },
@@ -89572,75 +89615,26 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesStoragePolicy",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/storage.Policy"
       },
-      "GithubComJieWaZiNeuxBotServerServicesStorageRun": {
+      "GithubComJieWaZiNeuxBotServerServicesStorageResourceCleanupReceipt": {
         "type": "object",
         "properties": {
-          "deleted": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Deleted 已删会话",
-            "x-go-field-name": "Deleted"
-          },
-          "failed": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Failed 失败数量",
-            "x-go-field-name": "Failed"
-          },
-          "finishedAt": {
-            "type": "integer",
-            "format": "int64",
-            "description": "FinishedAt 结束时间",
-            "x-go-field-name": "FinishedAt",
-            "x-tag-json": "finishedAt,omitempty"
-          },
-          "id": {
-            "type": "string",
-            "description": "ID 运行标识",
-            "x-go-field-name": "ID"
-          },
           "items": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesStorageCleanupResult"
             },
-            "description": "Items 分项结果",
-            "x-go-field-name": "Items",
-            "x-tag-json": "items,omitempty"
+            "description": "Items 分项清理结果。",
+            "x-go-field-name": "Items"
           },
-          "kind": {
+          "runId": {
             "type": "string",
-            "description": "Kind 维护类型",
-            "x-go-field-name": "Kind"
-          },
-          "pending": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Pending 待回收数",
-            "x-go-field-name": "Pending"
-          },
-          "removedBytes": {
-            "type": "integer",
-            "format": "int64",
-            "description": "RemovedBytes 移除大小",
-            "x-go-field-name": "RemovedBytes"
-          },
-          "skipped": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Skipped 跳过数量",
-            "x-go-field-name": "Skipped"
-          },
-          "startedAt": {
-            "type": "integer",
-            "format": "int64",
-            "description": "StartedAt 开始时间",
-            "x-go-field-name": "StartedAt"
+            "description": "RunID 对应已接纳的清理任务。",
+            "x-go-field-name": "RunID"
           }
         },
-        "description": "Run 保存一次维护的用户可见结果。",
-        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesStorageRun",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/storage.Run"
+        "description": "ResourceCleanupReceipt 保存本进程内最近一次资源清理的分项回执。",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesStorageResourceCleanupReceipt",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/storage.ResourceCleanupReceipt"
       },
       "GithubComJieWaZiNeuxBotServerServicesUsageCoverage": {
         "type": "object",

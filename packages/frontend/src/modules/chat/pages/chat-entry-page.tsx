@@ -25,12 +25,17 @@ import {
   writeChatLastWakerId,
 } from "@/shared/lib/chat-navigation";
 import { Button } from "@/shared/ui/button";
-import { useScenePresentationKey } from "@/shared/workspace/app-scene-workspace";
+import {
+  useRouteSceneActive,
+  useScenePresentationKey,
+} from "@/shared/workspace/app-scene-workspace";
 
 export function ChatEntryPage({
   presentationScopeKey,
-}: { presentationScopeKey?: string } = {}) {
+  routeCurrent = true,
+}: { presentationScopeKey?: string; routeCurrent?: boolean } = {}) {
   const scopeKey = useScenePresentationKey(presentationScopeKey);
+  const sceneActive = useRouteSceneActive();
   const { chatId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedWakerId = searchParams.get("wakerId")?.trim() ?? "";
@@ -116,9 +121,9 @@ export function ChatEntryPage({
       : "";
 
   useEffect(() => {
-    if (!resolvedChatHref) return;
+    if (!routeCurrent || !sceneActive || !resolvedChatHref) return;
     navigate(resolvedChatHref, { replace: true });
-  }, [navigate, resolvedChatHref]);
+  }, [navigate, resolvedChatHref, routeCurrent, sceneActive]);
 
   // 最近对话解析与接纳后的路由只改变参数，保留同一个聊天组件及输入区。
   if (chatId)

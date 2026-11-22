@@ -1,10 +1,14 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useBrowserSurface } from "./use-browser-surface";
-import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
+import {
+  NativeOverlayPresence,
+  registerNativeOverlayRegion,
+} from "@/shared/ui/native-overlay";
 import {
   createBrowserView,
   closeBrowserView,
+  setBrowserViewBounds,
   setBrowserViewVisible,
 } from "@/shared/platform";
 
@@ -142,6 +146,68 @@ describe("browser surface overlays", () => {
       unmount();
     }
     expect(closeBrowserView).toHaveBeenCalledWith("view-1");
+  });
+
+  it("通知与 HTML 预览重叠时调整原视图，撤下后恢复完整边界", async () => {
+    let resize = () => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(100, 100, 800, 600),
+    );
+    const region = document.createElement("section");
+    let regionBounds = new DOMRect(900, 70, 300, 150);
+    region.getBoundingClientRect = () => regionBounds;
+    const unregisterRegion = registerNativeOverlayRegion(region);
+    const { unmount } = render(
+      <ScopedSurface chatId="chat-1" url="file:///project/example.html" />,
+    );
+    try {
+      await waitFor(() =>
+        expect(setBrowserViewVisible).toHaveBeenLastCalledWith("view-1", true),
+      );
+      expect(createBrowserView).toHaveBeenCalledWith(
+        "file:///project/example.html",
+        { x: 100, y: 100, width: 800, height: 600 },
+        "/project",
+        "chat-1",
+      );
+      expect(setBrowserViewBounds).not.toHaveBeenCalled();
+
+      regionBounds = new DOMRect(600, 70, 300, 150);
+      act(resize);
+      await waitFor(() =>
+        expect(setBrowserViewBounds).toHaveBeenLastCalledWith("view-1", {
+          x: 100,
+          y: 220,
+          width: 800,
+          height: 480,
+        }),
+      );
+      expect(setBrowserViewVisible).not.toHaveBeenCalledWith("view-1", false);
+      expect(closeBrowserView).not.toHaveBeenCalled();
+    } finally {
+      act(() => void unregisterRegion());
+    }
+    await waitFor(() =>
+      expect(setBrowserViewBounds).toHaveBeenLastCalledWith("view-1", {
+        x: 100,
+        y: 100,
+        width: 800,
+        height: 600,
+      }),
+    );
+    expect(createBrowserView).toHaveBeenCalledTimes(1);
+    unmount();
   });
 
   it("网页浏览从草稿转为正式对话时不重建原生视图", async () => {

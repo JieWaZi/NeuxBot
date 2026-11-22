@@ -3,13 +3,49 @@ package runtimeenvironment
 import (
 	"context"
 	"errors"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/agent/installation"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
+
+// checkInstalledRuntimeUpdates 检查本次启动已探测到的程序，同一基础智能体优先使用内置配置。
+func (s *service) checkInstalledRuntimeUpdates(ctx context.Context, probeStartedAt int64) {
+	if s.installer == nil || ctx.Err() != nil {
+		return
+	}
+	environments, err := s.environments.List(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			logx.Warnf("list installed runtimes for startup update check: error=%v", err)
+		}
+		return
+	}
+	selected := make(map[string]string)
+	for _, environment := range s.registeredEnvironments(environments) {
+		id, base := environment.RuntimeID, environment.BaseRuntimeID
+		if environment.DetectedAt < probeStartedAt || environment.Detection.ResolvedBinary == "" || !s.installer.Supported(base) {
+			continue
+		}
+		if selected[base] == "" || id == base {
+			selected[base] = id
+		}
+	}
+	var checks sync.WaitGroup
+	for _, id := range selected {
+		checks.Go(func() {
+			if err := s.CheckRuntimeUpdates(ctx, id); err != nil && ctx.Err() == nil && !errors.Is(err, status_error.RuntimeUpdateCheckBusy) {
+				logx.Warnf("check runtime update on startup: runtime_id=%s error=%v", id, err)
+			}
+		})
+	}
+	checks.Wait()
+}
 
 func applyUpdateAvailability(provider string, snapshot *RuntimeInstallationSnapshot) {
 	snapshot.UpdateAvailable = nil
@@ -25,7 +61,7 @@ func applyUpdateAvailability(provider string, snapshot *RuntimeInstallationSnaps
 	}
 }
 
-// CheckRuntimeUpdates 显式读取官方元数据并保存检查事实，不下载或执行新程序。
+// CheckRuntimeUpdates 读取官方元数据并保存检查事实，不下载或执行新程序。
 func (s *service) CheckRuntimeUpdates(ctx context.Context, runtimeID string) error {
 	environment, err := s.environments.Get(ctx, runtimeID)
 	if err != nil {
@@ -45,7 +81,7 @@ func (s *service) CheckRuntimeUpdates(ctx context.Context, runtimeID string) err
 		return status_error.RuntimeEnvironmentServiceUnavailable
 	}
 	job := s.installationJobs[base]
-	if job != nil && (job.cancel != nil || job.snapshot.CheckState == constants.RuntimeUpdateCheckStateChecking) {
+	if s.restarting[base] || job != nil && (job.cancel != nil || job.snapshot.CheckState == constants.RuntimeUpdateCheckStateChecking) {
 		s.installationMutex.Unlock()
 		return status_error.RuntimeUpdateCheckBusy
 	}
@@ -53,8 +89,14 @@ func (s *service) CheckRuntimeUpdates(ctx context.Context, runtimeID string) err
 		s.installationJobs = make(map[string]*runtimeInstallationJob)
 	}
 	if job == nil {
-		job = &runtimeInstallationJob{snapshot: previous, runtimeIDs: []string{runtimeID}}
+		job = &runtimeInstallationJob{snapshot: previous}
 		s.installationJobs[base] = job
+	}
+	// 官方版本归基础智能体，所选配置和同一基础智能体的订阅都需要对账。
+	for _, id := range []string{runtimeID, base} {
+		if !slices.Contains(job.runtimeIDs, id) {
+			job.runtimeIDs = append(job.runtimeIDs, id)
+		}
 	}
 	job.snapshot.CheckState, job.snapshot.CheckErrorCode, job.snapshot.UpdateAvailable = constants.RuntimeUpdateCheckStateChecking, "", nil
 	job.snapshot.Revision++

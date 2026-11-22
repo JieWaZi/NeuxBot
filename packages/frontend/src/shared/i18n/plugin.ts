@@ -25,6 +25,9 @@ export const pluginZh = {
   categoryResearch: "研究",
   categoryAutomation: "自动化",
   categoryOther: "其他",
+  categoryMore: "更多",
+  categoryMoreNamed: "查看{{name}}全部插件",
+  categorySearch: "在{{name}}中搜索",
 
   allPluginsTitle: "全部插件",
   allSkillsTitle: "全部技能",
@@ -231,6 +234,9 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   categoryResearch: "Research",
   categoryAutomation: "Automation",
   categoryOther: "Other",
+  categoryMore: "More",
+  categoryMoreNamed: "View all plugins in {{name}}",
+  categorySearch: "Search in {{name}}",
 
   allPluginsTitle: "All plugins",
   allSkillsTitle: "All skills",

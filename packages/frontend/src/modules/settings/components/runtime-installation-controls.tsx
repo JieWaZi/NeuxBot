@@ -1,10 +1,4 @@
-import {
-  replaceEqualDeep,
-  queryOptions,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,16 +6,15 @@ import { useTranslation } from "react-i18next";
 import {
   cancelRuntimeInstallationMutation,
   checkRuntimeUpdatesMutation,
-  getRuntimeInstallationOptions,
   installRuntimeMutation,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { registerCoreConnectionRecovery } from "@/shared/api/global-events";
 import { applicationErrorMessage } from "@/shared/api/error-presentation";
 import {
   withLocalErrorMutation,
-  withLocalErrorSurface,
   localApiErrorMessage,
 } from "@/shared/api/local-error-surface";
+import { runtimeInstallationOptions } from "@/shared/api/runtime-queries";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { Button } from "@/shared/ui/button";
 import {
@@ -35,6 +28,8 @@ import { Skeleton } from "@/shared/ui/skeleton";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { cliInstallation } from "@/shared/lib/cli-installation";
 
+export { runtimeInstallationOptions } from "@/shared/api/runtime-queries";
+
 export type RuntimeInstallationControlsProps = {
   runtimeId: string;
   baseRuntimeId?: string;
@@ -43,36 +38,6 @@ export type RuntimeInstallationControlsProps = {
   version?: string;
   onRuntimeChanged?: () => Promise<void>;
 };
-
-/** The cache owns installation facts; an older read cannot undo a newer revision. */
-function shareSnapshot(previous: unknown, next: unknown): unknown {
-  if (
-    previous &&
-    next &&
-    typeof previous === "object" &&
-    typeof next === "object" &&
-    "revision" in previous &&
-    "revision" in next &&
-    typeof previous.revision === "number" &&
-    typeof next.revision === "number" &&
-    next.revision < previous.revision
-  )
-    return previous;
-  return replaceEqualDeep(previous, next);
-}
-
-/** All observers use the generated key and the same revision-aware cache merge. */
-export function runtimeInstallationOptions(runtimeId: string) {
-  return queryOptions({
-    ...getRuntimeInstallationOptions(
-      withLocalErrorSurface({ path: { runtimeId } }),
-    ),
-    staleTime: Infinity,
-    retry: false,
-    refetchOnMount: "always",
-    structuralSharing: shareSnapshot,
-  });
-}
 
 const phaseKeys = {
   resolving: "agents.installation.preparing",

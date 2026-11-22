@@ -44,16 +44,7 @@ it("只切换表情参数，不重建头像或改写物理位置，场景隐藏�
       disconnect() {}
     },
   );
-  const partners = [
-    {
-      id: "partner",
-      name: "伙伴",
-      avatar: "bloub:plush:cercle:heureux:8b5cf6",
-    },
-  ];
-  const view = render(
-    <WorkBoardAvatars active partners={partners} side="left" />,
-  );
+  const view = render(<WorkBoardAvatars active />);
   const pieces = [
     ...view.container.querySelectorAll<HTMLElement>("[data-pile-avatar]"),
   ];
@@ -80,9 +71,7 @@ it("只切换表情参数，不重建头像或改写物理位置，场景隐藏�
     expect(avatar).toHaveAttribute("data-avatar-source", sources[index]);
     expect(avatar).not.toHaveAttribute("data-expression", expressions[index]);
   }
-  view.rerender(
-    <WorkBoardAvatars active={false} partners={partners} side="left" />,
-  );
+  view.rerender(<WorkBoardAvatars active={false} />);
   expect(view.container.querySelectorAll("[data-pile-avatar]")).toHaveLength(0);
   expect(vi.getTimerCount()).toBe(0);
 });
@@ -110,13 +99,7 @@ it("窄栏不挂载头像，宽度恢复时显示并在收窄后释放", () => {
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
-  const { container } = render(
-    <WorkBoardAvatars
-      active
-      partners={[{ id: "partner", name: "伙伴" }]}
-      side="left"
-    />,
-  );
+  const { container } = render(<WorkBoardAvatars active />);
   const avatars = () => container.querySelectorAll("[data-pile-avatar]");
   expect(avatars()).toHaveLength(0);
 
@@ -141,9 +124,7 @@ it("装饰构图包含十二个头像及三种材质", () => {
     addEventListener() {},
     removeEventListener() {},
   }));
-  const { container } = render(
-    <WorkBoardAvatars active partners={[]} side="right" />,
-  );
+  const { container } = render(<WorkBoardAvatars active />);
   const sources = [...container.querySelectorAll("[data-avatar-source]")].map(
     (node) => node.getAttribute("data-avatar-source")?.split(":")[1],
   );

@@ -7,7 +7,6 @@ import {
 } from "react";
 import {
   companionAppearance,
-  companionAvatar,
   defaultCompanionAvatar,
   encodeCompanionAppearance,
   type CompanionAppearance,
@@ -17,8 +16,6 @@ import { Avatar } from "@/shared/ui/avatar";
 import type { dropWorkBoardAvatars } from "./work-board-avatar-physics";
 import { useWorkBoardAvatarExpression } from "./work-board-avatar-expressions";
 
-type Partner = { id: string; name: string; avatar?: string };
-
 const sizes = {
   wide: "[--pile-size:clamp(3.5rem,27cqi,8.5rem)]",
   hero: "[--pile-size:clamp(3rem,23cqi,7rem)]",
@@ -27,64 +24,23 @@ const sizes = {
 } as const;
 
 // 静态落点用于减少动态效果偏好与加载失败时的完整构图。
-const slotsBySide = {
-  left: [
-    { size: "wide", x: 25, lift: 0, angle: -8 },
-    { size: "hero", x: 61, lift: 0, angle: 6 },
-    { size: "medium", x: 81, lift: 0, angle: -12 },
-    { size: "small", x: 7, lift: 0, angle: 7 },
-    { size: "small", x: 44, lift: 0, angle: -14 },
-    { size: "small", x: 30, lift: 42, angle: 15 },
-    { size: "small", x: 72, lift: 28, angle: -8 },
-    { size: "medium", x: 14, lift: 50, angle: 12 },
-    { size: "small", x: 49, lift: 60, angle: -6 },
-    { size: "small", x: 89, lift: 48, angle: 14 },
-    { size: "small", x: 36, lift: 85, angle: -10 },
-    { size: "small", x: 66, lift: 80, angle: 8 },
-  ],
-  right: [
-    { size: "hero", x: 36, lift: 0, angle: -5 },
-    { size: "wide", x: 71, lift: 0, angle: 9 },
-    { size: "medium", x: 16, lift: 0, angle: 10 },
-    { size: "small", x: 51, lift: 0, angle: -11 },
-    { size: "small", x: 91, lift: 0, angle: -9 },
-    { size: "small", x: 24, lift: 32, angle: 13 },
-    { size: "small", x: 82, lift: 40, angle: 8 },
-    { size: "medium", x: 58, lift: 55, angle: -12 },
-    { size: "small", x: 8, lift: 60, angle: 8 },
-    { size: "small", x: 35, lift: 70, angle: -6 },
-    { size: "small", x: 72, lift: 85, angle: 10 },
-    { size: "small", x: 92, lift: 75, angle: -8 },
-  ],
-} as const;
+const slots = [
+  { size: "hero", x: 36, lift: 0, angle: -5 },
+  { size: "wide", x: 71, lift: 0, angle: 9 },
+  { size: "medium", x: 16, lift: 0, angle: 10 },
+  { size: "small", x: 51, lift: 0, angle: -11 },
+  { size: "small", x: 91, lift: 0, angle: -9 },
+  { size: "small", x: 24, lift: 32, angle: 13 },
+  { size: "small", x: 82, lift: 40, angle: 8 },
+  { size: "medium", x: 58, lift: 55, angle: -12 },
+  { size: "small", x: 8, lift: 60, angle: 8 },
+  { size: "small", x: 35, lift: 70, angle: -6 },
+  { size: "small", x: 72, lift: 85, angle: 10 },
+  { size: "small", x: 92, lift: 75, angle: -8 },
+] as const;
 
-// 装饰头像只补足构图，不进入伙伴列表或任务数据。
+// 固定外观让动画可在伙伴和任务数据加载期间播放。
 const accents = [
-  {
-    material: "plush",
-    shape: "squircle",
-    expression: "heureux",
-    color: "a58bdf",
-  },
-  {
-    material: "plush",
-    shape: "galet",
-    expression: "complice",
-    color: "8cbdb0",
-  },
-  { material: "plush", shape: "nuage", expression: "reveur", color: "f3ac86" },
-  {
-    material: "particles",
-    shape: "hexagone",
-    expression: "curieux",
-    color: "91abe7",
-  },
-  {
-    material: "balloon",
-    shape: "capsule",
-    expression: "somnolent",
-    color: "e68ba7",
-  },
   {
     material: "plush",
     shape: "triangle",
@@ -110,15 +66,34 @@ const accents = [
     expression: "attentif",
     color: "abc4ef",
   },
+  {
+    material: "plush",
+    shape: "squircle",
+    expression: "heureux",
+    color: "a58bdf",
+  },
+  {
+    material: "plush",
+    shape: "galet",
+    expression: "complice",
+    color: "8cbdb0",
+  },
+  { material: "plush", shape: "nuage", expression: "reveur", color: "f3ac86" },
+  {
+    material: "particles",
+    shape: "hexagone",
+    expression: "curieux",
+    color: "91abe7",
+  },
+  {
+    material: "balloon",
+    shape: "capsule",
+    expression: "somnolent",
+    color: "e68ba7",
+  },
 ] satisfies CompanionAppearance[];
 
-type WorkBoardAvatarsProps = {
-  partners: readonly Partner[];
-  active: boolean;
-  side: keyof typeof slotsBySide;
-};
-
-export function WorkBoardAvatars({ active, ...pile }: WorkBoardAvatarsProps) {
+export function WorkBoardAvatars({ active }: { active: boolean }) {
   const slot = useRef<HTMLDivElement>(null);
   const [hasRoom, setHasRoom] = useState(false);
   if (!active && hasRoom) setHasRoom(false);
@@ -141,25 +116,16 @@ export function WorkBoardAvatars({ active, ...pile }: WorkBoardAvatarsProps) {
     <div
       ref={slot}
       aria-hidden="true"
-      data-work-board-avatars={pile.side}
+      data-work-board-avatars="right"
       className="@container/avatar-pile relative isolate hidden min-h-44 min-w-0 overflow-hidden @[52rem]/resource-page:block"
     >
-      {active && hasRoom ? <WorkBoardAvatarPile {...pile} /> : null}
+      {active && hasRoom ? <WorkBoardAvatarPile /> : null}
     </div>
   );
 }
 
-function WorkBoardAvatarPile({
-  partners,
-  side,
-}: Omit<WorkBoardAvatarsProps, "active">) {
+function WorkBoardAvatarPile() {
   const stage = useRef<HTMLDivElement>(null);
-  const leadPartners = partners
-    .slice(0, 6)
-    .filter((_, index) => index % 2 === (side === "left" ? 0 : 1));
-  const pileKey = JSON.stringify(
-    leadPartners.map(({ id, avatar }) => [id, avatar]),
-  );
 
   useEffect(() => {
     const element = stage.current;
@@ -234,27 +200,21 @@ function WorkBoardAvatarPile({
       document.removeEventListener("visibilitychange", sync);
       reducedMotion?.removeEventListener("change", sync);
     };
-  }, [pileKey]);
+  }, []);
 
   return (
-    <div key={pileKey} ref={stage} className="relative h-full min-h-44 w-full">
+    <div ref={stage} className="relative h-full min-h-44 w-full">
       <div className="work-board-avatar-light absolute inset-x-0 bottom-1 h-20" />
-      {slotsBySide[side].map(({ size, x, lift, angle }, index) => {
-        const partner = leadPartners[index];
-        const accent =
-          accents[(index + (side === "left" ? 0 : 5)) % accents.length];
+      {slots.map(({ size, x, lift, angle }, index) => {
+        const accent = accents[index % accents.length];
         return (
           <WorkBoardAvatarPiece
-            key={partner?.id ?? index}
-            name={partner?.name ?? ""}
-            avatar={companionAvatar(
-              partner
-                ? partner.avatar
-                : accent
-                  ? encodeCompanionAppearance(accent)
-                  : defaultCompanionAvatar,
-              partner?.name ?? "",
-            )}
+            key={x}
+            avatar={
+              accent
+                ? encodeCompanionAppearance(accent)
+                : defaultCompanionAvatar
+            }
             className={cn("work-board-avatar-piece absolute", sizes[size])}
             style={
               {
@@ -271,12 +231,10 @@ function WorkBoardAvatarPile({
 }
 
 function WorkBoardAvatarPiece({
-  name,
   avatar,
   className,
   style,
 }: {
-  name: string;
   avatar: string;
   className: string;
   style: CSSProperties;
@@ -290,7 +248,7 @@ function WorkBoardAvatarPiece({
     <div ref={host} data-pile-avatar className={className} style={style}>
       <Avatar
         interactive={false}
-        name={name}
+        name=""
         src={avatar}
         expression={expression}
       />

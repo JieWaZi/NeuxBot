@@ -8,11 +8,12 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import "@/shared/i18n";
 import type * as ResourceSdk from "@/shared/api/generated/sdk.gen";
-import { listPlugins } from "@/shared/api/generated/sdk.gen";
+import { browsePlugins, listPlugins } from "@/shared/api/generated/sdk.gen";
 import { ResourcesPage } from "./resources-page";
 
 const state = vi.hoisted(() => ({
@@ -20,6 +21,7 @@ const state = vi.hoisted(() => ({
   installedMode: false,
   failNextPage: false,
   pluginTotal: 21,
+  pluginCategoryAt: undefined as ((index: number) => string) | undefined,
   skillTotal: 13,
   connectorTotal: 13,
   failRefresh: false,
@@ -37,7 +39,9 @@ vi.mock("@/shared/api/use-query-events", () => ({
 }));
 vi.mock("@/shared/api/generated/sdk.gen", async (original) => {
   const sdk = await original<typeof ResourceSdk>();
-  type PageRequest = { query: { pageNum: number; pageSize: number } };
+  type PageRequest = {
+    query: { pageNum: number; pageSize: number; query?: string };
+  };
   const plugin = (id: string, componentCount = 0) => ({
     plugin: { id, name: id },
     installations: [{ wakerId: "w1", versionId: "v1" }],
@@ -65,36 +69,34 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => {
       if (state.failRefresh) throw new Error("refresh failed");
       if (state.failNextPage && query.pageNum === 2)
         throw new Error("load failed");
-      const total = state.installedMode ? 2 : state.pluginTotal;
+      const entries = state.installedMode
+        ? ["插件A", "插件B"].map((name) => ({
+            sourceKey: `catalog:${name}`,
+            pluginId: name,
+            versionId: "v1",
+            name,
+            installedCount: 1,
+            category: "coding",
+          }))
+        : Array.from({ length: state.pluginTotal }, (_, index) => ({
+            sourceKey: `catalog:${index}`,
+            catalogKey: `catalog${index}`,
+            name: `目录${index}`,
+            installedCount: 0,
+            category:
+              state.pluginCategoryAt?.(index) ??
+              (index % 2 === 0 ? "coding" : "documents"),
+          }));
+      const matches = entries.filter((entry) =>
+        entry.name.includes(query.query ?? ""),
+      );
+      const total = matches.length;
       return {
         data: {
-          entries: state.installedMode
-            ? ["插件A", "插件B"].map((name) => ({
-                sourceKey: `catalog:${name}`,
-                pluginId: name,
-                versionId: "v1",
-                name,
-                installedCount: 1,
-                category: "coding",
-              }))
-            : Array.from(
-                {
-                  length: Math.min(
-                    query.pageSize,
-                    total - (query.pageNum - 1) * query.pageSize,
-                  ),
-                },
-                (_, i) => {
-                  const index = i + (query.pageNum - 1) * query.pageSize;
-                  return {
-                    sourceKey: `catalog:${index}`,
-                    catalogKey: `catalog${index}`,
-                    name: `目录${index}`,
-                    installedCount: 0,
-                    category: index % 2 === 0 ? "coding" : "documents",
-                  };
-                },
-              ),
+          entries: matches.slice(
+            (query.pageNum - 1) * query.pageSize,
+            query.pageNum * query.pageSize,
+          ),
           totalSize: total,
           installedTotalSize: state.installedMode ? 2 : 0,
           hasMore: query.pageNum * query.pageSize < total,
@@ -210,11 +212,13 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => {
 });
 
 beforeEach(() => {
+  vi.mocked(browsePlugins).mockClear();
   vi.mocked(listPlugins).mockClear();
   state.failSecond = false;
   state.installedMode = false;
   state.failNextPage = false;
   state.pluginTotal = 21;
+  state.pluginCategoryAt = undefined;
   state.skillTotal = 13;
   state.connectorTotal = 13;
   state.failRefresh = false;
@@ -405,13 +409,13 @@ it("连接器列表不依赖插件查询，独立查询失败时显示错误", a
   ).not.toBeInTheDocument();
 });
 
-it("插件一次展示完整分类，分类数量与实际行数一致", async () => {
+it("插件概览每类最多八项，更多进入单独的分类并在分类内搜索", async () => {
   mount("");
-  await screen.findByRole("link", { name: "查看插件 目录20" });
+  await screen.findByRole("link", { name: "查看插件 目录14" });
   const coding = screen.getByRole("region", { name: "编程" });
   const documents = screen.getByRole("region", { name: "文档" });
-  expect(within(coding).getAllByRole("article")).toHaveLength(11);
-  expect(within(documents).getAllByRole("article")).toHaveLength(10);
+  expect(within(coding).getAllByRole("article")).toHaveLength(8);
+  expect(within(documents).getAllByRole("article")).toHaveLength(8);
   expect(within(coding).getByRole("heading", { level: 2 })).toHaveTextContent(
     "11",
   );
@@ -421,6 +425,79 @@ it("插件一次展示完整分类，分类数量与实际行数一致", async (
   expect(
     screen.queryByRole("button", { name: "加载更多" }),
   ).not.toBeInTheDocument();
+  fireEvent.click(
+    within(coding).getByRole("link", { name: "查看编程全部插件" }),
+  );
+  expect(screen.getByRole("heading", { level: 1, name: "编程" })).toBeVisible();
+  await screen.findByRole("link", { name: "查看插件 目录20" });
+  expect(screen.getAllByRole("article")).toHaveLength(11);
+  expect(screen.queryByRole("link", { name: "查看插件 目录1" })).toBeNull();
+  const search = screen.getByRole("searchbox", { name: "在编程中搜索" });
+  fireEvent.change(search, { target: { value: "目录1" } });
+  await screen.findByRole("link", { name: "查看插件 目录18" });
+  expect(screen.getAllByRole("article")).toHaveLength(5);
+  expect(screen.queryByRole("link", { name: "查看插件 目录19" })).toBeNull();
+  expect(
+    within(screen.getByRole("navigation", { name: "插件" })).getByRole("link", {
+      name: "插件",
+    }),
+  ).toHaveAttribute(
+    "href",
+    "/resources?category=plugins&search=%E7%9B%AE%E5%BD%951",
+  );
+  const back = screen.getByRole("button", { name: "返回资源库" });
+  back.focus();
+  expect(back).toHaveFocus();
+  await userEvent.keyboard("{Enter}");
+  expect(screen.getByRole("heading", { level: 1, name: "插件" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "返回资源库" })).toBeNull();
+  expect(screen.getByRole("searchbox", { name: "搜索插件" })).toHaveValue(
+    "目录1",
+  );
+  await screen.findByRole("link", { name: "查看插件 目录19" });
+  expect(screen.queryByRole("link", { name: /全部插件/ })).toBeNull();
+});
+
+it("插件分类保留已读的二级标题，后续批次失败时可重试", async () => {
+  state.pluginTotal = 60;
+  state.pluginCategoryAt = (index) =>
+    index >= 24 && index < 48 ? "documents" : "coding";
+  state.failNextPage = true;
+  mount("?category=plugins&pluginCategory=coding");
+
+  const first = await screen.findByRole("heading", { level: 2, name: "目录0" });
+  expect(screen.getAllByRole("article")).toHaveLength(24);
+  expect(browsePlugins).toHaveBeenCalledTimes(1);
+  await scrollNext();
+
+  expect(await screen.findByRole("alert")).toBeVisible();
+  expect(first).toBeVisible();
+  expect(screen.getAllByRole("article")).toHaveLength(24);
+
+  state.failNextPage = false;
+  fireEvent.click(screen.getByRole("button", { name: "重试" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  await scrollNext();
+  expect(
+    await screen.findByRole("heading", { level: 2, name: "目录48" }),
+  ).toBeVisible();
+  expect(screen.queryByRole("link", { name: "查看插件 目录24" })).toBeNull();
+});
+
+it("插件分类自动跳过多个无匹配批次，找到匹配项后等用户滚动", async () => {
+  state.pluginTotal = 90;
+  state.pluginCategoryAt = (index) => (index < 48 ? "documents" : "coding");
+  mount("?category=plugins&pluginCategory=coding");
+
+  expect(
+    await screen.findByRole("heading", { level: 2, name: "目录48" }),
+  ).toBeVisible();
+  expect(browsePlugins).toHaveBeenCalledTimes(3);
+  expect(screen.queryByRole("link", { name: "查看插件 目录72" })).toBeNull();
+  await scrollNext();
+  expect(
+    await screen.findByRole("link", { name: "查看插件 目录72" }),
+  ).toBeVisible();
 });
 
 it("已安装插件从详情管理，列表只呈现安装状态", async () => {
@@ -444,8 +521,8 @@ it("插件滚动查询追加，后续页失败保留已读条目并提供重试"
   state.pluginTotal = 60;
   state.failNextPage = true;
   mount("");
-  await screen.findByRole("link", { name: "查看插件 目录23" });
-  expect(screen.getAllByRole("article")).toHaveLength(24);
+  await screen.findByRole("link", { name: "查看插件 目录15" });
+  expect(screen.getAllByRole("article")).toHaveLength(16);
   expect(
     screen.queryByRole("link", { name: "查看插件 目录24" }),
   ).not.toBeInTheDocument();
@@ -459,14 +536,20 @@ it("插件滚动查询追加，后续页失败保留已读条目并提供重试"
   ).toHaveTextContent(/^编程$/);
   await scrollNext();
   await screen.findByRole("alert");
-  expect(screen.getAllByRole("article")).toHaveLength(24);
+  expect(screen.getAllByRole("article")).toHaveLength(16);
   state.failNextPage = false;
   fireEvent.click(screen.getByRole("button", { name: "重试" }));
-  await screen.findByRole("link", { name: "查看插件 目录47" });
-  expect(screen.getAllByRole("article")).toHaveLength(48);
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   await scrollNext();
-  await screen.findByRole("link", { name: "查看插件 目录59" });
-  expect(screen.getAllByRole("article")).toHaveLength(60);
+  const coding = within(screen.getByRole("region", { name: "编程" }));
+  await coding.findByRole("heading", { name: /^编程\s*30$/ });
+  expect(screen.getAllByRole("article")).toHaveLength(16);
+  fireEvent.click(coding.getByRole("link", { name: "查看编程全部插件" }));
+  await screen.findByRole("link", { name: "查看插件 目录46" });
+  expect(screen.getAllByRole("article")).toHaveLength(24);
+  await scrollNext();
+  await screen.findByRole("link", { name: "查看插件 目录58" });
+  expect(screen.getAllByRole("article")).toHaveLength(30);
   expect(
     screen.queryByRole("button", { name: "加载更多" }),
   ).not.toBeInTheDocument();

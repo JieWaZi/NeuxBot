@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -70,6 +71,30 @@ func TestStorageCorruptPolicyCannotAuthorizeWorkOrOverwriteFile(t *testing.T) {
 	}
 }
 
+func TestStoragePolicyIgnoresLegacyMaintenanceHistory(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, constants.StoragePolicyFileName)
+	legacy := []byte(`{"policy":{"enabled":true,"retentionDays":30,"revision":3,"nextCheckAt":42},"last":{"id":"legacy"}}`)
+	if err := os.WriteFile(path, legacy, 0600); err != nil {
+		t.Fatal(err)
+	}
+	service := New(t.Context(), Config{PolicyDirectory: directory})
+	t.Cleanup(service.Close)
+	if policy := service.Policy(); !policy.Valid || !policy.Enabled || policy.RetentionDays != 30 || policy.NextCheckAt != 42 {
+		t.Fatalf("legacy policy = %+v", policy)
+	}
+	if state := service.Maintenance(); state.Cleanup != nil {
+		t.Fatalf("restored legacy cleanup receipt: %+v", state.Cleanup)
+	}
+	if err := service.UpdatePolicy(false, 30, 3, ""); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := os.ReadFile(path)
+	if err != nil || bytes.Contains(updated, []byte(`"last"`)) {
+		t.Fatalf("updated policy retained history: %s, %v", updated, err)
+	}
+}
+
 type emptyRetentionCandidates struct{}
 
 func (*emptyRetentionCandidates) ListRetentionCandidates(context.Context, int64, int64, string, int) ([]controllers.ChatRetentionCandidate, error) {
@@ -119,11 +144,12 @@ func TestStorageCleanupReportsCompletedAndFailedOwners(t *testing.T) {
 	failed := make(chan struct{})
 	kinds := []constants.StorageCleanupKind{constants.StorageCleanupKindCaches, constants.StorageCleanupKindRuntimes, constants.StorageCleanupKindLogs}
 	usage := func(context.Context) (int64, error) { return 28, nil }
-	service := New(t.Context(), Config{PolicyDirectory: t.TempDir(), Cleanup: map[constants.StorageCleanupKind]CleanupOwner{
-		kinds[0]: {Preview: usage, Remove: func(context.Context) (ResourceCleanup, error) { return ResourceCleanup{Bytes: 25}, nil }},
-		kinds[1]: {Preview: usage, Remove: func(context.Context) (ResourceCleanup, error) {
+	directory := t.TempDir()
+	service := New(t.Context(), Config{PolicyDirectory: directory, Cleanup: map[constants.StorageCleanupKind]CleanupOwner{
+		kinds[0]: {Preview: usage, Remove: func(context.Context) (int64, error) { return 25, nil }},
+		kinds[1]: {Preview: usage, Remove: func(context.Context) (int64, error) {
 			close(failed)
-			return ResourceCleanup{Bytes: 3}, status_error.StorageCleanupFailed
+			return 3, status_error.StorageCleanupFailed
 		}},
 	}})
 	t.Cleanup(service.Close)
@@ -137,12 +163,16 @@ func TestStorageCleanupReportsCompletedAndFailedOwners(t *testing.T) {
 	}
 	<-failed
 	service.Close()
-	last := service.Maintenance().Last
-	if last == nil || last.ID != id || last.RemovedBytes != 28 || last.Failed != 1 || len(last.Items) != 2 {
-		t.Fatalf("result = %+v", last)
+	state := service.Maintenance()
+	result := state.Cleanup
+	if state.CurrentRunID != "" || result == nil || result.RunID != id || len(result.Items) != 2 {
+		t.Fatalf("cleanup state = %+v", state)
 	}
-	if !last.Items[1].Failed {
-		t.Fatalf("runtime failure was lost: %+v", last.Items)
+	if result.Items[0].Failed || result.Items[0].RemovedBytes != 25 || !result.Items[1].Failed || result.Items[1].RemovedBytes != 3 {
+		t.Fatalf("incorrect per-category cleanup receipts: %+v", result.Items)
+	}
+	if _, err := os.Stat(filepath.Join(directory, constants.StoragePolicyFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("resource cleanup unexpectedly wrote a policy file: %v", err)
 	}
 }
 
@@ -154,15 +184,15 @@ func TestStorageCleanupPreviewAndAdmissionKeepEachRequestDistinct(t *testing.T) 
 	service := New(t.Context(), Config{PolicyDirectory: t.TempDir(), Cleanup: map[constants.StorageCleanupKind]CleanupOwner{
 		caches: {
 			Preview: func(context.Context) (int64, error) { return 12, nil },
-			Remove: func(context.Context) (ResourceCleanup, error) {
+			Remove: func(context.Context) (int64, error) {
 				close(started)
 				<-finish
-				return ResourceCleanup{Bytes: 12}, nil
+				return 12, nil
 			},
 		},
 		programs: {
 			Preview: func(context.Context) (int64, error) { return 0, nil },
-			Remove:  func(context.Context) (ResourceCleanup, error) { return ResourceCleanup{Bytes: 2}, nil },
+			Remove:  func(context.Context) (int64, error) { return 2, nil },
 		},
 	}})
 	t.Cleanup(service.Close)
@@ -205,6 +235,71 @@ func (c *scheduledRetentionCandidates) ListRetentionCandidates(context.Context, 
 	return c.rows, nil
 }
 
+func (c *scheduledRetentionCandidates) ListRetentionCandidatesByIDs(context.Context, int64, []string) ([]controllers.ChatRetentionCandidate, error) {
+	return c.rows, nil
+}
+
+func TestManualRetentionReturnsRunScopedReceiptWithoutPersistingHistory(t *testing.T) {
+	directory := t.TempDir()
+	rows := []controllers.ChatRetentionCandidate{{ChatID: "deleted"}, {ChatID: "pending"}, {ChatID: "skipped"}, {ChatID: "failed"}}
+	started, resume := make(chan struct{}), make(chan struct{})
+	service := New(t.Context(), Config{
+		PolicyDirectory: directory,
+		Candidates:      &scheduledRetentionCandidates{rows: rows},
+		DeleteExpired: func(ctx context.Context, row controllers.ChatRetentionCandidate, _ int64, allow func(context.Context, string) (bool, error)) (bool, error) {
+			if ok, err := allow(ctx, row.ChatID); !ok || err != nil {
+				return ok, err
+			}
+			switch row.ChatID {
+			case "deleted":
+				close(started)
+				<-resume
+				return true, nil
+			case "pending":
+				return true, status_error.StorageCleanupFailed
+			case "failed":
+				return false, status_error.StorageCleanupFailed
+			default:
+				return false, nil
+			}
+		},
+	})
+	t.Cleanup(service.Close)
+	impact, err := service.PreviewExpiration(t.Context(), service.Policy().RetentionDays, []string{"deleted", "pending", "skipped", "failed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := service.StartExpiredCleanup(impact.ID)
+	if id == "" || err != nil {
+		t.Fatalf("manual retention run = %q, %v", id, err)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		close(resume)
+		t.Fatal("manual cleanup did not start")
+	}
+	active := service.Maintenance()
+	close(resume)
+	if active.CurrentRunID != id || active.ExpiredChats != nil {
+		t.Fatalf("active state = %+v", active)
+	}
+	service.bg.Wait()
+	finished := service.Maintenance()
+	want := ExpiredChatCleanupReceipt{RunID: id, Deleted: 2, Skipped: 1, Failed: 1, Pending: 1}
+	if finished.CurrentRunID != "" || finished.ExpiredChats == nil || *finished.ExpiredChats != want {
+		t.Fatalf("finished state = %+v, expired chat receipt = %+v, want %+v", finished, finished.ExpiredChats, want)
+	}
+	if _, err := os.Stat(filepath.Join(directory, constants.StoragePolicyFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("manual cleanup unexpectedly wrote a policy file: %v", err)
+	}
+	restarted := New(t.Context(), Config{PolicyDirectory: directory})
+	t.Cleanup(restarted.Close)
+	if state := restarted.Maintenance(); state.ExpiredChats != nil {
+		t.Fatalf("manual cleanup receipt survived restart: %+v", state.ExpiredChats)
+	}
+}
+
 func TestAutomaticRetentionStopsAfterPolicyChangesInsideBatch(t *testing.T) {
 	now := time.Date(2026, 11, 18, 8, 0, 0, 0, time.UTC)
 	directory := t.TempDir()
@@ -242,21 +337,22 @@ func TestAutomaticRetentionStopsAfterPolicyChangesInsideBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.Close()
-	state := service.Maintenance()
-	if count.Load() != 1 || state.Last == nil || state.Last.Deleted != 1 || state.Last.Skipped != 1 {
-		t.Fatalf("wrong final batch: %+v, attempts %d", state.Last, count.Load())
+	if state := service.Maintenance(); count.Load() != 1 || state.CurrentRunID != "" || state.ExpiredChats != nil {
+		t.Fatalf("automatic retention state = %+v, attempts = %d", state, count.Load())
 	}
 }
 
-func TestStorageReportsFailureToPersistCleanupResult(t *testing.T) {
+func TestRetentionScheduleRetriesAfterPolicyWriteFailure(t *testing.T) {
 	directory := t.TempDir()
 	service := New(t.Context(), Config{PolicyDirectory: directory})
 	t.Cleanup(service.Close)
+	policy := Policy{Enabled: true, RetentionDays: 15, Revision: 1, NextCheckAt: 1}
+	service.state.Policy = policy
 	if err := os.Mkdir(filepath.Join(directory, constants.StoragePolicyFileName), 0700); err != nil {
 		t.Fatal(err)
 	}
-	service.finishRun(Run{ID: "manual", Kind: "resources"}, false, 0)
-	if last := service.Maintenance().Last; last == nil || last.Failed != 1 {
-		t.Fatalf("state hid persistence error: %+v", last)
+	service.finishRun(nil, nil, true, policy.Revision)
+	if service.Policy().NextCheckAt != policy.NextCheckAt || service.retryAfter.IsZero() {
+		t.Fatalf("failed policy write advanced the schedule: %+v", service.Policy())
 	}
 }
