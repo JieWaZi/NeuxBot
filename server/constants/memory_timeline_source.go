@@ -10,4 +10,6 @@ const (
 	MemoryTimelineSourceManual MemoryTimelineSource = "manual"
 	// MemoryTimelineSourceMCP 表示时间线事件来自执行中的 MCP 工具调用。
 	MemoryTimelineSourceMCP MemoryTimelineSource = "mcp"
+	// MemoryTimelineSourceReview 表示时间线事件来自自动复盘。
+	MemoryTimelineSourceReview MemoryTimelineSource = "review"
 )

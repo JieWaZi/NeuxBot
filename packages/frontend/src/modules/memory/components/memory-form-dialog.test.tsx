@@ -17,8 +17,6 @@ function renderDialog(
       <MemoryFormDialog
         open
         onOpenChange={vi.fn()}
-        projectId=""
-        scope="partner"
         wakerId="waker-1"
         {...props}
       />

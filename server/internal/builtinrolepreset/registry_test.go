@@ -62,9 +62,3 @@ func TestDefinitionByWakerIDFindsPersonalAssistant(t *testing.T) {
 		t.Fatalf("role preset id = %q", definition.ID)
 	}
 }
-
-func TestDefinitionByWakerIDDoesNotProtectRemovedNova(t *testing.T) {
-	if _, exists := DefinitionByWakerID("854de954b7bd4e2cb9582fd0930dcd6d"); exists {
-		t.Fatal("removed Nova must be deletable through the ordinary waker lifecycle")
-	}
-}

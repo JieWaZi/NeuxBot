@@ -3,7 +3,6 @@ package skills
 import (
 	"strings"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -32,7 +31,7 @@ func (l *ListWakerSkills) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	imported := result[:0]
 	for _, item := range result {
-		if !item.SkillPackage.BuiltIn && (item.SkillPackage.Source == constants.SkillSourceGit || item.SkillPackage.Source == constants.SkillSourceZip) {
+		if !item.SkillPackage.BuiltIn && item.SkillPackage.Source.Independent() {
 			imported = append(imported, item)
 		}
 	}

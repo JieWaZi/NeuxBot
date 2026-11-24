@@ -9,6 +9,7 @@ func init() {
 	Router.Register(&ListMemories{})
 	Router.Register(&CreateMemory{})
 	Router.Register(&UpdateMemory{})
+	Router.Register(&SetMemoryCore{})
 	Router.Register(&DeleteMemory{})
 	Router.Register(&ListTimeline{})
 	Router.Register(&GetMemorySettings{})

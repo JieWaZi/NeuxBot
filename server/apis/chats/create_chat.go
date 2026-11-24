@@ -64,9 +64,10 @@ func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
 	intent := execution.WorkIntent{
 		ClientRequestID: strings.TrimSpace(c.Body.ClientRequestID),
 		Chat: execution.ChatTarget{Create: &execution.CreateChatSpec{
-			WakerID:          strings.TrimSpace(c.Body.WakerID),
-			ProjectID:        strings.TrimSpace(c.Body.ProjectID),
-			WorkingDirectory: strings.TrimSpace(c.Body.WorkingDirectory),
+			ProfileOptimization: c.Body.OptimizeProfile,
+			WakerID:             strings.TrimSpace(c.Body.WakerID),
+			ProjectID:           strings.TrimSpace(c.Body.ProjectID),
+			WorkingDirectory:    strings.TrimSpace(c.Body.WorkingDirectory),
 		}},
 		Input:     input,
 		Options:   options,

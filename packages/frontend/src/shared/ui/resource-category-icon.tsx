@@ -88,6 +88,12 @@ function categoryAppearance(category: string) {
   return appearances[hash % appearances.length];
 }
 
+const iconSizes = {
+  list: "size-resource-icon rounded-lg",
+  detail: "size-resource-detail-icon rounded-lg",
+  inline: "size-icon-md rounded-sm",
+};
+
 /** 资源共用十组分类标识，未分类统一使用积木图标与同一底色。 */
 export function ResourceCategoryIcon({
   category = "",
@@ -95,7 +101,7 @@ export function ResourceCategoryIcon({
   className,
 }: {
   category?: string;
-  size?: "list" | "detail";
+  size?: keyof typeof iconSizes;
   className?: string;
 }) {
   const appearance = categoryAppearance(category) ?? appearances[9];
@@ -104,14 +110,17 @@ export function ResourceCategoryIcon({
     <span
       aria-hidden="true"
       className={cn(
-        "grid shrink-0 place-items-center rounded-lg",
-        size === "detail" ? "size-resource-detail-icon" : "size-resource-icon",
+        "grid shrink-0 place-items-center",
+        iconSizes[size],
         appearance.color,
         "text-resource-category-content",
         className,
       )}
     >
-      <Icon className="size-resource-logo" strokeWidth={1.5} />
+      <Icon
+        className={size === "inline" ? "size-icon-xs" : "size-resource-logo"}
+        strokeWidth={1.5}
+      />
     </span>
   );
 }

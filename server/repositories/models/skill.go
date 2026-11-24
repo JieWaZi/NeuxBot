@@ -10,6 +10,7 @@ func init() {
 	dbhelper.RegisterTable(&SkillPackage{})
 	dbhelper.RegisterTable(&SkillVersion{})
 	dbhelper.RegisterTable(&WakerSkill{})
+	dbhelper.RegisterTable(&SkillLearningReceipt{})
 }
 
 // SkillPackage 保存一个技能包的共享元数据和来源信息。
@@ -88,6 +89,25 @@ type WakerSkill struct {
 
 // TableName 返回伙伴技能关系模型使用的表名。
 func (WakerSkill) TableName() string { return "waker_skills" }
+
+// SkillLearningReceipt 记录一次建议已经成功发布的版本，和发布结果一起提交。
+type SkillLearningReceipt struct {
+	// SuggestionID 是同一学习建议唯一的持久身份。
+	SuggestionID string `gorm:"column:suggestion_id;type:varchar(32);primaryKey"`
+	// WakerID 是来源伙伴的标识。
+	WakerID string `gorm:"column:waker_id;type:varchar(32);not null"`
+	// SkillID 是已发布的技能包标识。
+	SkillID string `gorm:"column:skill_id;type:varchar(32);not null"`
+	// VersionID 是发布时生成的不可变版本标识。
+	VersionID string `gorm:"column:version_id;type:varchar(32);not null"`
+	// SkillName 是发布时 SKILL.md 的有效声明名。
+	SkillName string `gorm:"column:skill_name;type:varchar(120);not null"`
+	// CreatedAt 是收录发布结果的 Unix 毫秒时间。
+	CreatedAt int64 `gorm:"column:created_at;autoCreateTime:milli"`
+}
+
+// TableName 返回技能建议发布回执的表名。
+func (SkillLearningReceipt) TableName() string { return "skill_learning_receipts" }
 
 // SkillWithState 是面向伙伴查询时合并技能包和启用状态的结果。
 type SkillWithState struct {

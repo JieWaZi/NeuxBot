@@ -10,6 +10,7 @@ import (
 	"github.com/shrewx/ginx/pkg/statuserror"
 	"path/filepath"
 	"slices"
+	"strconv"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
@@ -241,6 +242,24 @@ func (s *Store) ReadLatestExecutionID(ctx context.Context, id string) (string, e
 		return fact.ExecutionID, nil
 	}
 	return "", status_error.ChatLogIndexCorrupted
+}
+
+// ReadManagedResourceChanges 按索引读取正式资源变更，无需扫描聊天正文。
+func (s *Store) ReadManagedResourceChanges(ctx context.Context, chatID string, fromSequence int64) ([]agent.ConversationRecord, error) {
+	reader, err := s.openChat(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.close()
+	var positions []rowIndex
+	err = reader.index.query(func(db *gorm.DB) error {
+		return db.Where("stream = ? AND kind = "+strconv.Itoa(int(indexManagedResourceChange))+" AND cursor >= ?", reader.index.coverage.Stream, fromSequence).
+			Order("cursor").Find(&positions).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return readSelected(ctx, reader, positions)
 }
 
 func readSelected(ctx context.Context, r chatReader, rows []rowIndex) ([]agent.ConversationRecord, error) {

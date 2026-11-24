@@ -72,6 +72,11 @@ func Test(ctx context.Context, connector models.MCPConnector) Result {
 	return testConnection(ctx, connector, "", false)
 }
 
+// TestPinned 将聊天触发的诊断限定在用户确认的连接地址。
+func TestPinned(ctx context.Context, connector models.MCPConnector) Result {
+	return testConnection(ctx, connector, "", true)
+}
+
 // TestInDirectory 为包内 STDIO 使用已校验的工作目录，仍只初始化与发现工具。
 func TestInDirectory(ctx context.Context, connector models.MCPConnector, directory string) Result {
 	return testConnection(ctx, connector, directory, true)

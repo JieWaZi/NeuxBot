@@ -17,6 +17,9 @@ func (g *GetMemorySettings) Path() string { return "/settings" }
 
 // Output 返回嵌入配置。
 func (g *GetMemorySettings) Output(*gin.Context) (interface{}, error) {
+	if global.MemoryService == nil {
+		return nil, ginx.WithStack(status_error.MemoryServiceUnavailable)
+	}
 	settings, err := global.MemoryService.GetEmbeddingSettings()
 	if err != nil {
 		return nil, ginx.WithStack(err)
@@ -55,6 +58,9 @@ func (u *UpdateMemorySettings) Validate(*gin.Context) error {
 
 // Output 保存嵌入配置。
 func (u *UpdateMemorySettings) Output(ctx *gin.Context) (interface{}, error) {
+	if global.MemoryService == nil {
+		return nil, ginx.WithStack(status_error.MemoryServiceUnavailable)
+	}
 	_, err := global.MemoryService.UpdateEmbeddingSettings(ctx, internalmemory.EmbeddingSettingsUpdate{BaseURL: u.Body.BaseURL, Model: u.Body.Model, APIKey: u.Body.APIKey, ClearAPIKey: u.Body.ClearAPIKey})
 	if err != nil {
 		return nil, ginx.WithStack(err)
@@ -71,6 +77,9 @@ func (t *TestMemoryEmbedding) Path() string { return "/settings/test" }
 
 // Output 探测嵌入服务。
 func (t *TestMemoryEmbedding) Output(ctx *gin.Context) (interface{}, error) {
+	if global.MemoryService == nil {
+		return nil, ginx.WithStack(status_error.MemoryServiceUnavailable)
+	}
 	if err := global.MemoryService.ProbeEmbedding(ctx); err != nil {
 		return nil, ginx.WithStack(err)
 	}

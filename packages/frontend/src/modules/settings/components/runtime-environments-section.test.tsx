@@ -47,6 +47,9 @@ vi.mock("./runtime-authentication-controls", () => ({
     queryFn: async () => ({ state: "idle" }),
   }),
 }));
+vi.mock("./partner-review-settings", () => ({
+  PartnerReviewSettings: () => null,
+}));
 vi.mock("./runtime-program-removal", () => ({
   RuntimeProgramRemoval: () => null,
 }));

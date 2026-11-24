@@ -6,23 +6,23 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
 // ConfigSource 在每次操作时提供当前 Embedding 配置，使记忆设置变更即时生效。
 type ConfigSource func(ctx context.Context) (EmbeddingConfig, error)
 
-// ScopeExists 判断 memory.db 中的范围属主是否仍存在于主业务库。
-type ScopeExists func(ctx context.Context, scope constants.MemoryScope, scopeID string) (bool, error)
+// PartnerExists 判断记忆属主是否仍存在于主业务库。
+type PartnerExists func(ctx context.Context, partnerID string) (bool, error)
 
 // ServiceConfig 声明构造 Memory Service 所需的外部依赖。
 type ServiceConfig struct {
@@ -95,28 +95,10 @@ func validateContent(content string) (string, error) {
 	if normalized == "" {
 		return "", status_error.BadRequest
 	}
-	if len([]rune(normalized)) > constants.MemoryContentMaxRunes {
+	if !utf8.ValidString(normalized) || utf8.RuneCountInString(normalized) > constants.MemoryContentMaxRunes {
 		return "", status_error.BadRequest
 	}
 	return normalized, nil
-}
-
-// resolveScopeID 把请求范围解析为当前上下文的具体范围标识。
-func resolveScopeID(scope constants.MemoryScope, mc Context) (string, error) {
-	switch scope {
-	case constants.MemoryScopePartner:
-		if mc.PartnerID == "" {
-			return "", status_error.BadRequest
-		}
-		return mc.PartnerID, nil
-	case constants.MemoryScopeProject:
-		if mc.ProjectID == "" {
-			return "", status_error.MemoryProjectNotBound
-		}
-		return mc.ProjectID, nil
-	default:
-		return "", status_error.BadRequest
-	}
 }
 
 // embeddingState 是一次操作解析出的 Embedding 可用状态。
@@ -170,7 +152,7 @@ func (s *Service) resolveEmbedding(ctx context.Context) (embeddingState, error) 
 }
 
 // checkDimensions 校验嵌入向量维度与已建索引一致，不一致时拒绝混写索引。
-func (s *Service) checkDimensions(op string, vector []float32) error {
+func (s *Service) checkDimensions(vector []float32) error {
 	storedDimensions, exists, err := s.store.getMeta(metaKeyEmbeddingDimensions)
 	if err != nil || !exists {
 		return err
@@ -185,14 +167,8 @@ func (s *Service) checkDimensions(op string, vector []float32) error {
 	return nil
 }
 
-// Write 保存已明确提供的结构化记忆，
-// 叠加 exact hash 去重；写入、关键词索引、向量与历史处于同一事务。
-func (s *Service) Write(
-	ctx context.Context,
-	mc Context,
-	scope constants.MemoryScope,
-	content string,
-) (WriteResult, error) {
+// Write 保存一条当前伙伴的普通记忆，正文完全匹配时返回原条目。
+func (s *Service) Write(ctx context.Context, mc Context, content string) (WriteResult, error) {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
 	if replayed, err := s.replayAgentCommand(ctx); err != nil {
@@ -201,96 +177,61 @@ func (s *Service) Write(
 		command := ctx.Value(agentCommandKey{}).(*agentCommand)
 		return WriteResult{Memory: Memory{ID: command.memoryID}, Duplicate: command.duplicate}, nil
 	}
-
+	if strings.TrimSpace(mc.PartnerID) == "" {
+		return WriteResult{}, status_error.BadRequest
+	}
 	normalized, err := validateContent(content)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	scopeID, err := resolveScopeID(scope, mc)
+	hash := contentHash(normalized)
+	source := explicitSource(mc)
+	existing, found, err := findByHash(s.store.db, mc.PartnerID, hash)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	hash := contentHash(normalized)
-	if existing, found, err := s.store.findByHash(scope, scopeID, hash); err != nil {
-		return WriteResult{}, err
-	} else if found {
+	if found {
 		if command, ok := ctx.Value(agentCommandKey{}).(*agentCommand); ok {
-			command.memoryID = existing.ID
-			command.duplicate = true
-			if err := s.store.withTx(ctx, func(*sql.Tx) error { return nil }); err != nil {
-				return WriteResult{}, err
+			command.memoryID, command.duplicate = existing.ID, true
+		}
+		if err := s.store.withTx(ctx, func(tx *sql.Tx) error {
+			if source != constants.MemoryTimelineSourceManual {
+				return nil
 			}
+			if err := allowReviewHash(tx, mc.PartnerID, hash); err != nil {
+				return err
+			}
+			if existing.Origin == constants.MemoryTimelineSourceReview && existing.control != memoryControlUser {
+				existing.control = memoryControlUser
+				existing.Revision++
+				return s.store.updateMemory(tx, *existing)
+			}
+			return nil
+		}); err != nil {
+			return WriteResult{}, err
 		}
 		return WriteResult{Memory: *existing, Duplicate: true}, nil
 	}
-
 	state, err := s.resolveEmbedding(ctx)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	var vector []float32
-	if state.embedder != nil && !state.conflict {
-		vector, err = state.embedder.Embed(ctx, normalized, constants.MemoryEmbeddingActionAdd)
-		if err != nil {
-			return WriteResult{}, err
-		}
-		if err := s.checkDimensions("write", vector); err != nil {
-			return WriteResult{}, err
-		}
+	vector, err := s.embedMemory(ctx, state, normalized, constants.MemoryEmbeddingActionAdd)
+	if err != nil {
+		return WriteResult{}, err
 	}
-
 	now := time.Now().UnixMilli()
-	memory := Memory{
-		ID:          util.New(),
-		Scope:       scope,
-		ScopeID:     scopeID,
-		Data:        normalized,
-		Hash:        hash,
-		SourceRunID: mc.RunID,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-	}
+	memory := Memory{ID: util.New(), PartnerID: mc.PartnerID, Data: normalized, Hash: hash,
+		SourceRunID: mc.RunID, CreatedAt: now, UpdatedAt: now, Revision: 1, Origin: source, control: memoryControlUser}
 	agentMemoryID(ctx, memory.ID)
 	err = s.store.withTx(ctx, func(tx *sql.Tx) error {
-		if vector != nil {
-			if err := s.vectors.ensureVecTable(tx, len(vector)); err != nil {
-				return err
-			}
-			if err := s.store.setMeta(tx, metaKeyEmbeddingModel, state.config.Model); err != nil {
-				return err
-			}
-			if err := s.store.setMeta(tx, metaKeyEmbeddingIndexBaseURL, strings.TrimRight(state.config.BaseURL, "/")); err != nil {
-				return err
-			}
-			if err := s.store.setMeta(
-				tx,
-				metaKeyEmbeddingDimensions,
-				strconv.Itoa(len(vector)),
-			); err != nil {
+		if source == constants.MemoryTimelineSourceManual {
+			if err := allowReviewHash(tx, mc.PartnerID, hash); err != nil {
 				return err
 			}
 		}
-		if err := s.store.insertMemory(tx, &memory); err != nil {
-			return err
-		}
-		if err := s.store.upsertFTS(tx, memory.ID, memory.Data); err != nil {
-			return err
-		}
-		if vector != nil {
-			if err := s.vectors.insertVector(tx, memory.ID, vector, memory.Scope, memory.ScopeID); err != nil {
-				return err
-			}
-		}
-		return s.store.insertHistory(tx, HistoryEntry{
-			ID:          util.New(),
-			MemoryID:    memory.ID,
-			Scope:       memory.Scope,
-			ScopeID:     memory.ScopeID,
-			NewMemory:   memory.Data,
-			Event:       constants.MemoryEventAdd,
-			CreatedAt:   memory.CreatedAt,
-			UpdatedAt:   memory.UpdatedAt,
-			SourceRunID: memory.SourceRunID,
+		return s.applyMemoryContent(tx, &memory, vector, state.config, HistoryEntry{
+			Event: constants.MemoryEventAdd, Source: source, SourceRunID: mc.RunID,
 		})
 	})
 	if err != nil {
@@ -299,146 +240,65 @@ func (s *Service) Write(
 	return WriteResult{Memory: memory}, nil
 }
 
-// searchLeg 是一次检索要覆盖的一个范围分支。
-type searchLeg struct {
-	// scope 是分支范围。
-	scope constants.MemoryScope
-	// scopeID 是分支范围标识。
-	scopeID string
-}
-
-// resolveLegs 把检索范围展开为具体分支；scope=all 合并伙伴与项目两个分支。
-func resolveLegs(scope constants.MemoryScope, mc Context) ([]searchLeg, error) {
-	switch scope {
-	case constants.MemoryScopePartner, constants.MemoryScopeProject:
-		scopeID, err := resolveScopeID(scope, mc)
-		if err != nil {
-			return nil, err
-		}
-		return []searchLeg{{scope: scope, scopeID: scopeID}}, nil
-	case constants.MemoryScopeAll, constants.MemoryScopeUnspecified:
-		legs := []searchLeg{}
-		if mc.PartnerID != "" {
-			legs = append(legs, searchLeg{scope: constants.MemoryScopePartner, scopeID: mc.PartnerID})
-		}
-		if mc.ProjectID != "" {
-			legs = append(legs, searchLeg{scope: constants.MemoryScopeProject, scopeID: mc.ProjectID})
-		}
-		if len(legs) == 0 {
-			return nil, status_error.BadRequest
-		}
-		return legs, nil
-	default:
-		return nil, status_error.BadRequest
-	}
-}
-
-// Search 执行范围内的记忆检索。
-func (s *Service) Search(
-	ctx context.Context,
-	mc Context,
-	query string,
-	scope constants.MemoryScope,
-	topK int,
-) (SearchResult, error) {
+// Search 检索当前执行的伙伴记忆。
+func (s *Service) Search(ctx context.Context, mc Context, query string, topK int) (SearchResult, error) {
 	normalized := strings.TrimSpace(query)
-	if normalized == "" {
+	if normalized == "" || strings.TrimSpace(mc.PartnerID) == "" {
 		return SearchResult{}, status_error.BadRequest
 	}
 	if topK <= 0 {
 		topK = constants.MemorySearchDefaultTopK
 	}
-	if topK > constants.MemorySearchMaxTopK {
-		topK = constants.MemorySearchMaxTopK
-	}
-	legs, err := resolveLegs(scope, mc)
-	if err != nil {
-		return SearchResult{}, err
-	}
+	topK = min(topK, constants.MemorySearchMaxTopK)
 	state, err := s.resolveEmbedding(ctx)
 	if err != nil {
 		return SearchResult{}, err
 	}
-
-	results := []ScoredMemory{}
 	if state.embedder != nil && state.ready {
-		vector, err := state.embedder.Embed(ctx, normalized, constants.MemoryEmbeddingActionSearch)
+		vector, err := s.embedMemory(ctx, state, normalized, constants.MemoryEmbeddingActionSearch)
 		if err != nil {
 			return SearchResult{}, err
 		}
-		if err := s.checkDimensions("search", vector); err != nil {
-			return SearchResult{}, err
-		}
-		for _, leg := range legs {
-			legResults, err := s.vectors.search(ctx, vector, topK, leg.scope, leg.scopeID)
-			if err != nil {
-				return SearchResult{}, err
-			}
-			for _, item := range legResults {
-				if item.Score < constants.MemorySearchScoreThreshold {
-					continue
-				}
-				results = append(results, item)
-			}
-		}
-		return SearchResult{
-			Results: mergeTopK(results, topK),
-			Mode:    constants.MemoryRetrievalModeSemantic,
-		}, nil
-	}
-
-	for _, leg := range legs {
-		legResults, err := s.keyword.search(ctx, normalized, topK, leg.scope, leg.scopeID)
+		results, err := s.vectors.search(ctx, vector, topK, mc.PartnerID)
 		if err != nil {
 			return SearchResult{}, err
 		}
-		results = append(results, legResults...)
+		eligible := results[:0]
+		for _, item := range results {
+			if item.Score >= constants.MemorySearchScoreThreshold {
+				eligible = append(eligible, item)
+			}
+		}
+		return SearchResult{Results: eligible, Mode: constants.MemoryRetrievalModeSemantic}, nil
 	}
-	return SearchResult{
-		Results:  mergeTopK(results, topK),
-		Mode:     constants.MemoryRetrievalModeKeyword,
-		Conflict: state.conflict,
-	}, nil
+	results, err := s.keyword.search(ctx, normalized, topK, mc.PartnerID)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	return SearchResult{Results: results, Mode: constants.MemoryRetrievalModeKeyword, Conflict: state.conflict}, nil
 }
 
-// mergeTopK 按相似度降序合并各范围分支并截取前 topK 条。
-func mergeTopK(results []ScoredMemory, topK int) []ScoredMemory {
-	sort.SliceStable(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
-	if len(results) > topK {
-		results = results[:topK]
-	}
-	return results
-}
-
-// getAccessibleMemory 读取记忆并做范围权限校验；越权统一返回 NotFound，避免泄露其他范围的存在性。
-func (s *Service) getAccessibleMemory(memoryID string, mc Context) (*Memory, error) {
-	memory, exists, err := s.store.getMemory(memoryID)
+// getAccessibleMemory 对未知条目和其他伙伴的条目统一返回找不到。
+func getAccessibleMemory(queryer queryRower, memoryID, partnerID string) (*Memory, error) {
+	memory, exists, err := getMemory(queryer, memoryID)
 	if err != nil {
 		return nil, err
 	}
-	if !exists || !mc.Accessible(memory.Scope, memory.ScopeID) {
+	if !exists || partnerID == "" || memory.PartnerID != partnerID {
 		return nil, status_error.MemoryNotFound
 	}
 	return memory, nil
 }
 
-// Update 更新指定记忆：重新嵌入、更新内容、记录 UPDATE history；不能改变 scope/scope_id。
-func (s *Service) Update(
-	ctx context.Context,
-	mc Context,
-	memoryID string,
-	content string,
-) error {
+// Update 原子更新正文、变更历史、索引及可能受影响的核心快照。
+func (s *Service) Update(ctx context.Context, mc Context, memoryID, content string) error {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
 	if replayed, err := s.replayAgentCommand(ctx); err != nil || replayed {
 		return err
 	}
 	agentMemoryID(ctx, memoryID)
-
-	memory, err := s.getAccessibleMemory(memoryID, mc)
+	memory, err := getAccessibleMemory(s.store.db, memoryID, mc.PartnerID)
 	if err != nil {
 		return err
 	}
@@ -447,77 +307,38 @@ func (s *Service) Update(
 		return err
 	}
 	newHash := contentHash(normalized)
-	if existing, found, err := s.store.findByHash(memory.Scope, memory.ScopeID, newHash); err != nil {
+	if existing, found, err := findByHash(s.store.db, mc.PartnerID, newHash); err != nil {
 		return err
 	} else if found && existing.ID != memory.ID {
 		return status_error.BadRequest
 	}
-
 	state, err := s.resolveEmbedding(ctx)
 	if err != nil {
 		return err
 	}
-	var vector []float32
-	if state.embedder != nil && !state.conflict {
-		vector, err = state.embedder.Embed(ctx, normalized, constants.MemoryEmbeddingActionUpdate)
-		if err != nil {
-			return err
-		}
-		if err := s.checkDimensions("update", vector); err != nil {
-			return err
-		}
+	vector, err := s.embedMemory(ctx, state, normalized, constants.MemoryEmbeddingActionUpdate)
+	if err != nil {
+		return err
 	}
-
 	previous := memory.Data
-	memory.Data = normalized
-	memory.Hash = newHash
-	memory.SourceRunID = mc.RunID
+	memory.Data, memory.Hash, memory.SourceRunID = normalized, newHash, mc.RunID
 	memory.UpdatedAt = time.Now().UnixMilli()
+	memory.Revision++
+	memory.control = memoryControlUser
 	return s.store.withTx(ctx, func(tx *sql.Tx) error {
-		if err := s.store.updateMemory(tx, *memory); err != nil {
+		if err := s.applyMemoryContent(tx, memory, vector, state.config, HistoryEntry{
+			Event: constants.MemoryEventUpdate, OldMemory: previous, Source: explicitSource(mc), SourceRunID: mc.RunID,
+		}); err != nil {
 			return err
 		}
-		if err := s.store.upsertFTS(tx, memory.ID, memory.Data); err != nil {
-			return err
+		if memory.Core && previous != normalized {
+			return updateCoreSnapshot(tx, mc.PartnerID)
 		}
-		if vector != nil {
-			if err := s.vectors.ensureVecTable(tx, len(vector)); err != nil {
-				return err
-			}
-			if err := s.store.setMeta(tx, metaKeyEmbeddingModel, state.config.Model); err != nil {
-				return err
-			}
-			if err := s.store.setMeta(tx, metaKeyEmbeddingIndexBaseURL, strings.TrimRight(state.config.BaseURL, "/")); err != nil {
-				return err
-			}
-			if err := s.store.setMeta(tx, metaKeyEmbeddingDimensions, strconv.Itoa(len(vector))); err != nil {
-				return err
-			}
-			if err := s.vectors.deleteVector(tx, memory.ID); err != nil {
-				return err
-			}
-			if err := s.vectors.insertVector(tx, memory.ID, vector, memory.Scope, memory.ScopeID); err != nil {
-				return err
-			}
-		} else if err := s.vectors.deleteVector(tx, memory.ID); err != nil {
-			return err
-		}
-		return s.store.insertHistory(tx, HistoryEntry{
-			ID:          util.New(),
-			MemoryID:    memory.ID,
-			Scope:       memory.Scope,
-			ScopeID:     memory.ScopeID,
-			OldMemory:   previous,
-			NewMemory:   memory.Data,
-			Event:       constants.MemoryEventUpdate,
-			CreatedAt:   memory.CreatedAt,
-			UpdatedAt:   memory.UpdatedAt,
-			SourceRunID: mc.RunID,
-		})
+		return nil
 	})
 }
 
-// Forget 遗忘指定记忆：物理删除当前记忆与向量，保留 DELETE 历史。
+// Forget 删除当前知识和索引，保存变更历史并抑制自动重新添加同文事实。
 func (s *Service) Forget(ctx context.Context, mc Context, memoryID string) error {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -525,35 +346,105 @@ func (s *Service) Forget(ctx context.Context, mc Context, memoryID string) error
 		return err
 	}
 	agentMemoryID(ctx, memoryID)
-
-	memory, err := s.getAccessibleMemory(memoryID, mc)
+	memory, err := getAccessibleMemory(s.store.db, memoryID, mc.PartnerID)
 	if err != nil {
 		return err
 	}
-	now := time.Now().UnixMilli()
 	return s.store.withTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO partner_forgotten_memory (partner_id, hash) VALUES (?, ?) ON CONFLICT DO NOTHING`, mc.PartnerID, memory.Hash); err != nil {
+			return status_error.DatabaseError
+		}
+		if err := s.applyMemoryForget(tx, *memory, HistoryEntry{Source: explicitSource(mc), SourceRunID: mc.RunID}); err != nil {
+			return err
+		}
+		if memory.Core {
+			return updateCoreSnapshot(tx, mc.PartnerID)
+		}
+		return nil
+	})
+}
+
+func explicitSource(mc Context) constants.MemoryTimelineSource {
+	if mc.RunID != "" {
+		return constants.MemoryTimelineSourceMCP
+	}
+	return constants.MemoryTimelineSourceManual
+}
+
+func allowReviewHash(tx *sql.Tx, partnerID, hash string) error {
+	if _, err := tx.Exec(`DELETE FROM partner_forgotten_memory WHERE partner_id = ? AND hash = ?`, partnerID, hash); err != nil {
+		return status_error.DatabaseError
+	}
+	return nil
+}
+
+func (s *Service) embedMemory(ctx context.Context, state embeddingState, content string, action constants.MemoryEmbeddingAction) ([]float32, error) {
+	if state.embedder == nil || state.conflict {
+		return nil, nil
+	}
+	vector, err := state.embedder.Embed(ctx, content, action)
+	if err != nil {
+		return nil, err
+	}
+	if len(vector) == 0 {
+		return nil, status_error.MemoryEmbeddingResponseInvalid
+	}
+	return vector, s.checkDimensions(vector)
+}
+
+func (s *Service) applyMemoryContent(tx *sql.Tx, memory *Memory, vector []float32, config EmbeddingConfig, history HistoryEntry) error {
+	if history.Event == constants.MemoryEventAdd {
+		if err := s.store.insertMemory(tx, memory); err != nil {
+			return err
+		}
+	} else {
+		if err := s.store.updateMemory(tx, *memory); err != nil {
+			return err
+		}
 		if err := s.vectors.deleteVector(tx, memory.ID); err != nil {
 			return err
 		}
-		if err := s.store.deleteFTS(tx, memory.ID); err != nil {
+	}
+	if err := s.store.upsertFTS(tx, memory.ID, memory.Data); err != nil {
+		return err
+	}
+	if vector != nil {
+		if err := s.vectors.ensureVecTable(tx, len(vector)); err != nil {
 			return err
 		}
-		if err := s.store.deleteMemory(tx, memory.ID); err != nil {
+		for _, item := range []struct {
+			// key 是已验证的嵌入配置元数据标识。
+			key string
+			// value 是与本次实际写入向量匹配的配置值。
+			value string
+		}{{metaKeyEmbeddingModel, config.Model}, {metaKeyEmbeddingIndexBaseURL, strings.TrimRight(config.BaseURL, "/")}, {metaKeyEmbeddingDimensions, strconv.Itoa(len(vector))}} {
+			if err := s.store.setMeta(tx, item.key, item.value); err != nil {
+				return err
+			}
+		}
+		if err := s.vectors.insertVector(tx, memory.ID, vector, memory.PartnerID); err != nil {
 			return err
 		}
-		return s.store.insertHistory(tx, HistoryEntry{
-			ID:          util.New(),
-			MemoryID:    memory.ID,
-			Scope:       memory.Scope,
-			ScopeID:     memory.ScopeID,
-			OldMemory:   memory.Data,
-			Event:       constants.MemoryEventDelete,
-			CreatedAt:   memory.CreatedAt,
-			UpdatedAt:   now,
-			IsDeleted:   true,
-			SourceRunID: mc.RunID,
-		})
-	})
+	}
+	history.ID, history.MemoryID, history.PartnerID = util.New(), memory.ID, memory.PartnerID
+	history.NewMemory, history.CreatedAt, history.UpdatedAt = memory.Data, memory.CreatedAt, memory.UpdatedAt
+	return s.store.insertHistory(tx, history)
+}
+
+func (s *Service) applyMemoryForget(tx *sql.Tx, memory Memory, history HistoryEntry) error {
+	if err := s.vectors.deleteVector(tx, memory.ID); err != nil {
+		return err
+	}
+	if err := s.store.deleteFTS(tx, memory.ID); err != nil {
+		return err
+	}
+	if err := s.store.deleteMemory(tx, memory.ID); err != nil {
+		return err
+	}
+	history.ID, history.MemoryID, history.PartnerID = util.New(), memory.ID, memory.PartnerID
+	history.OldMemory, history.CreatedAt, history.UpdatedAt = memory.Data, memory.CreatedAt, time.Now().UnixMilli()
+	history.Event, history.IsDeleted = constants.MemoryEventDelete, true
+	return s.store.insertHistory(tx, history)
 }
 
 // reindexBatchSize 是重建索引时单次嵌入请求的批量大小。
@@ -632,7 +523,7 @@ func (s *Service) Reindex(ctx context.Context) (ReindexResult, error) {
 			return err
 		}
 		for index, memory := range memories {
-			if err := s.vectors.insertVector(tx, memory.ID, vectors[index], memory.Scope, memory.ScopeID); err != nil {
+			if err := s.vectors.insertVector(tx, memory.ID, vectors[index], memory.PartnerID); err != nil {
 				return err
 			}
 		}
@@ -719,64 +610,53 @@ func (s *Service) ProbeEmbedding(ctx context.Context) error {
 	return err
 }
 
-// DeleteScope 级联删除指定范围的全部记忆、向量、关键词索引与历史。
-//
-// 用于伙伴或项目删除场景；级联删除连同 history 一起清除（属主已不存在），
-// 属主不存在后清理其不可再访问的内容与变更记录。
-func (s *Service) DeleteScope(ctx context.Context, scope constants.MemoryScope, scopeID string) error {
+// DeletePartner 清除伙伴的记忆、索引、历史及命令回执。
+func (s *Service) DeletePartner(ctx context.Context, partnerID string) error {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
-
-	if scope != constants.MemoryScopePartner && scope != constants.MemoryScopeProject {
-		return status_error.BadRequest
-	}
-	if strings.TrimSpace(scopeID) == "" {
+	if strings.TrimSpace(partnerID) == "" {
 		return status_error.BadRequest
 	}
 	return s.store.withTx(ctx, func(tx *sql.Tx) error {
-		if err := s.vectors.deleteScopeVectors(tx, scope, scopeID); err != nil {
+		if err := s.vectors.deletePartnerVectors(tx, partnerID); err != nil {
 			return err
 		}
-		if err := s.store.deleteScopeFTS(tx, scope, scopeID); err != nil {
+		if err := s.store.deletePartnerFTS(tx, partnerID); err != nil {
 			return err
 		}
-		return s.store.deleteScopeData(tx, scope, scopeID)
+		return s.store.deletePartnerData(tx, partnerID)
 	})
 }
 
-// CleanupOrphanScopes 重试清理主业务库中已不存在的伙伴或项目记忆。
-//
-// 删除 API 与 memory.db 不共享事务；若即时清理失败，残留范围会在下次启动时
-// 被本方法重新发现并清除，避免仅记录日志后永久遗留。
-func (s *Service) CleanupOrphanScopes(ctx context.Context, exists ScopeExists) error {
+// CleanupOrphanPartners 重试清理已不存在伙伴的记忆数据。
+func (s *Service) CleanupOrphanPartners(ctx context.Context, exists PartnerExists) error {
 	if exists == nil {
 		return status_error.BadRequest
 	}
-	owners, err := s.store.listScopeOwners(ctx)
+	owners, err := s.store.listPartnerOwners(ctx)
 	if err != nil {
 		return err
 	}
 	for _, owner := range owners {
-		present, err := exists(ctx, owner.Scope, owner.ScopeID)
+		present, err := exists(ctx, owner)
 		if err != nil {
 			return err
 		}
-		if present {
-			continue
-		}
-		if err := s.DeleteScope(ctx, owner.Scope, owner.ScopeID); err != nil {
-			return err
+		if !present {
+			if err := s.DeletePartner(ctx, owner); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-// ListMemories 返回指定伙伴或项目范围内的一页当前记忆。
+// ListMemories 返回伙伴当前记忆。
 func (s *Service) ListMemories(ctx context.Context, filter ListFilter) (MemoryPage, error) {
 	return s.store.listMemoryPage(ctx, normalizeListFilter(filter))
 }
 
-// ListTimeline 返回指定伙伴或项目范围内的一页追加式变更事件。
+// ListTimeline 返回伙伴记忆的追加式变更事件。
 func (s *Service) ListTimeline(ctx context.Context, filter ListFilter) (TimelinePage, error) {
 	return s.store.listTimelinePage(ctx, normalizeListFilter(filter))
 }

@@ -18,7 +18,7 @@ const state = vi.hoisted(() => ({
   version: "v1",
   packageStatus: "available" as string | undefined,
 }));
-vi.mock("@/modules/plugin", () => ({
+vi.mock("@/modules/waker", () => ({
   PartnerPicker: ({ onChange }: { onChange: (ids: string[]) => void }) => (
     <button onClick={() => onChange(["w1"])}>选择伙伴一</button>
   ),

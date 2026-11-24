@@ -103,9 +103,9 @@ func TestEnsureDefaultsSeedsBuiltinWakerWithoutPersistingDocuments(t *testing.T)
 	if count != 1 {
 		t.Fatalf("startup created optional partners: got %d, want only lumi", count)
 	}
-	preset, err := rolePresets.Get(ctx, builtinrolepreset.WikiResearcherRolePresetID)
-	if err != nil || preset.RoleName != "维基研究员" {
-		t.Fatalf("optional researcher role is unavailable: %+v, %v", preset, err)
+	presets, err := rolePresets.List(ctx, "", 2, 0)
+	if err != nil || len(presets) != 1 || presets[0].ID != builtinrolepreset.PersonalAssistantRolePresetID {
+		t.Fatalf("role presets = %+v, error = %v, want only the personal assistant", presets, err)
 	}
 }
 

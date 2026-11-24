@@ -7,12 +7,10 @@ import (
 	"encoding/binary"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"strconv"
-
-	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // vecTableName 是 sqlite-vec 向量表名。
-const vecTableName = "memory_vectors"
+const vecTableName = "partner_memory_vectors"
 
 // vectorStore 是 sqlite-vec 向量存取实现。
 type vectorStore struct {
@@ -58,11 +56,10 @@ func (v *vectorStore) ensureVecTable(tx *sql.Tx, dimensions int) error {
 	if exists {
 		return nil
 	}
-	statement := `CREATE VIRTUAL TABLE memory_vectors USING vec0(
+	statement := `CREATE VIRTUAL TABLE partner_memory_vectors USING vec0(
 		memory_id TEXT PRIMARY KEY,
 		embedding FLOAT[` + strconv.Itoa(dimensions) + `] DISTANCE_METRIC=cosine,
-		scope TEXT,
-		scope_id TEXT
+		partner_id TEXT
 	)`
 	if _, err := tx.Exec(statement); err != nil {
 		return status_error.DatabaseError
@@ -84,26 +81,24 @@ func (v *vectorStore) dropVecTable(tx *sql.Tx) error {
 	if err != nil || !exists {
 		return err
 	}
-	if _, err := tx.Exec(`DROP TABLE memory_vectors`); err != nil {
+	if _, err := tx.Exec(`DROP TABLE partner_memory_vectors`); err != nil {
 		return status_error.DatabaseError
 	}
 	return nil
 }
 
-// insertVector 在事务内写入一条向量，scope 作为分区键随向量保存。
+// insertVector 在事务内写入一条向量，伙伴标识随向量保存。
 func (v *vectorStore) insertVector(
 	tx *sql.Tx,
 	memoryID string,
 	vector []float32,
-	scope constants.MemoryScope,
-	scopeID string,
+	partnerID string,
 ) error {
 	_, err := tx.Exec(
-		`INSERT INTO memory_vectors (memory_id, embedding, scope, scope_id) VALUES (?, ?, ?, ?)`,
+		`INSERT INTO partner_memory_vectors (memory_id, embedding, partner_id) VALUES (?, ?, ?)`,
 		memoryID,
 		serializeVector(vector),
-		string(scope),
-		scopeID,
+		partnerID,
 	)
 	if err != nil {
 		return status_error.DatabaseError
@@ -117,26 +112,24 @@ func (v *vectorStore) deleteVector(tx *sql.Tx, memoryID string) error {
 	if err != nil || !exists {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM memory_vectors WHERE memory_id = ?`, memoryID); err != nil {
+	if _, err := tx.Exec(`DELETE FROM partner_memory_vectors WHERE memory_id = ?`, memoryID); err != nil {
 		return status_error.DatabaseError
 	}
 	return nil
 }
 
-// deleteScopeVectors 在事务内删除指定范围的全部向量；向量表不存在时不动作。
-func (v *vectorStore) deleteScopeVectors(
+// deletePartnerVectors 在事务内删除指定伙伴的全部向量；向量表不存在时不动作。
+func (v *vectorStore) deletePartnerVectors(
 	tx *sql.Tx,
-	scope constants.MemoryScope,
-	scopeID string,
+	partnerID string,
 ) error {
 	exists, err := v.vecTableExists(tx)
 	if err != nil || !exists {
 		return err
 	}
 	if _, err := tx.Exec(
-		`DELETE FROM memory_vectors WHERE scope = ? AND scope_id = ?`,
-		string(scope),
-		scopeID,
+		`DELETE FROM partner_memory_vectors WHERE partner_id = ?`,
+		partnerID,
 	); err != nil {
 		return status_error.DatabaseError
 	}
@@ -150,20 +143,19 @@ func (v *vectorStore) vectorCount() (int64, error) {
 		return 0, err
 	}
 	var count int64
-	if err := v.store.db.QueryRow(`SELECT count(*) FROM memory_vectors`).Scan(&count); err != nil {
+	if err := v.store.db.QueryRow(`SELECT count(*) FROM partner_memory_vectors`).Scan(&count); err != nil {
 		return 0, status_error.DatabaseError
 	}
 	return count, nil
 }
 
 // search 执行 sqlite-vec 语义 KNN，并把 cosine distance 转换为相似度。
-// 此处为检索特例：虚拟表负责排名，memories 负责范围与正文，单次查询保持排名、范围和版本一致。
+// 此处为检索特例：虚拟表负责排名，partner_memories 负责范围与正文，单次查询保持排名、范围和版本一致。
 func (v *vectorStore) search(
 	ctx context.Context,
 	vector []float32,
 	topK int,
-	scope constants.MemoryScope,
-	scopeID string,
+	partnerID string,
 ) ([]ScoredMemory, error) {
 	exists, err := v.vecTableExists(v.store.db)
 	if err != nil {
@@ -175,14 +167,13 @@ func (v *vectorStore) search(
 	rows, err := v.store.db.QueryContext(
 		ctx,
 		`SELECT `+memoryColumnsAliased+`, v.distance
-		 FROM memory_vectors v
-		 JOIN memories m ON m.id = v.memory_id
-		 WHERE v.embedding MATCH ? AND k = ? AND v.scope = ? AND v.scope_id = ?
+		 FROM partner_memory_vectors v
+		 JOIN partner_memories m ON m.id = v.memory_id
+		 WHERE v.embedding MATCH ? AND k = ? AND v.partner_id = ?
 		 ORDER BY v.distance ASC`,
 		serializeVector(vector),
 		topK,
-		string(scope),
-		scopeID,
+		partnerID,
 	)
 	if err != nil {
 		return nil, status_error.DatabaseError
@@ -190,24 +181,13 @@ func (v *vectorStore) search(
 	defer rows.Close()
 	results := []ScoredMemory{}
 	for rows.Next() {
-		memory := Memory{}
 		var distance float64
-		if err := rows.Scan(
-			&memory.Seq,
-			&memory.ID,
-			&memory.Scope,
-			&memory.ScopeID,
-			&memory.Data,
-			&memory.Hash,
-			&memory.SourceRunID,
-			&memory.CreatedAt,
-			&memory.UpdatedAt,
-			&distance,
-		); err != nil {
+		memory, err := scanMemory(rows, &distance)
+		if err != nil {
 			return nil, status_error.DatabaseError
 		}
 		results = append(results, ScoredMemory{
-			Memory: memory,
+			Memory: *memory,
 			Score:  cosineSimilarity(distance),
 		})
 	}

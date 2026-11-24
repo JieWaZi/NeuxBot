@@ -11,6 +11,7 @@ import {
   localApiErrorMessage,
 } from "@/shared/api/local-error-surface";
 import { ResourceCardGrid } from "@/shared/ui/resource-page";
+import { ResourceCatalogGroup } from "@/shared/ui/resource-catalog";
 import { useResourcePages } from "@/shared/hooks/use-resource-pages";
 import { useResourceWindow } from "@/shared/hooks/use-resource-window";
 import { ResourceInfiniteScroll } from "@/shared/ui/resource-infinite-scroll";
@@ -22,6 +23,7 @@ import {
 } from "../api/connector-queries";
 import { ConnectorCard } from "../components/connector-card";
 import { toConnectorSummary } from "../model/connector-view";
+import type { ConnectorSummary } from "../model/types";
 
 export function ConnectorResourceCollection({
   wakerId = "",
@@ -85,15 +87,45 @@ export function ConnectorResourceCollection({
     ...withLocalErrorMutation(setWakerConnectorEnabledMutation()),
     onSuccess: () => invalidateVisibleConnectorQueries(client),
   });
+  const mine = wakerId
+    ? []
+    : visible.filter(({ affectedWakerCount }) => affectedWakerCount > 0);
+  const other = mine.length
+    ? visible.filter(({ affectedWakerCount }) => affectedWakerCount === 0)
+    : visible;
+  const countsReady = !wakerId && library.items.length >= library.total;
+  const myTitle = t("connector:myConnectors");
+  const otherTitle = t("connector:otherConnectors");
+  const rows = (items: ConnectorSummary[]) => (
+    <ResourceCardGrid appearance="catalog">
+      {items.map((connector) => (
+        <ConnectorCard
+          key={connector.id}
+          connector={connector}
+          wakerId={wakerId}
+          disabled={toggle.isPending}
+          onEnabledChange={(enabled) =>
+            toggle.mutate({
+              path: { wakerId, connectorId: connector.id },
+              body: { enabled },
+            })
+          }
+          onInstall={
+            !wakerId && connector.scope === "public" && !connector.ownerWakerId
+              ? () => onInstall(connector.id, connector.name)
+              : undefined
+          }
+        />
+      ))}
+    </ResourceCardGrid>
+  );
   return (
-    <div className="space-y-8">
-      <div className="flex min-w-0 flex-wrap items-center gap-3">{filters}</div>
-      <div className="space-y-4">
-        {query.data !== undefined && (
+    <div className="grid min-w-0 gap-8">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">{filters}</div>
+      <div className="grid min-w-0 gap-3">
+        {wakerId && query.data !== undefined && (
           <p className="type-resource-body text-resource-muted">
-            {t("connector:count", {
-              count: wakerId ? connectors.length : library.total,
-            })}
+            {t("connector:count", { count: connectors.length })}
           </p>
         )}
         {query.isPending ||
@@ -107,27 +139,28 @@ export function ConnectorResourceCollection({
             onRetry={() => void query.refetch()}
           />
         ) : null}
-        <ResourceCardGrid appearance="catalog">
-          {visible.map((connector) => (
-            <ConnectorCard
-              key={connector.id}
-              connector={connector}
-              wakerId={wakerId}
-              disabled={toggle.isPending}
-              onEnabledChange={(enabled) =>
-                toggle.mutate({
-                  path: { wakerId, connectorId: connector.id },
-                  body: { enabled },
-                })
-              }
-              onInstall={
-                !wakerId && connector.scope !== "built_in"
-                  ? () => onInstall(connector.id, connector.name)
-                  : undefined
-              }
-            />
-          ))}
-        </ResourceCardGrid>
+        {mine.length > 0 ? (
+          <div className="grid min-w-0 gap-8">
+            <ResourceCatalogGroup
+              title={myTitle}
+              aria-label={myTitle}
+              count={countsReady ? mine.length : undefined}
+            >
+              {rows(mine)}
+            </ResourceCatalogGroup>
+            {other.length > 0 && (
+              <ResourceCatalogGroup
+                title={otherTitle}
+                aria-label={otherTitle}
+                count={countsReady ? other.length : undefined}
+              >
+                {rows(other)}
+              </ResourceCatalogGroup>
+            )}
+          </div>
+        ) : other.length > 0 ? (
+          rows(other)
+        ) : null}
         {visible.length > 0 &&
           query.isError &&
           (Boolean(wakerId) || !library.isFetchNextPageError) && (

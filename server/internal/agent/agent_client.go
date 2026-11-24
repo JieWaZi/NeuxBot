@@ -611,6 +611,8 @@ type directAgentClient struct {
 	requireVerifiedMCP bool
 	// requireNoTools limits session setup to a fresh, tool-free Claude launch.
 	requireNoTools bool
+	// codexEphemeral requires the native thread start to confirm no persistence.
+	codexEphemeral bool
 	// supportsElicitation reflects the installed callback capabilities.
 	supportsElicitation *acp.ElicitationCapabilities
 }
@@ -627,7 +629,18 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		}
 		claude.SettingSources = []string{}
 		claude.Tools = []string{}
+	}
+	if launch.RequireNoTools || launch.EphemeralText {
 		callbacks.Approve, callbacks.Input, callbacks.CompleteInput = nil, nil, nil
+	}
+	if launch.EphemeralText && callbacks.Observe != nil {
+		observe := callbacks.Observe
+		callbacks.Observe = func(ctx context.Context, scope AgentScope, event AgentEvent) error {
+			if event.Kind == "tool" {
+				return nil
+			}
+			return observe(ctx, scope, event)
+		}
 	}
 	env, err := nativeLaunchEnvironment(account.Provider, launch, lease, auth, resources)
 	if err != nil {
@@ -656,6 +669,7 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 	}
 	switch account.Provider {
 	case constants.RuntimeIDCodex:
+		client.codexEphemeral = launch.EphemeralText
 		if lease.CodexCredentialKind != "" {
 			for _, arg := range launch.PrefixArgs {
 				if arg == "-c" || strings.HasPrefix(arg, "-c=") || strings.HasPrefix(arg, "--config") || arg == "-p" || strings.HasPrefix(arg, "--profile") {
@@ -677,6 +691,11 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		for key, value := range startup {
 			config[key] = value
 		}
+		if launch.EphemeralText {
+			config["web_search"] = json.RawMessage(`"disabled"`)
+			config["features.shell_tool"] = json.RawMessage("false")
+			config["features.apply_patch_freeform"] = json.RawMessage("false")
+		}
 		client.native, err = codex.NewClient(ctx, codex.Options{
 			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
 			Environment: env, StartupConfig: startup, ConfigOverrides: config,
@@ -687,10 +706,22 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 			// user/project JSON settings must not replace that frozen credential.
 			launch.Claude.SettingSources = []string{}
 		}
+		executable, prefixArgs := launch.Executable, launch.PrefixArgs
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})).With("runtime_id", account.Provider)
+		if launch.EphemeralText {
+			logger = slog.New(slog.DiscardHandler)
+		}
+		if launch.usesEphemeralClaude(account.Provider) {
+			core, err := os.Executable()
+			if err != nil {
+				return nil, status_error.RuntimeConfigurationInvalid
+			}
+			prefixArgs = []string{EphemeralClaudeMode, executable}
+			executable = core
+		}
 		client.native, err = claude.NewClient(ctx, claude.Options{
-			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
-			// The adapter sanitizes process diagnostics; preserve them when the stream ends without a native result.
-			Logger:      slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})).With("runtime_id", account.Provider),
+			Executable: executable, PrefixArgs: prefixArgs, WorkingDirectory: account.CWD,
+			Logger:      logger,
 			Environment: env, Launch: claude.LaunchOptions{
 				SettingSources: launch.Claude.SettingSources, Tools: launch.Claude.Tools,
 				SettingsPath: launch.Claude.SettingsPath, WorkspaceOnly: launch.Claude.WorkspaceOnly,
@@ -1105,14 +1136,14 @@ func (c *directAgentClient) sessionOptions(operation string, options AgentSessio
 		}
 	}
 	meta := acpmeta.DeveloperInstructionsMetadata(options.DeveloperInstructions)
-	if options.CodexMode != "" {
-		if _, ok := c.native.(*codex.Client); !ok {
+	if options.CodexMode != "" || c.codexEphemeral {
+		if _, ok := c.native.(*codex.Client); !ok || c.codexEphemeral && operation != "new" {
 			return nil, nil, status_error.RuntimePolicyUnsupported
 		}
 		if meta == nil {
 			meta = make(map[string]any)
 		}
-		maps.Copy(meta, codex.OpenSettingsMetadata(codex.OpenSettings{Mode: options.CodexMode}))
+		maps.Copy(meta, codex.OpenSettingsMetadata(codex.OpenSettings{Mode: options.CodexMode, Ephemeral: c.codexEphemeral}))
 	}
 	return directories, meta, nil
 }

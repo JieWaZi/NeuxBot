@@ -1,8 +1,6 @@
 package memory
 
 import (
-	"strings"
-
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
@@ -14,12 +12,12 @@ import (
 type MemoryResource struct {
 	// 标识
 	ID string `json:"id"`
-	// 记忆范围
-	Scope constants.MemoryScope `json:"scope"`
-	// 范围标识
-	ScopeID string `json:"scopeId"`
 	// 记忆正文
 	Content string `json:"content"`
+	// 核心记忆
+	Core bool `json:"core"`
+	// 创建来源
+	Source constants.MemoryTimelineSource `json:"source"`
 	// 执行标识
 	SourceRunID string `json:"sourceRunId,omitempty"`
 	// 创建时间
@@ -34,10 +32,6 @@ type TimelineResource struct {
 	ID string `json:"id"`
 	// 记忆标识
 	MemoryID string `json:"memoryId"`
-	// 记忆范围
-	Scope constants.MemoryScope `json:"scope"`
-	// 范围标识
-	ScopeID string `json:"scopeId"`
 	// 事件类型
 	Event constants.MemoryEvent `json:"event"`
 	// 变更前正文
@@ -83,15 +77,11 @@ type EmbeddingSettingsResource struct {
 }
 
 func memoryResource(item internalmemory.Memory) MemoryResource {
-	return MemoryResource{ID: item.ID, Scope: item.Scope, ScopeID: item.ScopeID, Content: item.Data, SourceRunID: item.SourceRunID, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt}
+	return MemoryResource{ID: item.ID, Content: item.Data, Core: item.Core, Source: item.Origin, SourceRunID: item.SourceRunID, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt}
 }
 
 func timelineResource(item internalmemory.HistoryEntry) TimelineResource {
-	source := constants.MemoryTimelineSourceManual
-	if item.SourceRunID != "" {
-		source = constants.MemoryTimelineSourceMCP
-	}
-	return TimelineResource{ID: item.ID, MemoryID: item.MemoryID, Scope: item.Scope, ScopeID: item.ScopeID, Event: item.Event, OldContent: item.OldMemory, NewContent: item.NewMemory, Source: source, SourceRunID: item.SourceRunID, OccurredAt: item.UpdatedAt}
+	return TimelineResource{ID: item.ID, MemoryID: item.MemoryID, Event: item.Event, OldContent: item.OldMemory, NewContent: item.NewMemory, Source: item.Source, SourceRunID: item.SourceRunID, OccurredAt: item.UpdatedAt}
 }
 
 func memoryStatusResource(item internalmemory.Status) MemoryStatusResource {
@@ -102,30 +92,12 @@ func embeddingSettingsResource(item internalmemory.EmbeddingSettings) EmbeddingS
 	return EmbeddingSettingsResource{BaseURL: item.BaseURL, Model: item.Model, APIKeyConfigured: item.APIKeyConfigured}
 }
 
-func visibleScope(ctx *gin.Context, wakerID string, scope constants.MemoryScope, projectID string) (internalmemory.Context, error) {
+func partnerMemoryContext(ctx *gin.Context, wakerID string) (internalmemory.Context, error) {
+	if global.MemoryService == nil {
+		return internalmemory.Context{}, status_error.MemoryServiceUnavailable
+	}
 	if _, err := global.WakerControllerManager.Get(ctx, wakerID); err != nil {
 		return internalmemory.Context{}, err
 	}
-	memoryContext := internalmemory.Context{PartnerID: wakerID}
-	switch scope {
-	case constants.MemoryScopePartner:
-		if projectID != "" {
-			return internalmemory.Context{}, status_error.BadRequest
-		}
-	case constants.MemoryScopeProject:
-		if strings.TrimSpace(projectID) == "" {
-			return internalmemory.Context{}, status_error.BadRequest
-		}
-		project, err := global.ProjectControllerManager.Get(ctx, projectID)
-		if err != nil {
-			return internalmemory.Context{}, err
-		}
-		if project.WakerID != wakerID {
-			return internalmemory.Context{}, status_error.ProjectNotFound.WithParams(map[string]interface{}{"ProjectID": projectID})
-		}
-		memoryContext.ProjectID = projectID
-	default:
-		return internalmemory.Context{}, status_error.BadRequest
-	}
-	return memoryContext, nil
+	return internalmemory.Context{PartnerID: wakerID}, nil
 }

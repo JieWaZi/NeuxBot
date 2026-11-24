@@ -20,6 +20,7 @@ import (
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -436,7 +437,8 @@ func TestWakerOnboardingSavesAfterInterviewWithoutConfirmation(t *testing.T) {
 
 func TestWakerOnboardingRetryReusesPublicChatAndKeepsInternalInputHidden(t *testing.T) {
 	ctx := t.Context()
-	manager := newMessageTestService(t, t.TempDir())
+	tools := agentPreparationFixture(t)
+	manager := newMessageTestService(t, t.TempDir(), messageTestOptions{agent: tools.agent, agentBinary: builtinskills.CLIPath(tools.systemSkillDirectory)})
 	wakerID := "onboarding-partner"
 	chatID := (requestidempotency.Identity{ID: wakerID}).ResourceID("chat", wakerID)
 	if err := manager.wakers.Create(ctx, models.Waker{

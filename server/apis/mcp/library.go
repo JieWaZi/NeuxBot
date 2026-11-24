@@ -7,6 +7,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/mcpconnector"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 	"strings"
@@ -93,7 +94,7 @@ func (o *InstallLibraryConnector) Output(ctx *gin.Context) (interface{}, error) 
 		if resource.OwnerWakerID != "" || resource.Scope != constants.MCPConnectorScopePublic {
 			return status_error.BadRequest
 		}
-		if trustDigest(resource) != resource.TrustedConfigDigest {
+		if !mcpconnector.Trusted(resource) {
 			return status_error.MCPConnectorTrustRequired
 		}
 		for _, id := range o.Body.WakerIDs {

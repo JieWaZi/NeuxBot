@@ -1,4 +1,4 @@
-import { WakerDetailLayout } from "@/modules/waker";
+import { PartnerPicker, WakerDetailLayout } from "@/modules/waker";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Package, Sparkles, Cable, Plus } from "lucide-react";
 import { useState } from "react";
@@ -10,7 +10,6 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import {
-  PartnerPicker,
   PLUGIN_CATEGORY_LABELS,
   PluginResourceCollection,
   pluginBrowseCategoryFromParam,
@@ -31,6 +30,7 @@ import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { QueryRefreshError, QueryState } from "@/shared/ui/query-state";
 import {
+  getLibraryConnectorOptions,
   getLibrarySkillOptions,
   installLibrarySkillMutation,
   installLibraryConnectorMutation,
@@ -353,6 +353,14 @@ function IndependentInstallDialog({
     enabled: isSkill && !done,
     refetchOnMount: "always",
   });
+  const connectorDetail = useQuery({
+    ...getLibraryConnectorOptions(
+      withLocalErrorSurface({ path: { connectorId: resource.id } }),
+    ),
+    enabled: !isSkill && !done,
+    refetchOnMount: "always",
+  });
+  const detail = isSkill ? skillDetail : connectorDetail;
   const skill = useMutation(
     withLocalErrorMutation(installLibrarySkillMutation()),
   );
@@ -365,15 +373,15 @@ function IndependentInstallDialog({
     ? (skillDetail.data?.installedPartners?.flatMap(({ id }) =>
         id ? [id] : [],
       ) ?? [])
-    : [];
+    : (connectorDetail.data?.installedPartnerIds ?? []);
   const wakerIds = selected.filter((id) => !installed.includes(id));
   const hasPartnerStatus =
-    !isSkill ||
-    (skillDetail.isFetchedAfterMount && skillDetail.data !== undefined);
+    detail.isFetchedAfterMount && detail.data !== undefined;
   const canChoosePartners =
     !pending &&
     hasPartnerStatus &&
-    (!isSkill || (!skillDetail.isError && skillDetail.fetchStatus === "idle"));
+    !detail.isError &&
+    detail.fetchStatus === "idle";
   const canInstall = canChoosePartners && wakerIds.length > 0;
   const install = async () => {
     if (!canInstall) return;
@@ -416,11 +424,9 @@ function IndependentInstallDialog({
           ) : !hasPartnerStatus ? (
             <QueryState
               loadingLayout="content"
-              pending={
-                !skillDetail.isFetchedAfterMount || skillDetail.isPending
-              }
-              error={skillDetail.error}
-              onRetry={() => void skillDetail.refetch()}
+              pending={!detail.isFetchedAfterMount || detail.isPending}
+              error={detail.error}
+              onRetry={() => void detail.refetch()}
             />
           ) : (
             <>
@@ -429,13 +435,13 @@ function IndependentInstallDialog({
                 onChange={setSelected}
                 onlyPartner={targetPartner}
                 installed={installed}
-                disabled={isSkill && !canChoosePartners}
+                disabled={!canChoosePartners}
               />
-              {isSkill && skillDetail.isError && (
+              {detail.isError && (
                 <QueryRefreshError
-                  error={skillDetail.error}
-                  pending={skillDetail.isFetching}
-                  onRetry={() => void skillDetail.refetch()}
+                  error={detail.error}
+                  pending={detail.isFetching}
+                  onRetry={() => void detail.refetch()}
                 />
               )}
             </>

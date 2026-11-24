@@ -200,6 +200,7 @@ export function SettingsScene({
   integrationBreadcrumbs,
   onOpenRuntime,
   onRuntimeBack,
+  partnerReviewDetail = false,
   runtimeId,
   storageOwnerId,
   section,
@@ -209,6 +210,7 @@ export function SettingsScene({
   onSelectSection?: (section: SettingsSection) => void;
   onOpenRuntime?: (runtimeId: string) => void;
   onRuntimeBack?: () => void;
+  partnerReviewDetail?: boolean;
   runtimeId?: string;
   storageOwnerId?: string;
   section: SettingsSection;
@@ -244,7 +246,7 @@ export function SettingsScene({
         <SettingsPageFooterHost>
           <div
             data-slot="settings-page-viewport"
-            key={`${section}:${detailId ?? ""}`}
+            key={`${section}:${detailId ?? ""}:${partnerReviewDetail}`}
             className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto"
           >
             <div className="max-w-settings-content mx-auto w-full px-4 py-6 @[42.5rem]/settings-scene:px-8">
@@ -274,6 +276,7 @@ export function SettingsScene({
                 {section === "agents" ? (
                   <RuntimeEnvironmentsSection
                     runtimeId={runtimeId}
+                    partnerReviewDetail={partnerReviewDetail}
                     onOpenRuntime={onOpenRuntime ?? (() => undefined)}
                     onBack={onRuntimeBack ?? (() => undefined)}
                     showSceneChrome={showSceneChrome}

@@ -16,6 +16,7 @@ import (
 	apiMiddleware "github.com/JieWaZi/NeuxBot/server/apis/middleware"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/localweb"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/parentwatch"
@@ -30,6 +31,9 @@ import (
 //go:generate toolx gen openapi
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == agent.EphemeralClaudeMode {
+		os.Exit(agent.RunEphemeralClaude(os.Args[2:]))
+	}
 	if len(os.Args) > 1 && os.Args[1] == constants.PluginStdioMode {
 		streams := &cobra.Command{}
 		os.Exit(stdio.Main(os.Args[2:], streams.InOrStdin(), streams.OutOrStdout(), streams.ErrOrStderr()))

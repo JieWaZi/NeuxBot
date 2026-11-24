@@ -215,11 +215,11 @@ func TestPluginSkillCollisionDeduplicatesOnlyEqualContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer result.release()
-	if _, err = mergePluginSkills(nil, result.skills); !errors.Is(err, status_error.PluginSkillConflict) {
-		t.Fatalf("different same-name skills accepted: %v", err)
+	if merged := mergePluginSkills(nil, result.skills); len(merged) != 0 {
+		t.Fatalf("different same-name skills accepted: %v", merged)
 	}
-	if merged, err := mergePluginSkills(nil, append(result.skills[:1], result.skills[0])); err != nil || len(merged) != 1 {
-		t.Fatalf("identical skills not deduplicated: %v %v", merged, err)
+	if merged := mergePluginSkills(nil, append(result.skills[:1], result.skills[0])); len(merged) != 1 {
+		t.Fatalf("identical skills not deduplicated: %v", merged)
 	}
 }
 
@@ -325,10 +325,7 @@ func TestDeduplicatedPluginSkillKeepsLeasedImmutableSource(t *testing.T) {
 	if err := os.Rename(independent, independent+"-offline"); err != nil {
 		t.Fatal(err)
 	}
-	merged, err := mergePluginSkills([]agentapi.Skill{{Name: "office", Path: independent, Digest: derived.Digest}}, []agentapi.Skill{derived})
-	if err != nil {
-		t.Fatal(err)
-	}
+	merged := mergePluginSkills([]agentapi.Skill{{Name: "office", Path: independent, Digest: derived.Digest}}, []agentapi.Skill{derived})
 	if len(merged) != 1 || merged[0].Path != derived.Path {
 		t.Fatalf("dedup lost selection or immutable path: %+v", merged)
 	}
@@ -353,12 +350,12 @@ func TestIndependentSkillDuplicatesUseTheSameContentRule(t *testing.T) {
 		return agentapi.Skill{Name: "same", Path: root, Digest: digest}
 	}
 	first, second := makeSkill("same body"), makeSkill("same body")
-	merged, err := mergePluginSkills([]agentapi.Skill{first, second}, nil)
-	if err != nil || len(merged) != 1 {
-		t.Errorf("same independent content did not merge: %+v %v", merged, err)
+	merged := mergePluginSkills([]agentapi.Skill{first, second}, nil)
+	if len(merged) != 1 {
+		t.Errorf("same independent content did not merge: %+v", merged)
 	}
-	if _, err := mergePluginSkills([]agentapi.Skill{first, makeSkill("different body")}, nil); !errors.Is(err, status_error.PluginSkillConflict) {
-		t.Errorf("conflicting independent content admitted: %v", err)
+	if merged := mergePluginSkills([]agentapi.Skill{first, makeSkill("different body")}, nil); len(merged) != 0 {
+		t.Errorf("conflicting independent content admitted: %v", merged)
 	}
 }
 
@@ -1078,7 +1075,7 @@ func TestNativePluginTargetLeaseSurvivesUntilViewsClose(t *testing.T) {
 		t.Fatalf("fixture did not select native delivery: %v", err)
 	}
 	workspace := agentapi.Workspace{Path: t.TempDir(), Managed: true}
-	lease, err := core.acquireNativeResources(t.Context(), "chat", "w1", workspace, detection, nil, nil, nil, frozen, agentapi.ResourceSelection{})
+	lease, err := core.acquireNativeResources(t.Context(), "chat", "w1", workspace, detection, nil, false, nil, nil, frozen, agentapi.ResourceSelection{})
 	if err != nil || len(lease.NativePlugins) != 1 || lease.CloseFiles == nil {
 		t.Fatalf("view was not acquired: %+v %v", lease.NativePlugins, err)
 	}

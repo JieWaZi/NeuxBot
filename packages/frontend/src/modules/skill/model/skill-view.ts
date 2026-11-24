@@ -6,7 +6,12 @@ export function toSkillSummary(
   item: GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse,
 ): SkillSummary | null {
   const skill = item.skill;
-  if (!skill?.id || (skill.source !== "git" && skill.source !== "zip"))
+  if (
+    !skill?.id ||
+    (skill.source !== "git" &&
+      skill.source !== "zip" &&
+      skill.source !== "learned")
+  )
     return null;
   const source = skill.source;
   return {

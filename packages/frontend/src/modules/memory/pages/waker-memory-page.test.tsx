@@ -1,125 +1,206 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 
+import { TooltipProvider } from "@/shared/ui/tooltip";
+import { client } from "@/shared/api/generated/client.gen";
 import { WakerMemoryPage } from "./waker-memory-page";
 import "@/shared/i18n";
-
-const { listMemoriesOptions } = vi.hoisted(() => ({
-  listMemoriesOptions: vi.fn(
-    (input: {
-      query: { pageNum: number; pageSize: number; scope: string };
-    }) => ({
-      queryFn: async () => ({
-        pageNum: input.query.pageNum,
-        pageSize: input.query.pageSize,
-        resources: [
-          {
-            content: "记忆内容",
-            id: "memory-1",
-            scope: "partner",
-            scopeId: "waker-1",
-            updatedAt: 1_700_000_000_000,
-          },
-        ],
-        totalSize: 40,
-      }),
-      queryKey: ["memories", input.query.pageSize],
-    }),
-  ),
-}));
-
-vi.mock("../api/memory-queries", () => ({
-  deleteMemoryMutation: () => ({ mutationFn: vi.fn() }),
-  invalidateMemoryQueries: vi.fn(),
-  listMemoriesOptions,
-}));
-
-vi.mock("@/modules/project", () => ({
-  listProjectsOptions: () => ({
-    queryFn: async () => ({ resources: [], totalSize: 0 }),
-    queryKey: ["projects"],
-  }),
-}));
 
 vi.mock("@/modules/waker", () => ({
   WakerDetailLayout: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-vi.mock("../components/memory-form-dialog", () => ({
-  MemoryFormDialog: () => null,
-}));
+const base = "http://127.0.0.1:8080";
+const path = `${base}/api/v1/memory/wakers/waker-1/memories`;
+const readProjects = vi.fn();
+const server = setupServer(
+  http.get(`${base}/api/v1/wakers/:wakerId/projects`, () => {
+    readProjects();
+    return HttpResponse.json({ resources: [], totalSize: 0 });
+  }),
+);
+beforeAll(() => {
+  client.setConfig({ baseUrl: base });
+  server.listen({ onUnhandledRequest: "error" });
+});
+afterEach(() => {
+  server.resetHandlers();
+  readProjects.mockClear();
+});
+afterAll(() => server.close());
 
-vi.mock("../components/memory-settings-dialog", () => ({
-  MemorySettingsDialog: () => null,
-}));
-
-function renderPage() {
+function renderPage(search = "") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/wakers/waker-1/memory"]}>
-        <Routes>
-          <Route path="/wakers/:wakerId/memory" element={<WakerMemoryPage />} />
-        </Routes>
-      </MemoryRouter>
+      <TooltipProvider>
+        <MemoryRouter initialEntries={[`/wakers/waker-1/memory${search}`]}>
+          <Routes>
+            <Route
+              path="/wakers/:wakerId/memory"
+              element={<WakerMemoryPage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
     </QueryClientProvider>,
   );
+  return userEvent.setup();
 }
 
-describe("WakerMemoryPage", () => {
-  it("queries the combined current-memory view", async () => {
-    renderPage();
+function group(name: string) {
+  return within(screen.getByRole("region", { name }));
+}
 
-    expect(await screen.findByText("记忆内容")).toBeVisible();
-    await waitFor(() => {
-      expect(listMemoriesOptions).toHaveBeenCalledWith(
-        expect.objectContaining({
-          query: expect.objectContaining({
-            pageNum: 1,
-            pageSize: 20,
-            scope: "all",
-          }),
-        }),
-      );
-    });
+it("filters both memory groups and paginates each independently", async () => {
+  const reads: Array<{ core: string | null; page: string | null }> = [];
+  server.use(
+    http.get(path, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      if (
+        params.get("query") !== "偏好" ||
+        !params.has("updatedAtStart") ||
+        !params.has("updatedAtEnd")
+      ) {
+        return new HttpResponse(null, { status: 400 });
+      }
+      reads.push({ core: params.get("core"), page: params.get("pageNum") });
+      const core = params.get("core") === "true";
+      return HttpResponse.json({
+        pageNum: 1,
+        pageSize: Number(params.get("pageSize")),
+        resources: [
+          {
+            id: core ? "core" : "regular",
+            content: core ? "核心偏好" : "普通偏好",
+            core,
+          },
+        ],
+        totalSize: 40,
+      });
+    }),
+  );
+
+  const user = renderPage(
+    "?search=%E5%81%8F%E5%A5%BD&from=2026-11-01&to=2026-11-20",
+  );
+  const core = await screen.findByRole("region", { name: "核心记忆" });
+  const regular = screen.getByRole("region", { name: "普通记忆" });
+  expect(await within(core).findByText("核心偏好")).toBeVisible();
+  expect(await within(regular).findByText("普通偏好")).toBeVisible();
+  expect(
+    core.compareDocumentPosition(regular) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  await user.click(within(regular).getByRole("button", { name: "下一页" }));
+  await waitFor(() =>
+    expect(reads).toContainEqual({ core: "false", page: "2" }),
+  );
+  expect(reads).toContainEqual({ core: "true", page: "1" });
+  expect(reads).not.toContainEqual({ core: "true", page: "2" });
+});
+
+it("creates directly for the current partner and offers settings for that partner", async () => {
+  let created: unknown;
+  server.use(
+    http.get(path, () => HttpResponse.json({ resources: [], totalSize: 0 })),
+    http.post(path, async ({ request }) => {
+      created = await request.json();
+      return HttpResponse.json({ id: "memory-1" });
+    }),
+  );
+  const user = renderPage();
+  await user.click(screen.getByRole("button", { name: "新建记忆" }));
+  const dialog = screen.getByRole("dialog", { name: "新建记忆" });
+  await user.type(within(dialog).getByLabelText("记忆内容"), "使用中文");
+  await user.click(within(dialog).getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(dialog).not.toBeInTheDocument());
+  expect(created).toEqual({ content: "使用中文" });
+  expect(readProjects).not.toHaveBeenCalled();
+  expect(screen.getByRole("link", { name: "设置" })).toHaveAttribute(
+    "href",
+    "/settings/agents?detail=partner-review&tab=memory&wakerId=waker-1",
+  );
+});
+
+it("only shows the core group while it contains a memory and restores move focus", async () => {
+  let core = false;
+  server.use(
+    http.get(path, ({ request }) => {
+      const visible =
+        (new URL(request.url).searchParams.get("core") === "true") === core;
+      return HttpResponse.json({
+        resources: visible
+          ? [{ id: "memory-1", content: "记忆内容", core }]
+          : [],
+        totalSize: visible ? 1 : 0,
+      });
+    }),
+    http.put(`${path}/memory-1/core`, async ({ request }) => {
+      const body = await request.json();
+      if (
+        !body ||
+        typeof body !== "object" ||
+        !("core" in body) ||
+        typeof body.core !== "boolean"
+      ) {
+        return new HttpResponse(null, { status: 400 });
+      }
+      core = body.core;
+      return HttpResponse.json({ id: "memory-1", content: "记忆内容", core });
+    }),
+  );
+
+  const user = renderPage();
+  const action = await group("普通记忆").findByRole("button", {
+    name: "设为核心记忆",
   });
-
-  it("loads another twenty memories in the page", async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(
-      await screen.findByRole("button", { name: "展开更多 20 条" }),
-    );
-    await waitFor(() => {
-      expect(listMemoriesOptions).toHaveBeenCalledWith(
-        expect.objectContaining({
-          query: expect.objectContaining({ pageSize: 40, scope: "all" }),
-        }),
-      );
-    });
+  expect(screen.queryByRole("region", { name: "核心记忆" })).toBeNull();
+  action.focus();
+  await user.keyboard("{Enter}");
+  const coreGroup = await screen.findByRole("region", { name: "核心记忆" });
+  const destination = await within(coreGroup).findByRole("button", {
+    name: "设为普通记忆",
   });
+  await waitFor(() => expect(destination).toHaveFocus());
+  expect(screen.getAllByText("记忆内容")).toHaveLength(1);
+  expect(group("普通记忆").queryByText("记忆内容")).not.toBeInTheDocument();
 
-  it("uses the standard delete confirmation structure", async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(await screen.findByRole("button", { name: "遗忘记忆" }));
-
-    const dialog = screen.getByRole("dialog", { name: "遗忘记忆" });
-    expect(within(dialog).getByText("确定遗忘这条记忆吗？")).toBeVisible();
-    expect(
-      within(dialog).getByText(
-        "当前记忆会被删除，但遗忘事件及原内容仍保留在记忆时间线中。",
-      ),
-    ).toBeVisible();
-    expect(
-      within(dialog).getByRole("button", { name: "确认遗忘" }),
-    ).toBeVisible();
+  await user.keyboard("{Enter}");
+  const restored = await group("普通记忆").findByRole("button", {
+    name: "设为核心记忆",
   });
+  await waitFor(() => expect(restored).toHaveFocus());
+  expect(screen.queryByRole("region", { name: "核心记忆" })).toBeNull();
+});
+
+it("keeps the source row when the core budget rejects the change", async () => {
+  server.use(
+    http.get(path, ({ request }) => {
+      const regular = new URL(request.url).searchParams.get("core") === "false";
+      return HttpResponse.json({
+        resources: regular
+          ? [{ id: "memory-1", content: "记忆内容", core: false }]
+          : [],
+        totalSize: regular ? 1 : 0,
+      });
+    }),
+    http.put(
+      `${path}/memory-1/core`,
+      () => new HttpResponse(null, { status: 400 }),
+    ),
+  );
+  const user = renderPage();
+  await user.click(
+    await group("普通记忆").findByRole("button", { name: "设为核心记忆" }),
+  );
+  expect(await group("普通记忆").findByRole("alert")).toBeVisible();
+  expect(group("普通记忆").getByText("记忆内容")).toBeVisible();
+  expect(screen.queryByRole("region", { name: "核心记忆" })).toBeNull();
 });

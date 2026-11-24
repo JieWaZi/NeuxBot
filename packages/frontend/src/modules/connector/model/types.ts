@@ -44,6 +44,7 @@ export type ConnectorSummary = {
   enabled: boolean;
   id: string;
   name: string;
+  ownerWakerId?: string;
   scope: ConnectorScope;
   testStatus: ConnectorTestStatus;
   toolCount: number;

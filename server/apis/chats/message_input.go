@@ -102,6 +102,7 @@ func (r MessageRequest) workInput() (execution.WorkInput, execution.WorkOptions)
 			PluginIDs:        append([]string(nil), r.PluginIDs...),
 			CodeReferences:   references,
 		}, execution.WorkOptions{
+			EntryPoint:    execution.WorkbenchEntryPoint,
 			AccountID:     strings.TrimSpace(r.AccountID),
 			RuntimeID:     strings.TrimSpace(r.RuntimeID),
 			Model:         strings.TrimSpace(r.Model),

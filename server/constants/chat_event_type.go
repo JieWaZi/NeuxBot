@@ -9,6 +9,10 @@ type ChatEventType string
 const (
 	// ChatEventTypeAgentCommandCommitted 记录 Core 已确认的软件命令事实，不由模型生成。
 	ChatEventTypeAgentCommandCommitted ChatEventType = "agent.command_committed"
+	// ChatEventTypeManagedSkillChanged 记录聊天已提交的技能库变更。
+	ChatEventTypeManagedSkillChanged ChatEventType = "skill.changed"
+	// ChatEventTypeManagedConnectorChanged 记录聊天已提交的连接器变更。
+	ChatEventTypeManagedConnectorChanged ChatEventType = "connector.changed"
 	// ChatEventTypeMessageInherited 表示分叉复制的历史展示快照，不创建新的 Execution。
 	ChatEventTypeMessageInherited ChatEventType = "message.inherited"
 	// ChatEventTypeUnspecified 表示框架或存量数据产生的空事件类型。

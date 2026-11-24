@@ -31,6 +31,8 @@ type PluginController interface {
 	ReferenceIcons(context.Context, []string) ([]models.PluginReference, error)
 	// ExecutionDeclarations 在短读事务内声明伙伴启用安装的固定版本与配置修订。
 	ExecutionDeclarations(context.Context, string) ([]models.PluginExecutionDeclaration, error)
+	// EnabledSkillNameExists 检查启用插件的固定版本是否已声明同名技能。
+	EnabledSkillNameExists(ctx context.Context, wakerIDs []string, name string) (bool, error)
 	// ExecutionConfiguration 在冷资源取得时解密共享配置，不读取私有授权交付材料。
 	ExecutionConfiguration(context.Context, string) (models.PluginConfiguration, error)
 	// ReadStates 批量补齐最多一百个资源的版本、安装及公开配置修订。
@@ -608,6 +610,26 @@ func (c *pluginController) ExecutionDeclarations(ctx context.Context, waker stri
 		return nil
 	})
 	return result, err
+}
+
+// EnabledSkillNameExists 按伙伴窗口查询已启用插件的固定版本和技能声明。
+func (c *pluginController) EnabledSkillNameExists(ctx context.Context, wakerIDs []string, name string) (bool, error) {
+	db := controllerDB(ctx, c.db)
+	for start := 0; start < len(wakerIDs); start += 200 {
+		end := min(start+200, len(wakerIDs))
+		installed := db.Model(&models.WakerPlugin{}).Select("version_id").Where("waker_id IN ? AND enabled = ?", wakerIDs[start:end], true)
+		var ids []string
+		err := db.Model(&models.PluginVersion{}).Where("id IN (?)", installed).
+			Where("EXISTS (SELECT 1 FROM json_each(package, '$.skills') WHERE json_extract(value, '$.name') = ?)", name).
+			Limit(1).Pluck("id", &ids).Error
+		if err != nil {
+			return false, databaseError("check_enabled_plugin_skill_name", "name="+name, err)
+		}
+		if len(ids) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // ExecutionConfiguration 延迟解密实际执行配置，授权私有材料仍由身份租约持有者单独读取。

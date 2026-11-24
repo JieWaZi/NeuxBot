@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { resourceLibraryDetailPath } from "@/shared/lib/resource-navigation";
 
 import {
   ChatMessageReferenceChip,
@@ -44,7 +45,7 @@ export function ChatMessageConnectorReferences({
             href={
               unavailable || !wakerId
                 ? undefined
-                : `/wakers/${wakerId}/connectors/${connector.id}`
+                : resourceLibraryDetailPath("connectors", connector.id, wakerId)
             }
             linkAriaLabel={t("viewConnector", { name: connector.name })}
           />

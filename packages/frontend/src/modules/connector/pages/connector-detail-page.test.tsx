@@ -45,6 +45,7 @@ vi.mock("@/shared/api/use-query-events", () => ({
 }));
 vi.mock("@/modules/waker", () => ({
   WakerDetailLayout: ({ children }: { children: ReactNode }) => children,
+  PartnerPicker: () => null,
 }));
 vi.mock("../components/connector-form-dialog", () => ({
   ConnectorFormDialog: ({
@@ -402,6 +403,28 @@ it("deletes a partner-owned connector without describing unrelated partner impac
       }),
       expect.anything(),
     ),
+  );
+});
+
+it("opens a partner-owned connector in the library and returns to its list", async () => {
+  const user = userEvent.setup();
+  state.view.connector = {
+    ...state.view.connector,
+    scope: "private",
+    ownerWakerId: "owner",
+  };
+  renderPage("/resources/connectors/connector-1?wakerId=owner");
+  await screen.findByRole("heading", { name: "研究服务" });
+  await user.click(screen.getByRole("button", { name: "测试连接" }));
+  expect(testConnection).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: { connectorId: "connector-1", wakerId: "owner" },
+    }),
+    expect.anything(),
+  );
+  await user.click(screen.getByRole("button", { name: "返回列表" }));
+  expect(screen.getByTestId("current-location")).toHaveTextContent(
+    "/resources?category=connectors",
   );
 });
 

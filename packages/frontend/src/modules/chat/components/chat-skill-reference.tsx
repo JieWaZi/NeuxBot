@@ -2,6 +2,7 @@ import { unstable_useSlashCommandAdapter, useAui } from "@assistant-ui/react";
 import { Check, Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { resourceLibraryDetailPath } from "@/shared/lib/resource-navigation";
 import {
   ChatComposerReferenceChip,
   ChatMessageReferenceChip,
@@ -167,7 +168,7 @@ export function ChatMessageSkillReferences({
             href={
               unavailable || !wakerId
                 ? undefined
-                : `/wakers/${wakerId}/skills/${skill.id}`
+                : resourceLibraryDetailPath("skills", skill.id)
             }
             linkAriaLabel={t("viewSkill", { name: skill.name })}
           />

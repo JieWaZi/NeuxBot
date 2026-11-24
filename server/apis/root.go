@@ -19,6 +19,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/apis/plugins"
 	"github.com/JieWaZi/NeuxBot/server/apis/projects"
 	"github.com/JieWaZi/NeuxBot/server/apis/resource_categories"
+	"github.com/JieWaZi/NeuxBot/server/apis/review"
 	"github.com/JieWaZi/NeuxBot/server/apis/role_presets"
 	"github.com/JieWaZi/NeuxBot/server/apis/run_viewing"
 	"github.com/JieWaZi/NeuxBot/server/apis/runtime_options"
@@ -50,6 +51,7 @@ func init() {
 	desktopRouter.Register(uploads.Router)
 	desktopRouter.Register(eventapi.Router)
 	desktopRouter.Register(memoryapi.Router)
+	desktopRouter.Register(review.Router)
 	desktopRouter.Register(knowledgeapi.Router)
 	desktopRouter.Register(knowledge_connections.Router)
 	desktopRouter.Register(integrations.Router)

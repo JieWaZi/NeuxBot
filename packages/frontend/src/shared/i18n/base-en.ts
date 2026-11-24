@@ -75,6 +75,16 @@ export const baseEn = {
     title: "My partners",
     subtitle: "Manage local partners and start chats.",
     search: "Search partners",
+    picker: {
+      title: "Choose partners",
+      placeholder: "Select one or more partners",
+      selectedPartners: "{{count}} partners selected",
+      noPartners: "Create a partner first.",
+      installed: "Installed",
+      previous: "Previous",
+      next: "Next",
+      page: "Page {{page}} · {{count}} items",
+    },
     installed: "All partners",
     count: "{{count}} partners",
     emptyTitle: "Create your first partner",
@@ -390,6 +400,8 @@ export const baseEn = {
       "Manage MCP services and tools available to the current partner during execution.",
     libraryDescription:
       "Connect external services to give partners more tools.",
+    myConnectors: "My connectors",
+    otherConnectors: "Other connectors",
     add: "New",
     installed: "Installed",
     search: "Search connectors",
@@ -569,33 +581,18 @@ export const baseEn = {
   },
   memory: {
     title: "Memory",
-    description:
-      "Manage preferences, project conventions, and lasting facts retained across the partner's chats.",
     settingsAction: "Settings",
-    addAction: "Added",
-    addPartnerAction: "Add personal memory",
-    addProjectAction: "Add memory for current project",
-    tabs: {
-      memories: "All memories",
-    },
-    scope: {
-      label: "Memory scope",
-      partner: "Personal",
-      project: "Project",
-      selectProject: "Choose project",
-      unnamedProject: "Unnamed project",
-      noProjects:
-        "This partner has no projects yet. Project memories cannot be added.",
-    },
+    addAction: "New memory",
+    core: { title: "Core memories" },
+    regular: { title: "Regular memories", empty: "No regular memories yet." },
+    setCore: "Set as core memory",
+    setRegular: "Set as regular memory",
+    coreChangeFailed: "Could not change the memory category. Please retry.",
     search: "Search memories",
     loadError: "Memories are temporarily unavailable.",
-    empty: "This partner has no memories yet.",
     editAction: "Edit memory",
     forgetAction: "Forget memory",
     retry: "Retry",
-    expandMore: "Show {{count}} more",
-    expanding: "Loading more…",
-    noMore: "No more records",
     range: {
       allTime: "All time",
       title: "Memory date",
@@ -604,13 +601,10 @@ export const baseEn = {
       clear: "Clear",
     },
     list: {
-      scope: "Applies to",
       source: "Source",
       createdManually: "Created manually",
       createdByMcp: "MCP",
-    },
-    overview: {
-      count: "{{count}} entries",
+      createdByReview: "Automatic review",
     },
     manager: {
       noResults: "No matching memories.",
@@ -626,7 +620,6 @@ export const baseEn = {
       pending: "Forgetting…",
     },
     pagination: {
-      navigation: "Memory pagination",
       previous: "Previous",
       next: "Next",
       page: "Page {{page}}",
@@ -635,10 +628,10 @@ export const baseEn = {
       total: "{{count}} total",
     },
     form: {
-      createTitle: "Add memory",
+      createTitle: "New memory",
       editTitle: "Edit memory",
       description:
-        "Once saved to “{{scope}}”, this memory applies to future chats and is recorded in the memory timeline.",
+        "The partner can use this memory in future chats. Changes are recorded in the memory timeline.",
       content: "Memory content",
       placeholder:
         "Record lasting preferences, project conventions, or important facts.",
@@ -649,37 +642,63 @@ export const baseEn = {
       save: "Save",
       saving: "Saving…",
     },
+    review: {
+      title: "Memory and learning",
+      agent: "Agent",
+      frequency: "Review frequency",
+      everyTurns: "Every {{count}} turns",
+      followPartner: "Follow partner",
+      dedicated: "Choose an agent",
+      configure: "Configure",
+      noEligibleRuntime:
+        "No agent is currently available for temporary reviews.",
+      runtimeUnavailable:
+        "The agent, account, or model used for memory and learning is unavailable. Check the Agent setting or the partner’s defaults.",
+      runtimeUnsupported:
+        "This agent cannot review chats in the background. Choose another configuration in the Agent setting.",
+      partner: "Configure partners",
+      noPartner: "No partners available",
+      noMatches: "No matching partners.",
+      memory: "Automatic memory",
+      skill: "Skill learning",
+      memoryFor: "Automatic memory for {{name}}",
+      skillFor: "Skill learning for {{name}}",
+      skillModeFor: "Skill saving mode for {{name}}",
+      skillSettings: "Skill learning settings",
+      modes: { ask: "Ask first", automatic: "Save automatically" },
+      memoryEvidence:
+        "Remember lasting preferences and agreements from regular chats.",
+      skillEvidence:
+        "Learn reusable methods from chats, including project chats.",
+      semanticSearch: "Semantic memory search",
+      failed: "Some chats could not be reviewed. You can retry them.",
+      retry: "Retry review",
+      requestFailed: "Could not complete the request. Please retry.",
+    },
     settings: {
-      title: "Memory settings",
       description:
-        "Configure optional embeddings. These settings apply to all partners on this device.",
+        "Find memories with similar meanings, even when phrased differently. All partners on this device share this setting.",
       loading: "Loading configuration…",
       loadError: "Configuration is temporarily unavailable.",
-      close: "Close",
       retry: "Retry",
       updateMemories: "Update existing memories",
       updatingMemories: "Updating…",
       updateSucceeded: "Existing memories updated.",
       updateFailed: "Update failed. Check the service configuration and retry.",
       saveBeforeUpdate: "Save your changes before updating existing memories.",
-      serviceTitle: "Embedding",
-      serviceDescription:
-        "Optional. Find memories with similar meanings even when phrased differently.",
       baseURL: "Service URL",
       baseURLPlaceholder: "https://api.openai.com/v1",
-      baseURLHelp:
-        "Supports OpenAI compatible services. Uses {{base}}/embeddings after saving.",
+      baseURLHelp: "Supports services with an OpenAI-compatible API.",
       baseURLInvalid: "The service URL must use HTTP or HTTPS.",
       model: "Model",
       modelPlaceholder: "text-embedding-3-small",
-      modelHelp:
-        "Update existing memories after changing the service URL or model.",
+      reindexHelp:
+        "Rebuild the memory index after changing the service URL or model.",
       apiKey: "API Key",
       apiKeyPlaceholder: "Enter an API key",
       apiKeyKeep: "Leave blank to keep the existing value",
       apiKeyWillClear: "Clear existing value on save",
-      apiKeyHelp:
-        "Credentials are encrypted and never displayed again. Leave blank to keep the existing value.",
+      apiKeyHelp: "Your API key is encrypted and never displayed again.",
       clear: "Clear",
       undoClear: "Undo clear",
       testConnection: "Test connection",
@@ -689,7 +708,6 @@ export const baseEn = {
         "Connection failed. Check the service URL, model, and API key.",
       saveBeforeTest: "Save your changes before testing the connection.",
       saveFailed: "Could not save configuration. Please retry later.",
-      saveSucceeded: "Settings saved.",
       save: "Save settings",
       saving: "Saving…",
     },
@@ -1058,8 +1076,6 @@ export const baseEn = {
   },
   skill: {
     mySkills: "Skills",
-    installedOnPartners_one: "Installed for {{count}} partner",
-    installedOnPartners_other: "Installed for {{count}} partners",
     detail: {
       partnerSkill: "{{name}} for {{partner}}",
       notFound: "Skill not found",
@@ -1187,6 +1203,7 @@ export const baseEn = {
         edit: "Manual edit",
         pull: "Git pull",
         restore: "History restore",
+        learn: "Skill learning",
       },
     },
     try: {
@@ -1212,7 +1229,6 @@ export const baseEn = {
     },
     add: "New",
     installed: "Installed",
-    installedOnPartners: "Installed on {{count}} partners",
     search: "Search skills",
     statusFilter: "Skill status",
     all: "All activity",
@@ -1229,6 +1245,7 @@ export const baseEn = {
       git: "Git",
       zip: "ZIP",
       zipImport: "ZIP import",
+      learned: "Learned skill",
     },
     card: {
       view: "View skill {{name}}",
@@ -1415,6 +1432,34 @@ export const baseEn = {
     },
   },
   chat: {
+    skillLearning: {
+      source: "Source message {{position}}",
+      shared:
+        "This update also affects partners that have installed the skill ({{names}}).",
+      approvalChanged:
+        "The skill or affected partners changed. Review the suggestion and confirm again.",
+      create: "Save as skill",
+      update: "Update skill",
+      ignore: "Ignore",
+      retry: "Retry save",
+      saving: "Saving skill",
+      saved: "Created skill",
+      created: "Created skill",
+      updated: "Updated skill",
+      uninstalled: "Uninstalled skill",
+      deleted: "Deleted skill",
+      failed: "Could not save skill",
+      generationFailed: "Could not generate the skill. Please retry.",
+      versionConflict: "The skill version has changed. Please retry.",
+      loadError: "Could not load skill suggestions.",
+      actionError: "Could not process the suggestion. Please retry.",
+    },
+    connectorChanges: {
+      created: "Added connector",
+      updated: "Updated connector",
+      detached: "Uninstalled connector",
+      deleted: "Deleted connector",
+    },
     profileOptimization: "Profile optimization",
     approval: {
       waitingForTurn:

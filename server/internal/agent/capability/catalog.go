@@ -99,15 +99,6 @@ func operation(id, summary, effect, completion, guide string, fields ...Field) O
 			"primitiveTopics": workflowcatalog.PrimitiveTopics(),
 		}
 		op.Guides = append(op.Guides, "workflow.output-delivery", "workflow.api-retrieval")
-	case "memory.entries.search", "memory.entries.create":
-		for _, field := range fields {
-			if field.Name == "scope" {
-				op.Discovery = map[string]any{"scopes": field.Schema["enum"]}
-				if value, ok := field.Schema["default"]; ok {
-					op.Discovery["defaultScope"] = value
-				}
-			}
-		}
 	}
 	return op
 }
@@ -133,11 +124,6 @@ func catalog() []Operation {
 		return Field{Name: name, Schema: map[string]any{"type": "array", "items": map[string]any{"type": "string"}}}
 	}
 	page := []Field{{Name: "pageNum", Schema: map[string]any{"type": "integer", "minimum": 1}}, {Name: "pageSize", Schema: map[string]any{"type": "integer", "minimum": 1, "maximum": 100}}, text("cursor", false)}
-	memorySearchScope := choice("scope", []string{constants.MemoryScopePartner.String(), constants.MemoryScopeProject.String(), constants.MemoryScopeAll.String()}, false)
-	memorySearchScope.Schema["default"] = constants.MemoryScopeAll.String()
-	memorySearchScope.Schema["description"] = "Omit to search all visible partner and project memory. Project scope requires a bound project."
-	memoryWriteScope := choice("scope", []string{constants.MemoryScopePartner.String(), constants.MemoryScopeProject.String()}, true)
-	memoryWriteScope.Schema["description"] = "Choose ownership for this entry; project scope requires a bound project."
 	profileObject := func(name string, properties map[string]any, required ...string) Field {
 		return Field{Name: name, Schema: map[string]any{"type": "array", "maxItems": 32, "items": map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false}}}
 	}
@@ -205,9 +191,9 @@ func catalog() []Operation {
 		operation("team.tasks.retry", "Explicitly retry a failed task within its retry allowance.", mutation, accepted, "team.lead", text("taskId", true), text("assigneeWakerId", false)),
 		operation("team.tasks.cancel", "Cancel a task when its actual state permits it.", mutation, accepted, "team.lead", text("taskId", true)),
 		operation("team.reports.submit", "Submit the current member attempt's factual work report.", mutation, candidate, "team.member", Field{Name: "text", Schema: map[string]any{"type": "string", "minLength": 1, "maxLength": 4000}, Required: true}, scalar("readyForUser", "boolean", false)),
-		operation("memory.entries.search", "Search visible partner and project memory; scope defaults to all.", read, immediate, "memory", text("query", true), memorySearchScope, Field{Name: "topK", Schema: map[string]any{"type": "integer", "minimum": 1, "maximum": 100}}),
+		operation("memory.entries.search", "Search the authorized partner's memories.", read, immediate, "memory", text("query", true), Field{Name: "topK", Schema: map[string]any{"type": "integer", "minimum": 1, "maximum": 100}}),
 		operation("memory.entries.get", "Read one visible memory entry.", read, immediate, "memory", text("memoryId", true)),
-		operation("memory.entries.create", "Persist one stable fact in partner or project memory.", mutation, immediate, "memory", memoryWriteScope, text("content", true)),
+		operation("memory.entries.create", "Save one stable fact as a regular memory for the authorized partner.", mutation, immediate, "memory", text("content", true)),
 		operation("memory.entries.update", "Replace the content of one visible memory.", mutation, immediate, "memory", text("memoryId", true), text("content", true)),
 		operation("memory.entries.forget", "Forget one visible memory while retaining its change history.", mutation, immediate, "memory", text("memoryId", true)),
 		operation(constants.WakerProfileInterviewOperation, "Ask two or three tailored multiple-choice partner setup questions. Each answer can combine several choices and optional Other text.", mutation, accepted, constants.WakerProfileOnboardingGuide, text("message", true), Field{Name: "questions", Required: true, Schema: wakerInterviewSchema()}),
@@ -217,6 +203,7 @@ func catalog() []Operation {
 		operation("interaction.questions.create", "Ask the user a consequential structured question.", mutation, accepted, "interaction.questions", text("message", true), Field{Name: "requestedSchema", Schema: questionSchema(), Required: true}, scalar("allowSkip", "boolean", false)),
 		operation("interaction.questions.get", "Read the actual answer state of the current execution's question.", read, immediate, "interaction.questions", text("questionId", true)),
 	}
+	result = append(result, resourceManagementOperations()...)
 	result = append(result, knowledgeMaintenanceOperations()...)
 	for _, resource := range []struct {
 		// operation is the stable identity of the bounded observation command.
@@ -229,6 +216,48 @@ func catalog() []Operation {
 		result = append(result, operation(resource.operation, "Observe current state for a bounded interval without cancelling the resource.", read, immediate, resource.guide, text(resource.id, true), Field{Name: "timeoutMs", Schema: map[string]any{"type": "integer", "minimum": 1, "maximum": 60000}}))
 	}
 	return result
+}
+
+// resourceManagementOperations gives both transports the same closed inputs and scope.
+func resourceManagementOperations() []Operation {
+	read, write := constants.AgentCLIEffectRead, constants.AgentCLIEffectMutation
+	immediate := constants.AgentCLICompletionImmediate
+	text := func(name string, maximum int, required bool) Field {
+		return Field{Name: name, Required: required, Schema: map[string]any{"type": "string", "maxLength": maximum}}
+	}
+	skillID := text("skillId", 128, true)
+	skillVersion := text("expectedVersionId", 128, true)
+	optionalSkillVersion := skillVersion
+	optionalSkillVersion.Required = false
+	content := text("content", 64<<10, true)
+	connectorID := text("connectorId", 128, true)
+	revision := text("expectedRevision", 128, true)
+	optionalRevision := revision
+	optionalRevision.Required = false
+	connectorFields := []Field{
+		text("name", 120, false), text("description", 2000, false),
+		{Name: "transport", Schema: map[string]any{"type": "string", "enum": []string{string(constants.MCPTransportStdio), string(constants.MCPTransportStreamableHTTP), string(constants.MCPTransportSSE)}}},
+		text("url", 4096, false), text("command", 2048, false),
+		{Name: "arguments", Schema: map[string]any{"type": "array", "maxItems": 64, "items": map[string]any{"type": "string", "maxLength": 4096}}},
+		{Name: "connectionTimeoutMs", Schema: map[string]any{"type": "integer", "minimum": constants.MCPConnectorMinimumTimeoutMS, "maximum": constants.MCPConnectorMaximumTimeoutMS}},
+	}
+	createFields := append([]Field(nil), connectorFields...)
+	createFields[0].Required, createFields[2].Required = true, true
+	return []Operation{
+		operation("skills.packages.list", "Find skills installed for the current chat partner.", read, immediate, "skills.management", text("query", 120, false)),
+		operation("skills.packages.get", "Read an installed skill and its current published SKILL.md before revising it.", read, immediate, "skills.management", skillID),
+		operation("skills.packages.create", "On the user's request, publish a new skill and install it for this partner. Supply the full SKILL.md; report success only after the returned receipt.", write, immediate, "skills.management", text("name", 120, true), text("description", 1000, true), content),
+		operation("skills.packages.revise", "On the user's request, publish the edited SKILL.md as a new revision. Read the current version first and supply expectedVersionId. The host may require approval for shared changes.", write, immediate, "skills.management", skillID, skillVersion, content),
+		operation("skills.packages.uninstall", "On request, remove this partner's installation. Published versions remain in the skill library.", write, immediate, "skills.management", skillID, optionalSkillVersion),
+		operation("skills.packages.delete", "On an explicit request to delete from the library, remove the skill, its versions and installations after host approval.", write, immediate, "skills.management", skillID, skillVersion),
+		operation("mcp.connectors.list", "Find MCP connectors visible to this partner without exposing credentials.", read, immediate, "mcp.management", text("query", 120, false)),
+		operation("mcp.connectors.get", "Read the connector's redacted configuration, scope and revision before editing.", read, immediate, "mcp.management", connectorID),
+		operation("mcp.connectors.create", "On the user's request, test and save an MCP connector in the NeuxBot library. Install it for this partner and enable it when the test succeeds. Report the enabled state from the receipt.", write, immediate, "mcp.management", createFields...),
+		operation("mcp.connectors.update", "On the user's request, update a connector by ID and expected revision. Omitted fields retain their values. The host handles approval and credentials.", write, immediate, "mcp.management", append([]Field{connectorID, revision}, connectorFields...)...),
+		operation("mcp.connectors.test", "Test a saved MCP connector after host approval and report the live connection result.", read, immediate, "mcp.management", connectorID),
+		operation("mcp.connectors.detach", "On request, remove the link between a shared connector and this partner.", write, immediate, "mcp.management", connectorID, optionalRevision),
+		operation("mcp.connectors.delete", "On request, delete a connector after host approval of the affected scope.", write, immediate, "mcp.management", connectorID, optionalRevision),
+	}
 }
 
 // Operations returns the complete static contract for independent caller use.
@@ -465,6 +494,18 @@ func outputSchema(id string) map[string]any {
 		return object("memoryId", "scope", "content", "createdAt", "updatedAt")
 	case "memory.entries.create", "memory.entries.update", "memory.entries.forget":
 		return object("memoryId", "duplicate")
+	case "skills.packages.list", "mcp.connectors.list":
+		return object("items", "truncated")
+	case "skills.packages.get":
+		return object("skillId", "versionId", "name", "version", "description", "enabled", "revisable", "content")
+	case "skills.packages.create", "skills.packages.revise", "skills.packages.uninstall", "skills.packages.delete":
+		return object("skillId", "versionId", "name", "version")
+	case "mcp.connectors.get", "mcp.connectors.create", "mcp.connectors.update":
+		return object("connectorId", "name", "revision", "description", "transport", "scope", "enabled", "origin", "command", "connectionTimeoutMs", "testStatus", "hasCredentials")
+	case "mcp.connectors.detach", "mcp.connectors.delete":
+		return object("connectorId", "name", "detached", "deleted")
+	case "mcp.connectors.test":
+		return object("connectorId", "name", "status", "toolCount", "durationMs")
 	case constants.WakerProfileInterviewOperation:
 		return object("questionId", "status")
 	case constants.WakerProfileGetOperation:
@@ -492,6 +533,8 @@ func (o Operation) DisplayLabel() string {
 		"workflow.definitions.list": "查看可用工作流", "workflow.definitions.describe": "查看工作流参数", "workflow.runs.start": "提交工作流运行", "workflow.runs.list": "查看对话中的运行", "workflow.runs.repeat": "再次执行原运行", "workflow.runs.get": "查看执行进度", "workflow.runs.cancel": "请求停止工作流", "workflow.runs.wait": "等待工作流运行", "workflow.results.schema": "查看步骤结果格式", "workflow.results.submit": "提交步骤候选结果",
 		"team.members.list": "查看团队成员", "team.tasks.list": "查看团队任务", "team.tasks.get": "查看任务详情", "team.tasks.create": "分配团队任务", "team.tasks.update": "更新团队任务", "team.tasks.follow-up": "补充团队任务", "team.tasks.retry": "请求重试任务", "team.tasks.cancel": "请求停止任务", "team.reports.submit": "提交工作报告",
 		"memory.entries.search": "搜索记忆", "memory.entries.get": "查看记忆", "memory.entries.create": "保存记忆", "memory.entries.update": "更新记忆", "memory.entries.forget": "遗忘记忆",
+		"skills.packages.list": "查看技能列表", "skills.packages.get": "读取技能", "skills.packages.create": "新建技能", "skills.packages.revise": "更新技能", "skills.packages.uninstall": "卸载技能", "skills.packages.delete": "删除技能",
+		"mcp.connectors.list": "查看 MCP 列表", "mcp.connectors.get": "读取 MCP 配置", "mcp.connectors.create": "添加 MCP", "mcp.connectors.update": "更新 MCP", "mcp.connectors.test": "测试 MCP", "mcp.connectors.detach": "解绑 MCP", "mcp.connectors.delete": "删除 MCP",
 		constants.WakerProfileInterviewOperation: "提出伙伴建档问题",
 		constants.WakerProfileSaveOperation:      "保存伙伴档案",
 		constants.WakerProfileGetOperation:       "查看伙伴档案",

@@ -160,13 +160,13 @@ type Attachment struct {
 // CodeReference holds a whole-file reference or code snippet snapshot frozen for this message.
 type CodeReference struct {
 	// Path is the original absolute whole-file path or the path supplied with the snippet.
-	Path string
+	Path string `json:"path"`
 	// StartLine is the one-based snippet start line, or zero for whole-file references.
-	StartLine int
+	StartLine int `json:"startLine,omitempty"`
 	// EndLine is the one-based snippet end line, or zero for whole-file references.
-	EndLine int
+	EndLine int `json:"endLine,omitempty"`
 	// Content is the snippet text snapshot at send time, or empty for whole-file references.
-	Content string
+	Content string `json:"content,omitempty"`
 }
 
 // Message holds the user input currently handled by a runtime invocation.

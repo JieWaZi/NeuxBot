@@ -98,5 +98,6 @@ function operationLabel(
   if (operation === "edit") return t("detail.operation.edit");
   if (operation === "pull") return t("detail.operation.pull");
   if (operation === "restore") return t("detail.operation.restore");
+  if (operation === "learn") return t("detail.operation.learn");
   return t("detail.operation.import");
 }

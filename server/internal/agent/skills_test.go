@@ -53,7 +53,7 @@ func TestPublishedSkillDeclarationNeedsNoSourceIOAndColdPublishChecksContent(t *
 	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("tampered"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareSkills(selection); !errors.Is(err, status_error.SkillContentInvalid) {
+	if err := prepareSkills(selection, nil); !errors.Is(err, status_error.SkillContentInvalid) {
 		t.Fatalf("cold publication accepted changed immutable content: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(cwd, ".agents", "skills", "demo")); !os.IsNotExist(err) {
@@ -369,7 +369,7 @@ func prepareTestSkills(detection DetectionResult, workspace Workspace, skills []
 	if err != nil {
 		return err
 	}
-	return prepareSkills(selection)
+	return prepareSkills(selection, nil)
 }
 
 func TestManagedSkillsPreserveUnownedLinks(t *testing.T) {
@@ -794,4 +794,204 @@ func TestSharedSkillsPluginVersionsParticipateInTargetReservation(t *testing.T) 
 		t.Fatalf("different fixed version shared active target: %v %v", next != nil, err)
 	}
 	skillTestBytes(t, cwd, ".agents", "same bytes")
+}
+
+func TestOptionalSkillProjectionSkipsMissingSources(t *testing.T) {
+	cwd, present := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(present, "SKILL.md"), []byte("available skill"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := managedskills.Digest(present)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := FreezeOptionalSkills(
+		DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: ".agents"}},
+		Workspace{Path: cwd, Managed: true},
+		[]Skill{
+			{Name: "bad-reference", Path: filepath.Join(cwd, "gone"), Digest: digest},
+			{Name: "valid-learned", Path: present, Digest: digest},
+		}, nil, "test-partner", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareSkills(target, nil); err != nil {
+		t.Fatalf("optional skill made the chat unable to prepare: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, ".agents", "skills", "valid-learned", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(cwd, ".agents", "skills", "bad-reference")); !os.IsNotExist(err) {
+		t.Fatalf("missing source incorrectly published: %v", err)
+	}
+}
+
+func TestOptionalSkillProjectionRecoversEditedSnapshot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires a native discovery symlink")
+	}
+	for _, sourceAvailable := range []bool{true, false} {
+		name := "missing source"
+		if sourceAvailable {
+			name = "published source"
+		}
+		t.Run(name, func(t *testing.T) {
+			cwd := t.TempDir()
+			selection := skillTestSelection(t, cwd, ".agents", "published content")
+			selection.optional = true
+			if err := prepareSkills(selection, nil); err != nil {
+				t.Fatal(err)
+			}
+			projected := filepath.Join(cwd, ".agents", "skills", "demo", "SKILL.md")
+			if err := os.WriteFile(projected, []byte("edited content"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if !sourceAvailable {
+				if err := os.Remove(filepath.Join(selection.entries[0].path, "SKILL.md")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := prepareSkills(selection, nil); err != nil {
+				t.Fatalf("edited optional skill blocked the next chat: %v", err)
+			}
+			if sourceAvailable {
+				skillTestBytes(t, cwd, ".agents", "published content")
+			} else if _, err := os.Lstat(filepath.Dir(projected)); !os.IsNotExist(err) {
+				t.Fatalf("unavailable edited projection is still discoverable: %v", err)
+			}
+			backups, err := filepath.Glob(filepath.Join(cwd, ".neuxbot", "skills", ".edited-*", selection.entries[0].digest, "SKILL.md"))
+			if err != nil || len(backups) != 1 {
+				t.Fatalf("expected one backup of the assistant's edits, got %v: %v", backups, err)
+			}
+			data, err := os.ReadFile(backups[0])
+			if err != nil || string(data) != "edited content" {
+				t.Fatalf("assistant's edits were lost: %q %v", data, err)
+			}
+		})
+	}
+}
+
+func TestOptionalSkillChangeDoesNotFenceSamePartnerChat(t *testing.T) {
+	cwd := t.TempDir()
+	pool := skillTestRuntime(t, func() *skillTestClient { return &skillTestClient{} })
+	lifecycle := NewThreadLifecycle(pool, skillTestStore{})
+	t.Cleanup(func() { _ = lifecycle.Close(context.Background()) })
+	prepare := func(id, owner, body string) (*Turn, error) {
+		skills := skillTestSelection(t, cwd, ".agents", body)
+		skills.owner, skills.optional = owner, true
+		return lifecycle.Prepare(t.Context(), ThreadRequest{ChatID: id, Connection: skillTestRequest(cwd, "codex", skills)},
+			TurnRequest{Text: "user input", HostInvocationID: id, ExecutionID: id, AssistantMessageID: id},
+			TurnPorts{Admit: func(context.Context, TurnAdmission) (ConversationBatch, error) { return ConversationBatch{}, nil }, AcquireResources: skillTestPorts().AcquireResources})
+	}
+	first, err := prepare("first", "same-partner", "known skill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := prepare("second", "same-partner", "recently learned change")
+	if err != nil {
+		t.Fatalf("skill change blocked another chat: %v", err)
+	}
+	skillTestBytes(t, cwd, ".agents", "known skill")
+	if _, err := prepare("cross-partner", "somebody-else", "different skill"); !errors.Is(err, ErrTurnAdmissionBusy) {
+		t.Fatalf("shared projection relaxed the partner boundary: %v", err)
+	}
+	for _, turn := range []*Turn{second, first} {
+		if err := turn.Close(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	third, err := prepare("third", "same-partner", "recently learned change")
+	if err != nil {
+		t.Fatal(err)
+	}
+	skillTestBytes(t, cwd, ".agents", "recently learned change")
+	if err := third.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCorruptOptionalSkillProjectionDoesNotFenceChat(t *testing.T) {
+	cwd := t.TempDir()
+	pool := skillTestRuntime(t, func() *skillTestClient { return &skillTestClient{} })
+	lifecycle := NewThreadLifecycle(pool, skillTestStore{})
+	t.Cleanup(func() { _ = lifecycle.Close(context.Background()) })
+	selection := skillTestSelection(t, cwd, ".agents", "published content")
+	selection.optional, selection.owner = true, "partner"
+	if err := prepareSkills(selection, nil); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(cwd, ".agents", "skills", "demo")
+	if err := os.Remove(target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("accidentally replaced skill link"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	turn, err := lifecycle.Prepare(t.Context(), ThreadRequest{ChatID: "chat", Connection: skillTestRequest(cwd, "codex", selection)},
+		TurnRequest{Text: "ordinary text", HostInvocationID: "chat", ExecutionID: "chat", AssistantMessageID: "chat"},
+		TurnPorts{Admit: func(context.Context, TurnAdmission) (ConversationBatch, error) { return ConversationBatch{}, nil }, AcquireResources: skillTestPorts().AcquireResources})
+	if err != nil {
+		t.Fatalf("optional skill prevented ordinary cold chat admission: %v", err)
+	}
+	_ = turn.Close(t.Context())
+}
+
+func TestOptionalSkillProjectionPreservesCorruptManifestEvidence(t *testing.T) {
+	cwd := t.TempDir()
+	selection := skillTestSelection(t, cwd, ".agents", "published content")
+	selection.optional = true
+	if err := prepareSkills(selection, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, managedskills.MaterializationManifestName), []byte("broken manifest"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareSkills(selection, nil); err != nil {
+		t.Fatalf("invalid optional manifest prevented publishing verified skills: %v", err)
+	}
+	skillTestBytes(t, cwd, ".agents", "published content")
+	backups, err := filepath.Glob(filepath.Join(cwd, ".neuxbot", "skills", ".edited-*", managedskills.MaterializationManifestName))
+	if err != nil || len(backups) != 1 {
+		t.Fatalf("expected archived manifest, got %v: %v", backups, err)
+	}
+	if body, err := os.ReadFile(backups[0]); err != nil || string(body) != "broken manifest" {
+		t.Fatalf("archived manifest = %q, %v", body, err)
+	}
+}
+
+func TestSkillRepairKeepsOtherActiveDiscoveryTargetReadable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires native discovery symlinks")
+	}
+	cwd := t.TempDir()
+	pool := skillTestRuntime(t, func() *skillTestClient { return &skillTestClient{} })
+	first := skillTestSelection(t, cwd, ".agents", "common version")
+	first.optional, first.owner = true, "same-partner"
+	second := skillTestSelection(t, cwd, ".claude", "common version")
+	second.optional, second.owner = true, "same-partner"
+	if _, err := pool.Open(t.Context(), skillTestRequest(cwd, "codex", first), skillTestPorts()); err != nil {
+		t.Fatal(err)
+	}
+	replaced, err := pool.Open(t.Context(), skillTestRequest(cwd, "claude", second), skillTestPorts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := replaced.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	firstTarget := filepath.Join(cwd, ".agents", "skills", "demo", "SKILL.md")
+	if err := os.WriteFile(firstTarget, []byte("agent drafted changes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	next, err := FreezeOptionalSkills(DetectionResult{Runtime: RuntimeSummary{SkillDirectoryName: ".claude"}},
+		Workspace{Path: cwd, Managed: true}, nil, nil, "same-partner", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Open(t.Context(), skillTestRequest(cwd, "claude", next), skillTestPorts()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadFile(firstTarget); err != nil {
+		t.Fatalf("another native discovery target lost the snapshot leased to its active connection: %v", err)
+	}
 }

@@ -204,6 +204,45 @@ func TestProviderRuntimePartialAccountRetainsFailedCleanup(t *testing.T) {
 	}
 }
 
+func TestProviderRuntimeRetriesEphemeralCleanupDuringOperation(t *testing.T) {
+	request := providerTestRequest(t, "claude")
+	request.Launch.EphemeralText = true
+	root := filepath.Join(t.TempDir(), "scratch")
+	if err := os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	attempts := 0
+	runtime := NewProviderRuntime(ProviderRuntimeOptions{
+		AcquireAccount: func(context.Context, AccountRequest) (AccountLease, error) {
+			return AccountLease{Close: func(context.Context) error {
+				attempts++
+				if attempts == 1 {
+					return errors.New("fixture fails first cleanup")
+				}
+				return nil
+			}}, status_error.RuntimeAuthRequired
+		},
+	})
+	owner, err := runtime.Open(t.Context(), request, ProviderConnectionPorts{
+		CloseFiles: func(context.Context) error { return os.RemoveAll(root) },
+	})
+	if owner == nil || err != status_error.RuntimeAuthRequired {
+		t.Fatalf("open = %v, %v", owner != nil, err)
+	}
+	if err = owner.WaitOpenCleanup(t.Context()); err != status_error.RuntimeShutdownFailed {
+		t.Fatalf("first cleanup = %v", err)
+	}
+	if _, err = os.Stat(root); err != nil {
+		t.Fatalf("scratch removed while lease still active: %v", err)
+	}
+	if err = runtime.RetryEphemeralCleanup(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("scratch survived background cleanup: %v", err)
+	}
+}
+
 func TestProviderRuntimeRootCloseRetainsLateResources(t *testing.T) {
 	req := providerTestRequest(t, "codex")
 	acquiring := make(chan struct{})

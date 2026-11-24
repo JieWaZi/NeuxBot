@@ -4,7 +4,7 @@
 
 **Goal:** 将记忆范围收敛到伙伴，交付前端双分组、核心记忆注入、一次性会话自动复盘、对话内技能学习与智能体设置。
 
-**Architecture:** `memory.db` 继续拥有伙伴记忆、索引、历史和复盘处理边界。Execution 经 ThreadLifecycle 向合格的普通伙伴聊天交付核心快照。后台从 Chat 已提交事实提取增量，使用 ProviderRuntime 上的临时无工具会话生成候选，由 Go Core 提交记忆和可选技能建议。按技能学习模式在聊天确认后或自动生成正文，复用现有技能链路新建和修订。
+**Architecture:** `memory.db` 继续拥有伙伴记忆、索引、历史和复盘处理边界。Execution 经 ThreadLifecycle 向合格的普通伙伴聊天交付独立的核心快照上下文。后台从 Chat 已提交事实提取增量，使用 ProviderRuntime 上的独立文本调用生成候选，由 Go Core 提交记忆和可选技能建议。按技能学习模式在聊天确认后或自动生成正文，复用现有技能链路新建和修订。
 
 **Tech Stack:** Go、SQLite FTS5/sqlite-vec、Chat JSONL、acp-go、生成 OpenAPI Client、React、TanStack Query、Vitest。
 
@@ -15,7 +15,7 @@
 - 记忆、索引和命令回执归属伙伴，按新数据结构交付。
 - 核心记忆和普通记忆共用一条记录。核心快照按最终序列化的 UTF-8 字节数限制在 **8 KiB**。
 - 自动记忆开关和技能学习三档按伙伴独立配置，默认关闭。共用 Chat 进度，累计 **20 个合格成功轮次**，或至少 **3 个合格成功轮次且空闲 15 分钟** 后触发。单批最多 **20 轮、24 KiB 证据**。
-- 仅有自动记忆资格时只使用脱敏用户原文及有界的相关已有记忆。技能学习可加入经白名单筛选和脱敏的最终助手正文及工具步骤。两项功能都使用单轮、无工具且无会话正文持久化的生成，并保留规范用量元数据。先验证适配器的临时模式，再开放对应 CLI。
+- 仅有自动记忆资格时只使用脱敏用户原文及有界的相关已有记忆。技能学习可加入经白名单筛选和脱敏的最终助手正文及工具步骤。两项功能都使用单轮临时文本调用。Core 在调用记录中只持久化调用身份和规范用量终态，原生工具与原生历史按适配器能力限制。
 - 关键路径保持有界本地读取，遵守[执行关键路径约定](../../development/backend-cn.md#82-执行关键路径禁止诊断探测)。后台复用原账号及进程租约。事件复用现有全局连接。
 - schema、文档和内嵌技能通过既有生成命令更新。仅执行定向测试。真实应用与浏览器须经用户明确同意后操作。按工作区约定保留无关改动。
 
@@ -38,7 +38,7 @@
 | `server/internal/memory/{store,service,memory,agent,keyword,vecstore,scope_resolver}.go`                                                                                              | 伙伴归属、授权、既有读写和索引。核心快照与复盘分别收在同包职责文件。                          |
 | `server/apis/memory`、`server/apis/{projects,wakers}/delete_*.go`                                                                                                                     | 伙伴记忆契约、核心切换、复盘设置和归属删除。                                                      |
 | `server/apis/chats/{message_input,create_chat,send_message}.go`、`server/services/execution/{intent,work,native_turn,lifecycle,service}.go`、`server/internal/chat/eventlog/types.go` | 可信接纳来源、冻结资格、终态提示、动态核心记忆。                                                  |
-| `server/internal/agent`、`server/internal/chat/conversation`                                                                                                                          | 原生绑定交付、独立调用存储策略、用途归属和用量证据。Claude 通过独立 acp-go 依赖交付原生临时能力。 |
+| `server/internal/agent`、`server/internal/chat/conversation`                                                                                                                          | 原生绑定交付、独立调用存储策略、用途归属和用量证据。Claude 通过 acp-go 启动边界应用原生临时能力。 |
 | `server/services/chat/{journal,live_projection,recovery,chat}.go`、`server/global/config.go`                                                                                          | 复盘事实读取、恢复对账、删除边界和生命周期装配。                                                  |
 | `packages/frontend/src/modules/memory`、`packages/frontend/src/shared/i18n/{workspace-resources,base-en}.ts`                                                                          | 伙伴单归属、两组、切换动作、自动记忆设置与错误反馈。                                              |
 | `server/internal/agent/capability/catalog.go`、`server/internal/agent/cli`、`skills/bot/references/memory.md`                                                                         | 伙伴命令参数、回执、操作说明与内嵌技能。                                                          |
@@ -100,21 +100,21 @@
 
 ## Task 4 临时生成和用量证据
 
-落实 PM-05。完成提交前可测试的临时生成通道，开放功能还需真实 CLI 验收。
+落实 PM-05。验证 Core 的临时生成通道和用量记录，原生工具与历史行为按 CLI 独立验收。
 
 **Files**
 
-`server/internal/agent/{detached_task,thread_lifecycle,turn_lifecycle,provider_runtime,agent_client,native_outcomes}.go`，`server/internal/chat/conversation/{native_stream,usage_scan}.go`。复用现有 `thread_lifecycle_test.go` 和 `usage_scan_test.go`。原生 Claude 参数及协议测试在独立 acp-go 的 `pkg/claude`。仅在验证原生能力后调整 `server/go.mod` 和 `server/go.sum`。
+`server/internal/agent/{detached_task,ephemeral_text,thread_lifecycle,turn_lifecycle,provider_runtime,agent_client,native_outcomes}.go`，`server/internal/chat/conversation/{native_stream,usage_scan}.go`。复用独立调用、原生启动参数与用量查询测试。
 
 **Interfaces**
 
-- `agent.TextRequest` 增加 `Ephemeral bool` 和 `UsageWakerID string`。调用仍用 `(*ThreadLifecycle).GenerateText(ctx context.Context, request TextRequest) (TextResult, error)`。开关为真时要求无工具和原生历史不落盘。现有调用沿用原默认路径。
-- `(*ThreadLifecycle).SupportsEphemeralText(provider string) bool` 从实现已核验的适配器策略读取本地能力。复盘使用 `UsageSource: "memory_review"`，只允许规范终态的无正文用量元数据进入统计链路。
+- `agent.TextRequest` 增加 `Ephemeral bool` 和 `UsageWakerID string`。调用仍用 `(*ThreadLifecycle).GenerateText(ctx context.Context, request TextRequest) (TextResult, error)`。临时模式隔离 Core 会话正文，继承各智能体已有的原生限制能力。现有调用沿用原默认路径。
+- 复盘通过 `ScratchRoot` 提供 Core 管理的临时根目录，并通过 `BeforeSubmit` 在实际调用前重新校验授权。复盘使用 `UsageSource: "memory_review"`，只允许规范终态的无正文用量元数据进入统计链路。普通独立文本调用仍需要适配器原生禁用工具。
 
 - [ ] 以唯一提示与响应作为哨兵，编写 `TestEphemeralTextLeavesNoConversationBody`、`TestEphemeralTextRecordsUsageWithoutDetachedHistory`、`TestEphemeralTextCleansAfterFailureOrCancellation`、`TestEphemeralTextRecoveryOwnsOnlyItsScratch`。扫描测试的共享原生文件、Chat 目录与临时路径，并核对 `ReadUsageTerminals` 的实际结果。先运行以确认现有独立调用仍走耐久原生写入。
-- [ ] 复用租约和原生客户端，用临时存储策略隔离接纳、过程、最终候选与错误正文。统计终态只载白名单元数据，按原生调用去重。Claude 需要由适配器传递原生不持久化参数及临时工作目录，拒绝已存在的会话身份或额外挂载。新版 acp-go 未具备此行为时，先在该项目实现并验证，使用固定依赖版本。
+- [ ] 复用租约和原生客户端，用临时存储策略隔离接纳、过程、最终候选与错误正文。统计终态只载白名单元数据，按原生调用去重。Claude 启动时使用原生无会话持久化参数及 Core 管理的临时工作目录，拒绝已存在的会话身份或额外挂载。Claude 的无历史选项由 Core 在既有 SDK 启动边界验证并注入，沿用原账号、进程和协议。Codex 由 acp-go 发送原生临时线程参数并核对回执。
 - [ ] 正常收尾、失败、取消均从同一 Runtime 所有者回收。启动回收只消费有可靠归属标记、无活动租约的复盘临时目录和状态。清理错误保留可重试记录，诊断只公开稳定错误。
-- [ ] 运行 `cd server && go test ./internal/agent ./internal/chat/conversation -run 'Test.*(EphemeralText|GenerateText|UsageTerminal)' -count=1`，并定向验证现有知识及工作流独立生成。真实 CLI 验收用虚构哨兵，比较调用前后的 CLI 历史、公开 Chat、共享原生分片与受管临时目录，覆盖成功、失败、取消、重启及用量查询。四种路径无正文遗留后才允许 Task 6 启用。
+- [ ] 运行 `cd server && go test ./internal/agent ./internal/chat/conversation -run 'Test.*(EphemeralText|GenerateText|UsageTerminal)' -count=1`，并定向验证现有知识及工作流独立生成。真实 CLI 验收用虚构哨兵检查公开 Chat、共享原生分片和受管临时目录，覆盖成功、失败、取消、重启及用量查询，并逐个核对各适配器的工具和原生历史行为。
 
 ## Task 5 增量复盘、提交与恢复
 
@@ -142,15 +142,15 @@
 
 **Files**
 
-新增 `server/apis/memory/{get_review_settings,update_review_settings,retry_memory_review}.go`，对应路由和测试。修改 `server/apis/memory/types.go`、`server/constants/memory_timeline_source.go`、设置模块的智能体页、记忆页及 `api/memory-queries.ts`、两份词典。现有语义检索表单从智能体设置打开。复用现有事件发布和 `useQueryEvents`。
+新增 `server/apis/review/{get_review_settings,update_review_settings,get_waker_review_settings,update_waker_review_settings,retry_waker_review}.go`，对应路由和测试。修改 `server/apis/memory/types.go`、`server/constants/memory_timeline_source.go`、设置模块的智能体页、记忆页及 `api/memory-queries.ts`、两份词典。现有语义检索表单从智能体设置打开。复用现有事件发布和 `useQueryEvents`。
 
 **Interfaces**
 
 - 伙伴复盘设置接口读取并更新记忆开关和技能学习三档，返回实际 CLI、能力和状态。全局设置读写一套来源和专用 CLI、账号、模型。重试接口只处理当前配置范围内的可重试批次。
 - 使用既有全局资源事件注册 `partner.memory` 主题，以伙伴 ID 订阅。提交后通知该伙伴的列表、时间线或设置状态变更，按实际变化精确失效。
 
-- [ ] 编写 `TestMemoryReviewSettingsRejectUnverifiedRuntime`、`TestMemoryReviewSettingsRetryUsesCurrentGeneration` 和前端用例，覆盖默认关闭、两种 CLI 来源、按伙伴解析、全局专用配置、配置变更仅影响对应伙伴、外发说明、不可用、持续失败和重试。添加事件用例，断言只更新当前伙伴的对应查询且不因一条自动记忆再次请求项目。
-- [ ] 运行定向测试确认新行为缺失。实现查询与设置、理由和重试动作。在智能体设置顶层列表新增「记忆」组，接入合格运行时的能力开关和后端事件。在现有来源位置显示自动复盘来源。现有查询失败保留列表与可执行的本地操作。
+- [ ] 编写复盘设置可用性、当前代次重试和前端用例，覆盖默认关闭、两种 CLI 来源、按伙伴解析、全局专用配置、配置变更仅影响对应伙伴、外发说明、不可用、持续失败和重试。添加事件用例，断言只更新当前伙伴的对应查询且不因一条自动记忆再次请求项目。
+- [ ] 运行定向测试确认新行为缺失。实现查询与设置、理由和重试动作。在智能体设置新增「记忆与学习」组，接入 CLI 选择、伙伴设置和后端事件。在现有来源位置显示自动复盘来源。现有查询失败保留列表与可执行的本地操作。
 - [ ] 重新生成并校验 API 和技能。运行 `cd server && go test ./apis/memory ./internal/memory -run 'Test.*(PartnerMemory|Core|Review)' -count=1`。运行 `pnpm --dir packages/frontend test src/modules/memory/pages/waker-memory-page.test.tsx src/modules/memory/components/memory-list.test.tsx src/modules/memory/components/memory-settings-dialog.test.tsx src/shared/i18n/translations.test.ts`，对变更文件运行 ESLint 与格式检查。
 - [ ] 更新实现后的 [CONTEXT](../../../CONTEXT.md)、[资源与记忆架构](../../architecture/resources-and-memory-cn.md#记忆) 及 botcli 指南，运行 `pnpm docs:check`。按规格表记录真实 CLI 的落盘检查和 Web／桌面的浅暗主题、窄容器及键盘结果。实际运行环境尚未验收的项单独记录。
 

@@ -2,12 +2,12 @@ package memory
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"math"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // keywordSearch 在未配置 Embedding 时提供关键词召回。
@@ -19,21 +19,76 @@ type keywordSearch struct {
 // ftsMinTokenRunes 是 trigram 分词器能形成三元组的最小字符数，短于此长度直接走 LIKE。
 const ftsMinTokenRunes = 3
 
-// search 在指定范围内按关键词召回记忆。
+// search 在指定伙伴内按关键词召回记忆。
 func (k *keywordSearch) search(
 	ctx context.Context,
 	query string,
 	topK int,
-	scope constants.MemoryScope,
-	scopeID string,
+	partnerID string,
 ) ([]ScoredMemory, error) {
 	if k.store.ftsAvailable && utf8.RuneCountInString(query) >= ftsMinTokenRunes {
 		// MATCH 语法错误等可预期问题直接降级到 LIKE，不向调用方暴露实现细节。
-		if results, err := k.searchFTS(ctx, query, topK, scope, scopeID); err == nil {
+		if results, err := k.searchFTS(ctx, query, topK, partnerID); err == nil {
 			return results, nil
 		}
 	}
-	return k.searchLike(ctx, query, topK, scope, scopeID)
+	return k.searchLike(ctx, query, topK, partnerID)
+}
+
+// reviewKeywordLimit 限制对多轮原文的检索词数和 SQL 参数数。
+const reviewKeywordLimit = 64
+
+func (k *keywordSearch) searchReview(ctx context.Context, query string, topK int, partnerID string) ([]ScoredMemory, error) {
+	if k.store.ftsAvailable {
+		terms := reviewKeywordTerms(query, ftsMinTokenRunes)
+		hits, err := k.searchFTS(ctx, strings.Join(terms, " "), topK, partnerID)
+		if err == nil && len(hits) != 0 {
+			return hits, nil
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+	}
+	terms := reviewKeywordTerms(query, 2)
+	if len(terms) == 0 {
+		return k.searchLike(ctx, query, topK, partnerID)
+	}
+	return k.searchLikeTerms(ctx, terms, topK, partnerID)
+}
+
+// reviewKeywordTerms 将连续汉字按重叠窗口切分，使更正前后仍共享主题词。
+func reviewKeywordTerms(query string, hanWidth int) []string {
+	words := strings.FieldsFunc(query, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) })
+	terms := make([]string, 0, reviewKeywordLimit)
+	seen := make(map[string]struct{}, reviewKeywordLimit)
+	add := func(term string) {
+		if _, exists := seen[term]; !exists && len(terms) < reviewKeywordLimit {
+			seen[term] = struct{}{}
+			terms = append(terms, term)
+		}
+	}
+	for _, word := range words {
+		runes := []rune(word)
+		for len(runes) != 0 && len(terms) < reviewKeywordLimit {
+			han := unicode.Is(unicode.Han, runes[0])
+			end := 1
+			for end < len(runes) && unicode.Is(unicode.Han, runes[end]) == han {
+				end++
+			}
+			if han {
+				for i := 0; i+hanWidth <= end && len(terms) < reviewKeywordLimit; i++ {
+					add(string(runes[i : i+hanWidth]))
+				}
+			} else if end >= hanWidth {
+				add(strings.ToLower(string(runes[:end])))
+			}
+			runes = runes[end:]
+		}
+		if len(terms) == reviewKeywordLimit {
+			break
+		}
+	}
+	return terms
 }
 
 // buildFTSQuery 把用户查询转换为 FTS5 MATCH 表达式：分词、转义、OR 连接。
@@ -53,13 +108,12 @@ func buildFTSQuery(query string) string {
 }
 
 // searchFTS 使用 FTS5 trigram 索引召回，按 bm25 升序（越小越好）排序。
-// 此处为检索特例：虚拟表负责排名，memories 负责范围与正文，单次查询保持排名、范围和版本一致。
+// 此处为检索特例：虚拟表负责排名，partner_memories 负责范围与正文，单次查询保持排名、范围和版本一致。
 func (k *keywordSearch) searchFTS(
 	ctx context.Context,
 	query string,
 	topK int,
-	scope constants.MemoryScope,
-	scopeID string,
+	partnerID string,
 ) ([]ScoredMemory, error) {
 	matchQuery := buildFTSQuery(query)
 	if matchQuery == "" {
@@ -67,15 +121,14 @@ func (k *keywordSearch) searchFTS(
 	}
 	rows, err := k.store.db.QueryContext(
 		ctx,
-		`SELECT `+memoryColumnsAliased+`, bm25(memory_fts) AS rank
-		 FROM memory_fts
-		 JOIN memories m ON m.id = memory_fts.memory_id
-		 WHERE memory_fts MATCH ? AND m.scope = ? AND m.scope_id = ?
+		`SELECT `+memoryColumnsAliased+`, bm25(partner_memory_fts) AS rank
+		 FROM partner_memory_fts
+		 JOIN partner_memories m ON m.id = partner_memory_fts.memory_id
+		 WHERE partner_memory_fts MATCH ? AND m.partner_id = ?
 		 ORDER BY rank ASC, m.updated_at DESC
 		 LIMIT ?`,
 		matchQuery,
-		string(scope),
-		scopeID,
+		partnerID,
 		topK,
 	)
 	if err != nil {
@@ -85,20 +138,9 @@ func (k *keywordSearch) searchFTS(
 	results := []ScoredMemory{}
 	midpoint, steepness := bm25Parameters(query)
 	for rows.Next() {
-		memory := Memory{}
 		var rank float64
-		if err := rows.Scan(
-			&memory.Seq,
-			&memory.ID,
-			&memory.Scope,
-			&memory.ScopeID,
-			&memory.Data,
-			&memory.Hash,
-			&memory.SourceRunID,
-			&memory.CreatedAt,
-			&memory.UpdatedAt,
-			&rank,
-		); err != nil {
+		memory, err := scanMemory(rows, &rank)
+		if err != nil {
 			return nil, status_error.DatabaseError
 		}
 		rawScore := -rank
@@ -106,7 +148,7 @@ func (k *keywordSearch) searchFTS(
 			rawScore = 0
 		}
 		results = append(results, ScoredMemory{
-			Memory: memory,
+			Memory: *memory,
 			Score:  normalizeBM25(rawScore, midpoint, steepness),
 		})
 	}
@@ -121,22 +163,34 @@ func (k *keywordSearch) searchLike(
 	ctx context.Context,
 	query string,
 	topK int,
-	scope constants.MemoryScope,
-	scopeID string,
+	partnerID string,
 ) ([]ScoredMemory, error) {
-	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
-	rows, err := k.store.db.QueryContext(
-		ctx,
-		`SELECT `+memoryColumnsAliased+`
-		 FROM memories m
-		 WHERE m.scope = ? AND m.scope_id = ? AND m.data LIKE '%' || ? || '%' ESCAPE '\'
-		 ORDER BY m.updated_at DESC
-		 LIMIT ?`,
-		string(scope),
-		scopeID,
-		escaped,
-		topK,
-	)
+	return k.searchLikeTerms(ctx, []string{query}, topK, partnerID)
+}
+
+// searchLikeTerms 按单伙伴内命中的词数排序，避免短词只召回近期无关条目。
+func (k *keywordSearch) searchLikeTerms(ctx context.Context, terms []string, topK int, partnerID string) ([]ScoredMemory, error) {
+	escape := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	const match = `m.data LIKE '%' || ? || '%' ESCAPE '\'`
+	matches := make([]string, len(terms))
+	scores := make([]string, len(terms))
+	args := make([]any, 0, len(terms)*2+2)
+	args = append(args, partnerID)
+	for i, term := range terms {
+		matches[i] = match
+		scores[i] = "(" + match + ")"
+		args = append(args, escape.Replace(term))
+	}
+	order := "m.updated_at DESC"
+	if len(terms) > 1 {
+		order = strings.Join(scores, " + ") + " DESC, " + order
+		args = append(args, args[1:]...)
+	}
+	args = append(args, topK)
+	rows, err := k.store.db.QueryContext(ctx,
+		`SELECT `+memoryColumnsAliased+` FROM partner_memories m
+		 WHERE m.partner_id = ? AND (`+strings.Join(matches, " OR ")+`)
+		 ORDER BY `+order+` LIMIT ?`, args...)
 	if err != nil {
 		return nil, status_error.DatabaseError
 	}

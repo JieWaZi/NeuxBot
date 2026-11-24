@@ -156,9 +156,27 @@ botcli knowledge pages search --library-id library-example --query "部署流程
 | ----------------------- | ------------------------------------------------------ | ---------- | ----------- |
 | `memory.entries.search` | 有界搜索可见记忆，返回实际使用的语义或关键词检索模式。 | `read`     | `immediate` |
 | `memory.entries.get`    | 读取一条可见记忆。                                     | `read`     | `immediate` |
-| `memory.entries.create` | 将一条稳定事实保存到明确的伙伴或项目范围。             | `mutation` | `immediate` |
+| `memory.entries.create` | 将一条稳定事实保存为已授权伙伴的普通记忆。             | `mutation` | `immediate` |
 | `memory.entries.update` | 替换已知记忆的内容，保留原归属。                       | `mutation` | `immediate` |
 | `memory.entries.forget` | 遗忘一条当前记忆，保留其变更历史。                     | `mutation` | `immediate` |
+
+### 聊天中的技能与 MCP
+
+| 操作标识 | 用途 | 影响 | 完成语义 |
+| --- | --- | --- | --- |
+| `skills.packages.list` | 查找当前伙伴安装的技能。 | `read` | `immediate` |
+| `skills.packages.get` | 查看技能已发布的版本与正文。 | `read` | `immediate` |
+| `skills.packages.create` | 发布新技能并为当前伙伴安装。 | `mutation` | `immediate` |
+| `skills.packages.revise` | 基于已读取的版本发布修订。 | `mutation` | `immediate` |
+| `skills.packages.uninstall` | 解除当前伙伴的技能安装关系。 | `mutation` | `immediate` |
+| `skills.packages.delete` | 经确认后删除技能库资源及版本。 | `mutation` | `immediate` |
+| `mcp.connectors.list` | 查找当前伙伴可访问的 MCP 连接器。 | `read` | `immediate` |
+| `mcp.connectors.get` | 查看连接器版本及脱敏配置。 | `read` | `immediate` |
+| `mcp.connectors.create` | 经确认后添加当前伙伴的连接器配置。 | `mutation` | `immediate` |
+| `mcp.connectors.update` | 按当前版本更新连接器配置。 | `mutation` | `immediate` |
+| `mcp.connectors.test` | 经确认后测试已保存的连接器。 | `read` | `immediate` |
+| `mcp.connectors.detach` | 解除当前伙伴的共享连接器关系。 | `mutation` | `immediate` |
+| `mcp.connectors.delete` | 经确认后删除连接器。 | `mutation` | `immediate` |
 
 ### 结构化问答
 

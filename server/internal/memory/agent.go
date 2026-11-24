@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -23,6 +22,8 @@ type agentCommand struct {
 	id string
 	// key 是 Chat、伙伴、动作和请求身份的摘要。
 	key string
+	// partnerID 是当前授权的伙伴。
+	partnerID string
 	// hash 是规范输入的摘要，同键异内容必须拒绝。
 	hash string
 	// memoryID 指向本次真实写入或遗忘的记忆。
@@ -45,7 +46,7 @@ func (s *Service) replayAgentCommand(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	var previous agentCommand
-	err := s.store.db.QueryRowContext(ctx, "SELECT id, request_hash, memory_id, duplicate FROM memory_command_receipts WHERE request_key = ?", command.key).Scan(&previous.id, &previous.hash, &previous.memoryID, &previous.duplicate)
+	err := s.store.db.QueryRowContext(ctx, "SELECT id, request_hash, memory_id, duplicate FROM partner_memory_command_receipts WHERE request_key = ?", command.key).Scan(&previous.id, &previous.hash, &previous.memoryID, &previous.duplicate)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -73,30 +74,28 @@ func insertAgentReceipt(ctx context.Context, tx *sql.Tx) error {
 	if command.memoryID == "" {
 		return status_error.AgentInputInvalid
 	}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO memory_command_receipts (id, request_key, request_hash, memory_id, duplicate) VALUES (?, ?, ?, ?, ?)", command.id, command.key, command.hash, command.memoryID, command.duplicate); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO partner_memory_command_receipts (id, partner_id, request_key, request_hash, memory_id, duplicate) VALUES (?, ?, ?, ?, ?, ?)", command.id, command.partnerID, command.key, command.hash, command.memoryID, command.duplicate); err != nil {
 		return status_error.DatabaseError
 	}
 	return nil
 }
 
-// AgentBindings 以当前伙伴和项目范围直接调用记忆领域，并在同库提交命令回执。
+// AgentBindings 以当前伙伴直接调用记忆领域，并在同库提交命令回执。
 func (s *Service) AgentBindings(mc Context) []capability.Binding {
 	show := func(memory Memory) map[string]any {
-		return map[string]any{"memoryId": memory.ID, "scope": memory.Scope, "content": memory.Data, "createdAt": memory.CreatedAt, "updatedAt": memory.UpdatedAt}
+		return map[string]any{"memoryId": memory.ID, "core": memory.Core, "content": memory.Data, "createdAt": memory.CreatedAt, "updatedAt": memory.UpdatedAt}
 	}
 	bindings := []capability.Binding{{Operation: "memory.entries.search", Call: func(ctx context.Context, input capability.Request) (capability.Result, error) {
 		var params struct {
 			// Query 是本次检索文本。
 			Query string `json:"query"`
-			// Scope 是当前可见范围选择。
-			Scope string `json:"scope"`
 			// TopK 是有界命中条数。
 			TopK int `json:"topK"`
 		}
 		if err := capability.DecodeParams(input.Params, &params); err != nil {
 			return capability.Result{}, err
 		}
-		result, err := s.Search(ctx, mc, params.Query, constants.MemoryScope(params.Scope), params.TopK)
+		result, err := s.Search(ctx, mc, params.Query, params.TopK)
 		if err != nil {
 			return capability.Result{}, err
 		}
@@ -109,7 +108,7 @@ func (s *Service) AgentBindings(mc Context) []capability.Binding {
 		return capability.Result{Data: map[string]any{"items": items, "mode": result.Mode, "indexConflict": result.Conflict}}, nil
 	}}, {Operation: "memory.entries.get", Call: func(_ context.Context, input capability.Request) (capability.Result, error) {
 		id, _ := input.Params["memoryId"].(string)
-		entry, err := s.getAccessibleMemory(id, mc)
+		entry, err := getAccessibleMemory(s.store.db, id, mc.PartnerID)
 		if err != nil {
 			return capability.Result{}, err
 		}
@@ -117,7 +116,7 @@ func (s *Service) AgentBindings(mc Context) []capability.Binding {
 	}}}
 	for _, operation := range []string{"memory.entries.create", "memory.entries.update", "memory.entries.forget"} {
 		newCommand := func(requestID string) *agentCommand {
-			return &agentCommand{id: util.New(), key: commandDigest([]string{mc.ChatID, mc.PartnerID, mc.ProjectID, operation, requestID})}
+			return &agentCommand{id: util.New(), partnerID: mc.PartnerID, key: commandDigest([]string{mc.ChatID, mc.PartnerID, operation, requestID})}
 		}
 		result := func(command *agentCommand) capability.Result {
 			return capability.Result{CommandID: command.id, Replayed: command.replayed, Data: map[string]any{"memoryId": command.memoryID, "duplicate": command.duplicate}}
@@ -131,8 +130,7 @@ func (s *Service) AgentBindings(mc Context) []capability.Binding {
 			var err error
 			switch operation {
 			case "memory.entries.create":
-				scope, _ := input.Params["scope"].(string)
-				_, err = s.Write(ctx, mc, constants.MemoryScope(scope), content)
+				_, err = s.Write(ctx, mc, content)
 			case "memory.entries.update":
 				err = s.Update(ctx, mc, id, content)
 			case "memory.entries.forget":
@@ -141,7 +139,7 @@ func (s *Service) AgentBindings(mc Context) []capability.Binding {
 			return result(command), err
 		}, Receipt: func(ctx context.Context, requestID string) (capability.Result, error) {
 			command := newCommand(requestID)
-			err := s.store.db.QueryRowContext(ctx, "SELECT id, request_hash, memory_id, duplicate FROM memory_command_receipts WHERE request_key = ?", command.key).Scan(&command.id, &command.hash, &command.memoryID, &command.duplicate)
+			err := s.store.db.QueryRowContext(ctx, "SELECT id, request_hash, memory_id, duplicate FROM partner_memory_command_receipts WHERE request_key = ?", command.key).Scan(&command.id, &command.hash, &command.memoryID, &command.duplicate)
 			if errors.Is(err, sql.ErrNoRows) {
 				return capability.Result{}, status_error.MemoryNotFound
 			}

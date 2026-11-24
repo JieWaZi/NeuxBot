@@ -295,6 +295,9 @@ const (
 	// @errZH 账号配置不合法或与智能体不兼容
 	// @errEN invalid account configuration or incompatible agent
 	AIAccountConfigurationInvalid
+	// @errZH 核心记忆已超过 8 KiB 上限，请移出部分核心记忆或缩短正文
+	// @errEN Core memories exceed 8 KiB; move some to regular memories or shorten their text
+	MemoryCoreBudgetExceeded
 )
 
 const (
@@ -664,6 +667,9 @@ const (
 	// @errZH 模型目录响应不合法
 	// @errEN model catalog response is invalid
 	AIAccountModelsResponseInvalid
+	// @errZH MCP 连接测试失败，继续使用原配置
+	// @errEN MCP connection test failed. Using the previous configuration.
+	MCPConnectorProbeFailed
 )
 
 const (

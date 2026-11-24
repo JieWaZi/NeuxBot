@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -22,6 +23,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
@@ -145,6 +147,18 @@ func nativeThreadRequest(chatID string, workspace agent.Workspace, instructions 
 	return thread
 }
 
+// trustedWorkbenchEntryPoint 核对内部入口和冻结的对话归属，排除同为 user 的其他来源。
+func trustedWorkbenchEntryPoint(input pendingMessage, state messageChat) string {
+	chat := state.chat
+	if input.entryPoint != WorkbenchEntryPoint || input.message.Actor != "user" || input.message.Workflow != nil ||
+		input.imReplyLinkID != "" || input.automaticRunID != "" || input.workflowCreationSessionID != "" ||
+		input.parentExecutionID != "" || state.threadWorkspaceID != "" || chat.HiddenFromWakerHistory || state.profileOptimization ||
+		chat.WakerID == "" || chat.ID == requestidempotency.WakerOnboardingChatID(chat.WakerID) {
+		return ""
+	}
+	return WorkbenchEntryPoint
+}
+
 // nativeUsageSource classifies the host entry point from admission evidence.
 func nativeUsageSource(input pendingMessage, state messageChat) string {
 	switch input.message.Actor {
@@ -168,7 +182,7 @@ func nativeUsageSource(input pendingMessage, state messageChat) string {
 }
 
 // nativeTurnFacts projects references as data owned by the current input.
-func nativeTurnFacts(message agent.Message, contextInstructions []agent.Instruction, selectedSkills, selectedConnectors []string) []agent.TurnFact {
+func nativeTurnFacts(message agent.Message, contextInstructions []agent.Instruction, selectedSkills []string) []agent.TurnFact {
 	var facts []agent.TurnFact
 	var attachments []map[string]string
 	for _, attachment := range message.Attachments {
@@ -183,9 +197,6 @@ func nativeTurnFacts(message agent.Message, contextInstructions []agent.Instruct
 	if len(selectedSkills) > 0 {
 		facts = append(facts, agent.TurnFact{Name: "Selected skills", Value: selectedSkills})
 	}
-	if len(selectedConnectors) > 0 {
-		facts = append(facts, agent.TurnFact{Name: "Selected connectors", Value: selectedConnectors})
-	}
 	for _, instruction := range contextInstructions {
 		var value any = instruction.Content
 		if encoded := json.RawMessage(instruction.Content); json.Valid(encoded) {
@@ -197,9 +208,9 @@ func nativeTurnFacts(message agent.Message, contextInstructions []agent.Instruct
 }
 
 // nativeTurnInput includes bounded native image data when the detected runtime advertises support.
-func nativeTurnInput(id string, message agent.Message, contextInstructions []agent.Instruction, selectedSkills, selectedConnectors []string, detection agent.DetectionResult) (agent.TurnRequest, error) {
+func nativeTurnInput(id string, message agent.Message, contextInstructions []agent.Instruction, selectedSkills []string, detection agent.DetectionResult) (agent.TurnRequest, error) {
 	request := agent.TurnRequest{HostInvocationID: id, ExecutionID: id, AssistantMessageID: id, Text: message.Text,
-		Context: nativeTurnFacts(message, contextInstructions, selectedSkills, selectedConnectors)}
+		Context: nativeTurnFacts(message, contextInstructions, selectedSkills)}
 	if !detection.Capabilities[agent.CapabilityImagePath] {
 		return request, nil
 	}
@@ -229,7 +240,7 @@ func nativeTurnInput(id string, message agent.Message, contextInstructions []age
 func (m *service) startNativeExecution(
 	ctx, executionContext context.Context,
 	state messageChat, request pendingMessage, executionID, userMessageID string,
-	files *preparedMessageFiles, enabledSkills []models.SkillWithState, enabledConnectors []models.MCPConnector,
+	files *preparedMessageFiles, enabledSkills []models.SkillWithState, skillCatalogUnavailable bool, enabledConnectors []models.MCPConnector,
 	environment models.RuntimeEnvironment, frozen frozenPluginResources, releaseReservation *bool,
 ) (AcceptedExecution, error) {
 	journal, ok := m.journal.(chatservice.NativeJournal)
@@ -243,7 +254,9 @@ func (m *service) startNativeExecution(
 	connectors := configuredConnectors
 	instructions, contextInstructions := nativeInstructionInputs(request, files)
 	message := nativeMessage(request, files)
-	grant, err := m.prepareAgent(ctx, executionContext, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles, files.attachments.RuntimePaths)
+	agentRequest := request
+	agentRequest.entryPoint = trustedWorkbenchEntryPoint(request, state)
+	grant, err := m.prepareAgent(ctx, executionContext, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, agentRequest, files.referencedFiles, files.attachments.RuntimePaths)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
@@ -267,17 +280,14 @@ func (m *service) startNativeExecution(
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
-	selectedSkills, err := mergePluginSkills(skills, pluginSkills)
-	if err != nil {
-		return AcceptedExecution{}, err
-	}
-	selection.Skills, err = agent.FreezeSkills(environment.Detection, workspace, selectedSkills, selection.Plugins)
+	selectedSkills := mergePluginSkills(skills, pluginSkills)
+	selection.Skills, err = agent.FreezeOptionalSkills(environment.Detection, workspace, selectedSkills, selection.Plugins, state.chat.WakerID, skillCatalogUnavailable)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
 
 	// 内部 MCP 的启动参数由宿主冷连接交付，只有公开工具集合参与历史兼容。
-	resourceFacts := []any{instructions, skills, configuredConnectors, workspace, frozen.native}
+	resourceFacts := []any{instructions, configuredConnectors, workspace, frozen.native}
 	if len(grant.mcpOperations) > 0 {
 		resourceFacts = append(resourceFacts, grant.mcpOperations)
 	}
@@ -287,6 +297,9 @@ func (m *service) startNativeExecution(
 	}
 	key := sessionResourceKey(frozen.key, string(metadata), enabledConnectors)
 	thread := nativeThreadRequest(state.chat.ID, workspace, instructions, request, environment, selection, key)
+	if agentRequest.entryPoint == WorkbenchEntryPoint {
+		thread.CoreMemoryOwner = state.chat.WakerID
+	}
 	thread.Connection.Launch.BotCLIContextFile = grant.cliContextFile
 	thread.Connection.Launch.BotCLIExecutable = grant.cliExecutable
 	thread.Connection.Account, err = m.resolveAccount(ctx, thread.Connection.Account, thread.Connection.Launch.ConfigHome)
@@ -305,14 +318,24 @@ func (m *service) startNativeExecution(
 	}
 	ports := work.ports(m)
 	ports.AcquireResources = func(ctx context.Context, selection agent.ResourceSelection) (agent.ResourceLease, error) {
-		return m.acquireNativeResources(ctx, state.chat.ID, state.chat.WakerID, workspace, environment.Detection, skills, connectors, enabledConnectors, frozen, selection)
+		return m.acquireNativeResources(ctx, state.chat.ID, state.chat.WakerID, workspace, environment.Detection, skills, skillCatalogUnavailable, connectors, enabledConnectors, frozen, selection)
 	}
-	nativeInput, err := nativeTurnInput(executionID, message, contextInstructions, selectedSkillNames(request, enabledSkills), request.message.ConnectorIDs, environment.Detection)
+	nativeInput, err := nativeTurnInput(executionID, message, contextInstructions, selectedSkillNames(request, enabledSkills), environment.Detection)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
 	nativeInput.UsageWakerID = state.chat.WakerID
 	nativeInput.UsageSource = nativeUsageSource(request, state)
+	if thread.CoreMemoryOwner != "" && m.coreMemory != nil {
+		memoryCtx, cancel := context.WithTimeout(ctx, 25*time.Millisecond)
+		snapshot, err := m.coreMemory(memoryCtx, thread.CoreMemoryOwner)
+		cancel()
+		if err == nil && snapshot.Revision != 0 {
+			nativeInput.CoreMemory = &agent.CoreMemoryContext{Revision: snapshot.Revision, JSON: snapshot.JSON}
+		} else if err != nil && ctx.Err() == nil {
+			logx.Warnf("read core memory snapshot: chat_id=%s error=%v", state.chat.ID, err)
+		}
+	}
 	turn, err := m.threads.Prepare(ctx, thread, nativeInput, ports)
 	if err != nil {
 		return AcceptedExecution{}, err
@@ -334,8 +357,14 @@ func (m *service) startNativeExecution(
 		return AcceptedExecution{}, status_error.RuntimeUnavailable
 	}
 	work.resources = rawResources.(*nativeResourceProjection)
-	if !selectedRuntimeConnectorsAreEnabled(request.message.ConnectorIDs, work.resources.connectors) {
+	selectedConnectors, ok := selectedConnectorNames(request.message.ConnectorIDs, work.resources.connectors)
+	if !ok {
 		return AcceptedExecution{}, status_error.BadRequest
+	}
+	if len(selectedConnectors) != 0 {
+		if err := turn.AddContext(agent.TurnFact{Name: "Selected connectors", Value: selectedConnectors}); err != nil {
+			return AcceptedExecution{}, err
+		}
 	}
 	for _, id := range request.message.PluginIDs {
 		index := slices.IndexFunc(work.resources.plugins, func(snapshot plugins.Snapshot) bool { return snapshot.ID == id })
@@ -383,7 +412,7 @@ func (m *service) startNativeExecution(
 }
 
 func (m *service) acquireNativeResources(
-	ctx context.Context, chatID, wakerID string, workspace agent.Workspace, detection agent.DetectionResult, skills []agent.Skill, connectors []agent.ConnectorDeclaration,
+	ctx context.Context, chatID, wakerID string, workspace agent.Workspace, detection agent.DetectionResult, skills []agent.Skill, skillCatalogUnavailable bool, connectors []agent.ConnectorDeclaration,
 	baseConnectors []models.MCPConnector, frozen frozenPluginResources, selection agent.ResourceSelection,
 ) (agent.ResourceLease, error) {
 	materialized, err := m.acquirePluginResources(ctx, frozen)
@@ -415,15 +444,16 @@ func (m *service) acquireNativeResources(
 	}
 	projection.plugins = materialized.snapshots
 	projection.updateUsage = materialized.updateUsage
-	skills, err = mergePluginSkills(skills, materialized.skills)
-	if err != nil {
-		return lease, err
-	}
+	skills = mergePluginSkills(skills, materialized.skills)
 
 	// 实际插件租约取得后再次确认精确内容；ProviderRuntime 持有目标预约并负责发布。
-	lease.Skills, err = agent.FreezeSkills(detection, workspace, skills, selection.Plugins)
-	if err != nil {
-		return lease, err
+	if selection.Skills.Retained() {
+		lease.Skills = selection.Skills
+	} else {
+		lease.Skills, err = agent.FreezeOptionalSkills(detection, workspace, skills, selection.Plugins, wakerID, skillCatalogUnavailable)
+		if err != nil {
+			return lease, err
+		}
 	}
 
 	if m.connectorController != nil && len(baseConnectors) > 0 {

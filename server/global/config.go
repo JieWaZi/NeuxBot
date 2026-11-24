@@ -14,7 +14,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
+	"github.com/JieWaZi/NeuxBot/server/services/mcpconnector"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
+	"github.com/JieWaZi/NeuxBot/server/services/skilllearning"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -35,6 +37,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient/oauthrelay"
 	"github.com/JieWaZi/NeuxBot/server/internal/memory"
+	"github.com/JieWaZi/NeuxBot/server/internal/memory/reviewstate"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
@@ -289,7 +292,12 @@ func Load(ctx context.Context, configuration *Configuration, handlerFactory sche
 		},
 		func() error { return loadDB(ctx, configuration) },
 		func() error { return cleanupSkillArtifacts(ctx, configuration) },
-		func() error { return loadBuiltinSkills(ctx, configuration) },
+		func() error {
+			if err := loadBuiltinSkills(ctx, configuration); err != nil {
+				logx.Warnf("prepare optional builtin skills: error=%v", err)
+			}
+			return nil
+		},
 		func() error { return loadMemory(ctx, configuration) },
 		func() error { return loadKnowledge(ctx, configuration) },
 		func() error { return loadRuntime(ctx) },
@@ -447,7 +455,8 @@ func cleanupSkillArtifacts(ctx context.Context, configuration *Configuration) er
 	}
 	versionPaths, err := SkillControllerManager.ListVersionContentPaths(ctx)
 	if err != nil {
-		return mapCoreError("list_skill_version_paths", status_error.CoreDatabaseInitializationFailed, err)
+		logx.Warnf("list skill versions for cleanup: error=%v", err)
+		return nil
 	}
 	if err := managedskills.CleanupUnreferencedVersions(configuration.DataDirectory, versionPaths); err != nil {
 		logx.Errorf("cleanup unreferenced skill versions failed: error=%v", err)
@@ -461,16 +470,15 @@ func loadMemory(ctx context.Context, configuration *Configuration) error {
 		DBPath: filepath.Join(configuration.DataDirectory, "memory.db"),
 	})
 	if err != nil {
-		return mapCoreError("initialize_memory_service", status_error.CoreMemoryInitializationFailed, err)
+		logx.Warnf("memory service unavailable: error=%v", err)
+		return nil
 	}
 	MemoryService = service
-	if err := MemoryService.CleanupOrphanScopes(
+	if err := MemoryService.CleanupOrphanPartners(
 		ctx,
-		memory.NewScopeExistsResolver(WakerControllerManager, ProjectControllerManager),
+		memory.NewPartnerExistsResolver(WakerControllerManager),
 	); err != nil {
-		MemoryService.Close()
-		MemoryService = nil
-		return mapCoreError("cleanup_memory_orphan_scopes", status_error.CoreMemoryInitializationFailed, err)
+		logx.Warnf("clean up orphaned memories: error=%v", err)
 	}
 
 	return nil
@@ -588,6 +596,23 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		hub.Publish(events.Event{Topic: "usage", Type: "usage.changed", Resource: events.Resource{Kind: "global"}})
 	}
 	chatModule, err := chat.New(chat.Config{
+		FreezeReview: func(ctx context.Context, item models.Chat) *reviewstate.Admission {
+			if ReviewWorker == nil {
+				return nil
+			}
+			return ReviewWorker.Freeze(ctx, item.WakerID, item.ProjectID != "", temporaryReviewChat(item))
+		},
+		ReviewDeleted: func(chatID string) {
+			if ReviewWorker != nil {
+				ReviewWorker.ObserveDeletion(chatID)
+			}
+		},
+		ReviewTerminal: func(chatID string) {
+			if ReviewWorker != nil {
+				ReviewWorker.ObserveTerminal(chatID)
+			}
+		},
+
 		StorageDirectory:  configuration.ManagedFilesDirectory,
 		Conversations:     conversations,
 		Projects:          ProjectControllerManager,
@@ -649,7 +674,18 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 			logx.Warn("invalidate_provider_account: ", err)
 		}
 	})
+	commands := controllers.NewAgentCommandController(DB)
+	skills := skilllearning.New(skilllearning.Config{DataDirectory: configuration.DataDirectory, Skills: SkillControllerManager,
+		Wakers: WakerControllerManager, Plugins: PluginControllerManager, Transactions: TransactionControllerManager, Commands: commands, Events: EventHub})
+	connectors := mcpconnector.New(mcpconnector.Config{Connectors: MCPConnectorControllerManager, Wakers: WakerControllerManager,
+		Categories: ResourceCategoryControllerManager, Transactions: TransactionControllerManager, Commands: commands, Events: EventHub})
 	executionCore, err := execution.New(execution.Config{
+		CoreMemory: func(ctx context.Context, partner string) (memory.CoreSnapshot, error) {
+			if MemoryService == nil {
+				return memory.CoreSnapshot{}, nil
+			}
+			return MemoryService.CoreSnapshot(ctx, partner)
+		},
 		BindLocalWorkflowTurn: func(ctx context.Context, chat models.Chat, executionID string, selection *workinput.WorkflowReference, creationSessionID string) (execution.WorkflowTurnBinding, error) {
 			if WorkflowService == nil {
 				if selection != nil || creationSessionID != "" {
@@ -683,8 +719,29 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Agent: AgentCapabilities, Events: EventHub,
 		AgentEndpoint: "http://127.0.0.1:" + strconv.Itoa(configuration.Server.Port) + constants.AgentCLIPath,
 		AgentBinary:   agentBinaryPath(),
+		ResourceManagementBindings: func(chat models.Chat, executionID string, approve func(context.Context, string) error) []capability.Binding {
+			bindings := skills.ManagementBindings(chat.WakerID, executionID, approve, func(ctx context.Context, action, id, version, name string) error {
+				return chatModule.RecordManagedSkillChange(ctx, chat.ID, executionID, action, id, version, name)
+			})
+			connectorBindings := connectors.ManagementBindings(chat.WakerID, executionID, approve, func(ctx context.Context, action string, result capability.Result) {
+				data, _ := result.Data.(map[string]any)
+				id, _ := data["connectorId"].(string)
+				name, _ := data["name"].(string)
+				ownerID := ""
+				if data["scope"] == string(constants.MCPConnectorScopePrivate) {
+					ownerID = chat.WakerID
+				}
+				if err := chatModule.RecordManagedConnectorChange(ctx, chat.ID, executionID, result.CommandID, action, id, ownerID, name); err != nil {
+					logx.Warnf("publish connector management conversation event: action=%s connector_id=%s error=%v", action, id, err)
+				}
+			})
+			return append(bindings, connectorBindings...)
+		},
 		AgentBindings: func(chat models.Chat, executionID string, roots []string, automaticRunID, imReplyLinkID string) []capability.Binding {
-			bindings := MemoryService.AgentBindings(memory.Context{RunID: executionID, ChatID: chat.ID, PartnerID: chat.WakerID, ProjectID: chat.ProjectID})
+			var bindings []capability.Binding
+			if MemoryService != nil {
+				bindings = MemoryService.AgentBindings(memory.Context{RunID: executionID, ChatID: chat.ID, PartnerID: chat.WakerID})
+			}
 			if KnowledgeService != nil {
 				knowledgeChat := chat
 				knowledgeChat.ActiveExecutionID = executionID
@@ -724,6 +781,9 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		return mapCoreError("initialize_execution_service", status_error.CoreChatInitializationFailed, err)
 	}
 	ExecutionService = executionCore
+	if err := loadPartnerReview(ctx, configuration, skills); err != nil {
+		logx.Warnf("partner review unavailable: error=%v", err)
+	}
 	libraryEmbeddings := knowledgebridge.LibraryEmbeddings{Engine: KnowledgeEngine, References: KnowledgeControllerManager}
 	KnowledgeService = knowledgeservice.New(knowledgeservice.Config{RunMaintenance: runKnowledgeMaintenance, ResolveMaintenanceModel: resolveKnowledgeMaintenanceModel, AutomaticRun: AutomaticTaskControllerManager.GetRun, InvocationGuard: IntegrationService.AcquireInvocationGuard, IntegrationGuard: IntegrationService.RestoreKnowledgeGuard, IntegrationPublicationGuard: IntegrationService.RestoreKnowledgeGuards, ResolveModel: resolveKnowledgeModel, Generator: newKnowledgeModelGenerator, FreezeEmbedder: libraryEmbeddings.Freeze, Connections: KnowledgeConnectionControllerManager, Engine: KnowledgeEngine, References: KnowledgeControllerManager, Projects: ProjectControllerManager, Chats: ChatService, Events: EventHub})
 	if err := KnowledgeService.Start(ctx); err != nil {
@@ -941,6 +1001,10 @@ func Close() error {
 	if ExecutionService != nil {
 		ExecutionService.Close()
 		ExecutionService = nil
+	}
+	if ReviewWorker != nil {
+		ReviewWorker.Close()
+		ReviewWorker = nil
 	}
 	if AgentThreads != nil {
 		closeContext, cancelClose := context.WithTimeout(context.Background(), 15*time.Second)

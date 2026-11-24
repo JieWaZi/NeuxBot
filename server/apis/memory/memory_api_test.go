@@ -33,15 +33,12 @@ func TestMemoryAPICRUDAndTimeline(t *testing.T) {
 	t.Cleanup(service.Close)
 
 	previousWakers := global.WakerControllerManager
-	previousProjects := global.ProjectControllerManager
 	previousMemory := global.MemoryService
 	t.Cleanup(func() {
 		global.WakerControllerManager = previousWakers
-		global.ProjectControllerManager = previousProjects
 		global.MemoryService = previousMemory
 	})
 	global.WakerControllerManager = controllers.NewWakerController(database.DB)
-	global.ProjectControllerManager = controllers.NewProjectController(database.DB)
 	global.MemoryService = service
 
 	ctx, _ := gin.CreateTestContext(nil)
@@ -50,11 +47,11 @@ func TestMemoryAPICRUDAndTimeline(t *testing.T) {
 		t.Fatalf("create waker: %v", err)
 	}
 
-	_, err = (&CreateMemory{WakerID: waker.ID, Body: MemoryMutationRequest{Scope: constants.MemoryScopePartner, Content: "用户偏好使用中文"}}).Output(ctx)
+	_, err = (&CreateMemory{WakerID: waker.ID, Body: MemoryMutationRequest{Content: "用户偏好使用中文"}}).Output(ctx)
 	if err != nil {
 		t.Fatalf("create memory: %v", err)
 	}
-	listedValue, err := (&ListMemories{WakerID: waker.ID, Scope: constants.MemoryScopePartner, PageNum: 1, PageSize: 20}).Output(ctx)
+	listedValue, err := (&ListMemories{WakerID: waker.ID, PageNum: 1, PageSize: 20}).Output(ctx)
 	if err != nil {
 		t.Fatalf("list created memory: %v", err)
 	}
@@ -64,10 +61,10 @@ func TestMemoryAPICRUDAndTimeline(t *testing.T) {
 	}
 	created := createdPage.Resources[0]
 
-	if _, err := (&UpdateMemory{WakerID: waker.ID, MemoryID: created.ID, Body: MemoryMutationRequest{Scope: constants.MemoryScopePartner, Content: "用户偏好使用简体中文"}}).Output(ctx); err != nil {
+	if _, err := (&UpdateMemory{WakerID: waker.ID, MemoryID: created.ID, Body: MemoryMutationRequest{Content: "用户偏好使用简体中文"}}).Output(ctx); err != nil {
 		t.Fatalf("update memory: %v", err)
 	}
-	listedValue, err = (&ListMemories{WakerID: waker.ID, Scope: constants.MemoryScopePartner, PageNum: 1, PageSize: 20}).Output(ctx)
+	listedValue, err = (&ListMemories{WakerID: waker.ID, PageNum: 1, PageSize: 20}).Output(ctx)
 	if err != nil {
 		t.Fatalf("list memories: %v", err)
 	}
@@ -76,10 +73,10 @@ func TestMemoryAPICRUDAndTimeline(t *testing.T) {
 		t.Fatalf("unexpected memory page: %+v", listed)
 	}
 
-	if _, err := (&DeleteMemory{WakerID: waker.ID, MemoryID: created.ID, Scope: constants.MemoryScopePartner}).Output(ctx); err != nil {
+	if _, err := (&DeleteMemory{WakerID: waker.ID, MemoryID: created.ID}).Output(ctx); err != nil {
 		t.Fatalf("delete memory: %v", err)
 	}
-	timelineValue, err := (&ListTimeline{WakerID: waker.ID, Scope: constants.MemoryScopePartner, PageNum: 1, PageSize: 20}).Output(ctx)
+	timelineValue, err := (&ListTimeline{WakerID: waker.ID, PageNum: 1, PageSize: 20}).Output(ctx)
 	if err != nil {
 		t.Fatalf("list timeline: %v", err)
 	}
@@ -92,115 +89,65 @@ func TestMemoryAPICRUDAndTimeline(t *testing.T) {
 	}
 }
 
-func TestMemoryAPIListsPartnerAndProjectMemoriesTogether(t *testing.T) {
-	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "memory-all-api.db"), Migrate: true})
+func TestMemoryAPIListsCoreBeforePagination(t *testing.T) {
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "app.db"), Migrate: true})
 	if err != nil {
-		t.Fatalf("create test database: %v", err)
+		t.Fatal(err)
 	}
 	sqlDB, err := database.DB.DB()
 	if err != nil {
-		t.Fatalf("get SQL database: %v", err)
+		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-
 	service, err := internalmemory.NewService(internalmemory.ServiceConfig{DBPath: filepath.Join(t.TempDir(), "memory.db")})
 	if err != nil {
-		t.Fatalf("create memory service: %v", err)
+		t.Fatal(err)
 	}
 	t.Cleanup(service.Close)
-
-	previousWakers := global.WakerControllerManager
-	previousProjects := global.ProjectControllerManager
-	previousMemory := global.MemoryService
-	t.Cleanup(func() {
-		global.WakerControllerManager = previousWakers
-		global.ProjectControllerManager = previousProjects
-		global.MemoryService = previousMemory
-	})
-	global.WakerControllerManager = controllers.NewWakerController(database.DB)
-	global.ProjectControllerManager = controllers.NewProjectController(database.DB)
-	global.MemoryService = service
-
+	previousWakers, previousMemory := global.WakerControllerManager, global.MemoryService
+	t.Cleanup(func() { global.WakerControllerManager, global.MemoryService = previousWakers, previousMemory })
+	global.WakerControllerManager, global.MemoryService = controllers.NewWakerController(database.DB), service
+	for _, owner := range []string{"first", "second"} {
+		if err := global.WakerControllerManager.Create(t.Context(), models.Waker{ID: owner, Name: owner}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	ctx, _ := gin.CreateTestContext(nil)
-	waker := models.Waker{ID: "waker-all-scope", Name: "合并范围伙伴"}
-	if err := global.WakerControllerManager.Create(context.Background(), waker); err != nil {
-		t.Fatalf("create waker: %v", err)
+	first, err := service.Write(t.Context(), internalmemory.Context{PartnerID: "first"}, "workspace query one")
+	if err != nil {
+		t.Fatal(err)
 	}
-	otherWaker := models.Waker{ID: "waker-all-scope-other", Name: "其他伙伴"}
-	if err := global.WakerControllerManager.Create(context.Background(), otherWaker); err != nil {
-		t.Fatalf("create other waker: %v", err)
-	}
-	project := models.Project{ID: "project-all-scope", WakerID: waker.ID, Name: "合并范围项目"}
-	if err := global.ProjectControllerManager.Create(context.Background(), project); err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-	otherProject := models.Project{ID: "project-all-scope-other", WakerID: otherWaker.ID, Name: "其他伙伴项目"}
-	if err := global.ProjectControllerManager.Create(context.Background(), otherProject); err != nil {
-		t.Fatalf("create other project: %v", err)
-	}
-
-	mutations := []MemoryMutationRequest{
-		{Scope: constants.MemoryScopePartner, Content: "个人记忆内容"},
-		{Scope: constants.MemoryScopeProject, ProjectID: project.ID, Content: "项目记忆内容"},
-	}
-	for _, mutation := range mutations {
-		if _, err := (&CreateMemory{WakerID: waker.ID, Body: mutation}).Output(ctx); err != nil {
-			t.Fatalf("create memory: %v", err)
+	for _, item := range []struct{ owner, text string }{{"first", "workspace query regular"}, {"second", "workspace query other partner"}} {
+		if _, err := service.Write(t.Context(), internalmemory.Context{PartnerID: item.owner}, item.text); err != nil {
+			t.Fatal(err)
 		}
 	}
-	if _, err := (&CreateMemory{WakerID: otherWaker.ID, Body: MemoryMutationRequest{Scope: constants.MemoryScopeProject, ProjectID: otherProject.ID, Content: "其他伙伴的项目记忆"}}).Output(ctx); err != nil {
-		t.Fatalf("create other waker memory: %v", err)
+	core := true
+	classify := SetMemoryCore{WakerID: "second", MemoryID: first.Memory.ID, Body: SetMemoryCoreRequest{Core: &core}}
+	if _, err := classify.Output(ctx); err == nil {
+		t.Fatal("accepted classifying another partner's memory")
 	}
-
-	listedValue, err := (&ListMemories{WakerID: waker.ID, Scope: constants.MemoryScopeAll, PageNum: 1, PageSize: 20}).Output(ctx)
-	if err != nil {
-		t.Fatalf("list merged memories: %v", err)
+	classify.WakerID = "first"
+	if _, err := classify.Output(ctx); err != nil {
+		t.Fatal(err)
 	}
-	merged := listedValue.(ListMemoriesResponse)
-	if merged.TotalSize != 2 || len(merged.Resources) != 2 {
-		t.Fatalf("merged page must only contain memories owned by the waker: %+v", merged)
+	filtered := ListMemories{WakerID: "first", Core: &core, Query: "workspace query", PageNum: 1, PageSize: 1}
+	out, err := filtered.Output(ctx)
+	page, ok := out.(ListMemoriesResponse)
+	if err != nil || !ok || page.TotalSize != 1 || len(page.Resources) != 1 || page.Resources[0].ID != first.Memory.ID || !page.Resources[0].Core {
+		t.Fatalf("filtered core page: %+v, %v", out, err)
 	}
-	scopes := map[constants.MemoryScope]string{}
-	for _, resource := range merged.Resources {
-		scopes[resource.Scope] = resource.Content
+	core = false
+	if _, err := classify.Output(ctx); err != nil {
+		t.Fatalf("explicit false must be accepted: %v", err)
 	}
-	if scopes[constants.MemoryScopePartner] != "个人记忆内容" || scopes[constants.MemoryScopeProject] != "项目记忆内容" {
-		t.Fatalf("merged page must expose both scopes: %+v", merged.Resources)
+	out, err = filtered.Output(ctx)
+	page, ok = out.(ListMemoriesResponse)
+	if err != nil || !ok || page.TotalSize != 2 || len(page.Resources) != 1 || page.Resources[0].Core {
+		t.Fatalf("filtered regular page: %+v, %v", out, err)
 	}
-
-	if _, err := (&ListMemories{WakerID: waker.ID, Scope: constants.MemoryScopeAll, ProjectID: project.ID, PageNum: 1, PageSize: 20}).Output(ctx); err == nil {
-		t.Fatalf("merged scope must reject an explicit project filter")
-	}
-}
-
-func TestMemoryAPIRejectsProjectOwnedByAnotherWaker(t *testing.T) {
-	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "memory-scope-api.db"), Migrate: true})
-	if err != nil {
-		t.Fatalf("create test database: %v", err)
-	}
-	sqlDB, _ := database.DB.DB()
-	t.Cleanup(func() { _ = sqlDB.Close() })
-
-	previousWakers := global.WakerControllerManager
-	previousProjects := global.ProjectControllerManager
-	t.Cleanup(func() {
-		global.WakerControllerManager = previousWakers
-		global.ProjectControllerManager = previousProjects
-	})
-	global.WakerControllerManager = controllers.NewWakerController(database.DB)
-	global.ProjectControllerManager = controllers.NewProjectController(database.DB)
-	ctx := context.Background()
-	for _, waker := range []models.Waker{{ID: "waker-a", Name: "伙伴甲"}, {ID: "waker-b", Name: "伙伴乙"}} {
-		if err := global.WakerControllerManager.Create(ctx, waker); err != nil {
-			t.Fatalf("create waker: %v", err)
-		}
-	}
-	project := models.Project{ID: "project-a", WakerID: "waker-a", Name: "甲的项目"}
-	if err := global.ProjectControllerManager.Create(ctx, project); err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-	ginContext, _ := gin.CreateTestContext(nil)
-	if _, err := visibleScope(ginContext, "waker-b", constants.MemoryScopeProject, project.ID); err == nil {
-		t.Fatalf("project scope owned by another waker must be rejected")
+	classify.Body.Core = nil
+	if _, err := classify.Output(ctx); err == nil {
+		t.Fatal("missing core field accepted")
 	}
 }

@@ -18,6 +18,8 @@ func (v MemoryTimelineSource) String() string {
 		return "manual"
 	case MemoryTimelineSourceMCP:
 		return "mcp"
+	case MemoryTimelineSourceReview:
+		return "review"
 	}
 	return ""
 }
@@ -28,12 +30,14 @@ func (v MemoryTimelineSource) Label() string {
 		return "MemoryTimelineSourceManual 表示时间线事件来自管理 API 手动操作。"
 	case MemoryTimelineSourceMCP:
 		return "MemoryTimelineSourceMCP 表示时间线事件来自执行中的 MCP 工具调用。"
+	case MemoryTimelineSourceReview:
+		return "MemoryTimelineSourceReview 表示时间线事件来自自动复盘。"
 	}
 	return ""
 }
 
 func (v MemoryTimelineSource) Values() []enum.Enum {
-	return []enum.Enum{MemoryTimelineSourceManual, MemoryTimelineSourceMCP}
+	return []enum.Enum{MemoryTimelineSourceManual, MemoryTimelineSourceMCP, MemoryTimelineSourceReview}
 }
 
 func (v MemoryTimelineSource) Type() string {
@@ -42,7 +46,7 @@ func (v MemoryTimelineSource) Type() string {
 
 func (v MemoryTimelineSource) MarshalText() ([]byte, error) {
 	switch v {
-	case MemoryTimelineSourceManual, MemoryTimelineSourceMCP:
+	case MemoryTimelineSourceManual, MemoryTimelineSourceMCP, MemoryTimelineSourceReview:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -55,6 +59,8 @@ func (v *MemoryTimelineSource) UnmarshalText(text []byte) error {
 		*v = MemoryTimelineSourceManual
 	case MemoryTimelineSourceMCP.String():
 		*v = MemoryTimelineSourceMCP
+	case MemoryTimelineSourceReview.String():
+		*v = MemoryTimelineSourceReview
 	default:
 		return enum.InvalidTypeError
 	}

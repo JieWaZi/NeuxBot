@@ -68,8 +68,9 @@ vi.mock("@/shared/workspace/app-scene-workspace", () => ({
 vi.mock("@/shared/api/use-query-events", () => ({
   useQueryEvents: () => undefined,
 }));
-vi.mock("@/modules/waker", () => ({
-  WakerDetailLayout: ({ children }: { children: ReactNode }) => children,
+vi.mock(import("@/modules/waker"), async (load) => ({
+  ...(await load()),
+  WakerDetailLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 vi.mock("@/shared/platform", () => ({ saveBlob }));

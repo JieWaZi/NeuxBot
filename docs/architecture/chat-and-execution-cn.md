@@ -39,7 +39,7 @@ flowchart LR
 
 聊天目录只返回游标页，不附带默认项目的全历史查询。普通伙伴与团队草稿在所属伙伴确定后按需查询最近可用项目；候选按活动游标有界推进，失效项目不会令有效的更早候选被任意截断。已有 Chat、运行中发送和终态不重新查询草稿默认项目。
 
-Execution 解析一次有效选择，直接构造 ThreadRequest、TurnRequest 与 TurnPorts，再调用 ThreadLifecycle.Prepare。用户原文进入原生正文块，引用、选择、团队结果与交接进入本轮上下文，由 Agent 在协议出口统一编码。固定提示通过[原生会话指令](runtimes-and-accounts-cn.md)交付，输入格式见[后端约定](../development/backend-cn.md#81-连续聊天输入稳定性)。普通聊天共享伙伴固定 cwd，私有日志与附件始终按 Chat 隔离，具体目录见[工作区与存储](workspace-and-storage-cn.md)。
+Execution 解析一次有效选择，直接构造 ThreadRequest、TurnRequest 与 TurnPorts，再调用 ThreadLifecycle.Prepare。用户原文进入原生正文块，引用、选择、团队结果与交接进入本轮上下文，由 Agent 在协议出口统一编码。固定提示通过[原生会话指令](runtimes-and-accounts-cn.md)交付，输入格式见[模型指令与消息组装](../development/model-input-cn.md)。普通聊天共享伙伴固定 cwd，私有日志与附件始终按 Chat 隔离，具体目录见[工作区与存储](workspace-and-storage-cn.md)。
 
 准备阶段判断原生绑定是否兼容。冷准备通过既有端口取得账号和资源，由 ProviderRuntime 接管实际及部分取得的租约，再初始化原生会话；热续聊保留连接和租约。输入提交前，Turn 通过 Admit 端口提交接纳事实，再发送同一输入。持久编排入口可先提交待执行事实，后续规范接纳批次补充原生输入身份；资源准备成功不能代替输入接纳。
 

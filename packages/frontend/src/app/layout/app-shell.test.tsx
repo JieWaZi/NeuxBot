@@ -1690,6 +1690,21 @@ describe("AppShell 伙伴导航", () => {
     );
   });
 
+  it("主壳后退从配置伙伴二级页返回智能体设置", async () => {
+    const user = userEvent.setup();
+    const { router } = renderDataShell(
+      "/settings/agents?detail=partner-review&tab=skill&wakerId=waker-2",
+      TestRouteScene,
+      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+    );
+    const back = await screen.findByRole("button", { name: "后退" });
+    expect(back).toBeEnabled();
+    await user.click(back);
+    await waitFor(() => expect(router.state.location.search).toBe(""));
+    expect(router.state.location.pathname).toBe("/settings/agents");
+    expect(screen.getByRole("region", { name: "设置 Scene" })).toBeVisible();
+  });
+
   it("设置入口打开唯一 Scene，切到会话后保留设置 Scene", async () => {
     const user = userEvent.setup();
     renderShell();

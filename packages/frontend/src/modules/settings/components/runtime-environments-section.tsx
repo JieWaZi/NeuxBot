@@ -52,6 +52,10 @@ import {
 import { runtimeAuthenticationOptions } from "./runtime-authentication-controls";
 import { RuntimeProgramRemoval } from "./runtime-program-removal";
 import {
+  PartnerReviewSettings,
+  PartnerReviewSettingsDetail,
+} from "./partner-review-settings";
+import {
   SettingsContentShell,
   SettingsGroup,
   SettingsRow,
@@ -573,17 +577,31 @@ function RuntimeDetail({
   );
 }
 
-export function RuntimeEnvironmentsSection({
+type RuntimeEnvironmentsSectionProps = {
+  runtimeId?: string;
+  partnerReviewDetail?: boolean;
+  onOpenRuntime: (runtimeId: string) => void;
+  onBack: () => void;
+  showSceneChrome?: boolean;
+};
+
+export function RuntimeEnvironmentsSection(
+  props: RuntimeEnvironmentsSectionProps,
+) {
+  if (!props.runtimeId && props.partnerReviewDetail) {
+    return (
+      <PartnerReviewSettingsDetail showSceneChrome={props.showSceneChrome} />
+    );
+  }
+  return <RuntimeEnvironmentsContent {...props} />;
+}
+
+function RuntimeEnvironmentsContent({
   runtimeId,
   onOpenRuntime,
   onBack,
   showSceneChrome = true,
-}: {
-  runtimeId?: string;
-  onOpenRuntime: (runtimeId: string) => void;
-  onBack: () => void;
-  showSceneChrome?: boolean;
-}) {
+}: RuntimeEnvironmentsSectionProps) {
   const { t } = useTranslation(["aiAccounts", "common"]);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -738,6 +756,7 @@ export function RuntimeEnvironmentsSection({
                 </Select>
               </SettingsRow>
             </div>
+            <PartnerReviewSettings />
             <SettingsGroup
               title={t("agents.installed")}
               trailing={

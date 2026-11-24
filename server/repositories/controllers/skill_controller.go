@@ -14,6 +14,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var independentSkillSources = []constants.SkillSource{
+	constants.SkillSourceGit, constants.SkillSourceZip, constants.SkillSourceLearned,
+}
+
 // SkillController 定义技能包、版本和伙伴关系的持久化操作。
 type SkillController interface {
 	// ListLibrary 分页查询全局独立技能。
@@ -32,6 +36,10 @@ type SkillController interface {
 	GetPackage(ctx context.Context, id string) (models.SkillPackage, error)
 	// ListInstalled 返回伙伴实际安装的技能包及当前版本。
 	ListInstalled(ctx context.Context, wakerID string, query string) ([]models.SkillWithState, error)
+	// ListInstalledWindow 限制能力查询读取的实际安装窗口。
+	ListInstalledWindow(ctx context.Context, wakerID, query string, limit int) ([]models.SkillWithState, error)
+	// GetInstalled 核对安装关系并返回单个技能的当前版本。
+	GetInstalled(ctx context.Context, wakerID, skillID string) (models.SkillWithState, error)
 	// CreateVersion 创建不可变版本，并按预期当前版本条件推进当前指针。
 	CreateVersion(ctx context.Context, version models.SkillVersion, makeCurrent bool, expectedCurrentVersionID string) error
 	// ListVersions 返回技能的全部版本，按创建时间倒序。
@@ -50,6 +58,16 @@ type SkillController interface {
 	SetWakerSkillEnabled(ctx context.Context, wakerID string, skillID string, enabled bool) error
 	// ListEnabled 返回伙伴当前安装且启用的技能版本。
 	ListEnabled(ctx context.Context, wakerID string) ([]models.SkillWithState, error)
+	// EnabledSkillNameExists 检查一组伙伴是否启用了声明同名的其他独立技能。
+	EnabledSkillNameExists(ctx context.Context, wakerIDs []string, excludingSkillID, name string) (bool, error)
+	// GetLearningReceipt 读取指定来源伙伴已经提交的技能发布结果。
+	GetLearningReceipt(ctx context.Context, wakerID, suggestionID string) (models.SkillLearningReceipt, bool, error)
+	// CreateLearningReceipt 登记与新版本原子提交的唯一建议身份。
+	CreateLearningReceipt(ctx context.Context, receipt models.SkillLearningReceipt) error
+	// ListLearningReceiptIDs 按主键读取有界的回执身份用于后台对账。
+	ListLearningReceiptIDs(ctx context.Context, after string, limit int) ([]string, error)
+	// DeleteLearningReceipt 清理已不再用于发布重放的记录。
+	DeleteLearningReceipt(ctx context.Context, suggestionID string) error
 	// DeleteWakerSkill 删除伙伴技能关系，使其恢复未关联状态。
 	DeleteWakerSkill(ctx context.Context, wakerID string, skillID string) error
 	// DeleteByWaker 只删除伙伴安装关系，保留技能库和全部版本。
@@ -96,6 +114,11 @@ func (c *skillController) GetPackage(ctx context.Context, id string) (models.Ski
 
 // ListInstalled 查询实际安装关系对应的技能与启停状态。
 func (c *skillController) ListInstalled(ctx context.Context, wakerID string, query string) ([]models.SkillWithState, error) {
+	return c.ListInstalledWindow(ctx, wakerID, query, 0)
+}
+
+// ListInstalledWindow 在实际安装范围内先截取候选，再补齐版本和启停状态。
+func (c *skillController) ListInstalledWindow(ctx context.Context, wakerID, query string, limit int) ([]models.SkillWithState, error) {
 	var packages []models.SkillPackage
 	db := controllerDB(ctx, c.db).Where(
 		"id IN (SELECT skill_package_id FROM waker_skills WHERE waker_id = ?)", wakerID,
@@ -103,10 +126,34 @@ func (c *skillController) ListInstalled(ctx context.Context, wakerID string, que
 	if normalized := strings.TrimSpace(query); normalized != "" {
 		db = db.Where("LOWER(name) LIKE ? OR LOWER(description) LIKE ?", "%"+strings.ToLower(normalized)+"%", "%"+strings.ToLower(normalized)+"%")
 	}
+	if limit > 0 {
+		db = db.Limit(limit)
+	}
 	if err := db.Order("built_in DESC, updated_at DESC, id ASC").Find(&packages).Error; err != nil {
 		return nil, databaseError("list_installed_skills", "waker_id="+wakerID, err)
 	}
 	return c.withStates(ctx, wakerID, packages)
+}
+
+// GetInstalled 通过伙伴与技能的安装身份精确查询。
+func (c *skillController) GetInstalled(ctx context.Context, wakerID, skillID string) (models.SkillWithState, error) {
+	var relation models.WakerSkill
+	err := controllerDB(ctx, c.db).Where("waker_id = ? AND skill_package_id = ?", wakerID, skillID).First(&relation).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return models.SkillWithState{}, status_error.SkillNotFound.WithParams(map[string]any{"SkillID": skillID})
+	}
+	if err != nil {
+		return models.SkillWithState{}, databaseError("get_waker_skill", "skill_id="+skillID, err)
+	}
+	item, err := c.GetPackage(ctx, skillID)
+	if err != nil {
+		return models.SkillWithState{}, err
+	}
+	result := models.SkillWithState{SkillPackage: item, Enabled: relation.Enabled}
+	if item.CurrentVersionID != "" {
+		result.CurrentVersion, err = c.GetVersion(ctx, item.CurrentVersionID)
+	}
+	return result, err
 }
 
 // ListEnabled 返回伙伴当前实际安装且启用的技能。
@@ -124,14 +171,82 @@ func (c *skillController) ListEnabled(ctx context.Context, wakerID string) ([]mo
 	return result, nil
 }
 
-func (c *skillController) withStates(ctx context.Context, wakerID string, packages []models.SkillPackage) ([]models.SkillWithState, error) {
-	var relations []models.WakerSkill
-	if err := controllerDB(ctx, c.db).Where("waker_id = ?", wakerID).Find(&relations).Error; err != nil {
-		return nil, databaseError("list_waker_skills", "waker_id="+wakerID, err)
+// EnabledSkillNameExists 按伙伴窗口检查当前已启用的版本声明名称。
+func (c *skillController) EnabledSkillNameExists(ctx context.Context, wakerIDs []string, excludingSkillID, name string) (bool, error) {
+	db := controllerDB(ctx, c.db)
+	for start := 0; start < len(wakerIDs); start += 200 {
+		end := min(start+200, len(wakerIDs))
+		relations := db.Model(&models.WakerSkill{}).Select("skill_package_id").Where("waker_id IN ? AND enabled = ?", wakerIDs[start:end], true)
+		current := db.Model(&models.SkillPackage{}).Select("current_version_id").Where("id <> ? AND id IN (?)", excludingSkillID, relations)
+		var ids []string
+		err := db.Model(&models.SkillVersion{}).Where("name = ? AND id IN (?)", name, current).Limit(1).Pluck("id", &ids).Error
+		if err != nil {
+			return false, databaseError("check_enabled_skill_name", "name="+name, err)
+		}
+		if len(ids) > 0 {
+			return true, nil
+		}
 	}
-	state := make(map[string]bool, len(relations))
-	for _, relation := range relations {
-		state[relation.SkillPackageID] = relation.Enabled
+	return false, nil
+}
+
+// GetLearningReceipt 读取已经提交并归属于来源伙伴的回执。
+func (c *skillController) GetLearningReceipt(ctx context.Context, wakerID, suggestionID string) (models.SkillLearningReceipt, bool, error) {
+	var receipt models.SkillLearningReceipt
+	result := controllerDB(ctx, c.db).Where("suggestion_id = ? AND waker_id = ?", suggestionID, wakerID).Limit(1).Find(&receipt)
+	if result.Error != nil {
+		return models.SkillLearningReceipt{}, false, databaseError("read_skill_learning_receipt", suggestionID, result.Error)
+	}
+	return receipt, result.RowsAffected > 0, nil
+}
+
+// CreateLearningReceipt 只为建议登记一次发布结果。
+func (c *skillController) CreateLearningReceipt(ctx context.Context, receipt models.SkillLearningReceipt) error {
+	result := controllerDB(ctx, c.db).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "suggestion_id"}},
+		DoNothing: true,
+	}).Create(&receipt)
+	if result.Error != nil {
+		return databaseError("create_skill_learning_receipt", receipt.SuggestionID, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return status_error.Conflict
+	}
+	return nil
+}
+
+func (c *skillController) ListLearningReceiptIDs(ctx context.Context, after string, limit int) ([]string, error) {
+	var ids []string
+	err := controllerDB(ctx, c.db).Model(&models.SkillLearningReceipt{}).
+		Where("suggestion_id > ?", after).Order("suggestion_id").Limit(limit).Pluck("suggestion_id", &ids).Error
+	if err != nil {
+		return nil, databaseError("list_skill_learning_receipt_ids", "", err)
+	}
+	return ids, nil
+}
+
+func (c *skillController) DeleteLearningReceipt(ctx context.Context, suggestionID string) error {
+	err := controllerDB(ctx, c.db).Where("suggestion_id = ?", suggestionID).Delete(&models.SkillLearningReceipt{}).Error
+	if err != nil {
+		return databaseError("delete_skill_learning_receipt", suggestionID, err)
+	}
+	return nil
+}
+
+func (c *skillController) withStates(ctx context.Context, wakerID string, packages []models.SkillPackage) ([]models.SkillWithState, error) {
+	state := make(map[string]bool, len(packages))
+	for start := 0; start < len(packages); start += 200 {
+		ids := make([]string, 0, min(200, len(packages)-start))
+		for _, skill := range packages[start:min(start+200, len(packages))] {
+			ids = append(ids, skill.ID)
+		}
+		var relations []models.WakerSkill
+		if err := controllerDB(ctx, c.db).Where("waker_id = ? AND skill_package_id IN ?", wakerID, ids).Find(&relations).Error; err != nil {
+			return nil, databaseError("list_waker_skills", "waker_id="+wakerID, err)
+		}
+		for _, relation := range relations {
+			state[relation.SkillPackageID] = relation.Enabled
+		}
 	}
 	versionIDs := make([]string, 0, len(packages))
 	for _, skill := range packages {
@@ -355,7 +470,7 @@ func (c *skillController) UpdatePackageMetadata(ctx context.Context, skillID str
 
 // ListLibrary 分页查询全局独立技能，不将其隐式安装给伙伴。
 func (c *skillController) ListLibrary(ctx context.Context, query string, offset, limit int) ([]models.SkillWithState, int64, error) {
-	db := controllerDB(ctx, c.db).Model(&models.SkillPackage{}).Where("built_in = ? AND source IN ?", false, []constants.SkillSource{constants.SkillSourceGit, constants.SkillSourceZip})
+	db := controllerDB(ctx, c.db).Model(&models.SkillPackage{}).Where("built_in = ? AND source IN ?", false, independentSkillSources)
 	if query = strings.TrimSpace(query); query != "" {
 		pattern := "%" + strings.ToLower(query) + "%"
 		db = db.Where("LOWER(name) LIKE ? OR LOWER(description) LIKE ?", pattern, pattern)
@@ -474,7 +589,7 @@ func (c *skillController) ExistingLibraryContent(ctx context.Context, digests []
 			// SkillPackageID 是同摘要下稳定选出的真实资源标识。
 			SkillPackageID string
 		}
-		current := db.Model(&models.SkillPackage{}).Select("current_version_id").Where("built_in = ? AND source IN ?", false, []constants.SkillSource{constants.SkillSourceGit, constants.SkillSourceZip})
+		current := db.Model(&models.SkillPackage{}).Select("current_version_id").Where("built_in = ? AND source IN ?", false, independentSkillSources)
 		if err := db.Model(&models.SkillVersion{}).Select("content_digest, MIN(skill_package_id) AS skill_package_id").Where("content_digest IN ? AND id IN (?)", digests[start:end], current).Group("content_digest").Find(&matches).Error; err != nil {
 			return nil, databaseError("find_existing_library_skill_content", "", err)
 		}

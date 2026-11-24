@@ -1,12 +1,14 @@
-import { Plus } from "lucide-react";
+import { Plus, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
+  Link,
   useLocation,
   useNavigate,
   useParams,
   useSearchParams,
 } from "react-router-dom";
 import { WakerDetailLayout } from "@/modules/waker";
+import { partnerReviewSettingsHref } from "@/shared/lib/partner-review-settings";
 import { Button } from "@/shared/ui/button";
 import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
 import { SearchField } from "@/shared/ui/search-field";
@@ -87,6 +89,14 @@ export function WakerSkillsPage() {
                   aria-label={searchLabel}
                 />
               </div>
+              {category === null ? (
+                <Button asChild size="catalog" variant="catalog-ghost">
+                  <Link to={partnerReviewSettingsHref(wakerId, "skill")}>
+                    <Settings />
+                    {t("memory:review.skillSettings")}
+                  </Link>
+                </Button>
+              ) : null}
               {category === null && (
                 <Button
                   variant="catalog-primary"

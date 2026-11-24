@@ -351,7 +351,7 @@ func (m *service) PrepareTurnAdmission(ctx context.Context, turn StartedTurn, ke
 	if !turn.NewChat && version == 0 {
 		return agent.ConversationBatch{}, status_error.ChatNotFound
 	}
-	return agent.ConversationBatch{ChatID: turn.Chat.ID, Key: key, ExpectedVersion: version, Changes: factsToChanges(turn.Facts)}, nil
+	return agent.ConversationBatch{ChatID: turn.Chat.ID, Key: key, ExpectedVersion: version, Changes: m.reviewAdmission(ctx, turn)}, nil
 }
 
 // ProjectTurnAdmission exposes the durable business facts after Thread writes the admission.

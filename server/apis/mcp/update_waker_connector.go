@@ -1,13 +1,8 @@
 package mcp
 
 import (
-	"context"
 	"strings"
-	"time"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -35,59 +30,9 @@ func (u *UpdateWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
 
 // updateConnector 复用相同资源用例，空伙伴范围表示全局库。
 func updateConnector(ctx *gin.Context, u *UpdateWakerConnector) (ConnectorResponse, error) {
-	wakerID := strings.TrimSpace(u.WakerID)
-	connectorID := strings.TrimSpace(u.ConnectorID)
-	item, err := visibleConnector(
-		ctx,
-		wakerID,
-		connectorID,
-	)
+	updated, err := connectorService().Update(ctx, strings.TrimSpace(u.WakerID), strings.TrimSpace(u.ConnectorID), connectorDefinition(u.Body))
 	if err != nil {
 		return ConnectorResponse{}, ginx.WithStack(err)
 	}
-	existing := item.Connector
-	prepared, err := prepareConnector(existing, u.Body, &existing)
-	if err != nil {
-		return ConnectorResponse{}, ginx.WithStack(err)
-	}
-	if existing.Scope == constants.MCPConnectorScopeBuiltIn &&
-		builtInDefinitionChanged(existing, prepared) {
-		return ConnectorResponse{}, ginx.WithStack(status_error.BuiltInMCPConnectorReadOnly)
-	}
-	now := time.Now().UnixMilli()
-	currentDigest := trustDigest(prepared)
-	if existing.Scope == constants.MCPConnectorScopeBuiltIn {
-		prepared.TrustedConfigDigest = currentDigest
-		prepared.TrustedAt = existing.TrustedAt
-	} else if currentDigest != existing.TrustedConfigDigest {
-		if !u.Body.TrustConfirmed {
-			return ConnectorResponse{}, ginx.WithStack(status_error.MCPConnectorTrustRequired)
-		}
-		prepared.TrustedConfigDigest = currentDigest
-		prepared.TrustedAt = now
-	}
-	prepared.UpdatedAt = now
-	if connectorConfigurationChanged(existing, prepared) {
-		clearTestSnapshot(&prepared)
-	}
-	if err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
-		if len(prepared.Categories) > 0 {
-			if err := global.ResourceCategoryControllerManager.Ensure(txctx, constants.ResourceCategoryTypeConnector, prepared.Categories); err != nil {
-				return err
-			}
-		}
-		return global.MCPConnectorControllerManager.Update(txctx, prepared)
-	}); err != nil {
-		return ConnectorResponse{}, ginx.WithStack(err)
-	}
-	notifyResourceChanged(ctx, connectorID)
-	updated, err := visibleConnector(ctx, wakerID, connectorID)
-	if err != nil {
-		return ConnectorResponse{}, ginx.WithStack(err)
-	}
-	result, err := connectorResponse(ctx, updated)
-	if err != nil {
-		return ConnectorResponse{}, ginx.WithStack(err)
-	}
-	return result, nil
+	return connectorResponse(ctx, updated)
 }

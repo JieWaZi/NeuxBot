@@ -609,10 +609,11 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 	return result, nil
 }
 
-// mergePluginSkills 按发布摘要共用同名技能；实际复制内容由冷发布核验。
-func mergePluginSkills(independent, derived []agentapi.Skill) ([]agentapi.Skill, error) {
+// mergePluginSkills 合并相同内容，聊天忽略存在多个不同版本的歧义名称。
+func mergePluginSkills(independent, derived []agentapi.Skill) []agentapi.Skill {
 	result := make([]agentapi.Skill, 0, len(independent)+len(derived))
 	indexes := map[string]int{}
+	conflicts := map[string]bool{}
 	for _, item := range append(append([]agentapi.Skill{}, independent...), derived...) {
 		existing, ok := indexes[item.Name]
 		if !ok {
@@ -621,12 +622,16 @@ func mergePluginSkills(independent, derived []agentapi.Skill) ([]agentapi.Skill,
 			continue
 		}
 		if item.Digest == "" || result[existing].Digest != item.Digest {
-			return nil, status_error.PluginSkillConflict
+			conflicts[item.Name] = true
+			continue
 		}
 		// 插件内容已持有执行租约，去重后继续使用受保护的不可变目录。
 		result[existing].Path = item.Path
 	}
-	return result, nil
+	if len(conflicts) != 0 {
+		result = slices.DeleteFunc(result, func(skill agentapi.Skill) bool { return conflicts[skill.Name] })
+	}
+	return result
 }
 
 // pluginSelectionFacts 投影本轮实际选中的插件与已交付连接器名称。

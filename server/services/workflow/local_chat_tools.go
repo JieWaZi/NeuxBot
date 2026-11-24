@@ -9,7 +9,6 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	agentcap "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
@@ -43,7 +42,6 @@ func (s *Service) BindLocalWorkflowTurn(ctx context.Context, chat models.Chat, e
 	ids := append(append([]string{}, workflowAuthoringOperations...), workflowRunOperations...)
 	ids = append(ids, "workflow.runs.list", "workflow.runs.repeat")
 	bound.Capability = &execution.ToolCapability{ID: "workflow.local", Name: "工作流", Bindings: s.agentBindings(scope, ids)}
-	bound.DeveloperInstruction = agent.WorkflowLocalInstructions
 	return bound, nil
 }
 

@@ -120,12 +120,15 @@ func TestUninstallSkillRejectsBuiltInPackage(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	previousSkills := global.SkillControllerManager
 	previousWakers := global.WakerControllerManager
+	previousTransactions := global.TransactionControllerManager
 	t.Cleanup(func() {
 		global.SkillControllerManager = previousSkills
 		global.WakerControllerManager = previousWakers
+		global.TransactionControllerManager = previousTransactions
 	})
 	global.SkillControllerManager = controllers.NewSkillController(database.DB)
 	global.WakerControllerManager = controllers.NewWakerController(database.DB)
+	global.TransactionControllerManager = controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))
 	ctx, _ := gin.CreateTestContext(nil)
 	if err := global.WakerControllerManager.Create(ctx, models.Waker{ID: "waker-1", Name: "内置测试伙伴"}); err != nil {
 		t.Fatal(err)

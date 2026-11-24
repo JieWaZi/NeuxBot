@@ -1,6 +1,6 @@
 ---
 name: bot
-description: Use NeuxBot's authorized knowledge, delivery, workflow, team, memory, plugin and question capabilities. Includes factual questions covered by available knowledge bases, document ingestion and Wiki maintenance. Ordinary file editing or shell work alone does not require this skill.
+description: Use NeuxBot's authorized knowledge, delivery, workflow, team, memory, skill, MCP, plugin and question capabilities. Includes factual questions covered by available knowledge bases, document ingestion and Wiki maintenance. Ordinary file editing or shell work alone does not require this skill.
 ---
 
 # NeuxBot
@@ -52,6 +52,8 @@ reference's spelling. `--library` and `--libraryId` are not `--library-id`.
 | Message/file delivery | [IM delivery](references/im-delivery.md#command-examples) |
 | Team coordination/reporting | [Lead](references/team-lead.md#command-examples), [member](references/team-member.md#command-examples) |
 | Durable memory | [Memory](references/memory.md#command-examples) |
+| Manage skills when authorized | [Skill management](references/skill-management.md) |
+| Manage MCP connectors when authorized | [MCP management](references/mcp-management.md) |
 | Host-bound partner setup | [Partner onboarding](references/partner-onboarding.md#command-examples) |
 | User-initiated profile optimization | [Partner profile optimization](references/partner-profile-optimization.md) |
 | Structured questions | [Questions](references/user-questions.md#command-examples) |

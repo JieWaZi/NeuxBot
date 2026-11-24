@@ -38,6 +38,11 @@ func (c client) request(ctx context.Context, method, path string, payload any, m
 	var executionID string
 	if input, ok := payload.(capability.Request); ok {
 		operation, _ := capability.Find(input.Operation)
+		if (operation.ScopeKind == "skills.management" || operation.ScopeKind == "mcp.management") &&
+			(mutation || operation.ID == "mcp.connectors.test") {
+			// Both transports keep the tool call open while the user resolves host approval.
+			httpClient.Timeout = 2 * time.Minute
+		}
 		if operation.Effect == constants.AgentCLIEffectExternal {
 			scope, err := c.send(ctx, httpClient, http.MethodGet, constants.AgentCLIExecutionPath, nil, false, "")
 			if err != nil {

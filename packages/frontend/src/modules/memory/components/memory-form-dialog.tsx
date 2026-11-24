@@ -1,14 +1,17 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { withLocalErrorMutation } from "@/shared/api/local-error-surface";
+import {
+  localApiErrorMessage,
+  withLocalErrorMutation,
+} from "@/shared/api/local-error-surface";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
   createMemoryMutation,
-  invalidateMemoryQueries,
+  invalidatePartnerMemory,
   updateMemoryMutation,
 } from "../api/memory-queries";
-import type { MemoryResource, MemoryScope } from "../model/types";
+import type { MemoryResource } from "../model/types";
 import { MemoryWorkspaceDialogContent } from "./memory-workspace-dialog-content";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogClose, DialogFooter } from "@/shared/ui/dialog";
@@ -18,9 +21,6 @@ type Props = {
   memory?: MemoryResource | null;
   onOpenChange: (open: boolean) => void;
   open: boolean;
-  projectId: string;
-  scope: MemoryScope;
-  scopeName?: string;
   wakerId: string;
 };
 
@@ -29,15 +29,7 @@ export function MemoryFormDialog({ ...props }: Props) {
   return <OpenMemoryFormDialog {...props} />;
 }
 
-function OpenMemoryFormDialog({
-  memory,
-  onOpenChange,
-  open,
-  projectId,
-  scope,
-  scopeName,
-  wakerId,
-}: Props) {
+function OpenMemoryFormDialog({ memory, onOpenChange, open, wakerId }: Props) {
   const { t } = useTranslation("memory");
   const queryClient = useQueryClient();
   const [content, setContent] = useState(memory?.content ?? "");
@@ -56,11 +48,7 @@ function OpenMemoryFormDialog({
       setLocalError(t("form.required"));
       return;
     }
-    const body = {
-      content: normalized,
-      projectId: scope === "project" ? projectId : undefined,
-      scope,
-    };
+    const body = { content: normalized };
     try {
       if (memory?.id) {
         await updateMemory.mutateAsync({
@@ -70,10 +58,10 @@ function OpenMemoryFormDialog({
       } else {
         await createMemory.mutateAsync({ body, path: { wakerId } });
       }
-      await invalidateMemoryQueries(queryClient);
+      await invalidatePartnerMemory(queryClient, wakerId);
       onOpenChange(false);
-    } catch {
-      setLocalError(t("form.saveFailed"));
+    } catch (error) {
+      setLocalError(localApiErrorMessage(error, t("form.saveFailed")));
     }
   };
 
@@ -81,13 +69,7 @@ function OpenMemoryFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <MemoryWorkspaceDialogContent
         title={memory ? t("form.editTitle") : t("form.createTitle")}
-        description={t("form.description", {
-          scope:
-            scopeName ??
-            (scope === "partner"
-              ? t("scope.partner")
-              : t("scope.unnamedProject")),
-        })}
+        description={t("form.description")}
       >
         <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto_auto] gap-2 px-6 py-5">
           <label className="type-label font-medium" htmlFor="memory-content">

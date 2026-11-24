@@ -20,6 +20,8 @@ func (v SkillSource) String() string {
 		return "builtin"
 	case SkillSourceGit:
 		return "git"
+	case SkillSourceLearned:
+		return "learned"
 	case SkillSourceZip:
 		return "zip"
 	}
@@ -34,6 +36,8 @@ func (v SkillSource) Label() string {
 		return "SkillSourceBuiltin 表示随 NeuxBot 提供的内置技能。"
 	case SkillSourceGit:
 		return "SkillSourceGit 表示从 Git 地址导入的技能。"
+	case SkillSourceLearned:
+		return "SkillSourceLearned 表示从伙伴聊天复盘学习的本地技能。"
 	case SkillSourceZip:
 		return "SkillSourceZip 表示从 ZIP 压缩包导入的技能。"
 	}
@@ -41,7 +45,7 @@ func (v SkillSource) Label() string {
 }
 
 func (v SkillSource) Values() []enum.Enum {
-	return []enum.Enum{SkillSourceUnspecified, SkillSourceBuiltin, SkillSourceGit, SkillSourceZip}
+	return []enum.Enum{SkillSourceUnspecified, SkillSourceBuiltin, SkillSourceGit, SkillSourceLearned, SkillSourceZip}
 }
 
 func (v SkillSource) Type() string {
@@ -50,7 +54,7 @@ func (v SkillSource) Type() string {
 
 func (v SkillSource) MarshalText() ([]byte, error) {
 	switch v {
-	case SkillSourceUnspecified, SkillSourceBuiltin, SkillSourceGit, SkillSourceZip:
+	case SkillSourceUnspecified, SkillSourceBuiltin, SkillSourceGit, SkillSourceLearned, SkillSourceZip:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -65,6 +69,8 @@ func (v *SkillSource) UnmarshalText(text []byte) error {
 		*v = SkillSourceBuiltin
 	case SkillSourceGit.String():
 		*v = SkillSourceGit
+	case SkillSourceLearned.String():
+		*v = SkillSourceLearned
 	case SkillSourceZip.String():
 		*v = SkillSourceZip
 	default:

@@ -42,11 +42,13 @@ export function SettingsRow({
   content,
   description,
   grouped = false,
+  inlineActions = false,
   title,
   ...props
 }: Omit<ComponentProps<"section">, "title" | "content"> & {
   description?: ReactNode;
   grouped?: boolean;
+  inlineActions?: boolean;
   content?: ReactNode;
   title: ReactNode;
 }) {
@@ -63,11 +65,17 @@ export function SettingsRow({
     >
       <div
         className={cn(
-          "min-h-row-default flex flex-wrap justify-between gap-x-4 gap-y-3",
+          "min-h-row-default flex justify-between gap-x-4 gap-y-3",
+          inlineActions ? "flex-nowrap" : "flex-wrap",
           description ? "items-start" : "items-center",
         )}
       >
-        <div className="min-w-0 flex-1 basis-48">
+        <div
+          className={cn(
+            "min-w-0 flex-1",
+            inlineActions ? "basis-0" : "basis-48",
+          )}
+        >
           <h2 className="type-label text-content-primary font-medium">
             {title}
           </h2>
@@ -78,7 +86,12 @@ export function SettingsRow({
           ) : null}
         </div>
         {children ? (
-          <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+          <div
+            className={cn(
+              "flex max-w-full items-center justify-end gap-2",
+              inlineActions ? "min-w-0 flex-nowrap" : "flex-wrap",
+            )}
+          >
             {children}
           </div>
         ) : null}

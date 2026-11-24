@@ -127,6 +127,34 @@ func TestApprovalCoordinatorKeepsArrivalOrderAndFirstResponseWins(t *testing.T) 
 	waitPendingApprovals(t, core.approvals, chatID, 0)
 }
 
+func TestResourceApprovalUsesActiveHostDecision(t *testing.T) {
+	core, _ := newApprovalTestService()
+	const chatID, executionID = "partner-chat", "resource-turn"
+	release := reserveAgentTestExecution(t, core, chatID, executionID)
+	approve := core.resourceApproval(chatID, executionID)
+	for _, tc := range []struct {
+		option string
+		want   error
+	}{{"reject", status_error.AgentOperationForbidden}, {"allow", nil}} {
+		result := make(chan error, 1)
+		go func() { result <- approve(t.Context(), "Delete the demo skill from the library.") }()
+		pending := waitPendingApprovals(t, core.approvals, chatID, 1)[0]
+		if len(pending.Options) != 2 || pending.Summary != "Delete the demo skill from the library." {
+			t.Fatalf("incorrect prompt shown for the resource operation: %+v", pending)
+		}
+		if err := core.ResolveApproval(t.Context(), chatID, pending.ApprovalID, tc.option); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-result; !errors.Is(err, tc.want) {
+			t.Fatalf("host selection %q resulted in %v", tc.option, err)
+		}
+	}
+	release()
+	if err := approve(t.Context(), "Delete a different resource."); !errors.Is(err, status_error.AgentContextUnauthorized) {
+		t.Fatalf("settled execution requested approval: %v", err)
+	}
+}
+
 func TestApprovalCoordinatorPreservesUnknownOptionKind(t *testing.T) {
 	core, _ := newApprovalTestService()
 	chatID := "abababababababababababababababab"

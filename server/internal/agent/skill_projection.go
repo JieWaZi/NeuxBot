@@ -27,6 +27,8 @@ type skillWorkspace struct {
 	installed managedskills.MaterializationManifest
 	// verified avoids rehashing a shared snapshot within the same prepare transaction.
 	verified map[string]bool
+	// missingSources records only skipped source documents that may reappear.
+	missingSources []string
 }
 
 type installedSkill struct {
@@ -37,19 +39,23 @@ type installedSkill struct {
 }
 
 // prepareSkills publishes one reserved target under ProviderRuntime's file mutex.
-func prepareSkills(selection *SkillSelection) error {
+func prepareSkills(selection *SkillSelection, missingSources *[]string) error {
 	if selection == nil {
 		return nil
 	}
-	workspace, err := openSkillWorkspace(selection.cwd)
+	workspace, err := openSkillWorkspace(selection.cwd, selection.directory, selection.optional)
 	if err != nil {
 		return err
 	}
 	defer workspace.root.Close()
-	return workspace.prepareTarget(selection.directory, selection.entries)
+	err = workspace.prepareTarget(selection.directory, selection.entries, selection.optional)
+	if missingSources != nil {
+		*missingSources = workspace.missingSources
+	}
+	return err
 }
 
-func openSkillWorkspace(cwd string) (*skillWorkspace, error) {
+func openSkillWorkspace(cwd, directory string, optional bool) (*skillWorkspace, error) {
 	observed, err := os.Lstat(cwd)
 	if err != nil || !realSkillDirectory(observed) {
 		return nil, status_error.SkillContentInvalid
@@ -58,8 +64,23 @@ func openSkillWorkspace(cwd string) (*skillWorkspace, error) {
 	if err != nil {
 		return nil, skillStorageError(err)
 	}
+	actual, err := root.Lstat(".")
+	if err != nil || !os.SameFile(observed, actual) {
+		root.Close()
+		return nil, status_error.SkillContentInvalid
+	}
 	workspace := &skillWorkspace{root: root, verified: map[string]bool{}}
-	err = workspace.readManifest(observed)
+	err = workspace.readManifest()
+	if optional && errors.Is(err, status_error.SkillContentInvalid) {
+		// Ownership from a malformed manifest cannot be used to touch individual
+		// entries. Isolate the discovery directory as a unit, preserving its files.
+		if err = workspace.archiveSkillDiscovery(directory); err == nil {
+			err = workspace.archiveEditedPath(managedskills.MaterializationManifestName)
+		}
+		if err == nil {
+			err = workspace.readManifest()
+		}
+	}
 	if err != nil {
 		root.Close()
 		return nil, err
@@ -67,11 +88,7 @@ func openSkillWorkspace(cwd string) (*skillWorkspace, error) {
 	return workspace, nil
 }
 
-func (w *skillWorkspace) readManifest(observed os.FileInfo) error {
-	actual, err := w.root.Lstat(".")
-	if err != nil || !os.SameFile(observed, actual) {
-		return status_error.SkillContentInvalid
-	}
+func (w *skillWorkspace) readManifest() error {
 	name := managedskills.MaterializationManifestName
 	info, err := w.root.Lstat(name)
 	if os.IsNotExist(err) {
@@ -92,7 +109,7 @@ func (w *skillWorkspace) readManifest(observed os.FileInfo) error {
 		return skillStorageError(err)
 	}
 	defer file.Close()
-	actual, err = file.Stat()
+	actual, err := file.Stat()
 	if err != nil || !os.SameFile(info, actual) {
 		return status_error.SkillContentInvalid
 	}
@@ -105,7 +122,7 @@ func (w *skillWorkspace) readManifest(observed os.FileInfo) error {
 }
 
 // prepareTarget updates the selected discovery directory and its manifest entries.
-func (w *skillWorkspace) prepareTarget(directory string, entries []skillEntry) error {
+func (w *skillWorkspace) prepareTarget(directory string, entries []skillEntry, optional bool) error {
 	if !safeSkillEntryName(directory) {
 		return status_error.SkillContentInvalid
 	}
@@ -114,24 +131,58 @@ func (w *skillWorkspace) prepareTarget(directory string, entries []skillEntry) e
 	if len(old) == 0 && len(entries) == 0 {
 		return nil
 	}
-	if err := ensureSkillParents(w.root, []string{directory, managedskills.MaterializationDiscoveryDirectory}, len(old) == 0); err != nil {
-		return err
+	parents := []string{directory, managedskills.MaterializationDiscoveryDirectory}
+	if err := ensureSkillParents(w.root, parents, len(old) == 0 || optional); err != nil {
+		if !optional || !errors.Is(err, status_error.SkillContentInvalid) {
+			return err
+		}
+		if err := w.archiveSkillDiscovery(directory); err != nil {
+			return err
+		}
+		if err := ensureSkillParents(w.root, parents, true); err != nil {
+			return err
+		}
 	}
 	previous := map[string]installedSkill{}
 	next := map[string]string{}
 	for name, digest := range old {
-		current, err := w.verifyInstalledSkill(filepath.Join(key, name), digest)
+		target := filepath.Join(key, name)
+		if optional {
+			if _, err := w.root.Lstat(target); os.IsNotExist(err) {
+				continue
+			}
+		}
+		current, err := w.verifyInstalledSkill(target, digest, optional)
+		if optional && errors.Is(err, status_error.SkillContentInvalid) {
+			// Rename only the manifest-owned entry, never follow a substituted link.
+			if err = w.archiveEditedPath(target); err == nil {
+				continue
+			}
+		}
 		if err != nil {
 			return err
 		}
 		previous[name] = current
 	}
+	candidates := make([]skillEntry, 0, len(entries))
 	for _, entry := range entries {
 		if _, owned := previous[entry.name]; !owned {
-			if _, err := w.root.Lstat(filepath.Join(key, entry.name)); !os.IsNotExist(err) {
+			_, err := w.root.Lstat(filepath.Join(key, entry.name))
+			if err == nil && optional {
+				if entry.name != constants.AgentCLISkillName {
+					continue
+				}
+				// The reserved host skill name cannot refer to unverified content.
+				if err := w.archiveEditedPath(filepath.Join(key, entry.name)); err != nil {
+					return err
+				}
+				err = fs.ErrNotExist
+			}
+			if !os.IsNotExist(err) {
 				return status_error.SkillContentInvalid
 			}
 		}
+		candidates = append(candidates, entry)
 	}
 
 	stagePath, err := os.MkdirTemp(w.root.Name(), ".neuxbot-skills-stage-")
@@ -161,9 +212,17 @@ func (w *skillWorkspace) prepareTarget(directory string, entries []skillEntry) e
 		return skillStorageError(err)
 	}
 	changes := map[string]bool{}
-	for _, entry := range entries {
+	for _, entry := range candidates {
 		digest, err := w.publishSnapshot(stage, entry, created)
 		if err != nil {
+			if optional {
+				path := filepath.Join(entry.path, "SKILL.md")
+				if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+					w.missingSources = append(w.missingSources, path)
+				}
+				logx.Warnf("skip unavailable managed skill: name=%s error=%v", entry.name, err)
+				continue
+			}
 			return err
 		}
 		next[entry.name] = digest
@@ -196,7 +255,7 @@ func (w *skillWorkspace) prepareTarget(directory string, entries []skillEntry) e
 			changes[name] = false
 		}
 	}
-	if len(changes) == 0 {
+	if len(changes) == 0 && maps.Equal(old, next) {
 		committed = true
 		return nil
 	}
@@ -215,9 +274,9 @@ func (w *skillWorkspace) prepareTarget(directory string, entries []skillEntry) e
 	}
 	w.installed = manifest
 	committed = true
-	for name, entry := range previous {
-		if entry.digest != next[name] {
-			w.removeUnusedSnapshot(entry.digest)
+	for name, digest := range old {
+		if digest != next[name] {
+			w.removeUnusedSnapshot(digest)
 		}
 	}
 	return nil
@@ -266,7 +325,7 @@ func (w *skillWorkspace) replaceTargetEntries(stage, key string, changes map[str
 	return nil
 }
 
-func (w *skillWorkspace) verifyInstalledSkill(target, digest string) (installedSkill, error) {
+func (w *skillWorkspace) verifyInstalledSkill(target, digest string, optional bool) (installedSkill, error) {
 	info, err := w.root.Lstat(target)
 	if err != nil {
 		return installedSkill{}, status_error.SkillContentInvalid
@@ -281,7 +340,85 @@ func (w *skillWorkspace) verifyInstalledSkill(target, digest string) (installedS
 		return installedSkill{}, status_error.SkillContentInvalid
 	}
 	installation.linked = true
-	return installation, w.verifySnapshot(digest)
+	if optional {
+		if err := ensureSkillParents(w.root, []string{managedskills.MaterializationWorkspaceDirectory, managedskills.MaterializationDiscoveryDirectory}, true); err != nil {
+			return installedSkill{}, err
+		}
+		if _, err := w.root.Lstat(skillSnapshotPath(digest)); os.IsNotExist(err) {
+			// The exact owned link can be reused once a replacement snapshot is verified.
+			return installation, nil
+		}
+	}
+	err = w.verifySnapshot(digest)
+	if optional && filepath.Base(target) != constants.AgentCLISkillName && errors.Is(err, status_error.SkillContentInvalid) {
+		// Another discovery target may still have a live lease on the same payload.
+		// Leave its bytes in place and let this target quarantine only its own link.
+		for other, entries := range w.installed.Targets {
+			if filepath.FromSlash(other) == filepath.Dir(target) {
+				continue
+			}
+			for _, referenced := range entries {
+				if referenced == digest {
+					return installedSkill{}, err
+				}
+			}
+		}
+		snapshot := skillSnapshotPath(digest)
+		if info, statErr := w.root.Lstat(snapshot); statErr == nil && realSkillDirectory(info) {
+			// Keep local edits outside native discovery. The owned link can then be
+			// restored from verified library content or detached if its source is gone.
+			err = w.archiveEditedPath(snapshot)
+		}
+	}
+	return installation, err
+}
+
+func (w *skillWorkspace) archiveSkillDiscovery(directory string) error {
+	if !safeSkillEntryName(directory) {
+		return status_error.SkillContentInvalid
+	}
+	parent, err := w.root.Lstat(directory)
+	if err == nil && !realSkillDirectory(parent) {
+		// The discovery parent itself was replaced. Preserve it without following it.
+		if err := w.archiveEditedPath(directory); err != nil {
+			return err
+		}
+	} else if err == nil {
+		target := filepath.Join(directory, managedskills.MaterializationDiscoveryDirectory)
+		if _, err := w.root.Lstat(target); !os.IsNotExist(err) {
+			if err != nil {
+				return skillStorageError(err)
+			}
+			if err := w.archiveEditedPath(target); err != nil {
+				return err
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return skillStorageError(err)
+	}
+	return nil
+}
+
+func (w *skillWorkspace) archiveEditedPath(path string) error {
+	parts := []string{managedskills.MaterializationWorkspaceDirectory, managedskills.MaterializationDiscoveryDirectory}
+	if err := ensureSkillParents(w.root, parts, true); err != nil {
+		return err
+	}
+	parent := filepath.Join(parts...)
+	backup, err := os.MkdirTemp(filepath.Join(w.root.Name(), parent), ".edited-")
+	if err != nil {
+		return skillStorageError(err)
+	}
+	backup = filepath.Join(parent, filepath.Base(backup))
+	archivedSnapshot := filepath.Join(backup, filepath.Base(path))
+	if err := w.root.Rename(path, archivedSnapshot); err != nil {
+		if cleanupErr := w.root.Remove(backup); cleanupErr != nil {
+			logx.Errorf("clean empty managed skill backup: error=%v", cleanupErr)
+		}
+		return skillStorageError(err)
+	}
+	logx.Warnf("preserved an edited managed skill snapshot: backup=%s", archivedSnapshot)
+	return nil
 }
 
 func (w *skillWorkspace) publishSnapshot(stage string, entry skillEntry, created map[string]bool) (string, error) {
@@ -306,6 +443,11 @@ func (w *skillWorkspace) publishSnapshot(stage string, entry skillEntry, created
 	if err := w.root.Mkdir(staged, 0700); err != nil {
 		return "", skillStorageError(err)
 	}
+	defer func() {
+		if err := w.root.RemoveAll(staged); err != nil {
+			logx.Errorf("clean managed skill candidate: error=%v", err)
+		}
+	}()
 	stagedPath := filepath.Join(w.root.Name(), staged)
 	if err := managedskills.CopySelectedDirectory(entry.path, stagedPath, include); err != nil {
 		return "", err

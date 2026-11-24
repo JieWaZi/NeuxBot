@@ -365,6 +365,56 @@ func TestThreadGenerateTextUsesStrictNativeSessionWithoutChat(t *testing.T) {
 	}
 }
 
+func TestThreadEphemeralTextUsesNonClaudeWithoutPersistingBody(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "cursor")
+	configureThreadFixture(&req, trace)
+	scratch := t.TempDir()
+	result, err := lifecycle.GenerateText(t.Context(), agent.TextRequest{
+		Connection: req.Connection, Ephemeral: true, ScratchRoot: scratch,
+		Messages: []agent.TextMessage{{Role: "system", Content: "stable system rule"}, {Role: "user", Content: "detached input tool-collection-presence"}},
+	})
+	if err != nil || result.Text != "native Cursor answer" || result.ToolsDisabled {
+		t.Fatalf("ephemeral text = %q, tools disabled = %v: %v", result.Text, result.ToolsDisabled, err)
+	}
+	key := agent.NativeResultKey{Session: result.Turn.Binding.Session, InvocationID: result.Turn.Outcome.Turn.InvocationID}
+	durable, err := store.ReadNativeResult(t.Context(), key)
+	if err != nil || durable.FinalMessage != nil || durable.Turn.Status != acpmeta.NativeTurnCompleted {
+		t.Fatalf("durable result = %+v %v", durable, err)
+	}
+	if entries, err := os.ReadDir(scratch); err != nil || len(entries) != 0 {
+		t.Fatalf("scratch after completion = %+v %v", entries, err)
+	}
+	wire, err := os.ReadFile(trace)
+	if err != nil || !strings.Contains(string(wire), "session/new") || !strings.Contains(string(wire), "stable system rule") || strings.Contains(string(wire), "session/resume") {
+		t.Fatalf("detached native session = %s %v", wire, err)
+	}
+}
+
+func TestThreadEphemeralTextStartsCodexInReadOnlyModeWithoutHistory(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	req.Connection.Account.Model = "alternate-model"
+	result, err := lifecycle.GenerateText(t.Context(), agent.TextRequest{
+		Connection: req.Connection, Ephemeral: true, ScratchRoot: t.TempDir(),
+		Messages: []agent.TextMessage{{Role: "system", Content: "review-host-rules-marker"}, {Role: "user", Content: "detached input"}},
+	})
+	if err != nil || result.Text != "native answer" || result.ToolsDisabled || slices.Contains(result.Limitations, "native_history_not_disabled") {
+		t.Fatalf("Codex text = %q, tools disabled = %v: %v", result.Text, result.ToolsDisabled, err)
+	}
+	key := agent.NativeResultKey{Session: result.Turn.Binding.Session, InvocationID: result.Turn.Outcome.Turn.InvocationID}
+	durable, err := store.ReadNativeResult(t.Context(), key)
+	if err != nil || durable.FinalMessage != nil || durable.Turn.Usage == nil {
+		t.Fatalf("Codex durable result = %+v %v", durable, err)
+	}
+	wire, err := os.ReadFile(trace)
+	if err != nil || !strings.Contains(string(wire), `"sandbox":"read-only"`) ||
+		!strings.Contains(string(wire), `"type":"readOnly"`) || !strings.Contains(string(wire), `"ephemeral":true`) ||
+		strings.Count(string(wire), "review-host-rules-marker") != 1 || strings.Count(string(wire), "detached input") != 1 ||
+		!strings.Contains(string(wire), `"model":"alternate-model"`) || strings.Contains(string(wire), "thread/resume") {
+		t.Fatalf("Codex isolated launch = %s %v", wire, err)
+	}
+}
+
 func chatTurn(i int, text string) agent.TurnRequest {
 	return agent.TurnRequest{
 		HostInvocationID: fmt.Sprintf("host-%d", i), ExecutionID: fmt.Sprintf("execution-%d", i),
@@ -525,7 +575,8 @@ func fixtureCodexFrame(out *json.Encoder, frame map[string]any, raw, session str
 			map[string]any{"id": "alternate", "model": "alternate-model", "displayName": "Alternate"},
 		}})
 	case "thread/start", "thread/resume":
-		ack(map[string]any{"thread": map[string]any{"id": session}, "model": "default-model"})
+		params, _ := frame["params"].(map[string]any)
+		ack(map[string]any{"thread": map[string]any{"id": session, "ephemeral": params["ephemeral"] == true}, "model": "default-model"})
 	case "turn/start":
 		if strings.Contains(raw, "hold-unconfirmed-handoff") {
 			return
@@ -904,7 +955,9 @@ func TestThreadTurnReplacementSeedsFiveCompleteTurns(t *testing.T) {
 	}
 	req.ResourceGeneration++
 	req.Summarize = true // No old live owner remains, so the bounded fallback applies.
+	req.CoreMemoryOwner = "fixture-partner"
 	input := chatTurn(6, "replacement-current-user")
+	input.CoreMemory = &agent.CoreMemoryContext{Revision: 1, JSON: []byte(`{"items":[{"text":"latest-core-memory"}]}`)}
 	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, false))
 	if err != nil {
 		t.Fatal(err)
@@ -919,7 +972,9 @@ func TestThreadTurnReplacementSeedsFiveCompleteTurns(t *testing.T) {
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.Contains(line, "replacement-current-user") {
 			if strings.Contains(line, "previous-user-0") || strings.Count(line, "previous-user-") != 5 ||
-				strings.Count(line, "native answer") != 5 || !strings.Contains(line, "Recent conversation history") {
+				strings.Count(line, "native answer") != 5 || strings.Count(line, "Recent conversation history") != 1 ||
+				strings.Count(line, "latest-core-memory") != 1 || strings.Count(line, "replacement-current-user") != 1 ||
+				strings.Count(line, `\u003cneuxbot-turn-context\u003e`) != 1 || strings.Contains(line, "Current user message:") {
 				t.Fatalf("wrong history window: %s", line)
 			}
 			return

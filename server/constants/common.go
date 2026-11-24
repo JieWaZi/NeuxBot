@@ -488,8 +488,6 @@ const (
 	CompanionAvatarPrefix = "companion:"
 	// PersonalAssistantAvatar 固定内置私人助理的毛绒形象身份，由前端风格目录统一还原。
 	PersonalAssistantAvatar = CompanionAvatarPrefix + "fe9a9eb52f5e4d7dac1959fe4f9559f2"
-	// WikiResearcherAvatar 固定内置维基研究员的形象身份，由共享形象目录还原。
-	WikiResearcherAvatar = CompanionAvatarPrefix + "854de954b7bd4e2cb9582fd0930dcd6d"
 	// DefaultAvatar 是未指定头像时使用的默认预设头像。
 	DefaultAvatar = "preset:generic"
 	// ChatLogSchemaVersion 是公开聊天事件信封的版本。

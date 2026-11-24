@@ -17,7 +17,7 @@ func TestAgentMemoryReceiptsSurviveReopenForgetAndRejectChangedPayload(t *testin
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	owner := newContext("partner", "project")
+	owner := newContext("partner")
 	bindings := map[string]capability.Binding{}
 	bind := func() {
 		for _, value := range service.AgentBindings(owner) {
@@ -25,7 +25,7 @@ func TestAgentMemoryReceiptsSurviveReopenForgetAndRejectChangedPayload(t *testin
 		}
 	}
 	bind()
-	request := capability.Request{Operation: "memory.entries.create", RequestID: "stable", Params: map[string]any{"scope": "partner", "content": "用户使用中文沟通"}}
+	request := capability.Request{Operation: "memory.entries.create", RequestID: "stable", Params: map[string]any{"content": "用户使用中文沟通"}}
 	first, err := bindings[request.Operation].Call(ctx, request)
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestAgentMemoryReceiptsSurviveReopenForgetAndRejectChangedPayload(t *testin
 		t.Fatalf("durable replay = %+v %v", replay, err)
 	}
 	changed := request
-	changed.Params = map[string]any{"scope": "partner", "content": "其他内容"}
+	changed.Params = map[string]any{"content": "其他内容"}
 	if _, err := bindings[request.Operation].Call(ctx, changed); !errors.Is(err, status_error.AgentCommandRequestConflict) {
 		t.Fatalf("changed request accepted: %v", err)
 	}
@@ -70,20 +70,20 @@ func TestAgentMemoryReceiptsSurviveReopenForgetAndRejectChangedPayload(t *testin
 
 func TestAgentMemoryReceiptFailureRollsBackKnowledgeAndIndex(t *testing.T) {
 	service := newTestService(t, EmbeddingConfig{}, nil)
-	if _, err := service.store.db.Exec("CREATE TRIGGER reject_cli_receipt BEFORE INSERT ON memory_command_receipts BEGIN SELECT RAISE(ABORT, 'receipt denied'); END"); err != nil {
+	if _, err := service.store.db.Exec("CREATE TRIGGER reject_cli_receipt BEFORE INSERT ON partner_memory_command_receipts BEGIN SELECT RAISE(ABORT, 'receipt denied'); END"); err != nil {
 		t.Fatal(err)
 	}
 	var create capability.Binding
-	for _, binding := range service.AgentBindings(newContext("partner", "")) {
+	for _, binding := range service.AgentBindings(newContext("partner")) {
 		if binding.Operation == "memory.entries.create" {
 			create = binding
 		}
 	}
-	if _, err := create.Call(context.Background(), capability.Request{Operation: create.Operation, RequestID: "rollback", Params: map[string]any{"scope": "partner", "content": "这条事实必须回滚"}}); err == nil {
+	if _, err := create.Call(context.Background(), capability.Request{Operation: create.Operation, RequestID: "rollback", Params: map[string]any{"content": "这条事实必须回滚"}}); err == nil {
 		t.Fatal("write succeeded without receipt")
 	}
 	var count int
-	if err := service.store.db.QueryRow("SELECT COUNT(*) FROM memories").Scan(&count); err != nil || count != 0 {
+	if err := service.store.db.QueryRow("SELECT COUNT(*) FROM partner_memories").Scan(&count); err != nil || count != 0 {
 		t.Fatalf("half-committed memory: %d %v", count, err)
 	}
 }

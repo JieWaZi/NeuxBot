@@ -3568,6 +3568,13 @@ export type GithubComJieWaZiNeuxBotServerApisMcpInstallLibraryConnectorRequest =
     wakerIds: Array<string>;
 };
 
+export type GithubComJieWaZiNeuxBotServerApisMcpLibraryConnectorDetailResponse = GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse & {
+    /**
+     * 已安装伙伴标识
+     */
+    installedPartnerIds?: Array<string>;
+};
+
 /**
  * ListLibraryConnectorsResponse 是准确分页结果。
  */
@@ -3728,11 +3735,6 @@ export type GithubComJieWaZiNeuxBotServerApisMemoryMemoryMutationRequest = {
      * 记忆正文
      */
     content: string;
-    /**
-     * 项目标识
-     */
-    projectId?: string;
-    scope: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
 };
 
 /**
@@ -3744,6 +3746,10 @@ export type GithubComJieWaZiNeuxBotServerApisMemoryMemoryResource = {
      */
     content?: string;
     /**
+     * 核心记忆
+     */
+    core?: boolean;
+    /**
      * 创建时间
      */
     createdAt?: number;
@@ -3751,11 +3757,7 @@ export type GithubComJieWaZiNeuxBotServerApisMemoryMemoryResource = {
      * 标识
      */
     id?: string;
-    scope?: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
-    /**
-     * 范围标识
-     */
-    scopeId?: string;
+    source?: GithubComJieWaZiNeuxBotServerConstantsMemoryTimelineSource & unknown;
     /**
      * 执行标识
      */
@@ -3820,6 +3822,16 @@ export type GithubComJieWaZiNeuxBotServerApisMemoryReindexMemoryIndexResponse = 
 };
 
 /**
+ * 核心记忆设置
+ */
+export type GithubComJieWaZiNeuxBotServerApisMemorySetMemoryCoreRequest = {
+    /**
+     * 核心记忆
+     */
+    core: boolean;
+};
+
+/**
  * 时间线事件
  */
 export type GithubComJieWaZiNeuxBotServerApisMemoryTimelineResource = {
@@ -3844,11 +3856,6 @@ export type GithubComJieWaZiNeuxBotServerApisMemoryTimelineResource = {
      * 变更前正文
      */
     oldContent?: string;
-    scope?: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
-    /**
-     * 范围标识
-     */
-    scopeId?: string;
     source?: GithubComJieWaZiNeuxBotServerConstantsMemoryTimelineSource & unknown;
     /**
      * 执行标识
@@ -4699,6 +4706,238 @@ export type GithubComJieWaZiNeuxBotServerApisProjectsProjectSourceResource = {
      * 路径
      */
     path?: string;
+};
+
+/**
+ * 伙伴复盘设置列表响应
+ */
+export type GithubComJieWaZiNeuxBotServerApisReviewListWakerReviewSettingsResponse = {
+    /**
+     * 页码
+     */
+    pageNum?: number;
+    /**
+     * 每页数量
+     */
+    pageSize?: number;
+    /**
+     * 资源列表
+     */
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisReviewWakerReviewSettingsItem>;
+    /**
+     * 总数
+     */
+    totalSize?: number;
+};
+
+/**
+ * ManagedResourceChangeResponse 聊天资源变更。
+ */
+export type GithubComJieWaZiNeuxBotServerApisReviewManagedResourceChangeResponse = {
+    /**
+     * 变更动作
+     */
+    action?: string;
+    /**
+     * 连接器标识
+     */
+    connectorId?: string;
+    /**
+     * 资源名称
+     */
+    name?: string;
+    /**
+     * 变更时间
+     */
+    occurredAt?: number;
+    /**
+     * 自有伙伴标识
+     */
+    ownerWakerId?: string;
+    /**
+     * 日志游标
+     */
+    sequence?: number;
+    /**
+     * 技能标识
+     */
+    skillId?: string;
+    /**
+     * 版本标识
+     */
+    versionId?: string;
+};
+
+/**
+ * ResolveSkillSuggestionInput 保存或忽略技能建议。
+ */
+export type GithubComJieWaZiNeuxBotServerApisReviewResolveSkillSuggestionInput = {
+    /**
+     * 操作决定
+     */
+    action: string;
+    /**
+     * 修订确认凭据
+     */
+    approvalToken?: string;
+};
+
+/**
+ * ReviewSettingsInput 记忆与学习设置。
+ */
+export type GithubComJieWaZiNeuxBotServerApisReviewReviewSettingsInput = {
+    /**
+     * 账号标识
+     */
+    accountId?: string;
+    /**
+     * 整理频率（轮数）
+     */
+    everyTurns?: number;
+    /**
+     * 模型标识
+     */
+    model?: string;
+    /**
+     * 智能体标识
+     */
+    runtimeId?: string;
+    /**
+     * 智能体来源
+     */
+    source?: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisReviewReviewSettingsResponse = GithubComJieWaZiNeuxBotServerApisReviewReviewSettingsInput & {
+    [key: string]: unknown;
+};
+
+/**
+ * SkillSuggestionResponse 聊天技能建议。
+ */
+export type GithubComJieWaZiNeuxBotServerApisReviewSkillSuggestionResponse = {
+    /**
+     * 建议动作
+     */
+    action?: string;
+    /**
+     * 修订确认凭据
+     */
+    approvalToken?: string;
+    /**
+     * 失败原因
+     */
+    error?: string;
+    /**
+     * 建议标识
+     */
+    id?: string;
+    /**
+     * 学到的方法
+     */
+    lesson?: string;
+    /**
+     * 技能名称
+     */
+    name?: string;
+    /**
+     * 聊天时间线顺序所用的 Unix 毫秒时间
+     */
+    occurredAt?: number;
+    /**
+     * 影响伙伴
+     */
+    sharedPartnerIds?: Array<string>;
+    /**
+     * 技能标识
+     */
+    skillId?: string;
+    /**
+     * 来源消息
+     */
+    sourceMessageIds?: Array<string>;
+    /**
+     * 保存状态
+     */
+    status?: string;
+    /**
+     * 版本标识
+     */
+    versionId?: string;
+};
+
+/**
+ * SkillSuggestionsResponse 聊天技能建议列表。
+ */
+export type GithubComJieWaZiNeuxBotServerApisReviewSkillSuggestionsResponse = {
+    /**
+     * 直接变更
+     */
+    changes?: Array<GithubComJieWaZiNeuxBotServerApisReviewManagedResourceChangeResponse>;
+    /**
+     * 建议列表
+     */
+    items?: Array<GithubComJieWaZiNeuxBotServerApisReviewSkillSuggestionResponse>;
+    /**
+     * 建议暂不可用
+     */
+    suggestionsUnavailable?: boolean;
+};
+
+/**
+ * WakerReviewInput 伙伴复盘偏好。
+ */
+export type GithubComJieWaZiNeuxBotServerApisReviewWakerReviewInput = {
+    /**
+     * 自动记忆
+     */
+    memoryEnabled?: boolean;
+    /**
+     * 学习模式
+     */
+    skillMode: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisReviewWakerReviewResponse = GithubComJieWaZiNeuxBotServerApisReviewWakerReviewInput & {
+    /**
+     * 实际账号
+     */
+    accountId?: string;
+    /**
+     * 能力可用
+     */
+    available?: boolean;
+    /**
+     * 实际模型
+     */
+    model?: string;
+    /**
+     * 暂停原因
+     */
+    reason?: string;
+    /**
+     * 实际智能体
+     */
+    runtimeId?: string;
+    /**
+     * 处理状态
+     */
+    status?: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisReviewWakerReviewSettingsItem = GithubComJieWaZiNeuxBotServerApisReviewWakerReviewInput & {
+    /**
+     * 伙伴头像
+     */
+    avatar?: string;
+    /**
+     * 伙伴名称
+     */
+    name?: string;
+    /**
+     * 伙伴标识
+     */
+    wakerId?: string;
 };
 
 /**
@@ -7665,6 +7904,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus = 'cancelled
  * * `chat.created` - ChatEventTypeCreated 表示 Chat 已经建立并锁定工作目录。
  * * `chat.retention_protection_updated` - ChatEventTypeRetentionProtectionUpdated 表示用户已更新会话保留例外。
  * * `chat.title_updated` - ChatEventTypeTitleUpdated 表示 Chat 标题已经更新。
+ * * `connector.changed` - ChatEventTypeManagedConnectorChanged 记录聊天已提交的连接器变更。
  * * `elicitation.requested` - ChatEventTypeElicitationRequested 表示 Runtime 正在等待用户提交结构化输入。
  * * `elicitation.resolved` - ChatEventTypeElicitationResolved 表示一次结构化输入已经提交、拒绝或因执行结束失效。
  * * `execution.canceled` - ChatEventTypeExecutionCanceled 表示一次执行已经被用户或进程关闭取消。
@@ -7676,11 +7916,12 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus = 'cancelled
  * * `message.inherited` - ChatEventTypeMessageInherited 表示分叉复制的历史展示快照，不创建新的 Execution。
  * * `message.user_created` - ChatEventTypeUserMessageCreated 表示一条用户消息已经持久化。
  * * `runtime.event` - ChatEventTypeRuntimeEvent 表示仅用于实时投影、不会进入权威日志的 Runtime 增量。
+ * * `skill.changed` - ChatEventTypeManagedSkillChanged 记录聊天已提交的技能库变更。
  * * `tool.message` - ChatEventTypeToolMessage 表示 Runtime 已完整形成一条工具结果执行消息。
  * * `workspace.changes` - ChatEventTypeFileChanges 表示独立工作区采集结果及其不可变内容已经提交。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.retention_protection_updated' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.delivery' | 'execution.failed' | 'execution.started' | 'message.inherited' | 'message.user_created' | 'runtime.event' | 'tool.message' | 'workspace.changes';
+export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.retention_protection_updated' | 'chat.title_updated' | 'connector.changed' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.delivery' | 'execution.failed' | 'execution.started' | 'message.inherited' | 'message.user_created' | 'runtime.event' | 'skill.changed' | 'tool.message' | 'workspace.changes';
 
 /**
  * >
@@ -7877,21 +8118,12 @@ export type GithubComJieWaZiNeuxBotServerConstantsMemoryRetrievalMode = '' | 'ke
 
 /**
  * >
- * * `` - MemoryScopeUnspecified 表示数据库或框架产生的空范围。
- * * `all` - MemoryScopeAll 仅用于检索入参，表示同时检索伙伴与项目范围。
- * * `partner` - MemoryScopePartner 表示伙伴自己的长期记忆，跨项目存在。
- * * `project` - MemoryScopeProject 表示当前项目内跨对话使用的长期记忆。
- *
- */
-export type GithubComJieWaZiNeuxBotServerConstantsMemoryScope = '' | 'all' | 'partner' | 'project';
-
-/**
- * >
  * * `manual` - MemoryTimelineSourceManual 表示时间线事件来自管理 API 手动操作。
  * * `mcp` - MemoryTimelineSourceMCP 表示时间线事件来自执行中的 MCP 工具调用。
+ * * `review` - MemoryTimelineSourceReview 表示时间线事件来自自动复盘。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsMemoryTimelineSource = 'manual' | 'mcp';
+export type GithubComJieWaZiNeuxBotServerConstantsMemoryTimelineSource = 'manual' | 'mcp' | 'review';
 
 /**
  * >
@@ -8135,10 +8367,11 @@ export type GithubComJieWaZiNeuxBotServerConstantsSkillResourceAction = 'delete'
  * * `` - SkillSourceUnspecified 表示未指定来源。
  * * `builtin` - SkillSourceBuiltin 表示随 NeuxBot 提供的内置技能。
  * * `git` - SkillSourceGit 表示从 Git 地址导入的技能。
+ * * `learned` - SkillSourceLearned 表示从伙伴聊天复盘学习的本地技能。
  * * `zip` - SkillSourceZip 表示从 ZIP 压缩包导入的技能。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsSkillSource = '' | 'builtin' | 'git' | 'zip';
+export type GithubComJieWaZiNeuxBotServerConstantsSkillSource = '' | 'builtin' | 'git' | 'learned' | 'zip';
 
 /**
  * >
@@ -15794,6 +16027,7 @@ export type ReadErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -16104,6 +16338,7 @@ export type ReadErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -16168,6 +16403,7 @@ export type CommandErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -16478,6 +16714,7 @@ export type CommandErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -16812,6 +17049,7 @@ export type StartAiAccountLoginErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -17122,6 +17360,7 @@ export type StartAiAccountLoginErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -17195,6 +17434,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -17505,6 +17745,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -17673,6 +17914,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -17983,6 +18225,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -18138,6 +18381,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -18448,6 +18692,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -18517,6 +18762,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -18827,6 +19073,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -20343,6 +20590,7 @@ export type RetryChatWorkflowDeliveryErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -20653,6 +20901,7 @@ export type RetryChatWorkflowDeliveryErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -20734,12 +20983,6 @@ export type CreateLibraryConnectorErrors = {
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[MCPConnectorNotFound][40400000009]`
-     *
-     */
-    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
@@ -20791,6 +21034,7 @@ export type DeleteLibraryConnectorErrors = {
     /**
      * >
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[Conflict][40900000001]`
      * * `[PluginConfigurationConflict][40900006502]`
      *
      */
@@ -20835,7 +21079,7 @@ export type GetLibraryConnectorErrors = {
 export type GetLibraryConnectorError = GetLibraryConnectorErrors[keyof GetLibraryConnectorErrors];
 
 export type GetLibraryConnectorResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpLibraryConnectorDetailResponse;
 };
 
 export type GetLibraryConnectorResponse = GetLibraryConnectorResponses[keyof GetLibraryConnectorResponses];
@@ -20868,6 +21112,7 @@ export type UpdateLibraryConnectorErrors = {
     /**
      * >
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[Conflict][40900000001]`
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
@@ -20995,6 +21240,7 @@ export type StreamEventsErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -21305,6 +21551,7 @@ export type StreamEventsErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -22093,6 +22340,7 @@ export type UpdateMcpServiceErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -22403,6 +22651,7 @@ export type UpdateMcpServiceErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -22566,6 +22815,7 @@ export type UpdateApiServiceErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -22876,6 +23126,7 @@ export type UpdateApiServiceErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -30931,6 +31182,7 @@ export type GetMemorySettingsErrors = {
      * >
      * * `[DatabaseError][50000000002]`
      * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryServiceUnavailable][50000000036]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -30963,6 +31215,7 @@ export type UpdateMemorySettingsErrors = {
      * >
      * * `[DatabaseError][50000000002]`
      * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryServiceUnavailable][50000000036]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -30993,6 +31246,7 @@ export type TestMemoryEmbeddingErrors = {
     /**
      * >
      * * `[DatabaseError][50000000002]`
+     * * `[MemoryServiceUnavailable][50000000036]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31017,6 +31271,7 @@ export type GetMemoryStatusErrors = {
     /**
      * >
      * * `[DatabaseError][50000000002]`
+     * * `[MemoryServiceUnavailable][50000000036]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31040,6 +31295,10 @@ export type ListMemoriesData = {
     };
     query?: {
         /**
+         * 核心记忆
+         */
+        core?: boolean;
+        /**
          * 页码
          */
         pageNum?: number;
@@ -31048,14 +31307,9 @@ export type ListMemoriesData = {
          */
         pageSize?: number;
         /**
-         * 项目标识
-         */
-        projectId?: string;
-        /**
          * 搜索关键字
          */
         query?: string;
-        scope?: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
         /**
          * 时间终点
          */
@@ -31071,19 +31325,8 @@ export type ListMemoriesData = {
 export type ListMemoriesErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
-     * * `[ProjectNotFound][40400000006]`
-     *
-     */
-    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
      * * `[DatabaseError][50000000002]`
+     * * `[MemoryServiceUnavailable][50000000036]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31115,16 +31358,9 @@ export type CreateMemoryErrors = {
      * * `[AgentInputInvalid][40000009001]`
      * * `[BadRequest][40000000001]`
      * * `[MemoryEmbeddingConflict][40000000009]`
-     * * `[MemoryProjectNotBound][40000000008]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
-     * * `[ProjectNotFound][40400000006]`
-     *
-     */
-    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[AgentCommandRequestConflict][40900009002]`
@@ -31134,6 +31370,8 @@ export type CreateMemoryErrors = {
     /**
      * >
      * * `[DatabaseError][50000000002]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryServiceUnavailable][50000000036]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31159,13 +31397,7 @@ export type DeleteMemoryData = {
          */
         wakerId: string;
     };
-    query: {
-        /**
-         * 项目标识
-         */
-        projectId?: string;
-        scope: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
-    };
+    query?: never;
     url: '/api/v1/memory/wakers/{wakerId}/memories/{memoryId}';
 };
 
@@ -31173,14 +31405,13 @@ export type DeleteMemoryErrors = {
     /**
      * >
      * * `[AgentInputInvalid][40000009001]`
-     * * `[BadRequest][40000000001]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[MemoryNotFound][40400000010]`
-     * * `[ProjectNotFound][40400000006]`
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31193,6 +31424,7 @@ export type DeleteMemoryErrors = {
     /**
      * >
      * * `[DatabaseError][50000000002]`
+     * * `[MemoryServiceUnavailable][50000000036]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31227,6 +31459,7 @@ export type UpdateMemoryErrors = {
      * >
      * * `[AgentInputInvalid][40000009001]`
      * * `[BadRequest][40000000001]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      *
      */
@@ -31234,7 +31467,6 @@ export type UpdateMemoryErrors = {
     /**
      * >
      * * `[MemoryNotFound][40400000010]`
-     * * `[ProjectNotFound][40400000006]`
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31247,6 +31479,8 @@ export type UpdateMemoryErrors = {
     /**
      * >
      * * `[DatabaseError][50000000002]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryServiceUnavailable][50000000036]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31259,6 +31493,54 @@ export type UpdateMemoryResponses = {
 };
 
 export type UpdateMemoryResponse = UpdateMemoryResponses[keyof UpdateMemoryResponses];
+
+export type SetMemoryCoreData = {
+    body: GithubComJieWaZiNeuxBotServerApisMemorySetMemoryCoreRequest & unknown;
+    path: {
+        /**
+         * 记忆标识
+         */
+        memoryId: string;
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/memory/wakers/{wakerId}/memories/{memoryId}/core';
+};
+
+export type SetMemoryCoreErrors = {
+    /**
+     * >
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[BadRequest][40000000001]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[MemoryNotFound][40400000010]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type SetMemoryCoreError = SetMemoryCoreErrors[keyof SetMemoryCoreErrors];
+
+export type SetMemoryCoreResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type SetMemoryCoreResponse = SetMemoryCoreResponses[keyof SetMemoryCoreResponses];
 
 export type ListTimelineData = {
     body?: never;
@@ -31278,14 +31560,9 @@ export type ListTimelineData = {
          */
         pageSize?: number;
         /**
-         * 项目标识
-         */
-        projectId?: string;
-        /**
          * 搜索关键字
          */
         query?: string;
-        scope?: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
     };
     url: '/api/v1/memory/wakers/{wakerId}/timeline';
 };
@@ -31293,19 +31570,8 @@ export type ListTimelineData = {
 export type ListTimelineErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
-     * * `[ProjectNotFound][40400000006]`
-     *
-     */
-    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
      * * `[DatabaseError][50000000002]`
+     * * `[MemoryServiceUnavailable][50000000036]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -31361,6 +31627,7 @@ export type ListPluginsErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -31671,6 +31938,7 @@ export type ListPluginsErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -31756,6 +32024,7 @@ export type BrowsePluginsErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -32066,6 +32335,7 @@ export type BrowsePluginsErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -32130,6 +32400,7 @@ export type RefreshPluginCatalogErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -32440,6 +32711,7 @@ export type RefreshPluginCatalogErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -32514,6 +32786,7 @@ export type GetCatalogPluginErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -32824,6 +33097,7 @@ export type GetCatalogPluginErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -32906,6 +33180,7 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -33216,6 +33491,7 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -33285,6 +33561,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -33595,6 +33872,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -33677,6 +33955,7 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -33987,6 +34266,7 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -34073,6 +34353,7 @@ export type GetCatalogPluginSkillErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -34383,6 +34664,7 @@ export type GetCatalogPluginSkillErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -34447,6 +34729,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -34757,6 +35040,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -34961,6 +35245,7 @@ export type GetPluginErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -35271,6 +35556,7 @@ export type GetPluginErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -35843,6 +36129,7 @@ export type GetPluginConfigurationErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -36153,6 +36440,7 @@ export type GetPluginConfigurationErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -36447,6 +36735,7 @@ export type InstallPluginErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -36757,6 +37046,7 @@ export type InstallPluginErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -36975,6 +37265,7 @@ export type UpdatePluginInstallationsErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -37285,6 +37576,7 @@ export type UpdatePluginInstallationsErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -37349,6 +37641,308 @@ export type ListResourceCategoriesResponses = {
 };
 
 export type ListResourceCategoriesResponse = ListResourceCategoriesResponses[keyof ListResourceCategoriesResponses];
+
+export type ListChatSkillSuggestionsData = {
+    body?: never;
+    path: {
+        /**
+         * 聊天标识
+         */
+        chatId: string;
+    };
+    query?: {
+        /**
+         * 窗口最早的资源变更游标
+         */
+        fromSequence?: number;
+        /**
+         * 窗口最早的建议时间
+         */
+        fromTime?: number;
+    };
+    url: '/api/v1/review/chats/{chatId}/suggestions';
+};
+
+export type ListChatSkillSuggestionsErrors = {
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListChatSkillSuggestionsError = ListChatSkillSuggestionsErrors[keyof ListChatSkillSuggestionsErrors];
+
+export type ListChatSkillSuggestionsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisReviewSkillSuggestionsResponse;
+};
+
+export type ListChatSkillSuggestionsResponse = ListChatSkillSuggestionsResponses[keyof ListChatSkillSuggestionsResponses];
+
+export type ResolveChatSkillSuggestionData = {
+    body: GithubComJieWaZiNeuxBotServerApisReviewResolveSkillSuggestionInput & unknown;
+    path: {
+        /**
+         * 聊天标识
+         */
+        chatId: string;
+        /**
+         * 建议标识
+         */
+        suggestionId: string;
+    };
+    query?: never;
+    url: '/api/v1/review/chats/{chatId}/suggestions/{suggestionId}/resolve';
+};
+
+export type ResolveChatSkillSuggestionErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[Conflict][40900000001]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[RuntimeUnavailable][50000000006]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ResolveChatSkillSuggestionError = ResolveChatSkillSuggestionErrors[keyof ResolveChatSkillSuggestionErrors];
+
+export type ResolveChatSkillSuggestionResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisReviewSkillSuggestionResponse;
+};
+
+export type ResolveChatSkillSuggestionResponse = ResolveChatSkillSuggestionResponses[keyof ResolveChatSkillSuggestionResponses];
+
+export type GetReviewSettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/review/settings';
+};
+
+export type GetReviewSettingsErrors = {
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[RuntimeUnavailable][50000000006]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetReviewSettingsError = GetReviewSettingsErrors[keyof GetReviewSettingsErrors];
+
+export type GetReviewSettingsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisReviewReviewSettingsResponse;
+};
+
+export type GetReviewSettingsResponse = GetReviewSettingsResponses[keyof GetReviewSettingsResponses];
+
+export type UpdateReviewSettingsData = {
+    body: GithubComJieWaZiNeuxBotServerApisReviewReviewSettingsInput & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/review/settings';
+};
+
+export type UpdateReviewSettingsErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[BadRequest][40000000001]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[DatabaseError][50000000002]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeUnavailable][50000000006]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type UpdateReviewSettingsError = UpdateReviewSettingsErrors[keyof UpdateReviewSettingsErrors];
+
+export type UpdateReviewSettingsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisReviewReviewSettingsResponse;
+};
+
+export type UpdateReviewSettingsResponse = UpdateReviewSettingsResponses[keyof UpdateReviewSettingsResponses];
+
+export type ListWakerReviewSettingsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * 页码
+         */
+        pageNum?: number;
+        /**
+         * 每页数量
+         */
+        pageSize?: number;
+        /**
+         * 搜索关键字
+         */
+        query?: string;
+    };
+    url: '/api/v1/review/wakers/settings';
+};
+
+export type ListWakerReviewSettingsErrors = {
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[RuntimeUnavailable][50000000006]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListWakerReviewSettingsError = ListWakerReviewSettingsErrors[keyof ListWakerReviewSettingsErrors];
+
+export type ListWakerReviewSettingsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisReviewListWakerReviewSettingsResponse;
+};
+
+export type ListWakerReviewSettingsResponse = ListWakerReviewSettingsResponses[keyof ListWakerReviewSettingsResponses];
+
+export type GetWakerReviewSettingsData = {
+    body?: never;
+    path: {
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/review/wakers/{wakerId}';
+};
+
+export type GetWakerReviewSettingsErrors = {
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeUnavailable][50000000006]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetWakerReviewSettingsError = GetWakerReviewSettingsErrors[keyof GetWakerReviewSettingsErrors];
+
+export type GetWakerReviewSettingsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisReviewWakerReviewResponse;
+};
+
+export type GetWakerReviewSettingsResponse = GetWakerReviewSettingsResponses[keyof GetWakerReviewSettingsResponses];
+
+export type UpdateWakerReviewSettingsData = {
+    body: GithubComJieWaZiNeuxBotServerApisReviewWakerReviewInput & unknown;
+    path: {
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/review/wakers/{wakerId}';
+};
+
+export type UpdateWakerReviewSettingsErrors = {
+    /**
+     * >
+     * * `[WakerNotFound][40400000001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeUnavailable][50000000006]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type UpdateWakerReviewSettingsError = UpdateWakerReviewSettingsErrors[keyof UpdateWakerReviewSettingsErrors];
+
+export type UpdateWakerReviewSettingsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisReviewWakerReviewResponse;
+};
+
+export type UpdateWakerReviewSettingsResponse = UpdateWakerReviewSettingsResponses[keyof UpdateWakerReviewSettingsResponses];
+
+export type RetryWakerReviewData = {
+    body?: never;
+    path: {
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/review/wakers/{wakerId}/retry';
+};
+
+export type RetryWakerReviewErrors = {
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[RuntimeUnavailable][50000000006]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type RetryWakerReviewError = RetryWakerReviewErrors[keyof RetryWakerReviewErrors];
+
+export type RetryWakerReviewResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type RetryWakerReviewResponse = RetryWakerReviewResponses[keyof RetryWakerReviewResponses];
 
 export type ListRolePresetsData = {
     body?: never;
@@ -38066,6 +38660,7 @@ export type DeleteLibrarySkillData = {
 export type DeleteLibrarySkillErrors = {
     /**
      * >
+     * * `[BadRequest][40000000001]`
      * * `[SkillContentInvalid][40000000013]`
      *
      */
@@ -38073,12 +38668,14 @@ export type DeleteLibrarySkillErrors = {
     /**
      * >
      * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[Conflict][40900000001]`
      * * `[PluginConfigurationConflict][40900006502]`
      *
      */
@@ -39458,6 +40055,7 @@ export type CreateWakerErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -39768,6 +40366,7 @@ export type CreateWakerErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -39968,6 +40567,7 @@ export type ListAutomaticTasksErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -40278,6 +40878,7 @@ export type ListAutomaticTasksErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -40414,6 +41015,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -40724,6 +41326,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -40826,6 +41429,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -41136,6 +41740,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -41209,6 +41814,7 @@ export type GetAutomaticTaskErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -41519,6 +42125,7 @@ export type GetAutomaticTaskErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -41743,6 +42350,7 @@ export type ListAutomaticRunsErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -42053,6 +42661,7 @@ export type ListAutomaticRunsErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -42126,6 +42735,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -42436,6 +43046,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -42558,12 +43169,6 @@ export type CreateWakerConnectorErrors = {
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
-     * * `[MCPConnectorNotFound][40400000009]`
-     *
-     */
-    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
@@ -42619,6 +43224,7 @@ export type DeleteWakerConnectorErrors = {
     /**
      * >
      * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[Conflict][40900000001]`
      * * `[PluginConfigurationConflict][40900006502]`
      *
      */
@@ -42704,6 +43310,7 @@ export type UpdateWakerConnectorErrors = {
     /**
      * >
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[Conflict][40900000001]`
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
@@ -42827,6 +43434,12 @@ export type UpdateWakerDefaultModelErrors = {
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type UpdateWakerDefaultModelError = UpdateWakerDefaultModelErrors[keyof UpdateWakerDefaultModelErrors];
@@ -43028,6 +43641,7 @@ export type StartWakerOnboardingErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -43338,6 +43952,7 @@ export type StartWakerOnboardingErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -43456,6 +44071,7 @@ export type ListWakerPluginsErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -43766,6 +44382,7 @@ export type ListWakerPluginsErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -44048,23 +44665,10 @@ export type DeleteProjectData = {
 export type DeleteProjectErrors = {
     /**
      * >
-     * * `[AgentInputInvalid][40000009001]`
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
      * * `[ProjectNotFound][40400000006]`
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
-    /**
-     * >
-     * * `[DatabaseError][50000000002]`
-     *
-     */
-    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type DeleteProjectError = DeleteProjectErrors[keyof DeleteProjectErrors];
@@ -44228,6 +44832,7 @@ export type UninstallSkillData = {
 export type UninstallSkillErrors = {
     /**
      * >
+     * * `[BadRequest][40000000001]`
      * * `[SkillContentInvalid][40000000013]`
      *
      */
@@ -44235,12 +44840,14 @@ export type UninstallSkillErrors = {
     /**
      * >
      * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[Conflict][40900000001]`
      * * `[PluginConfigurationConflict][40900006502]`
      *
      */
@@ -45040,6 +45647,7 @@ export type CreateWorkflowErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -45350,6 +45958,7 @@ export type CreateWorkflowErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -45432,6 +46041,7 @@ export type DeleteWorkflowErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -45742,6 +46352,7 @@ export type DeleteWorkflowErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -45834,6 +46445,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -46144,6 +46756,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -46242,6 +46855,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -46552,6 +47166,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -46621,6 +47236,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -46931,6 +47547,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -47088,6 +47705,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -47398,6 +48016,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -47498,6 +48117,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -47808,6 +48428,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -47908,6 +48529,7 @@ export type StartWorkflowRunErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -48218,6 +48840,7 @@ export type StartWorkflowRunErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -48291,6 +48914,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -48601,6 +49225,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -48775,6 +49400,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -49085,6 +49711,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -49162,6 +49789,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -49472,6 +50100,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -49549,6 +50178,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -49859,6 +50489,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -49936,6 +50567,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -50246,6 +50878,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -50319,6 +50952,7 @@ export type RetryWorkflowRunErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -50629,6 +51263,7 @@ export type RetryWorkflowRunErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`
@@ -50772,6 +51407,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[IMFileInvalid][40000004002]`
      * * `[IntegrationInvalid][40000009601]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
      * * `[MemoryEmbeddingConflict][40000000009]`
      * * `[MemoryEmbeddingNotConfigured][40000000007]`
      * * `[MemoryProjectNotBound][40000000008]`
@@ -51082,6 +51718,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[KnowledgeEmbeddingUnavailable][50200009601]`
      * * `[KnowledgeRemoteIncompatible][50200009502]`
      * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
      * * `[MCPConnectorProtocolInvalid][50200000002]`
      * * `[MemoryEmbeddingUnavailable][50200000001]`
      * * `[PluginAuthorizationFailed][50200006501]`

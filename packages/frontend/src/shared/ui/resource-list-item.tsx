@@ -1,7 +1,10 @@
 import type { ReactNode, ComponentProps } from "react";
+import { Plus } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { Card, CardBody } from "./card";
 import { Button } from "./button";
+import { ResourceCatalogStatus } from "./resource-catalog";
 import {
   Tooltip,
   TooltipContent,
@@ -173,4 +176,47 @@ export function ResourceItemAction({
       </Tooltip>
     </TooltipProvider>
   );
+}
+
+/** 目录行显示真实安装人数，并在支持安装时提供对应动作。 */
+export function ResourceInstallActions({
+  installedCount,
+  onInstall,
+  disabled,
+}: {
+  installedCount: number;
+  onInstall?: () => void;
+  disabled?: boolean;
+}) {
+  const { t } = useTranslation("plugin");
+  if (installedCount > 0) {
+    return (
+      <>
+        <ResourceCatalogStatus>
+          {t("installedOnPartners", { count: installedCount })}
+        </ResourceCatalogStatus>
+        {onInstall && (
+          <ResourceItemAction
+            label={t("installToPartners")}
+            variant="catalog-ghost"
+            disabled={disabled}
+            onClick={onInstall}
+          >
+            <Plus aria-hidden="true" />
+          </ResourceItemAction>
+        )}
+      </>
+    );
+  }
+  return onInstall ? (
+    <Button
+      size="catalog"
+      variant="catalog-secondary"
+      disabled={disabled}
+      onClick={onInstall}
+    >
+      <Plus />
+      {t("install")}
+    </Button>
+  ) : null;
 }

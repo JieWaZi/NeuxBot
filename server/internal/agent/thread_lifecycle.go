@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -27,6 +28,8 @@ var ErrTurnAdmissionBusy = fmt.Errorf("native turn admission is busy: %w", statu
 type ThreadRequest struct {
 	// ChatID identifies a public conversation. Empty creates private detached work.
 	ChatID string
+	// CoreMemoryOwner scopes native history that can have received one partner's core memories.
+	CoreMemoryOwner string
 	// Connection describes the actual executable, account and resource selection.
 	Connection ProviderConnectionRequest
 	// Session describes native settings scoped to this session.
@@ -90,6 +93,8 @@ type threadState struct {
 	fork *threadFork
 	// binding caches a committed native session address and its compatibility key.
 	binding *NativeBinding
+	// coreMemory records the last successfully committed snapshot on this chat binding.
+	coreMemory coreMemoryDelivery
 	// effective retains the session configuration needed to reuse a compatible process.
 	effective AgentSession
 	// optionsRevision prevents a synchronous request from overwriting newer native observations.
@@ -139,13 +144,27 @@ func (l *ThreadLifecycle) ForkSession(ctx context.Context, request ThreadRequest
 		}
 	}
 	request.Connection = freezeProviderRequest(request.Connection)
+	l.mu.Lock()
+	l.retainUnavailableSkillCatalog(&request.Connection, l.threads[request.ChatID])
+	l.mu.Unlock()
 	cfg, err := freezeThreadSettings(&request)
 	if err != nil {
 		return binding, err
 	}
 	if request.Fork.HistoryIdentity != "" {
 		var current threadConfiguration
-		if json.Unmarshal(cfg, &current) != nil || current.Identity != request.Fork.HistoryIdentity {
+		if json.Unmarshal(cfg, &current) != nil {
+			return binding, status_error.ChatForkUnavailable
+		}
+		if current.Identity != request.Fork.HistoryIdentity && request.CoreMemoryOwner != "" {
+			// A workbench source with no prior snapshot still has an unscoped identity.
+			request.CoreMemoryOwner = ""
+			cfg, err = freezeThreadSettings(&request)
+			if err != nil || json.Unmarshal(cfg, &current) != nil {
+				return binding, status_error.ChatForkUnavailable
+			}
+		}
+		if current.Identity != request.Fork.HistoryIdentity {
 			return binding, status_error.ChatForkUnavailable
 		}
 	}
@@ -228,6 +247,29 @@ func (l *ThreadLifecycle) ForkSession(ctx context.Context, request ThreadRequest
 	return NativeBinding{Session: NativeSessionKey{Provider: request.Connection.Account.Provider, Subject: request.Connection.Account.Subject, SessionID: session.ID}, Configuration: cfg}, nil
 }
 
+// retainUnavailableSkillCatalog runs with l.mu held and reuses only the current
+// verified projection of the same partner, discovery target and plugin scope.
+func (l *ThreadLifecycle) retainUnavailableSkillCatalog(connection *ProviderConnectionRequest, state *threadState) {
+	skills := connection.Resources.Skills
+	if skills == nil || !skills.catalogUnavailable {
+		return
+	}
+	if state != nil && state.connection != nil {
+		if retained := skills.retainWhileActive(state.connection.skills); retained != nil {
+			connection.Resources.Skills = retained
+			return
+		}
+	}
+	for _, other := range l.threads {
+		if other.connection != nil {
+			if retained := skills.retainWhileActive(other.connection.skills); retained != nil {
+				connection.Resources.Skills = retained
+				return
+			}
+		}
+	}
+}
+
 // Prepare reserves the actual Turn before acquiring an account or opening a native session.
 func (l *ThreadLifecycle) Prepare(ctx context.Context, request ThreadRequest, input TurnRequest, ports TurnPorts) (*Turn, error) {
 	return l.prepare(ctx, request, input, ports, nil)
@@ -239,7 +281,8 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 	}
 	if input.HostInvocationID == "" || !validTurnInput(input) ||
 		request.ChatID != "" && (input.ExecutionID == "" || input.AssistantMessageID == "" || ports.Admit == nil) ||
-		request.ChatID == "" && (input.ExecutionID != "" || input.AssistantMessageID != "" || ports.Admit != nil) {
+		request.ChatID == "" && (input.ExecutionID != "" || input.AssistantMessageID != "" || ports.Admit != nil) ||
+		input.CoreMemory != nil && (request.ChatID == "" || request.CoreMemoryOwner == "") {
 		if closeFiles != nil {
 			_ = closeFiles(context.WithoutCancel(ctx))
 		}
@@ -247,6 +290,15 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 	}
 	input.Content = slices.Clone(input.Content)
 	input.Context = slices.Clone(input.Context)
+	if input.CoreMemory != nil {
+		if json.Valid(input.CoreMemory.JSON) {
+			snapshot := *input.CoreMemory
+			snapshot.JSON = slices.Clone(snapshot.JSON)
+			input.CoreMemory = &snapshot
+		} else {
+			input.CoreMemory = nil
+		}
+	}
 	id := request.ChatID
 	if id == "" {
 		id = "private:" + input.HostInvocationID
@@ -267,10 +319,16 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 	}
 	request.Connection = freezeProviderRequest(request.Connection)
 	l.mu.Lock()
+	state := l.threads[id]
+	l.retainUnavailableSkillCatalog(&request.Connection, state)
 	// Check and publish the preparing consumer under one admission lock. Two
 	// different Chats cannot both observe an empty target before either registers.
 	for _, other := range l.threads {
 		if other.id != id && (other.active != nil || other.fork != nil) && skillsConflict(other.admittedSkills, request.Connection.Resources.Skills) {
+			if retained := request.Connection.Resources.Skills.retainWhileActive(other.admittedSkills); retained != nil {
+				request.Connection.Resources.Skills = retained
+				continue
+			}
 			l.mu.Unlock()
 			if closeFiles != nil {
 				_ = closeFiles(context.WithoutCancel(ctx))
@@ -278,7 +336,6 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 			return nil, ErrTurnAdmissionBusy
 		}
 	}
-	state := l.threads[id]
 	if l.closing || l.restarting[request.Connection.Account.Provider] || state != nil && (state.closing || state.active != nil || state.fork != nil) {
 		var admissionErr error = ErrTurnAdmissionBusy
 		if l.closing {
@@ -331,24 +388,29 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 			_ = closeFiles(context.WithoutCancel(ctx))
 		}
 	}()
-	cfg, err := freezeThreadSettings(&request)
-	if err != nil {
-		return err
-	}
 	var stored *NativeBinding
 	if state.chatID != "" {
+		var err error
 		stored, err = l.store.ReadBinding(ctx, state.chatID)
 		if err != nil {
 			return err
 		}
+	}
+	if t.input.CoreMemory == nil && (stored == nil || stored.coreMemoryOwner() == "") {
+		request.CoreMemoryOwner = ""
+	}
+	cfg, err := freezeThreadSettings(&request)
+	if err != nil {
+		return err
 	}
 	l.mu.Lock()
 	conn, hot, effective, reader := state.connection, state.binding, state.effective, state.reader
 	l.mu.Unlock()
 	compatible := !request.ForceNew && request.Fork == nil && candidateBinding(stored, request.Connection.Account, cfg)
 	processConfiguration := threadProcessConfiguration(request)
+	sharesHistoryScope := stored != nil && (stored.coreMemoryOwner() == "" || stored.coreMemoryOwner() == request.CoreMemoryOwner)
 	var replacementHandoff *NativeHandoff
-	if stored != nil && request.Fork == nil && request.Connection.Account.Provider != stored.Session.Provider {
+	if sharesHistoryScope && request.Fork == nil && request.Connection.Account.Provider != stored.Session.Provider {
 		replacementHandoff, err = l.failedHandoffForReplacement(ctx, state.chatID, *stored)
 		if err != nil {
 			return err
@@ -369,10 +431,18 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		}
 	}
 	windowChanged := hotUsable && conn.qoderContextWindow != request.Connection.Launch.QoderContextWindow
-	if compatible && hotUsable && conn.configuration == processConfiguration && !windowChanged {
+	if compatible && hotUsable && conn.configuration == processConfiguration && !windowChanged &&
+		!slices.ContainsFunc(conn.missingSkillSources, func(path string) bool {
+			info, err := os.Stat(path)
+			return err == nil && info.Mode().IsRegular()
+		}) {
 		binding, err := l.reconcileHandoff(ctx, state.chatID, *stored, reader)
 		if err != nil {
 			return err
+		}
+		if binding.coreMemoryOwner() == "" && request.CoreMemoryOwner != "" {
+			// Durable admission records the new protection before submitting the first snapshot.
+			binding.Configuration = cfg
 		}
 		t.setSession(conn, binding)
 		t.effective = effective
@@ -393,7 +463,7 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	}
 
 	var summary *NativeResultKey
-	wantSummary := request.Summarize && request.Fork == nil && !compatible && stored != nil && replacementHandoff == nil
+	wantSummary := request.Summarize && request.Fork == nil && !compatible && sharesHistoryScope && replacementHandoff == nil
 	if hotUsable {
 		prior := *stored
 		if replacementHandoff == nil {
@@ -413,7 +483,7 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 			return err
 		}
 	}
-	if !compatible && stored != nil && replacementHandoff == nil && (wantSummary || handoffClaimed(stored.Handoff)) {
+	if !compatible && sharesHistoryScope && replacementHandoff == nil && (wantSummary || handoffClaimed(stored.Handoff)) {
 		var prior NativeBinding
 		prior, summary, err = l.reopenHandoffSource(t, *stored, wantSummary)
 		if err != nil {
@@ -421,7 +491,7 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		}
 		stored = &prior
 	}
-	if compatible && !hotUsable && !compatibleBinding(stored, request.Connection.Account, cfg) && (request.Summarize || handoffClaimed(stored.Handoff)) {
+	if compatible && !hotUsable && !resumableConfiguration(stored.Configuration, cfg, AgentCapabilities{}) && (request.Summarize || handoffClaimed(stored.Handoff)) {
 		// A cold adapter may reject reloading changed instructions or resources.
 		// Resolve the source before acquiring this turn's temporary workspace;
 		// retiring a speculative new owner must never delete its input files.
@@ -495,10 +565,14 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		Session:       NativeSessionKey{Provider: request.Connection.Account.Provider, Subject: request.Connection.Account.Subject, SessionID: session.ID},
 		Configuration: cfg,
 	}
+	if stored != nil && !sharesHistoryScope && binding.Session == stored.Session {
+		return status_error.RuntimeProtocolIncompatible
+	}
 	if compatible && !fresh {
 		binding.Handoff = stored.Handoff
 	}
 	t.setSession(conn, binding)
+	t.freshSession = fresh
 	t.effective = session
 	l.attachSession(state, client, binding.Session, session)
 	if binding, err = l.reconcileHandoff(ctx, state.chatID, binding, l.sessionReader(state)); err != nil {
@@ -660,6 +734,8 @@ type threadConfiguration struct {
 	Instructions string `json:"instructions"`
 	// Resources identifies the declared tools and skill versions, independently of process startup.
 	Resources string `json:"resources"`
+	// CoreMemoryOwner separates history that may contain private partner data from other entry points.
+	CoreMemoryOwner string `json:"coreMemoryOwner,omitempty"`
 }
 
 // HistoryIdentity returns only the compatibility evidence needed to address native history.
@@ -671,21 +747,35 @@ func (binding NativeBinding) HistoryIdentity() string {
 	return config.Identity
 }
 
+func (binding NativeBinding) coreMemoryOwner() string {
+	var config threadConfiguration
+	_ = json.Unmarshal(binding.Configuration, &config)
+	return config.CoreMemoryOwner
+}
+
 func candidateBinding(binding *NativeBinding, account AccountRequest, config json.RawMessage) bool {
 	if binding == nil || binding.Session.Provider != account.Provider || binding.Session.Subject != account.Subject {
 		return false
 	}
 	var before, after threadConfiguration
-	return json.Unmarshal(binding.Configuration, &before) == nil && json.Unmarshal(config, &after) == nil && before.Identity == after.Identity
+	return json.Unmarshal(binding.Configuration, &before) == nil && json.Unmarshal(config, &after) == nil && compatibleHistoryIdentity(before, after)
 }
 
 func resumableConfiguration(previous, current json.RawMessage, capabilities AgentCapabilities) bool {
 	var before, after threadConfiguration
-	if json.Unmarshal(previous, &before) != nil || json.Unmarshal(current, &after) != nil || before.Identity != after.Identity {
+	if json.Unmarshal(previous, &before) != nil || json.Unmarshal(current, &after) != nil || !compatibleHistoryIdentity(before, after) {
 		return false
 	}
 	return (before.Resources == after.Resources || capabilities.ReloadResourcesOnResume) &&
 		(before.Instructions == after.Instructions || capabilities.ReloadInstructionsOnResume)
+}
+
+func compatibleHistoryIdentity(before, after threadConfiguration) bool {
+	if before.Identity == after.Identity && before.CoreMemoryOwner == after.CoreMemoryOwner {
+		return true
+	}
+	return before.CoreMemoryOwner == "" && after.CoreMemoryOwner != "" &&
+		configurationDigest([]string{before.Identity, after.CoreMemoryOwner}) == after.Identity
 }
 
 func configurationDigest(value any) string {
@@ -796,6 +886,10 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 			request.Connection.Launch.Claude, request.Connection.Launch.RequireNoTools}),
 		Instructions: configurationDigest(request.Session.DeveloperInstructions),
 		Resources:    configurationDigest([]any{request.Connection.Resources.Skills, request.Connection.Resources.Plugins, slices.Compact(connectors), request.ResourceGeneration}),
+	}
+	if request.CoreMemoryOwner != "" {
+		configuration.CoreMemoryOwner = request.CoreMemoryOwner
+		configuration.Identity = configurationDigest([]string{configuration.Identity, request.CoreMemoryOwner})
 	}
 	encoded, err := json.Marshal(configuration)
 	if err != nil {

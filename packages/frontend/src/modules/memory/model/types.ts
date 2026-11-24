@@ -7,4 +7,3 @@ export type MemoryResource =
   GithubComJieWaZiNeuxBotServerApisMemoryMemoryResource;
 export type MemoryStatusResource =
   GithubComJieWaZiNeuxBotServerApisMemoryMemoryStatusResource;
-export type MemoryScope = "partner" | "project";

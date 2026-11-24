@@ -1,12 +1,8 @@
 package mcp
 
 import (
-	"context"
 	"strings"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -36,40 +32,8 @@ func (d *DeleteWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
 
 // removeConnector 复用相同资源用例，空伙伴范围表示全局库。
 func removeConnector(ctx *gin.Context, d *DeleteWakerConnector) (*ginx.CommonResponse, error) {
-	item, err := visibleConnector(
-		ctx,
-		strings.TrimSpace(d.WakerID),
-		strings.TrimSpace(d.ConnectorID),
-	)
-	if err != nil {
+	if err := connectorService().Remove(ctx, strings.TrimSpace(d.WakerID), strings.TrimSpace(d.ConnectorID), d.Confirmed, d.ExpectedAffectedCount); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if item.Connector.Scope == constants.MCPConnectorScopeBuiltIn {
-		return nil, ginx.WithStack(status_error.BuiltInMCPConnectorCannotDelete)
-	}
-	if err := global.TransactionControllerManager.Transaction(
-		ctx,
-		func(transactionContext context.Context) error {
-			if item.Connector.OwnerWakerID == "" && d.WakerID != "" {
-				return global.MCPConnectorControllerManager.DeleteWakerConnector(transactionContext, d.WakerID, item.Connector.ID)
-			}
-			if d.WakerID == "" {
-				counts, err := global.MCPConnectorControllerManager.InstalledCounts(transactionContext, []string{item.Connector.ID})
-				if err != nil {
-					return err
-				}
-				if !d.Confirmed || counts[item.Connector.ID] != d.ExpectedAffectedCount {
-					return status_error.PluginConfigurationConflict
-				}
-			}
-			return global.MCPConnectorControllerManager.DeleteConnector(
-				transactionContext,
-				item.Connector.ID,
-			)
-		},
-	); err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	notifyResourceChanged(ctx, d.ConnectorID)
 	return ginx.CommonSuccessResponse(), nil
 }

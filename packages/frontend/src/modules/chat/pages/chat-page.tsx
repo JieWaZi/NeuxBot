@@ -58,6 +58,7 @@ import {
   sendMessageMutation,
 } from "../api/chat-queries";
 import { listAiAccountsOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
+import { useQueryEvents } from "@/shared/api/use-query-events";
 import { ChatHistoryLoadingState } from "../components/chat-history-loading-state";
 import {
   ChatWorkspaceSurface,
@@ -86,6 +87,7 @@ import {
   conversationKeyOf,
   useChatInvocationGuard,
 } from "../model/conversation-identity";
+import { useChatSkillTimeline } from "../components/chat-skill-suggestions";
 import { useChatInteractions } from "../model/use-conversation-interactions";
 import { selectableRuntimes } from "../model/selectable-runtimes";
 import {
@@ -462,17 +464,39 @@ function ChatView({
         [selectedWakerID]: ids,
       }));
   };
+  const skillOptions = listWakerSkillsOptions({
+    path: { wakerId: selectedWakerID ?? "pending" },
+  });
+  const connectorOptions = listWakerConnectorsOptions({
+    path: { wakerId: selectedWakerID ?? "pending" },
+  });
   const skillsQuery = useQuery({
-    ...listWakerSkillsOptions({
-      path: { wakerId: selectedWakerID ?? "pending" },
-    }),
+    ...skillOptions,
     enabled: readDraftResources && Boolean(selectedWakerID),
   });
   const connectorsQuery = useQuery({
-    ...listWakerConnectorsOptions({
-      path: { wakerId: selectedWakerID ?? "pending" },
-    }),
+    ...connectorOptions,
     enabled: readDraftResources && Boolean(selectedWakerID),
+  });
+  useQueryEvents({
+    topic: "resources",
+    resource: { kind: "global" },
+    eventTypes: ["resources.changed"],
+    eventFilter: ({ resource }) =>
+      resource.kind === "skill" || resource.kind === "global",
+    queryKeys: [skillOptions.queryKey],
+    active: sceneActive,
+    enabled: Boolean(selectedWakerID),
+  });
+  useQueryEvents({
+    topic: "resources",
+    resource: { kind: "global" },
+    eventTypes: ["resources.changed"],
+    eventFilter: ({ resource }) =>
+      resource.kind === "connector" || resource.kind === "global",
+    queryKeys: [connectorOptions.queryKey],
+    active: sceneActive,
+    enabled: Boolean(selectedWakerID),
   });
   const recentProjectQuery = useQuery({
     ...getWakerRecentProjectOptions({
@@ -502,13 +526,17 @@ function ChatView({
     () => new Set(enabledSkills.map((skill) => skill.id)),
     [enabledSkills],
   );
-  const availableSkillIDs = useMemo(() => {
-    if (!skillsQuery.data) return undefined;
-    return new Set(
-      skillsQuery.data.flatMap((item) =>
-        item.skill?.id ? [item.skill.id] : [],
-      ),
-    );
+  const { availableSkillIDs, skillCategories } = useMemo(() => {
+    const skillCategories = new Map<string, string>();
+    for (const { skill } of skillsQuery.data ?? []) {
+      if (skill?.id) skillCategories.set(skill.id, skill.categories?.[0] ?? "");
+    }
+    return {
+      availableSkillIDs: skillsQuery.data
+        ? new Set(skillCategories.keys())
+        : undefined,
+      skillCategories,
+    };
   }, [skillsQuery.data]);
   const selectedSkillIDs = (
     selectedSkillIDsByWaker[selectedWakerID ?? ""] ?? []
@@ -548,13 +576,18 @@ function ChatView({
     () => new Set(enabledConnectors.map((connector) => connector.id)),
     [enabledConnectors],
   );
-  const availableConnectorIDs = useMemo(() => {
-    if (!connectorsQuery.data) return undefined;
-    return new Set(
-      connectorsQuery.data.flatMap((item) =>
-        item.connector?.id ? [item.connector.id] : [],
-      ),
-    );
+  const { availableConnectorIDs, connectorCategories } = useMemo(() => {
+    const connectorCategories = new Map<string, string>();
+    for (const { connector } of connectorsQuery.data ?? []) {
+      if (connector?.id)
+        connectorCategories.set(connector.id, connector.categories?.[0] ?? "");
+    }
+    return {
+      availableConnectorIDs: connectorsQuery.data
+        ? new Set(connectorCategories.keys())
+        : undefined,
+      connectorCategories,
+    };
   }, [connectorsQuery.data]);
   const selectedConnectorIDs = (
     selectedConnectorIDsByWaker[selectedWakerID ?? ""] ?? []
@@ -1437,6 +1470,30 @@ function ChatView({
     messages: chatRuntime.messages,
     onOpenWorkbench: () => setChatRightPanel("workspace"),
   });
+  const reviewingChat = detailQuery.data?.chat;
+  const earliestLoadedPage = messagesQuery.data?.pages.at(-1);
+  const earliestLoadedMessage = earliestLoadedPage?.hasMore
+    ? messages[0]
+    : undefined;
+  const skillTimeline = useChatSkillTimeline({
+    windowReady: Boolean(earliestLoadedPage),
+    fromSequence: earliestLoadedPage?.nextBeforeSequence,
+    fromTime: earliestLoadedMessage?.createdAt,
+    chatId: activeChatId ?? "",
+    wakerId:
+      !entry &&
+      !boardDraft &&
+      !activeMemberTab &&
+      presentation === "workspace" &&
+      reviewingChat?.id === activeChatId &&
+      !reviewingChat?.hiddenFromWakerHistory
+        ? (reviewingChat?.wakerId ?? "")
+        : "",
+    active: sceneActive,
+    partners: wakers,
+    skillCategories,
+    connectorCategories,
+  });
   const chatAdapter: ChatWorkspaceAdapter = {
     identity: {
       chatId: activeChatId,
@@ -1478,7 +1535,8 @@ function ChatView({
         : undefined,
       runtime: chatRuntime.runtime,
       messages: chatRuntime.messages,
-      timelineEvents: workflowTimeline.events,
+      afterMessages: skillTimeline.loadError,
+      timelineEvents: [...workflowTimeline.events, ...skillTimeline.events],
       workflowInvocation: workflowTimeline.workflowInvocation,
       activityStatus: retryFirstSubmission ? (
         <div

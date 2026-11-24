@@ -311,6 +311,7 @@ func (m *service) prepareFork(ctx context.Context, input ForkInput) (chatstorage
 			ForkSourceChatID:             input.ChatID,
 			ForkSourceExecutionID:        input.ExecutionID,
 			ForkConfiguration:            &selected.configuration,
+			ProfileOptimization:          state.profileOptimization,
 		},
 		Boundary: selected.boundary,
 	}

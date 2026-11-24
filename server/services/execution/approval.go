@@ -89,6 +89,32 @@ func (h *executionApprovalHandler) Request(
 	return h.coordinator.request(ctx, h.chatID, h.executionID, request)
 }
 
+// resourceApproval 把资源变更确认绑定到当前执行，授权结果不取自模型参数。
+func (m *service) resourceApproval(chatID, executionID string) func(context.Context, string) error {
+	return func(ctx context.Context, summary string) error {
+		if m.approvals == nil || !m.IsExecutionActive(chatID, executionID) {
+			return status_error.AgentContextUnauthorized
+		}
+		decision, err := m.approvals.handler(chatID, executionID).Request(ctx, agentapi.ApprovalRequest{
+			InvocationID: executionID,
+			ToolCallID:   util.New(),
+			Title:        "Confirm NeuxBot resource operation",
+			Summary:      summary,
+			Options: []agentapi.ApprovalOption{
+				{ID: "allow", Name: "Allow once", Kind: "allow_once"},
+				{ID: "reject", Name: "Reject", Kind: "reject_once"},
+			},
+		})
+		if err != nil {
+			return err
+		}
+		if decision.Cancelled || decision.OptionID != "allow" || ctx.Err() != nil {
+			return status_error.AgentOperationForbidden
+		}
+		return nil
+	}
+}
+
 // ResolveApproval 处理前端提交的一次审批选择。
 func (m *service) ResolveApproval(
 	ctx context.Context,

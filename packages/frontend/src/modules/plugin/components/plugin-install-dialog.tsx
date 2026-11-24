@@ -54,7 +54,7 @@ import {
   type PluginCatalogEntry,
 } from "../model/plugin-view";
 import { pluginAccountContext } from "../model/plugin-account-context";
-import { PartnerPicker } from "./partner-picker";
+import { PartnerPicker } from "@/modules/waker";
 import { PluginIcon } from "./plugin-icon";
 import { PluginAuthPanel } from "./plugin-auth-panel";
 import { openNewAuthorizationPage } from "./plugin-authorization-dialog";

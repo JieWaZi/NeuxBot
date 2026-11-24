@@ -1,7 +1,9 @@
-import { Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ResourceListItem } from "@/shared/ui/resource-list-item";
-import { Button } from "@/shared/ui/button";
+import { resourceLibraryDetailPath } from "@/shared/lib/resource-navigation";
+import {
+  ResourceInstallActions,
+  ResourceListItem,
+} from "@/shared/ui/resource-list-item";
 import { Switch } from "@/shared/ui/switch";
 import { ResourceCategoryIcon } from "@/shared/ui/resource-category-icon";
 import type { ConnectorSummary } from "../model/types";
@@ -29,7 +31,15 @@ export function ConnectorCard({
       title={connector.name}
       description={connector.description}
       icon={<ResourceCategoryIcon category={connector.categories?.[0]} />}
-      to={`${wakerId ? `/wakers/${wakerId}` : "/resources"}/connectors/${connector.id}`}
+      to={
+        wakerId
+          ? `/wakers/${encodeURIComponent(wakerId)}/connectors/${encodeURIComponent(connector.id)}`
+          : resourceLibraryDetailPath(
+              "connectors",
+              connector.id,
+              connector.ownerWakerId,
+            )
+      }
       label={t("card.view", { name: connector.name })}
       actions={
         wakerId ? (
@@ -49,17 +59,13 @@ export function ConnectorCard({
               onClick={() => onEnabledChange(!connector.enabled)}
             />
           )
-        ) : onInstall ? (
-          <Button
-            size="catalog"
-            variant="catalog-secondary"
+        ) : (
+          <ResourceInstallActions
+            installedCount={connector.affectedWakerCount}
             disabled={disabled}
-            onClick={onInstall}
-          >
-            <Plus />
-            {t("plugin:install")}
-          </Button>
-        ) : undefined
+            onInstall={onInstall}
+          />
+        )
       }
     />
   );

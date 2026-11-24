@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Cable } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { PartnerPicker } from "@/modules/plugin";
+import { PartnerPicker } from "@/modules/waker";
 import {
   getPluginOptions,
   listWakerConnectorsOptions,

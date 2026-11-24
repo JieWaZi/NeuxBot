@@ -387,8 +387,37 @@ const {
   chatListDelay: { current: 0 },
 }));
 
+const skillSuggestions = vi.hoisted(() => ({
+  changes: [] as Array<{
+    action: string;
+    name: string;
+    occurredAt: number;
+    sequence: number;
+    skillId?: string;
+    connectorId?: string;
+    ownerWakerId?: string;
+  }>,
+  items: [] as Array<{
+    id: string;
+    name: string;
+    lesson: string;
+    action: "create" | "update";
+    status: "pending" | "queued" | "running" | "saved" | "ignored" | "failed";
+    occurredAt?: number;
+    approvalToken?: string;
+    sharedPartnerIds?: string[];
+    sourceMessageIds?: string[];
+    skillId?: string;
+    error?: string;
+  }>,
+  list: vi.fn(),
+  resolve: vi.fn(),
+}));
+
 vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
   ...(await importOriginal<typeof GeneratedSDK>()),
+  listChatSkillSuggestions: skillSuggestions.list,
+  resolveChatSkillSuggestion: skillSuggestions.resolve,
   getChatReading: async ({ path }: { path: { chatId: string } }) => {
     if (path.chatId === privateWorkChatId)
       throw new ApiError("Chat not found", "ChatNotFound", 404);
@@ -944,6 +973,12 @@ beforeEach(() => {
   createChat.mockReset();
   sendMessage.mockReset();
   resolveApproval.mockClear();
+  skillSuggestions.items = [];
+  skillSuggestions.changes = [];
+  skillSuggestions.list.mockReset().mockImplementation(async () => ({
+    data: { items: skillSuggestions.items, changes: skillSuggestions.changes },
+  }));
+  skillSuggestions.resolve.mockReset();
   resolveApproval.mockResolvedValue(undefined);
 });
 
@@ -1117,7 +1152,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: "发送消息" }));
     await waitFor(() => expect(createChat).toHaveBeenCalledTimes(2));
     expect(createChat.mock.calls[1]?.[0]).toMatchObject({
-      body: { text: "评审变更", workflowId: undefined },
+      body: { text: "评审变更 ", workflowId: undefined },
     });
     view.unmount();
     client.clear();
@@ -2166,7 +2201,7 @@ describe("ChatPage", () => {
     await waitFor(() => expect(createChat).toHaveBeenCalledOnce());
     expect(createChat.mock.calls[0]?.[0]).toMatchObject({
       body: {
-        text: "帮我使用这个连接器。",
+        text: " 帮我使用这个连接器。",
         connectorIds: ["connector-browser"],
         pluginIds: [],
         skillIds: [],
@@ -4811,6 +4846,436 @@ describe("ChatPage", () => {
     ).toBeVisible();
   });
 
+  it("queries timeline items for the loaded message window and reveals older suggestions when paging", async () => {
+    const user = userEvent.setup();
+    historyMessages.current = [
+      {
+        id: "new-message",
+        role: "user",
+        status: "completed",
+        content: "最新消息",
+        createdAt: 200,
+        createdSequence: 3,
+      },
+    ];
+    olderHistoryMessages.current = [
+      {
+        id: "old-message",
+        role: "user",
+        status: "completed",
+        content: "更早的消息",
+        createdAt: 10,
+        createdSequence: 1,
+      },
+    ];
+    const suggestions = [
+      {
+        id: "old-suggestion",
+        name: "较早的建议",
+        lesson: "较早学到的方法",
+        action: "create" as const,
+        status: "pending" as const,
+        occurredAt: 25,
+      },
+      {
+        id: "new-receipt",
+        name: "稍后发布的技能",
+        lesson: "稍后发布的方法",
+        action: "create" as const,
+        status: "saved" as const,
+        skillId: "published",
+        occurredAt: 250,
+      },
+    ];
+    skillSuggestions.list.mockImplementation(
+      async ({ query }: { query?: { fromTime?: number } }) => ({
+        data: {
+          items: suggestions.filter(
+            (item) => item.occurredAt >= (query?.fromTime ?? 0),
+          ),
+        },
+      }),
+    );
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <ChatQueueProvider>
+          <TooltipProvider delayDuration={0}>
+            <MemoryRouter initialEntries={["/chats/chat-1?wakerId=waker-1"]}>
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chats/:chatId" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(
+      await screen.findByRole("link", { name: "稍后发布的技能" }),
+    ).toBeVisible();
+    expect(screen.queryByText("较早的建议")).toBeNull();
+    expect(skillSuggestions.list).toHaveBeenCalledWith(
+      expect.objectContaining({ query: { fromSequence: 3, fromTime: 200 } }),
+    );
+    await user.click(screen.getByRole("button", { name: "加载更早消息" }));
+    expect(await screen.findByText("较早的建议")).toBeVisible();
+    expect(screen.getByRole("link", { name: "稍后发布的技能" })).toBeVisible();
+    expect(skillSuggestions.list).toHaveBeenCalledTimes(2);
+  });
+
+  it("previews a skill suggestion separately and retries publication without blocking the draft", async () => {
+    const user = userEvent.setup();
+    historyMessages.current = [
+      {
+        id: "history-1",
+        role: "user",
+        status: "completed",
+        content: "用于学习的消息",
+        createdAt: 5,
+        sequence: 1,
+      },
+      {
+        id: "history-2",
+        role: "user",
+        status: "completed",
+        content: "技能生成后发的消息",
+        createdAt: 40,
+        sequence: 2,
+      },
+    ];
+    const suggestion = {
+      id: "suggestion-1",
+      name: "检查变更",
+      lesson: "先检查影响范围，再提交。",
+      action: "create" as const,
+      status: "pending" as const,
+      occurredAt: 10,
+      sourceMessageIds: ["message:chat-1"],
+    };
+    skillSuggestions.items = [suggestion];
+    skillSuggestions.resolve
+      .mockImplementationOnce(async () => {
+        const item = {
+          ...suggestion,
+          status: "failed" as const,
+          error: "generationFailed",
+        };
+        skillSuggestions.items = [item];
+        return { data: item };
+      })
+      .mockImplementationOnce(async () => {
+        const item = {
+          ...suggestion,
+          status: "queued" as const,
+        };
+        skillSuggestions.items = [item];
+        return { data: item };
+      });
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <ChatQueueProvider>
+          <TooltipProvider delayDuration={0}>
+            <MemoryRouter initialEntries={["/chats/chat-1?wakerId=waker-1"]}>
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chats/:chatId" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+
+    const save = await screen.findByRole("button", { name: "保存为技能" });
+    expect(screen.getByText("先检查影响范围，再提交。")).toBeVisible();
+    expect(screen.getByRole("link", { name: "来源消息 1" })).toHaveAttribute(
+      "href",
+      "/chats/chat-1?wakerId=waker-1&message=message%3Achat-1",
+    );
+    expect(skillSuggestions.resolve).not.toHaveBeenCalled();
+    const input = screen.getByRole("textbox");
+    await user.type(input, "继续聊天");
+    expect(input).toHaveTextContent("继续聊天");
+
+    await user.click(save);
+    expect(await screen.findByText("暂时无法生成技能，请重试。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "忽略" })).toBeEnabled();
+    const readsBeforeRetry = skillSuggestions.list.mock.calls.length;
+    await user.click(screen.getByRole("button", { name: "重试保存" }));
+    expect(await screen.findByText("正在保存技能")).toBeVisible();
+    expect(screen.queryByText("先检查影响范围，再提交。")).toBeNull();
+    await waitFor(() =>
+      expect(skillSuggestions.list.mock.calls.length).toBeGreaterThan(
+        readsBeforeRetry,
+      ),
+    );
+
+    skillSuggestions.items = [
+      { ...suggestion, status: "saved", skillId: "skill-1", occurredAt: 20 },
+      {
+        ...suggestion,
+        id: "suggestion-2",
+        name: "发布清单",
+        lesson: "先确认版本，再发布。",
+        action: "update",
+        status: "saved",
+        skillId: "skill-2",
+        occurredAt: 30,
+      },
+      {
+        ...suggestion,
+        id: "suggestion-3",
+        name: "已跳过建议",
+        status: "ignored",
+      },
+    ];
+    skillSuggestions.changes = [
+      {
+        action: "create",
+        name: "直接创建",
+        occurredAt: 15,
+        sequence: 3,
+        skillId: "direct",
+      },
+      {
+        action: "revise",
+        name: "直接编辑",
+        occurredAt: 22,
+        sequence: 4,
+        skillId: "direct",
+      },
+      {
+        action: "delete",
+        name: "已删除的技能",
+        occurredAt: 35,
+        sequence: 5,
+        skillId: "direct",
+      },
+      {
+        action: "create",
+        name: "测试 MCP",
+        occurredAt: 24,
+        sequence: 6,
+        connectorId: "local-mcp",
+        ownerWakerId: "waker-1",
+      },
+      {
+        action: "update",
+        name: "共享 MCP",
+        occurredAt: 26,
+        sequence: 7,
+        connectorId: "shared-mcp",
+      },
+      {
+        action: "delete",
+        name: "已删除的 MCP",
+        occurredAt: 36,
+        sequence: 8,
+        connectorId: "gone-mcp",
+      },
+    ];
+    wakerSkills.current = [
+      { enabled: true, skill: { id: "skill-1", categories: ["编程", "写作"] } },
+      { enabled: true, skill: { id: "direct", categories: ["写作"] } },
+    ];
+    wakerConnectors.current = [
+      { enabled: false, connector: { id: "local-mcp", categories: [] } },
+      { enabled: true, connector: { id: "shared-mcp", categories: ["网络"] } },
+    ];
+    act(() => {
+      for (const [observer, { topic, resource }] of eventObservers) {
+        if (topic === "resources" && resource.kind === "global") {
+          for (const [kind, id] of [
+            ["skill", "skill-1"],
+            ["connector", "shared-mcp"],
+          ] as const) {
+            observer.onEvent({
+              protocolVersion: 1,
+              epoch: "test",
+              connectionId: "test",
+              deliverySequence: 1,
+              eventId: `created-${kind}`,
+              topic,
+              resource: { kind, id },
+              type: "resources.changed",
+              payload: {},
+            });
+          }
+        }
+        if (
+          topic !== "resources" ||
+          resource.kind !== "waker" ||
+          resource.id !== "waker-1"
+        )
+          continue;
+        observer.onEvent({
+          protocolVersion: 1,
+          epoch: "test",
+          connectionId: "test",
+          deliverySequence: 1,
+          eventId: "saved-skill-1",
+          topic,
+          resource,
+          type: "partner.review.suggestions.changed",
+          payload: { chatId: "chat-1" },
+        });
+      }
+    });
+    const created = await screen.findByRole("link", { name: "检查变更" });
+    expect(created).toHaveAttribute("href", "/resources/skills/skill-1");
+    await waitFor(() =>
+      expect(created.querySelector("svg")).toHaveClass(
+        "lucide-file-code-corner",
+      ),
+    );
+    expect(created.parentElement).toHaveClass("justify-center");
+    expect(created.parentElement).toHaveTextContent("生成了技能");
+    const revised = screen.getByRole("link", { name: "发布清单" });
+    expect(revised).toHaveAttribute("href", "/resources/skills/skill-2");
+    expect(revised.querySelector("svg")).toHaveClass("lucide-blocks");
+    expect(revised.parentElement).toHaveClass("justify-center");
+    expect(revised.parentElement).toHaveTextContent("更新了技能");
+    const directCreate = screen.getByText("直接创建");
+    expect(screen.queryByRole("link", { name: "直接创建" })).toBeNull();
+    expect(directCreate.parentElement).toHaveTextContent("创建了技能");
+    const directRevise = screen.getByText("直接编辑");
+    expect(directRevise.parentElement).toHaveTextContent("更新了技能");
+    expect(screen.queryByRole("link", { name: "直接编辑" })).toBeNull();
+    const privateMcp = screen.getByRole("link", { name: "测试 MCP" });
+    expect(privateMcp).toHaveAttribute(
+      "href",
+      "/resources/connectors/local-mcp?wakerId=waker-1",
+    );
+    expect(privateMcp.parentElement).toHaveClass("justify-center");
+    expect(privateMcp.parentElement).toHaveTextContent("添加了连接器");
+    expect(privateMcp.querySelector("svg")).toHaveClass("lucide-blocks");
+    const sharedMcp = screen.getByRole("link", { name: "共享 MCP" });
+    expect(sharedMcp).toHaveAttribute(
+      "href",
+      "/resources/connectors/shared-mcp",
+    );
+    expect(sharedMcp.parentElement).toHaveTextContent("更新了连接器");
+    await waitFor(() =>
+      expect(sharedMcp.querySelector("svg")).toHaveClass("lucide-network"),
+    );
+    expect(screen.getByText("已删除的 MCP").parentElement).toHaveTextContent(
+      "删除了连接器",
+    );
+    expect(screen.queryByRole("link", { name: "已删除的 MCP" })).toBeNull();
+    const directDelete = screen.getByText("已删除的技能");
+    expect(directDelete.parentElement).toHaveTextContent("删除了技能");
+    expect(screen.queryByRole("link", { name: "已删除的技能" })).toBeNull();
+    const earlier = screen.getByText("用于学习的消息");
+    const later = screen.getByText("技能生成后发的消息");
+    expect(
+      earlier.compareDocumentPosition(created) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      created.compareDocumentPosition(revised) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      created.compareDocumentPosition(directRevise) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      directRevise.compareDocumentPosition(revised) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      revised.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "来源消息 1" })).toBeNull();
+    expect(screen.queryByText("已跳过建议")).toBeNull();
+    expect(input).toHaveTextContent("继续聊天");
+    expect(skillSuggestions.resolve).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: { action: "save" },
+        path: { chatId: "chat-1", suggestionId: "suggestion-1" },
+      }),
+    );
+  });
+
+  it("sends the approval from the shared-skill card the user saw", async () => {
+    const user = userEvent.setup();
+    const suggestion = {
+      id: "suggestion-1",
+      name: "checklist",
+      lesson: "先检查影响范围。",
+      action: "update" as const,
+      status: "pending" as const,
+      occurredAt: 10,
+      approvalToken: "a".repeat(64),
+      sharedPartnerIds: ["waker-1", "other"],
+    };
+    const refreshed = {
+      ...suggestion,
+      approvalToken: "b".repeat(64),
+      sharedPartnerIds: [...suggestion.sharedPartnerIds, "third"],
+    };
+    skillSuggestions.items = [suggestion];
+    skillSuggestions.resolve.mockImplementationOnce(async () => {
+      skillSuggestions.items = [refreshed];
+      return { data: refreshed };
+    });
+    skillSuggestions.resolve.mockResolvedValueOnce({ data: refreshed });
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <ChatQueueProvider>
+          <TooltipProvider delayDuration={0}>
+            <MemoryRouter initialEntries={["/chats/chat-1?wakerId=waker-1"]}>
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chats/:chatId" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+
+    const update = await screen.findByRole("button", { name: "更新技能" });
+    await user.click(update);
+    expect(skillSuggestions.resolve).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: { action: "save", approvalToken: suggestion.approvalToken },
+      }),
+    );
+    expect(await screen.findByText(/other.*third/)).toBeVisible();
+    expect(
+      await screen.findByText(
+        "技能版本或影响的伙伴已变化，请查看建议后重新确认。",
+      ),
+    ).toBeVisible();
+    await waitFor(() => expect(update).toBeEnabled());
+    await user.click(update);
+    expect(skillSuggestions.resolve).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: { action: "save", approvalToken: refreshed.approvalToken },
+      }),
+    );
+  });
+
   it("执行等待工具授权时保留可操作的审批卡", async () => {
     const user = userEvent.setup();
     chatActiveExecutionID.current = "execution-1";
@@ -5589,7 +6054,7 @@ describe("ChatPage", () => {
     ).not.toBeInTheDocument();
     expect(
       await screen.findByRole("link", { name: "查看技能 代码审查" }),
-    ).toHaveAttribute("href", "/wakers/waker-1/skills/skill-review");
+    ).toHaveAttribute("href", "/resources/skills/skill-review");
   });
 
   it("只在输入开头或空格后响应引用触发符", async () => {
@@ -5747,7 +6212,10 @@ describe("ChatPage", () => {
       await screen.findByRole("link", {
         name: "查看连接器 浏览器自动化",
       }),
-    ).toHaveAttribute("href", "/wakers/waker-1/connectors/connector-browser");
+    ).toHaveAttribute(
+      "href",
+      "/resources/connectors/connector-browser?wakerId=waker-1",
+    );
   });
 
   it("已有对话的 @ 文件搜索使用真实工作目录和冻结项目根", async () => {
@@ -5896,7 +6364,7 @@ describe("ChatPage", () => {
     expect(sendMessage.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
         body: expect.objectContaining({
-          text: "xx",
+          text: "xx ",
           attachments: [],
           codeReferences: [
             {
@@ -6125,7 +6593,7 @@ describe("ChatPage", () => {
 
     expect(
       await screen.findByRole("link", { name: "查看技能 代码审查" }),
-    ).toHaveAttribute("href", "/wakers/waker-1/skills/skill-review");
+    ).toHaveAttribute("href", "/resources/skills/skill-review");
     expect(screen.queryByText("v1.4.0")).not.toBeInTheDocument();
   });
 

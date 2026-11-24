@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -15,7 +16,10 @@ func TestChatWorkflowSelectionPersistsThroughPublicStartAndContinuation(t *testi
 	ctx := t.Context()
 	bound := map[string]string{}
 	selection := workinput.WorkflowReference{ID: "review", RevisionID: "published-v1", Name: "评审"}
-	fixture.execution.(*service).bindWorkflowTurn = func(_ context.Context, chat models.Chat, executionID string, ref *workinput.WorkflowReference) (WorkflowTurnBinding, error) {
+	manager, tools := fixture.execution.(*service), agentPreparationFixture(t)
+	manager.agent, manager.agentEndpoint, manager.systemSkillDirectory = tools.agent, tools.agentEndpoint, tools.systemSkillDirectory
+	workflowBinding := agentPreparationBinding(t, "workflow.runs.start")
+	manager.bindWorkflowTurn = func(_ context.Context, chat models.Chat, executionID string, ref *workinput.WorkflowReference) (WorkflowTurnBinding, error) {
 		bound[executionID] = chat.ID
 		if ref == nil {
 			return WorkflowTurnBinding{}, nil
@@ -23,7 +27,7 @@ func TestChatWorkflowSelectionPersistsThroughPublicStartAndContinuation(t *testi
 		if ref.ID != selection.ID {
 			t.Fatalf("wrong selected definition: %+v", ref)
 		}
-		return WorkflowTurnBinding{Reference: &selection}, nil
+		return WorkflowTurnBinding{Reference: &selection, Capability: &ToolCapability{ID: "workflow.consumer", Bindings: []capability.Binding{workflowBinding}}}, nil
 	}
 	intent := WorkIntent{
 		ClientRequestID: "selection-only", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}},

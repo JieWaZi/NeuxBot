@@ -58,7 +58,7 @@ func restoreSkillVersion(ctx *gin.Context, r *RestoreSkillVersion) (models.Skill
 	if err != nil {
 		return models.SkillVersion{}, ginx.WithStack(err)
 	}
-	nextVersion, ok := nextPatchSemVer(current.Version)
+	nextVersion, ok := internalSkills.NextPatchVersion(current.Version)
 	if !ok {
 		return models.SkillVersion{}, ginx.WithStack(status_error.BadRequest)
 	}
@@ -87,23 +87,6 @@ func restoreSkillVersion(ctx *gin.Context, r *RestoreSkillVersion) (models.Skill
 	}
 	notifyResourceChanged(ctx, r.SkillID)
 	return version, nil
-}
-
-func nextPatchSemVer(value string) (string, bool) {
-	parts := strings.Split(strings.TrimPrefix(strings.TrimSpace(value), "v"), ".")
-	if len(parts) != 3 {
-		return "", false
-	}
-	numbers := make([]*big.Int, len(parts))
-	for index, part := range parts {
-		number, ok := new(big.Int).SetString(part, 10)
-		if !ok || number.Sign() < 0 {
-			return "", false
-		}
-		numbers[index] = number
-	}
-	numbers[2].Add(numbers[2], big.NewInt(1))
-	return numbers[0].String() + "." + numbers[1].String() + "." + numbers[2].String(), true
 }
 
 func compareSemVer(left string, right string) int {

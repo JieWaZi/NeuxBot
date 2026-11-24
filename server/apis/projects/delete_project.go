@@ -3,10 +3,8 @@ package projects
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -46,16 +44,6 @@ func (d *DeleteProject) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	if err != nil {
 		return nil, ginx.WithStack(err)
-	}
-	// 项目删除后级联清理项目记忆；跨库失败时保留数据并由下次启动的孤儿扫描重试。
-	if global.MemoryService != nil {
-		if err := global.MemoryService.DeleteScope(
-			ctx,
-			constants.MemoryScopeProject,
-			d.ProjectID,
-		); err != nil {
-			logx.Errorf("delete project memories failed: project_id=%s error=%v", d.ProjectID, err)
-		}
 	}
 	return ginx.CommonSuccessResponse(), nil
 }

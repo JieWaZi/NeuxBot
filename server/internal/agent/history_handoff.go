@@ -18,7 +18,11 @@ func (t *Turn) summarize(conn *providerConnection, binding NativeBinding, previo
 	if err != nil {
 		return nil
 	}
-	child := newTurn(t.ctx, t.lifecycle, t.thread, TurnRequest{HostInvocationID: newTurnID(), Text: handoffInstructions, UsageSource: "handoff", UsageWakerID: t.input.UsageWakerID}, TurnPorts{})
+	instructions := handoffInstructions
+	if binding.coreMemoryOwner() != "" {
+		instructions += " Exclude reference data from any partner core-memory snapshot."
+	}
+	child := newTurn(t.ctx, t.lifecycle, t.thread, TurnRequest{HostInvocationID: newTurnID(), Text: instructions, UsageSource: "handoff", UsageWakerID: t.input.UsageWakerID}, TurnPorts{})
 	defer child.cancel()
 	child.setSession(conn, binding)
 	child.effective = previous

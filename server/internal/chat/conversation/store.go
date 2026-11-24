@@ -420,6 +420,11 @@ func describe(row diskRow, where location, at int64) rowIndex {
 			r.Kind = indexInherited
 		case constants.ChatEventTypeExecutionCreated:
 			r.Kind = indexExecutionCreated
+			var marker struct {
+				// Review is the private authorization frozen by Chat at admission.
+				Review *struct{} `json:"review"`
+			}
+			r.ReviewAdmission = json.Unmarshal(f.Data, &marker) == nil && marker.Review != nil
 			if r.Execution == "" {
 				r.Execution = r.Message
 			}
@@ -430,6 +435,8 @@ func describe(row diskRow, where location, at int64) rowIndex {
 			r.Kind = indexExecutionCompleted
 		case constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
 			r.Kind = indexExecutionEnded
+		case constants.ChatEventTypeManagedSkillChanged, constants.ChatEventTypeManagedConnectorChanged:
+			r.Kind = indexManagedResourceChange
 		case constants.ChatEventTypeElicitationRequested, constants.ChatEventTypeElicitationResolved:
 			var question struct {
 				// ElicitationID 是请求和结果共用的权威身份。

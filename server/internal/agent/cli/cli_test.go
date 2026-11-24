@@ -171,20 +171,20 @@ func TestRetiredKnowledgeMCPCommandIsNotAvailable(t *testing.T) {
 	}
 }
 
-func TestMemoryScopeHelpAndInvalidInputUseTheSharedContract(t *testing.T) {
+func TestMemoryHelpUsesOnlyAuthorizedPartner(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := Execute(context.Background(), []string{"memory", "entries", "search", "--help"}, IO{Out: &out, Err: &errOut})
-	if code != 0 || errOut.Len() != 0 || !strings.Contains(out.String(), "choices: partner, project, all") ||
-		!strings.Contains(out.String(), `default: "all"`) {
-		t.Fatalf("memory search help omitted its legal scope/default: %d %s %s", code, &out, &errOut)
+	if code != 0 || errOut.Len() != 0 || strings.Contains(out.String(), "--scope") ||
+		!strings.Contains(out.String(), "--query") {
+		t.Fatalf("memory search help exposed scope or omitted the query field: %d %s %s", code, &out, &errOut)
 	}
 	out.Reset()
 	errOut.Reset()
 	code = Execute(context.Background(), []string{"memory", "entries", "create", "--scope", "all", "--content", "Stable fact", "--request-id", "invalid-scope"}, IO{Out: &out, Err: &errOut})
 	var response capability.Response
-	if code != 65 || out.Len() != 0 || json.Unmarshal(errOut.Bytes(), &response) != nil ||
-		response.Error == nil || response.Error.Code != "AgentInputInvalid" || response.Error.Details["discovery"] == nil {
-		t.Fatalf("invalid memory ownership was not rejected with discovery before connection: %d %s %s", code, &out, &errOut)
+	if code != 2 || out.Len() != 0 || json.Unmarshal(errOut.Bytes(), &response) != nil ||
+		response.Error == nil || response.Error.Code != "AgentInputInvalid" {
+		t.Fatalf("invalid memory ownership override reached the connection: %d %s %s", code, &out, &errOut)
 	}
 }
 

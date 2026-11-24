@@ -226,7 +226,7 @@ func TestMCPConnectorAPIMaintainsSharedConfigurationAndEncryptedCredentials(
 		t.Fatal(err)
 	}
 	for _, id := range []string{second.ID} {
-		if err := global.MCPConnectorControllerManager.UpsertWakerConnector(ctx, models.WakerMCPConnector{ID: "relation-" + id, WakerID: "waker-2", MCPConnectorID: id, Enabled: true}); err != nil {
+		if err := global.MCPConnectorControllerManager.UpsertWakerConnector(ctx, models.WakerMCPConnector{ID: "relation-" + id, WakerID: "waker-2", MCPConnectorID: id, Enabled: false}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -235,6 +235,14 @@ func TestMCPConnectorAPIMaintainsSharedConfigurationAndEncryptedCredentials(
 	}
 	if _, err := (&DeleteWakerConnector{WakerID: "waker-1", ConnectorID: second.ID}).Output(ctx); err != nil {
 		t.Fatal(err)
+	}
+	detailValue, err := (&GetLibraryConnector{ConnectorID: second.ID}).Output(ctx)
+	if err != nil {
+		t.Fatalf("get library connector: %v", err)
+	}
+	detail := detailValue.(LibraryConnectorDetailResponse)
+	if detail.AffectedWakerCount != 1 || !slices.Equal(detail.InstalledPartnerIDs, []string{"waker-2"}) {
+		t.Fatalf("library detail did not reflect the remaining disabled installation: %+v", detail)
 	}
 
 	if _, err := (&DeleteWakerConnector{

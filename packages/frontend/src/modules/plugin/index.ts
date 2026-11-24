@@ -1,5 +1,4 @@
 export { PluginResourceCollection } from "./pages/plugin-resource-collection";
-export { PartnerPicker } from "./components/partner-picker";
 export { resourceCategory } from "./model/plugin-view";
 
 export { PluginDetailPage } from "./pages/plugin-detail-page";

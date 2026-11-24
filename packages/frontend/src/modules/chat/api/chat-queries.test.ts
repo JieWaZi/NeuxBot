@@ -28,9 +28,34 @@ import {
 import {
   getChatOptions,
   getChatQueryKey,
+  listChatSkillSuggestionsQueryKey,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
 
 describe("chat query cursors", () => {
+  it.each(["skill.changed", "connector.changed"] as const)(
+    "%s 只使原 Chat 的资源时间线失效",
+    (type) => {
+      const queryClient = new QueryClient();
+      const changed = listChatSkillSuggestionsQueryKey({
+        path: { chatId: "chat-1" },
+      });
+      const unrelated = listChatSkillSuggestionsQueryKey({
+        path: { chatId: "other" },
+      });
+      queryClient.setQueryData(changed, { items: [] });
+      queryClient.setQueryData(unrelated, { items: [] });
+      queryClient.setQueryData(chatMessagesKey("chat-1"), {
+        pages: [{ resources: [], latestSequence: 5 }],
+        pageParams: [undefined],
+      });
+      expect(
+        mergeChatHistoryEvents(queryClient, "chat-1", [{ type, sequence: 6 }]),
+      ).toBe(6);
+      expect(queryClient.getQueryState(changed)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(unrelated)?.isInvalidated).toBe(false);
+    },
+  );
+
   it("按伙伴和 Chat 隔离分页缓存", () => {
     expect(chatListKey("waker-1")).not.toEqual(chatListKey("waker-2"));
     expect(chatMessagesKey("chat-1")).not.toEqual(chatMessagesKey("chat-2"));

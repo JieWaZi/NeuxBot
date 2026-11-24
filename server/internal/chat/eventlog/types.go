@@ -73,6 +73,22 @@ type AgentCommandData struct {
 	Completion string `json:"completion"`
 }
 
+// ManagedResourceChangeData 只保存资源变更发生时的公开身份。
+type ManagedResourceChangeData struct {
+	// Action 是已提交的新建、修订、卸载或删除操作。
+	Action string `json:"action"`
+	// SkillID 标识来源技能。
+	SkillID string `json:"skillId,omitempty"`
+	// ConnectorID 标识发生变更的连接器。
+	ConnectorID string `json:"connectorId,omitempty"`
+	// OwnerWakerID 标识自有连接器的读取范围。
+	OwnerWakerID string `json:"ownerWakerId,omitempty"`
+	// VersionID 标识该操作涉及的库版本。
+	VersionID string `json:"versionId,omitempty"`
+	// Name 是变更发生时的资源名称。
+	Name string `json:"name"`
+}
+
 // ChatCreatedData 保存 Chat 建立时锁定的业务事实。
 type ChatCreatedData struct {
 	// ForkConfiguration 保存分叉点冻结的执行设置，继承历史本身不产生执行。
@@ -101,6 +117,8 @@ type ChatCreatedData struct {
 	ProjectSources []ProjectSourceSnapshot `json:"projectSources,omitempty"`
 	// HiddenFromWakerHistory 表示该 Chat 不进入伙伴普通对话列表。
 	HiddenFromWakerHistory bool `json:"hiddenFromWakerHistory,omitempty"`
+	// ProfileOptimization 表示该 Chat 及其分叉用于优化伙伴档案。
+	ProfileOptimization bool `json:"profileOptimization,omitempty"`
 	// ThreadWorkspaceID 非空时表示该 Chat 绑定 thread 级共享执行工作区。
 	ThreadWorkspaceID string `json:"threadWorkspaceId,omitempty"`
 }
@@ -209,6 +227,8 @@ type ExecutionDeliveryData struct {
 
 // ExecutionCreatedData 保存一次执行创建时冻结的选择。
 type ExecutionCreatedData struct {
+	// EntryPoint 是宿主核实后冻结的普通工作台来源。
+	EntryPoint string `json:"entryPoint,omitempty"`
 	// RequestedAt 是服务端收到输入的 Unix 毫秒时间，用于包含会话准备的整轮计时。
 	RequestedAt int64 `json:"requestedAt,omitempty"`
 	// SteerExecutionID 保存追加输入与上一执行的展示关联。

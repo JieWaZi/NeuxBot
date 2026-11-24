@@ -1,6 +1,9 @@
 package mcp
 
 import (
+	"strings"
+
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -15,9 +18,27 @@ type GetLibraryConnector struct {
 // Path 返回全局专业资源入口。
 func (*GetLibraryConnector) Path() string { return "/:connectorId" }
 
-// Output 执行共享用例，不伪造伙伴身份。
+// LibraryConnectorDetailResponse 包含全局连接器的实际安装伙伴。
+type LibraryConnectorDetailResponse struct {
+	ConnectorResponse
+	// 已安装伙伴标识
+	InstalledPartnerIDs []string `json:"installedPartnerIds"`
+}
+
+// Output 返回全局库详情及完整安装关系。
 func (o *GetLibraryConnector) Output(ctx *gin.Context) (interface{}, error) {
-	return getConnector(ctx, &GetWakerConnector{ConnectorID: o.ConnectorID})
+	item, err := visibleConnector(ctx, "", strings.TrimSpace(o.ConnectorID))
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	partners, err := global.MCPConnectorControllerManager.InstalledPartnerIDs(ctx, item.Connector.ID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	return LibraryConnectorDetailResponse{
+		ConnectorResponse:   newConnectorResponse(item, int64(len(partners))),
+		InstalledPartnerIDs: partners,
+	}, nil
 }
 
 // CreateLibraryConnector 管理全局库资源。

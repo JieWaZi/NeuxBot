@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
@@ -166,6 +167,8 @@ type ProviderLaunch struct {
 	RequireVerifiedMCP bool
 	// RequireNoTools permits only new native sessions with tools disabled.
 	RequireNoTools bool
+	// EphemeralText isolates detached text and enables cleanup retries.
+	EphemeralText bool
 }
 
 // ClaudeLaunch declares the native settings and tool restrictions for Claude.
@@ -229,7 +232,7 @@ type ProviderRuntime struct {
 	restarting map[string]bool
 	// options freezes the shared acquisition port and cleanup bound.
 	options ProviderRuntimeOptions
-	// mu guards registration and admission only.
+	// mu guards connection registration, admission, and failed scratch paths.
 	mu sync.Mutex
 	// skillFilesMu serializes root manifest read/validate/publish without holding mu.
 	skillFilesMu sync.Mutex
@@ -239,6 +242,8 @@ type ProviderRuntime struct {
 	nextID uint64
 	// connections retains every owner until all of its cleanup has succeeded.
 	connections map[uint64]*providerConnection
+	// ephemeralScratch retains detached paths whose initial removal failed.
+	ephemeralScratch map[string]struct{}
 	// invalidated records the greatest revoked credential generation per account.
 	invalidated map[providerAccount]uint64
 }
@@ -259,12 +264,16 @@ type providerConnection struct {
 	account providerAccount
 	// generation is the authentication generation frozen for this connection.
 	generation uint64
+	// ephemeral records whether background review can retry this owner's cleanup.
+	ephemeral bool
 	// plugins contains plugins and frozen versions held by this native connection.
 	plugins map[string]string
 	// skills is the physical target reservation retained through successful cleanup.
 	skills *SkillSelection
 	// qoderContextWindow is the actual process launch tier; zero preserves native settings.
 	qoderContextWindow int64
+	// missingSkillSources allow a later turn to retry only when a missing source returns.
+	missingSkillSources []string
 	// configuration identifies the actual request whose startup resources this owner acquired.
 	configuration string
 	// mu protects startup result publication and cleanup attempts, keeping startup and cleanup mutually exclusive.
@@ -372,6 +381,7 @@ func (r *ProviderRuntime) Open(ctx context.Context, request ProviderConnectionRe
 	r.nextID++
 	c := &providerConnection{
 		runtime: r, id: r.nextID, account: account, generation: request.Account.AuthGeneration, plugins: request.Resources.Plugins,
+		ephemeral:          request.Launch.EphemeralText,
 		qoderContextWindow: request.Launch.QoderContextWindow, skills: request.Resources.Skills,
 		cancelOpen: cancel, opened: make(chan struct{}), closeWorkspace: ports.CloseFiles,
 	}
@@ -523,11 +533,11 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 	if !SameSkills(request.Resources.Skills, c.resources.Skills) {
 		return status_error.SkillContentInvalid
 	}
-	if request.Resources.Skills != nil {
+	if c.resources.Skills != nil {
 		// File transactions never call back into ThreadLifecycle or acquire runtime mu.
 		c.runtime.skillFilesMu.Lock()
 		if err = ctx.Err(); err == nil {
-			err = prepareSkills(request.Resources.Skills)
+			err = prepareSkills(c.resources.Skills, &c.missingSkillSources)
 		}
 		c.runtime.skillFilesMu.Unlock()
 		if err != nil {
@@ -746,7 +756,7 @@ func (r *ProviderRuntime) Close(ctx context.Context) error {
 		connections = append(connections, c)
 	}
 	r.mu.Unlock()
-	return closeProviderConnections(ctx, connections)
+	return errors.Join(closeProviderConnections(ctx, connections), r.retryEphemeralScratch(ctx))
 }
 
 // InvalidateAccount closes all owners at or below the revoked auth generation.

@@ -83,6 +83,8 @@ type ChatTarget struct {
 
 // CreateChatSpec 保存新 Chat 需要永久冻结的伙伴和工作范围。
 type CreateChatSpec struct {
+	// ProfileOptimization 表示 Chat 用于持续修订伙伴档案。
+	ProfileOptimization bool
 	// HiddenFromWakerHistory 表示 Chat 由上层工作入口拥有，仅从该入口展示历史。
 	HiddenFromWakerHistory bool
 	// WakerID 是新 Chat 永久绑定的伙伴标识。
@@ -140,8 +142,13 @@ type PreparedChatGroup struct {
 // WorkInput 是跨执行与持久队列边界共享的中立工作输入。
 type WorkInput = workinput.Input
 
+// WorkbenchEntryPoint 标识由普通伙伴工作台入口接纳的用户输入。
+const WorkbenchEntryPoint = "workbench"
+
 // WorkOptions 保存一次执行的 Runtime 和 Session 选择。
 type WorkOptions struct {
+	// EntryPoint 是宿主认证的入口标签，不接受来自外部请求的覆盖。
+	EntryPoint string `json:"-"`
 	// ConfigurationResolved 表示编排入口已冻结配置，合法空值不得再次继承当前默认选择。
 	ConfigurationResolved bool
 	// AccountID 是本次冻结的账号标识；空值使用智能体默认配置。
@@ -247,6 +254,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		return AcceptedExecution{}, status_error.BadRequest
 	}
 	request := pendingMessage{automaticRunID: intent.AutomaticRunID, imReplyLinkID: intent.Input.IMReplyLinkID,
+		entryPoint:      intent.Options.EntryPoint,
 		executionID:     intent.ExecutionID,
 		submissionID:    intent.Input.SubmissionID,
 		clientRequestID: intent.ClientRequestID,
@@ -294,6 +302,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 	}
 	if intent.Chat.Create != nil {
 		request.create = &pendingChat{
+			profileOptimization:          intent.Chat.Create.ProfileOptimization,
 			hiddenFromWakerHistory:       intent.Chat.Create.HiddenFromWakerHistory,
 			executionWorkspaceDirectory:  intent.Chat.Create.ExecutionWorkspaceDirectory,
 			wakerID:                      intent.Chat.Create.WakerID,

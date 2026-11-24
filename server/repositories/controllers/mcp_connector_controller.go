@@ -16,16 +16,22 @@ import (
 
 // MCPConnectorController 定义共享 MCP 连接器和伙伴关系的持久化操作。
 type MCPConnectorController interface {
-	// ListLibrary 分页查询全局连接器。
+	// ListLibrary 分页查询工作台中的独立连接器，包含伙伴自有资源。
 	ListLibrary(context.Context, string, int, int) ([]models.MCPConnectorWithState, int64, error)
 	// InstalledCounts 返回实际安装关系总数。
 	InstalledCounts(context.Context, []string) (map[string]int64, error)
+	// InstalledPartnerIDs 读取连接器实际安装的伙伴身份，用于冻结共享变更范围。
+	InstalledPartnerIDs(context.Context, string) ([]string, error)
 	// Create 创建共享 MCP 连接器普通配置。
 	Create(ctx context.Context, connector models.MCPConnector) error
 	// Get 按标识查询共享 MCP 连接器。
 	Get(ctx context.Context, connectorID string) (models.MCPConnector, error)
+	// GetForWaker 仅查询伙伴可见的连接器并附加启停状态。
+	GetForWaker(ctx context.Context, wakerID, connectorID string) (models.MCPConnectorWithState, error)
 	// ListForWaker 返回全部连接器及当前伙伴的启用状态。
 	ListForWaker(ctx context.Context, wakerID string, query string) ([]models.MCPConnectorWithState, error)
+	// ListForWakerSummary 只读取有界列表及凭据配置状态，不解密凭据。
+	ListForWakerSummary(ctx context.Context, wakerID, query string, limit int) ([]models.MCPConnectorWithState, error)
 	// ListEnabled 返回当前伙伴已启用的连接器。
 	ListEnabled(ctx context.Context, wakerID string) ([]models.MCPConnector, error)
 	// ExecutionDeclarations 只读取启用连接器的固定执行配置和密文身份，不解密。
@@ -114,12 +120,53 @@ func (c *mcpConnectorController) Get(
 	)
 }
 
+// GetForWaker 获取当前伙伴可见的一条连接器配置。
+func (c *mcpConnectorController) GetForWaker(ctx context.Context, wakerID, connectorID string) (models.MCPConnectorWithState, error) {
+	db := controllerDB(ctx, c.db)
+	var connector models.MCPConnector
+	err := connectorVisibility(db, wakerID).
+		Where("id = ?", connectorID).
+		First(&connector).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return models.MCPConnectorWithState{}, status_error.MCPConnectorNotFound.WithParams(map[string]interface{}{"ConnectorID": connectorID})
+	}
+	if err != nil {
+		return models.MCPConnectorWithState{}, databaseError("get_waker_mcp_connector", "connector_id="+connectorID, err)
+	}
+	normalizeConnectorCollections(&connector)
+	if err := decryptConnectorSecrets(db, &connector); err != nil {
+		return models.MCPConnectorWithState{}, err
+	}
+	var relation models.WakerMCPConnector
+	err = db.Where("waker_id = ? AND mcp_connector_id = ?", wakerID, connectorID).First(&relation).Error
+	enabled := relation.Enabled
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		enabled = connector.Scope == constants.MCPConnectorScopeBuiltIn
+	} else if err != nil {
+		return models.MCPConnectorWithState{}, databaseError("get_waker_mcp_connector_state", "connector_id="+connectorID, err)
+	}
+	return models.MCPConnectorWithState{Connector: connector, Enabled: enabled}, nil
+}
+
 // ListForWaker 返回全部共享连接器及当前伙伴的显式或默认状态。
 func (c *mcpConnectorController) ListForWaker(
 	ctx context.Context,
 	wakerID string,
 	query string,
 ) ([]models.MCPConnectorWithState, error) {
+	return c.listForWaker(ctx, wakerID, query, 0)
+}
+
+// ListForWakerSummary 有界查找共享连接器和当前伙伴的状态。
+func (c *mcpConnectorController) ListForWakerSummary(ctx context.Context, wakerID, query string, limit int) ([]models.MCPConnectorWithState, error) {
+	return c.listForWaker(ctx, wakerID, query, max(1, limit))
+}
+
+func connectorVisibility(db *gorm.DB, wakerID string) *gorm.DB {
+	return db.Where("scope = ? OR owner_waker_id = ? OR (owner_waker_id = ? AND id IN (SELECT mcp_connector_id FROM waker_mcp_connectors WHERE waker_id = ?))", constants.MCPConnectorScopeBuiltIn, wakerID, "", wakerID)
+}
+
+func (c *mcpConnectorController) listForWaker(ctx context.Context, wakerID, query string, limit int) ([]models.MCPConnectorWithState, error) {
 	connectors := []models.MCPConnector{}
 	db := controllerDB(ctx, c.db)
 	if normalized := strings.TrimSpace(query); normalized != "" {
@@ -130,8 +177,11 @@ func (c *mcpConnectorController) ListForWaker(
 			pattern,
 		)
 	}
+	db = connectorVisibility(db, wakerID)
+	if limit > 0 {
+		db = db.Limit(limit)
+	}
 	if err := db.
-		Where("scope = ? OR owner_waker_id = ? OR (owner_waker_id = ? AND id IN (SELECT mcp_connector_id FROM waker_mcp_connectors WHERE waker_id = ?))", constants.MCPConnectorScopeBuiltIn, wakerID, "", wakerID).
 		Order("CASE scope WHEN 'built_in' THEN 0 ELSE 1 END ASC").
 		Order("updated_at DESC, id ASC").
 		Find(&connectors).Error; err != nil {
@@ -143,9 +193,18 @@ func (c *mcpConnectorController) ListForWaker(
 	}
 
 	relations := []models.WakerMCPConnector{}
-	if err := controllerDB(ctx, c.db).
-		Where("waker_id = ?", wakerID).
-		Find(&relations).Error; err != nil {
+	if len(connectors) == 0 {
+		return []models.MCPConnectorWithState{}, nil
+	}
+	relationQuery := controllerDB(ctx, c.db).Where("waker_id = ?", wakerID)
+	if limit > 0 {
+		ids := make([]string, 0, len(connectors))
+		for _, connector := range connectors {
+			ids = append(ids, connector.ID)
+		}
+		relationQuery = relationQuery.Where("mcp_connector_id IN ?", ids)
+	}
+	if err := relationQuery.Find(&relations).Error; err != nil {
 		return nil, databaseError(
 			"list_waker_mcp_connectors",
 			"waker_id="+wakerID,
@@ -159,8 +218,10 @@ func (c *mcpConnectorController) ListForWaker(
 	result := make([]models.MCPConnectorWithState, 0, len(connectors))
 	for _, connector := range connectors {
 		normalizeConnectorCollections(&connector)
-		if err := decryptConnectorSecrets(controllerDB(ctx, c.db), &connector); err != nil {
-			return nil, err
+		if limit == 0 {
+			if err := decryptConnectorSecrets(controllerDB(ctx, c.db), &connector); err != nil {
+				return nil, err
+			}
 		}
 		enabled, hasRelation := states[connector.ID]
 		if !hasRelation && connector.Scope == constants.MCPConnectorScopeBuiltIn {
@@ -266,6 +327,9 @@ func (c *mcpConnectorController) Update(
 	connector models.MCPConnector,
 ) error {
 	db := controllerDB(ctx, c.db)
+	if connector.UpdatedAt == 0 {
+		connector.UpdatedAt = db.NowFunc().UnixMilli()
+	}
 	if err := encryptConnectorSecrets(db, &connector); err != nil {
 		return err
 	}
@@ -293,7 +357,7 @@ func (c *mcpConnectorController) Update(
 			"TestTools",
 			"UpdatedAt",
 		).
-		Updates(&connector)
+		UpdateColumns(&connector)
 	if result.Error != nil {
 		if dbhelper.IsDuplicateError(result.Error) {
 			return status_error.MCPConnectorNameConflict
@@ -329,7 +393,7 @@ func (c *mcpConnectorController) UpdateTestSnapshot(
 			"TestError",
 			"TestTools",
 		).
-		Updates(&connector)
+		UpdateColumns(&connector)
 	if result.Error != nil {
 		return databaseError(
 			"update_mcp_test_snapshot",
@@ -459,9 +523,9 @@ func (c *mcpConnectorController) DeleteWakerConnector(ctx context.Context, waker
 	return nil
 }
 
-// ListLibrary 分页查询全局连接器，敏感值只在 Controller 内解密使用。
+// ListLibrary 分页列出独立连接器，只读取凭据的配置状态。
 func (c *mcpConnectorController) ListLibrary(ctx context.Context, query string, offset, limit int) ([]models.MCPConnectorWithState, int64, error) {
-	db := controllerDB(ctx, c.db).Model(&models.MCPConnector{}).Where("owner_waker_id = ?", "")
+	db := controllerDB(ctx, c.db).Model(&models.MCPConnector{})
 	if query = strings.TrimSpace(query); query != "" {
 		pattern := "%" + strings.ToLower(query) + "%"
 		db = db.Where("LOWER(name) LIKE ? OR LOWER(description) LIKE ?", pattern, pattern)
@@ -483,9 +547,6 @@ func (c *mcpConnectorController) ListLibrary(ctx context.Context, query string, 
 	result := make([]models.MCPConnectorWithState, 0, len(connectors))
 	for _, connector := range connectors {
 		normalizeConnectorCollections(&connector)
-		if err := decryptConnectorSecrets(controllerDB(ctx, c.db), &connector); err != nil {
-			return nil, 0, err
-		}
 		result = append(result, models.MCPConnectorWithState{Connector: connector})
 	}
 	return result, total, nil
@@ -494,6 +555,17 @@ func (c *mcpConnectorController) ListLibrary(ctx context.Context, query string, 
 // InstalledCounts 批量读取实际伙伴安装数量。
 func (c *mcpConnectorController) InstalledCounts(ctx context.Context, ids []string) (map[string]int64, error) {
 	return installedResourceCounts(ctx, c.db, &models.WakerMCPConnector{}, "mcp_connector_id", ids)
+}
+
+// InstalledPartnerIDs 返回排序固定的共享安装范围。
+func (c *mcpConnectorController) InstalledPartnerIDs(ctx context.Context, connectorID string) ([]string, error) {
+	partners := []string{}
+	err := controllerDB(ctx, c.db).Model(&models.WakerMCPConnector{}).
+		Where("mcp_connector_id = ?", connectorID).Order("waker_id").Pluck("waker_id", &partners).Error
+	if err != nil {
+		return nil, databaseError("list_mcp_connector_partners", "connector_id="+connectorID, err)
+	}
+	return partners, nil
 }
 
 // EnsureWakerConnector 用唯一关系身份防止重复安装重置配置。

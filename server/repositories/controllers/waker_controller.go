@@ -3,6 +3,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -184,11 +185,18 @@ func (c *wakerController) Update(
 
 // UpdateDefaultModel 只更新伙伴用于新对话的默认模型配置。
 func (c *wakerController) UpdateDefaultModel(ctx context.Context, id string, defaultModel *models.WakerDefaultModel, updatedAt int64) error {
+	var stored any
+	if defaultModel != nil {
+		value, _ := json.Marshal(defaultModel)
+		stored = string(value)
+	}
 	result := controllerDB(ctx, c.db).
 		Model(&models.Waker{}).
 		Where("id = ?", id).
-		Select("default_model", "updated_at").
-		Updates(&models.Waker{DefaultModel: defaultModel, UpdatedAt: updatedAt})
+		Updates(map[string]any{
+			"default_model": stored, "updated_at": updatedAt,
+			"default_model_revision": gorm.Expr("default_model_revision + 1"),
+		})
 	if result.Error != nil {
 		return databaseError("update_waker_default_model", "waker_id="+id, result.Error)
 	}

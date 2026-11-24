@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,6 +23,7 @@ import (
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -589,6 +591,57 @@ func TestLocalWorkflowTurnsShareCredentialAndKeepTheCreationPromptLocal(t *testi
 	}
 }
 
+func TestResourceManagementInstructionsFollowTrustedChatGrants(t *testing.T) {
+	manager := agentPreparationFixture(t)
+	chat := manager.journal.(*agentTestJournal).chat
+	chat.WakerID = "partner"
+	manager.resourceManagementBindings = func(given models.Chat, executionID string, approve func(context.Context, string) error) []capability.Binding {
+		if given.WakerID != "partner" || executionID != "turn" || approve == nil {
+			t.Fatal("resource authorization lost the chat or approval context")
+		}
+		return []capability.Binding{agentPreparationBinding(t, "skills.packages.revise"), agentPreparationBinding(t, "mcp.connectors.update")}
+	}
+	for _, tc := range []struct {
+		name, actor string
+		automatic   string
+		hidden      bool
+		domains     *[]string
+		wantSkill   bool
+		wantMCP     bool
+	}{
+		{name: "interactive partner", actor: "user", wantSkill: true, wantMCP: true},
+		{name: "interactive scoped", actor: "user", domains: &[]string{"skills"}, wantSkill: true},
+		{name: "workflow", actor: "workflow"},
+		{name: "automatic", actor: "user", automatic: "scheduled-run"},
+		{name: "hidden conversation", actor: "user", hidden: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			current := chat
+			current.HiddenFromWakerHistory = tc.hidden
+			request := pendingMessage{entryPoint: WorkbenchEntryPoint, message: userMessage{Actor: tc.actor}, automaticRunID: tc.automatic,
+				runtime: runtimeSelection{RuntimeID: "unsupported"}, allowedAgentDomains: tc.domains}
+			request.entryPoint = trustedWorkbenchEntryPoint(request, messageChat{chat: current})
+			var skills []agentapi.Skill
+			var instructions, contextInstructions []agentapi.Instruction
+			var connectors []agentapi.ConnectorDeclaration
+			grant, err := manager.prepareAgent(t.Context(), t.Context(), models.RuntimeEnvironment{}, agentapi.Workspace{Path: t.TempDir()}, &skills, &instructions, &connectors, &contextInstructions, current, "turn", request, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if grant.finish != nil {
+				t.Cleanup(grant.finish)
+			}
+			prompt := agentapi.DeveloperInstructions(instructions)
+			if strings.Contains(prompt, "skills.packages operations") != tc.wantSkill || strings.Contains(prompt, "mcp.connectors operations") != tc.wantMCP {
+				t.Fatalf("management guidance does not match the grant: %s", prompt)
+			}
+			if len(contextInstructions) != 0 {
+				t.Fatalf("stable management guidance was repeated in dynamic turn context: %#v", contextInstructions)
+			}
+		})
+	}
+}
+
 // preparedContextPath 读取宿主实际用于 CLI 或 MCP 的连接路径。
 func preparedContextPath(t *testing.T, request recordedRun) string {
 	t.Helper()
@@ -615,4 +668,77 @@ func publishedTestSystemSkill(t *testing.T, root, binary string) string {
 		t.Fatal(err)
 	}
 	return directory
+}
+
+func TestNativeWorkbenchFallsBackFromOptionalGrantStorageFailure(t *testing.T) {
+	ctx := t.Context()
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	core, _, store, closeRuntime := fixture.open()
+	defer closeRuntime()
+	manager, tools := core.(*service), agentPreparationFixture(t)
+	manager.agent, manager.agentEndpoint, manager.systemSkillDirectory = tools.agent, tools.agentEndpoint, tools.systemSkillDirectory
+	root := filepath.Join(filepath.Dir(filepath.Dir(manager.systemSkillDirectory)), constants.AgentCLIContextDirectory)
+	if err := os.WriteFile(root, []byte("not a connection directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	binding := agentPreparationBinding(t, "workflow.runs.start")
+	manager.bindLocalWorkflowTurn = func(_ context.Context, _ models.Chat, _ string, selected *workinput.WorkflowReference, _ string) (WorkflowTurnBinding, error) {
+		return WorkflowTurnBinding{Reference: selected,
+			Capability: &ToolCapability{ID: "workflow.local", Bindings: []capability.Binding{binding}}}, nil
+	}
+	options := WorkOptions{RuntimeID: "codex", Model: "fixture-model", PermissionLevel: constants.PermissionLevelAuto, EntryPoint: WorkbenchEntryPoint}
+	intent := WorkIntent{ClientRequestID: "optional-grant-storage", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}},
+		Input: WorkInput{Actor: "user", Content: "  plain fallback  "}, Options: options}
+	work, err := core.Start(ctx, intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitNativeProductStatus(t, ctx, store, work, constants.ExecutionStatusCompleted)
+	trace, err := os.ReadFile(fixture.trace)
+	if err != nil || !strings.Contains(string(trace), `"text":"  plain fallback  "`) {
+		t.Fatalf("fallback did not deliver original user text: %v", err)
+	}
+	if strings.Contains(string(trace), "Workflow tools") || strings.Contains(string(trace), "NeuxBot capabilities") || strings.Contains(string(trace), "bot_capabilities") {
+		t.Fatal("fallback still announced the unavailable default tool grant")
+	}
+	// 同一工作台明确选择工作流时必须交付实际工具。
+	intent.ClientRequestID = "selected-grant-storage"
+	intent.Input.Workflow = workinput.SelectWorkflow("selected-workflow")
+	if _, err := core.Start(ctx, intent); !errors.Is(err, status_error.AgentContextStorageError) {
+		t.Fatalf("selected workflow without its grant returned %v", err)
+	}
+}
+
+func TestMissingSystemBundleRejectsRequiredHostToolGrants(t *testing.T) {
+	manager := agentPreparationFixture(t)
+	chat := manager.journal.(*agentTestJournal).chat
+	manager.systemSkillDirectory = ""
+	intent := pendingMessage{entryPoint: WorkbenchEntryPoint, message: userMessage{Actor: "user", Text: "run this work"}}
+	for _, tc := range []struct {
+		// name 标明必须交付工具的执行来源。
+		name string
+		// change 设置要求签发宿主工具的业务事实。
+		change func(*pendingMessage)
+	}{
+		{name: "workflow authoring", change: func(input *pendingMessage) { input.workflowCreationSessionID = "authoring" }},
+		{name: "selected workflow", change: func(input *pendingMessage) { input.message.Workflow = workinput.SelectWorkflow("workflow") }},
+		{name: "explicit host operations", change: func(input *pendingMessage) {
+			input.toolCapabilities = []ToolCapability{{ID: "audit", Bindings: []capability.Binding{agentPreparationBinding(t, "im.targets.list")}}}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := intent
+			tc.change(&request)
+			var skills []agentapi.Skill
+			var instructions, contextInstructions []agentapi.Instruction
+			var connectors []agentapi.ConnectorDeclaration
+			grant, err := manager.prepareAgent(t.Context(), t.Context(), models.RuntimeEnvironment{}, agentapi.Workspace{Path: t.TempDir()}, &skills, &instructions, &connectors, &contextInstructions, chat, "turn", request, nil, nil)
+			if grant.finish != nil {
+				t.Cleanup(grant.finish)
+			}
+			if !errors.Is(err, status_error.AgentContextStorageError) {
+				t.Fatalf("missing system bundle returned %v", err)
+			}
+		})
+	}
 }

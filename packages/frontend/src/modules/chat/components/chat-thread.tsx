@@ -217,6 +217,7 @@ type ChatThreadProps = {
   timelineEvents?: readonly ChatTimelineEvent[];
   workflowInvocation?: WorkflowInvocationStop;
   activityStatus?: ReactNode;
+  afterMessages?: ReactNode;
   isRunning?: boolean;
   isWorkRunning?: boolean;
   isWorkStopping?: boolean;
@@ -306,6 +307,7 @@ type ChatThreadProps = {
 export type ChatTimelineEvent = {
   id: string;
   createdAt: number;
+  sequence?: number;
   beforeMessageId?: string;
   afterMessageId?: string;
   content: ReactNode;
@@ -1869,7 +1871,9 @@ export const ChatMessageList = memo(function ChatMessageList({
     .filter((event) => !event.beforeMessageId && !event.afterMessageId)
     .sort(
       (left, right) =>
-        left.createdAt - right.createdAt || left.id.localeCompare(right.id),
+        left.createdAt - right.createdAt ||
+        (left.sequence ?? 0) - (right.sequence ?? 0) ||
+        left.id.localeCompare(right.id),
     );
   const rows: Array<ChatMessageView | ChatTimelineEvent | TeamReportGroupRow> =
     [];
@@ -1886,12 +1890,20 @@ export const ChatMessageList = memo(function ChatMessageList({
             ),
           )
         : (view.message.createdAt ?? 0);
-    while (
-      cursor < events.length &&
-      (events[cursor]?.createdAt ?? Infinity) <= createdAt
-    ) {
-      const event = events[cursor++];
-      if (event) rows.push(event);
+    const sequence = "kind" in view ? undefined : view.message.createdSequence;
+    while (cursor < events.length) {
+      const event = events[cursor];
+      if (
+        !event ||
+        event.createdAt > createdAt ||
+        (event.createdAt === createdAt &&
+          event.sequence !== undefined &&
+          sequence !== undefined &&
+          event.sequence > sequence)
+      )
+        break;
+      rows.push(event);
+      cursor++;
     }
     if ("kind" in view) {
       const reportIds = new Set(
@@ -2478,6 +2490,7 @@ function ChatThreadContent({
   timelineEvents = [],
   workflowInvocation,
   activityStatus,
+  afterMessages,
   isRunning = false,
   isWorkRunning = false,
   isWorkStopping = false,
@@ -2866,6 +2879,7 @@ function ChatThreadContent({
                           </MarkdownVisibility>,
                         )}
                         {liveQuestions}
+                        {afterMessages}
                       </ChatMessageColumn>
                     </div>
                     <ChatTurnNavigator

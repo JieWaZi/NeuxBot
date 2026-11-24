@@ -68,6 +68,22 @@ vi.mock("@/shared/api/global-events", () => ({
     };
   },
 }));
+vi.mock("@/modules/waker/api/waker-queries", () => ({
+  listWakersOptions: () => ({
+    queryKey: [{ _id: "listWakers" }],
+    queryFn: async () => ({
+      resources: [
+        { id: "p1", name: "伙伴一" },
+        { id: "p2", name: "伙伴二" },
+      ],
+      totalSize: 2,
+    }),
+  }),
+  getWakerOptions: () => ({
+    queryKey: [{ _id: "getWaker" }],
+    queryFn: async () => ({ id: "p1", name: "伙伴一" }),
+  }),
+}));
 vi.mock("../api/plugin-queries", () => ({
   getPluginConfigurationOptions: () => ({
     queryKey: [{ _id: "getPluginConfiguration" }],
@@ -91,20 +107,6 @@ vi.mock("../api/plugin-queries", () => ({
         });
       return current;
     },
-  }),
-  listWakersOptions: () => ({
-    queryKey: [{ _id: "listWakers" }],
-    queryFn: async () => ({
-      resources: [
-        { id: "p1", name: "伙伴一" },
-        { id: "p2", name: "伙伴二" },
-      ],
-      totalSize: 2,
-    }),
-  }),
-  getWakerOptions: () => ({
-    queryKey: [{ _id: "getWaker" }],
-    queryFn: async () => ({ id: "p1", name: "伙伴一" }),
   }),
   getPluginAuthorizationOptions: () => ({
     queryKey: [{ _id: "getPluginAuthorization" }],

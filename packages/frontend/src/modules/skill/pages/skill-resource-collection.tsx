@@ -85,7 +85,6 @@ export function SkillResourceCollection({
   const skills = (query.data ?? []).flatMap((item) => {
     const skill = toSkillSummary(item);
     return skill &&
-      (skill.source === "git" || skill.source === "zip") &&
       (!needle ||
         `${skill.name} ${skill.description}`
           .toLocaleLowerCase()

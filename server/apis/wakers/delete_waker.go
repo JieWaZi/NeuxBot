@@ -6,7 +6,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"os"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
@@ -169,30 +168,14 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	// 伙伴删除后级联清理其伙伴记忆与全部项目记忆；记忆在独立 memory.db 中，
-	// 不共享业务库事务，失败时记录日志并保留剩余数据，由下次启动的孤儿扫描重试。
+	// 独立记忆库清理失败时，由下次启动的孤儿扫描重试。
 	if global.MemoryService != nil {
-		for _, project := range projects {
-			if err := global.MemoryService.DeleteScope(
-				ctx,
-				constants.MemoryScopeProject,
-				project.ID,
-			); err != nil {
-				logx.Errorf(
-					"delete project memories failed: waker_id=%s project_id=%s error=%v",
-					d.WakerID,
-					project.ID,
-					err,
-				)
-			}
-		}
-		if err := global.MemoryService.DeleteScope(
-			ctx,
-			constants.MemoryScopePartner,
-			d.WakerID,
-		); err != nil {
+		if err := global.MemoryService.DeletePartner(ctx, d.WakerID); err != nil {
 			logx.Errorf("delete waker memories failed: waker_id=%s error=%v", d.WakerID, err)
 		}
+	}
+	if global.ReviewWorker != nil {
+		global.ReviewWorker.ObservePartnerDeletion(d.WakerID)
 	}
 	if global.StorageService != nil {
 		global.StorageService.Invalidate()

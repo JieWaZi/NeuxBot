@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,7 +17,7 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
-
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -40,22 +42,29 @@ type preparedAgentConnection struct {
 }
 
 func (m *service) prepareAgent(ctx, executionContext context.Context, environment models.RuntimeEnvironment, workspace agentapi.Workspace, skills *[]agentapi.Skill, instructions *[]agentapi.Instruction, connectors *[]agentapi.ConnectorDeclaration, contextInstructions *[]agentapi.Instruction, chat models.Chat, executionID string, request pendingMessage, requestReferencedFiles, uploadedFiles []string) (preparedAgentConnection, error) {
+	// 调用方显式签发的能力和定向工作流属于本轮依赖。普通工作台的默认工具可以省略。
+	required := request.message.Workflow != nil || request.workflowCreationSessionID != "" ||
+		request.message.Actor == constants.WakerOnboardingActor || len(request.toolCapabilities) != 0 ||
+		(request.workflowBinding.Capability != nil && !request.localWorkflowTools)
 	if m.agent == nil {
+		if required {
+			return preparedAgentConnection{}, status_error.AgentConnectionUnavailable
+		}
 		return preparedAgentConnection{}, nil
 	}
 	// 系统技能由 Core 初始化发布；每轮只读取已发布路径与内容摘要。
 	skill := m.systemSkillDirectory
-	if skill == "" {
-		return preparedAgentConnection{}, status_error.AgentContextStorageError
+	if !availableSystemSkill(skill) {
+		if required {
+			return preparedAgentConnection{}, status_error.AgentContextStorageError
+		}
+		return preparedAgentConnection{}, nil
 	}
 	root := filepath.Dir(filepath.Dir(skill))
 	binary := builtinskills.CLIPath(skill)
-	for _, item := range *skills {
-		if item.Name == constants.AgentCLISkillName {
-			return preparedAgentConnection{}, status_error.SkillContentInvalid
-		}
-	}
+	*skills = slices.DeleteFunc(*skills, func(item agentapi.Skill) bool { return item.Name == constants.AgentCLISkillName })
 	*skills = append(*skills, agentapi.Skill{Name: constants.AgentCLISkillName, Path: skill, Digest: filepath.Base(skill)})
+	instructionStart, contextStart := len(*instructions), len(*contextInstructions)
 	roots := []string{}
 	candidates := []string{workspace.Path}
 	for _, candidate := range workspace.AdditionalWritableDirectories {
@@ -101,6 +110,21 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 	for _, capability := range request.toolCapabilities {
 		bindings = append(bindings, capability.Bindings...)
 	}
+	if workflow := request.workflowBinding.Capability; workflow != nil {
+		bindings = append(bindings, workflow.Bindings...)
+		if guidance := request.workflowBinding.DeveloperInstruction; guidance != "" {
+			*instructions = append(*instructions, agentapi.Instruction{Name: "Workflow tools", Content: guidance})
+		}
+	}
+	if request.entryPoint == WorkbenchEntryPoint && m.resourceManagementBindings != nil {
+		approve := m.resourceApproval(chat.ID, executionID)
+		for _, binding := range m.resourceManagementBindings(chat, executionID, approve) {
+			domain, _, _ := strings.Cut(binding.Operation, ".")
+			if request.allowedAgentDomains == nil || slices.Contains(*request.allowedAgentDomains, domain) {
+				bindings = append(bindings, binding)
+			}
+		}
+	}
 	onboardingBindings, err := m.prepareWakerOnboarding(ctx, chat, executionID, request, instructions, contextInstructions)
 	if err != nil {
 		return preparedAgentConnection{}, err
@@ -122,10 +146,16 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 			bindings = append(bindings, question)
 		}
 	}
-	hasWorkflowCapabilities := false
+	var hasWorkflowCapabilities, hasSkillManagement, hasConnectorManagement bool
 	for _, binding := range bindings {
 		if strings.HasPrefix(binding.Operation, "workflow.") {
 			hasWorkflowCapabilities = true
+		}
+		switch binding.Operation {
+		case "skills.packages.revise":
+			hasSkillManagement = true
+		case "mcp.connectors.update":
+			hasConnectorManagement = true
 		}
 		if binding.Operation == "workflow.runs.start" && len(uploadedFiles) != 0 {
 			// 仅授权本轮已接纳的附件路径，附件父目录继续隔离。
@@ -139,6 +169,9 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 	supportsStdio, _ := agentapi.ConnectorCompatibility(baseRuntimeID, agentapi.ConnectorTransportStdio)
 	useMCP := hasWorkflowCapabilities && supportsStdio
 	*instructions = append(*instructions, agentapi.CapabilitiesInstructions(useMCP, binary, skill))
+	if guidance, ok := agentapi.ResourceManagementInstructions(hasSkillManagement, hasConnectorManagement); ok {
+		*instructions = append(*instructions, guidance)
+	}
 	// 工具绑定是确定的场景事实，不让模型从用户短句猜测当前入口。
 	for _, binding := range bindings {
 		if binding.Operation == "workflow.source.save" && (!request.localWorkflowTools || request.workflowCreationSessionID != "") {
@@ -179,6 +212,13 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 		return nil
 	}})
 	if err != nil {
+		if request.entryPoint == WorkbenchEntryPoint && !required && ctx.Err() == nil && errors.Is(err, status_error.AgentContextStorageError) {
+			*instructions = (*instructions)[:instructionStart]
+			*contextInstructions = (*contextInstructions)[:contextStart]
+			*skills = (*skills)[:len(*skills)-1]
+			logx.Warnf("skip unavailable local tool binding: execution_id=%s error=%v", executionID, err)
+			return preparedAgentConnection{}, nil
+		}
 		return preparedAgentConnection{}, err
 	}
 	// 两种传输都由宿主绑定连接文件，模型只消费稳定工具说明。
@@ -192,6 +232,20 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 		prepared.cliExecutable = binary
 	}
 	return prepared, nil
+}
+
+// availableSystemSkill 确认已发布的系统技能说明与二进制可用。
+func availableSystemSkill(directory string) bool {
+	if directory == "" {
+		return false
+	}
+	for _, path := range []string{filepath.Join(directory, "SKILL.md"), builtinskills.CLIPath(directory)} {
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			return false
+		}
+	}
+	return true
 }
 
 // appendCurrentWorkflowReferences 归并本轮引用，由统一上下文投影发送一次。

@@ -2,11 +2,7 @@ package mcp
 
 import (
 	"strings"
-	"time"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -34,47 +30,11 @@ func (t *TestWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
 
 // testConnector 复用相同资源用例，空伙伴范围表示全局库。
 func testConnector(ctx *gin.Context, t *TestWakerConnector) (ConnectorResponse, error) {
-	wakerID := strings.TrimSpace(t.WakerID)
-	connectorID := strings.TrimSpace(t.ConnectorID)
-	item, err := visibleConnector(
-		ctx,
-		wakerID,
-		connectorID,
-	)
+	tested, err := connectorService().Test(ctx, strings.TrimSpace(t.WakerID), strings.TrimSpace(t.ConnectorID))
 	if err != nil {
 		return ConnectorResponse{}, ginx.WithStack(err)
 	}
-	connector := item.Connector
-	if connector.Scope != constants.MCPConnectorScopeBuiltIn &&
-		trustDigest(connector) != connector.TrustedConfigDigest {
-		return ConnectorResponse{}, ginx.WithStack(status_error.MCPConnectorTrustRequired)
-	}
-	testResult := runMCPConnectionTest(ctx, connector)
-	connector.TestStatus = testResult.Status
-	connector.TestedAt = time.Now().UnixMilli()
-	connector.TestDurationMS = testResult.DurationMS
-	connector.TestError = bounded(testResult.Error, constants.MCPConnectorMaximumSummaryLength)
-	if testResult.Status == constants.MCPTestStatusSucceeded {
-		connector.TestTools = boundedTools(testResult.Tools)
-		connector.TestToolCount = len(testResult.Tools)
-	}
-	if err := global.MCPConnectorControllerManager.UpdateTestSnapshot(
-		ctx,
-		connector,
-		connector.UpdatedAt,
-	); err != nil {
-		return ConnectorResponse{}, ginx.WithStack(err)
-	}
-	notifyResourceChanged(ctx, connectorID)
-	updated, err := visibleConnector(ctx, wakerID, connectorID)
-	if err != nil {
-		return ConnectorResponse{}, ginx.WithStack(err)
-	}
-	result, err := connectorResponse(ctx, updated)
-	if err != nil {
-		return ConnectorResponse{}, ginx.WithStack(err)
-	}
-	return result, nil
+	return connectorResponse(ctx, tested)
 }
 
 // connectionTestResult 是公开 MCP 的协议诊断结果。

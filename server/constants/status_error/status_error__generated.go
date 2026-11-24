@@ -79,6 +79,8 @@ func (v StatusError) Key() string {
 		return "ChannelLeadInvalid"
 	case AIAccountConfigurationInvalid:
 		return "AIAccountConfigurationInvalid"
+	case MemoryCoreBudgetExceeded:
+		return "MemoryCoreBudgetExceeded"
 	case AutomaticScheduleInvalid:
 		return "AutomaticScheduleInvalid"
 	case AutomaticTaskWorkspaceInvalid:
@@ -581,6 +583,8 @@ func (v StatusError) Key() string {
 		return "AIAccountModelsUnavailable"
 	case AIAccountModelsResponseInvalid:
 		return "AIAccountModelsResponseInvalid"
+	case MCPConnectorProbeFailed:
+		return "MCPConnectorProbeFailed"
 	case IMPlatformUnavailable:
 		return "IMPlatformUnavailable"
 	case IMProtocolInvalid:
@@ -671,6 +675,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			ChannelMemberCountInvalid:            "channel must contain 2 to 5 distinct members",
 			ChannelLeadInvalid:                   "channel lead must be exactly one selected member",
 			AIAccountConfigurationInvalid:        "invalid account configuration or incompatible agent",
+			MemoryCoreBudgetExceeded:             "Core memories exceed 8 KiB; move some to regular memories or shorten their text",
 			AutomaticScheduleInvalid:             "invalid schedule or timezone, or no future occurrence",
 			AutomaticTaskWorkspaceInvalid:        "select an available project owned by the waker or a local directory",
 			AutomaticTaskInputInvalid:            "invalid workflow task input binding or invocation argument",
@@ -922,6 +927,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			MCPConnectorProtocolInvalid:          "mcp connector returned an invalid protocol response",
 			AIAccountModelsUnavailable:           "model catalog service is unavailable",
 			AIAccountModelsResponseInvalid:       "model catalog response is invalid",
+			MCPConnectorProbeFailed:              "MCP connection test failed. Using the previous configuration.",
 			IMPlatformUnavailable:                "The messaging platform is unavailable. Check the connection and verify uncertain delivery before sending again.",
 			IMProtocolInvalid:                    "The messaging platform returned an unsupported response. Inspect the failure details and connection.",
 			PluginAuthorizationFailed:            "plugin authentication did not complete or external authorization expired",
@@ -963,6 +969,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			ChannelMemberCountInvalid:            "团队必须包含 2 至 5 位互不重复的成员",
 			ChannelLeadInvalid:                   "团队负责人必须且只能是所选成员之一",
 			AIAccountConfigurationInvalid:        "账号配置不合法或与智能体不兼容",
+			MemoryCoreBudgetExceeded:             "核心记忆已超过 8 KiB 上限，请移出部分核心记忆或缩短正文",
 			AutomaticScheduleInvalid:             "定时规则或时区不合法，或没有未来的运行时间",
 			AutomaticTaskWorkspaceInvalid:        "请选择当前伙伴的可用项目或一个本地目录",
 			AutomaticTaskInputInvalid:            "工作流任务参数来源或调用参数不合法",
@@ -1214,6 +1221,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			MCPConnectorProtocolInvalid:          "MCP 连接器返回了不合法的协议响应",
 			AIAccountModelsUnavailable:           "模型目录服务暂时不可用",
 			AIAccountModelsResponseInvalid:       "模型目录响应不合法",
+			MCPConnectorProbeFailed:              "MCP 连接测试失败，继续使用原配置",
 			IMPlatformUnavailable:                "消息平台暂时不可用，请检查连接状态；发送结果不确定时先核对是否已收到。",
 			IMProtocolInvalid:                    "消息平台返回了无法识别的响应，请查看失败详情并检查连接。",
 			PluginAuthorizationFailed:            "插件认证未完成或外部授权失效",

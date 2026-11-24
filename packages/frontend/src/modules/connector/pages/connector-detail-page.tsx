@@ -51,18 +51,20 @@ import {
 
 export function ConnectorDetailPage() {
   const { t } = useTranslation("connector");
-  const { connectorId = "", wakerId = "" } = useParams();
+  const { connectorId = "", wakerId: partnerRouteId = "" } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const wakerId =
+    partnerRouteId || new URLSearchParams(location.search).get("wakerId") || "";
   const active = useRouteSceneActive();
-  const listPath = wakerId
-    ? `/wakers/${encodeURIComponent(wakerId)}/resources?category=connectors`
+  const listPath = partnerRouteId
+    ? `/wakers/${encodeURIComponent(partnerRouteId)}/resources?category=connectors`
     : "/resources?category=connectors";
   const candidate = (location.state as { resourceBack?: string } | null)
     ?.resourceBack;
-  const directList = `/wakers/${encodeURIComponent(wakerId)}/connectors`;
+  const directList = `/wakers/${encodeURIComponent(partnerRouteId)}/connectors`;
   const back =
-    wakerId &&
+    partnerRouteId &&
     candidate &&
     resourceListBack(candidate, directList) === candidate
       ? candidate
@@ -335,7 +337,7 @@ export function ConnectorDetailPage() {
       </ResourcePageSurface>
       {connector && (
         <ConnectorFormDialog
-          key={identity}
+          key={`edit:${identity}`}
           open={editingIdentity === identity}
           connector={connector}
           wakerId={wakerId}
@@ -344,7 +346,7 @@ export function ConnectorDetailPage() {
       )}
       {connector && !builtIn && (
         <ConnectorDeleteDialog
-          key={identity}
+          key={`delete:${identity}`}
           open={deletingIdentity === identity}
           affectedWakerCount={detailQuery.data?.affectedWakerCount ?? 0}
           connectorId={connectorId}

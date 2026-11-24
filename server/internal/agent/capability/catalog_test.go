@@ -3,7 +3,6 @@ package capability
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -150,37 +149,40 @@ func TestWikiMaintainAcceptsTaskRequirementsWithoutSourceOrModelOverrides(t *tes
 	}
 }
 
-func TestMemoryScopeContractsDistinguishSearchAndOwnership(t *testing.T) {
+func TestResourceManagementCommandSchemas(t *testing.T) {
+	for _, tc := range []struct {
+		operation string
+		valid     map[string]any
+		invalid   map[string]any
+	}{
+		{"skills.packages.revise", map[string]any{"skillId": "skill", "expectedVersionId": "version", "content": "# Body"}, map[string]any{"skillId": "skill", "content": "# Body"}},
+		{"skills.packages.delete", map[string]any{"skillId": "skill", "expectedVersionId": "version"}, map[string]any{"skillId": "skill", "expectedVersionId": "version", "wakerId": "other"}},
+		{"mcp.connectors.create", map[string]any{"name": "Demo", "transport": "streamable_http", "url": "http://127.0.0.1:3000/mcp"}, map[string]any{"name": "Demo", "transport": "streamable_http", "trustConfirmed": true}},
+		{"mcp.connectors.update", map[string]any{"connectorId": "connector", "expectedRevision": "revision", "name": "New name"}, map[string]any{"connectorId": "connector", "expectedRevision": "revision", "headers": []any{}}},
+	} {
+		op, ok := Find(tc.operation)
+		if !ok || op.Validate(tc.valid) != nil || op.Validate(tc.invalid) == nil {
+			t.Errorf("invalid resource operation contract: %s", tc.operation)
+		}
+	}
+}
+
+func TestMemoryCommandsRejectOwnershipOverrides(t *testing.T) {
 	search, _ := Find("memory.entries.search")
 	create, _ := Find("memory.entries.create")
-	for _, scope := range []constants.MemoryScope{constants.MemoryScopePartner, constants.MemoryScopeProject, constants.MemoryScopeAll} {
-		if err := search.Validate(map[string]any{"query": "preferences", "scope": scope.String()}); err != nil {
-			t.Fatalf("visible search scope rejected: %s: %v", scope, err)
+	for _, tc := range []struct {
+		// op 是应由当前执行授权确定归属的操作。
+		op Operation
+		// field 是固定业务入参。
+		field string
+	}{{search, "query"}, {create, "content"}} {
+		if err := tc.op.Validate(map[string]any{tc.field: "preferences"}); err != nil {
+			t.Fatal(err)
 		}
-	}
-	if search.Validate(map[string]any{"query": "preferences"}) != nil ||
-		search.Discovery["defaultScope"] != constants.MemoryScopeAll.String() {
-		t.Fatal("omitted search scope lost its all-visible default")
-	}
-	for _, scope := range []constants.MemoryScope{constants.MemoryScopePartner, constants.MemoryScopeProject} {
-		if create.Validate(map[string]any{"scope": scope.String(), "content": "Stable fact"}) != nil {
-			t.Fatalf("memory ownership scope rejected: %s", scope)
-		}
-	}
-	for _, scope := range []string{"all", "", "global"} {
-		if create.Validate(map[string]any{"scope": scope, "content": "Stable fact"}) == nil {
-			t.Fatalf("invalid memory ownership accepted: %q", scope)
-		}
-	}
-	if create.Validate(map[string]any{"content": "Stable fact"}) == nil ||
-		search.Validate(map[string]any{"query": "preferences", "scope": "global"}) == nil {
-		t.Fatal("missing ownership or unknown search scope accepted")
-	}
-	for _, op := range []Operation{search, create} {
-		properties := op.InputSchema["properties"].(map[string]any)
-		scope := properties["scope"].(map[string]any)
-		if !reflect.DeepEqual(op.Discovery["scopes"], scope["enum"]) {
-			t.Fatalf("capabilities scope choices differ from validation: %s", op.ID)
+		for _, override := range []string{"scope", "scopeId", "partnerId", "projectId"} {
+			if err := tc.op.Validate(map[string]any{tc.field: "preferences", override: "another"}); err == nil {
+				t.Fatalf("%s accepted ownership override %s", tc.op.ID, override)
+			}
 		}
 	}
 }

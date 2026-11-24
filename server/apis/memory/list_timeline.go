@@ -14,10 +14,6 @@ type ListTimeline struct {
 	ginx.MethodGet
 	// 伙伴标识
 	WakerID string `in:"path" name:"wakerId" validate:"required"`
-	// 记忆范围
-	Scope constants.MemoryScope `in:"query" name:"scope"`
-	// 项目标识
-	ProjectID string `in:"query" name:"projectId"`
 	// 搜索关键字
 	Query string `in:"query" name:"query"`
 	// 页码
@@ -40,11 +36,8 @@ type ListTimelineResponse struct {
 
 func (l *ListTimeline) Path() string { return "/wakers/:wakerId/timeline" }
 
-// Validate 校验范围与分页。
+// Validate 校验筛选与分页。
 func (l *ListTimeline) Validate(*gin.Context) error {
-	if l.Scope == constants.MemoryScopeUnspecified {
-		l.Scope = constants.MemoryScopePartner
-	}
 	if l.PageNum < 0 || l.PageSize < 0 || l.PageSize > constants.MemoryManagementMaxPageSize {
 		return ginx.WithStack(status_error.BadRequest)
 	}
@@ -59,12 +52,10 @@ func (l *ListTimeline) Validate(*gin.Context) error {
 
 // Output 返回记忆变更时间线分页。
 func (l *ListTimeline) Output(ctx *gin.Context) (interface{}, error) {
-	memoryContext, err := visibleScope(ctx, l.WakerID, l.Scope, l.ProjectID)
-	if err != nil {
+	if _, err := partnerMemoryContext(ctx, l.WakerID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	ownerID := scopeID(l.Scope, memoryContext)
-	page, err := global.MemoryService.ListTimeline(ctx, internalmemory.ListFilter{Scope: l.Scope, ScopeID: ownerID, Query: l.Query, Limit: l.PageSize, Offset: (l.PageNum - 1) * l.PageSize})
+	page, err := global.MemoryService.ListTimeline(ctx, internalmemory.ListFilter{PartnerID: l.WakerID, Query: l.Query, Limit: l.PageSize, Offset: (l.PageNum - 1) * l.PageSize})
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

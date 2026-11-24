@@ -61,7 +61,8 @@ describe("ConnectorCard", () => {
         />
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "安装" }));
+    expect(screen.getByText("已安装到 1 个伙伴")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "安装到伙伴" }));
     expect(install).toHaveBeenCalledOnce();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });

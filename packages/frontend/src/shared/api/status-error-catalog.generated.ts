@@ -1900,6 +1900,19 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  MCPConnectorProbeFailed: {
+    code: 50200000005,
+    en: [
+      {
+        text: "MCP connection test failed. Using the previous configuration.",
+      },
+    ],
+    zh: [
+      {
+        text: "MCP 连接测试失败，继续使用原配置",
+      },
+    ],
+  },
   MCPConnectorProtocolInvalid: {
     code: 50200000002,
     en: [
@@ -1962,6 +1975,19 @@ export const statusErrorCatalog = {
     zh: [
       {
         text: "记忆调用上下文无效或已过期",
+      },
+    ],
+  },
+  MemoryCoreBudgetExceeded: {
+    code: 40000000021,
+    en: [
+      {
+        text: "Core memories exceed 8 KiB; move some to regular memories or shorten their text",
+      },
+    ],
+    zh: [
+      {
+        text: "核心记忆已超过 8 KiB 上限，请移出部分核心记忆或缩短正文",
       },
     ],
   },

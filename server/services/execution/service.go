@@ -20,6 +20,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient/oauthrelay"
+	"github.com/JieWaZi/NeuxBot/server/internal/memory"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
@@ -121,6 +122,8 @@ type service struct {
 	systemSkillDirectory string
 	// agentBindings 提供伙伴当前普通业务能力的领域绑定。
 	agentBindings func(models.Chat, string, []string, string, string) []capability.Binding
+	// resourceManagementBindings 为已核验的本地聊天签发资源管理能力。
+	resourceManagementBindings func(models.Chat, string, func(context.Context, string) error) []capability.Binding
 	// validateIntent 在首发和续发接纳前校验领域持久约束。
 	validateIntent func(context.Context, WorkIntent) error
 	// bindWorkflowTurn 签发当前公开回合中用户明确选择或已有历史允许的工作流能力。
@@ -129,6 +132,8 @@ type service struct {
 	bindLocalWorkflowTurn func(context.Context, models.Chat, string, *workinput.WorkflowReference, string) (WorkflowTurnBinding, error)
 	// acquireTeamChatInput 将团队成员 Chat 的直接输入纳入团队聚合接纳边界。
 	acquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
+	// coreMemory 读取伙伴当前的有界核心记忆快照。
+	coreMemory func(context.Context, string) (memory.CoreSnapshot, error)
 	// accounts 为执行冻结账号并生成隔离配置。
 	accounts *aiaccount.Service
 	// threads 管理原生绑定与回合，与 journal 共用同一会话存储。
@@ -205,10 +210,14 @@ type Config struct {
 	AgentBinary string
 	// AgentBindings 按伙伴、目录与受信工作来源签发普通能力。
 	AgentBindings func(models.Chat, string, []string, string, string) []capability.Binding
+	// ResourceManagementBindings 根据当前伙伴签发技能和 MCP 管理能力，确认由宿主处理。
+	ResourceManagementBindings func(models.Chat, string, func(context.Context, string) error) []capability.Binding
 	// ValidateIntent 校验入口无关的领域接纳约束；为空时不增加额外限制。
 	ValidateIntent func(context.Context, WorkIntent) error
 	// AcquireTeamChatInput 保护团队成员直接输入，普通 Chat 通过不持锁。
 	AcquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
+	// CoreMemory 提供本地核心记忆读取；为空时跳过本轮上下文。
+	CoreMemory func(context.Context, string) (memory.CoreSnapshot, error)
 	// Accounts 管理受管账号的使用租约和配置投射。
 	Accounts *aiaccount.Service
 	// Threads 管理原生回合，与 Chat 共用会话存储。
@@ -305,13 +314,15 @@ func New(config Config) (Core, error) {
 	systemSkillDirectory := ""
 	if config.Agent != nil {
 		systemSkillDirectory, err = builtinskills.SystemDirectory(strings.TrimSpace(config.SkillDataDirectory), config.AgentBinary)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			systemSkillDirectory, err = filepath.EvalSymlinks(systemSkillDirectory)
 		}
-		systemSkillDirectory, err = filepath.EvalSymlinks(systemSkillDirectory)
 		if err != nil {
-			return nil, status_error.AgentContextStorageError
+			systemSkillDirectory = ""
+			logx.Warnf("publish optional system skill: error=%v", err)
 		}
+	}
+	if systemSkillDirectory != "" {
 		if err := builtinskills.CleanupObsoleteSystemDirectories(systemSkillDirectory); err != nil {
 			logx.Warnf("clean obsolete system skills: %v", err)
 		}
@@ -322,32 +333,34 @@ func New(config Config) (Core, error) {
 	}
 	registry := newExecutionRegistry()
 	return &service{
-		agent:                  config.Agent,
-		events:                 config.Events,
-		agentEndpoint:          config.AgentEndpoint,
-		systemSkillDirectory:   systemSkillDirectory,
-		agentBindings:          config.AgentBindings,
-		validateIntent:         config.ValidateIntent,
-		bindWorkflowTurn:       config.BindWorkflowTurn,
-		bindLocalWorkflowTurn:  config.BindLocalWorkflowTurn,
-		accounts:               config.Accounts,
-		acquireTeamChatInput:   config.AcquireTeamChatInput,
-		threads:                config.Threads,
-		resolveAccount:         config.ResolveAccount,
-		runtimeSummaries:       slices.Clone(config.RuntimeSummaries),
-		journal:                config.Journal,
-		dormantChats:           config.DormantChats,
-		wakerController:        config.Wakers,
-		profileController:      config.Profiles,
-		onboardingTransactions: config.OnboardingTransactions,
-		onboardingCommands:     config.OnboardingCommands,
-		projectController:      config.Projects,
-		skillController:        config.Skills,
-		pluginContents:         config.PluginContents,
-		pluginInstallations:    config.PluginInstallations,
-		pluginHostedOAuth:      config.PluginHostedOAuth,
-		pluginOAuthRelay:       config.PluginOAuthRelay,
-		pluginController:       config.Plugins, pluginLauncher: config.PluginLauncher,
+		agent:                      config.Agent,
+		events:                     config.Events,
+		agentEndpoint:              config.AgentEndpoint,
+		systemSkillDirectory:       systemSkillDirectory,
+		agentBindings:              config.AgentBindings,
+		resourceManagementBindings: config.ResourceManagementBindings,
+		coreMemory:                 config.CoreMemory,
+		validateIntent:             config.ValidateIntent,
+		bindWorkflowTurn:           config.BindWorkflowTurn,
+		bindLocalWorkflowTurn:      config.BindLocalWorkflowTurn,
+		accounts:                   config.Accounts,
+		acquireTeamChatInput:       config.AcquireTeamChatInput,
+		threads:                    config.Threads,
+		resolveAccount:             config.ResolveAccount,
+		runtimeSummaries:           slices.Clone(config.RuntimeSummaries),
+		journal:                    config.Journal,
+		dormantChats:               config.DormantChats,
+		wakerController:            config.Wakers,
+		profileController:          config.Profiles,
+		onboardingTransactions:     config.OnboardingTransactions,
+		onboardingCommands:         config.OnboardingCommands,
+		projectController:          config.Projects,
+		skillController:            config.Skills,
+		pluginContents:             config.PluginContents,
+		pluginInstallations:        config.PluginInstallations,
+		pluginHostedOAuth:          config.PluginHostedOAuth,
+		pluginOAuthRelay:           config.PluginOAuthRelay,
+		pluginController:           config.Plugins, pluginLauncher: config.PluginLauncher,
 		connectorController: config.Connectors,
 		runtimeEnvironments: config.RuntimeEnvironments,
 		skillDataDirectory:  strings.TrimSpace(config.SkillDataDirectory),

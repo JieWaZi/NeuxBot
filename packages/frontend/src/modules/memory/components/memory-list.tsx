@@ -1,18 +1,23 @@
 import { localizedDateTimeFormat } from "@/shared/i18n/format";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { useTranslation } from "react-i18next";
 
 import type { MemoryResource } from "../model/types";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { EmptyState } from "@/shared/ui/empty-state";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
 type Props = {
   deleting?: boolean;
   items: MemoryResource[];
   onDelete: (memory: MemoryResource) => void;
   onEdit: (memory: MemoryResource) => void;
-  scopeName: (memory: MemoryResource) => string;
+  changingId?: string;
+  pending?: boolean;
+  error?: unknown;
+  onToggleCore: (memory: MemoryResource) => void;
 };
 
 export function MemoryList({
@@ -20,19 +25,24 @@ export function MemoryList({
   items,
   onDelete,
   onEdit,
-  scopeName,
+  changingId,
+  pending,
+  error,
+  onToggleCore,
 }: Props) {
   const { t } = useTranslation("memory");
 
   return (
-    <ol>
+    <ol className="@container/memory-list">
       {items.map((memory, index) => {
         const { description, title } = splitMemoryContent(memory.content);
         const first = index === 0;
         const last = index === items.length - 1;
+        const coreLabel = t(memory.core ? "setRegular" : "setCore");
+        const CoreIcon = memory.core ? PinOff : Pin;
         return (
           <li
-            className="relative grid grid-cols-[20px_minmax(6.5rem,auto)_minmax(0,1fr)_auto] items-start gap-x-4 pb-6 last:pb-0"
+            className="relative grid grid-cols-[20px_minmax(0,1fr)_auto] items-start gap-x-2 pb-6 last:pb-0 @min-[36rem]/memory-list:grid-cols-[20px_minmax(6.5rem,auto)_minmax(0,1fr)_auto] @min-[36rem]/memory-list:gap-x-4"
             key={memory.id}
           >
             {items.length > 1 ? (
@@ -48,7 +58,7 @@ export function MemoryList({
             <div className="relative z-10 flex justify-center pt-1.5">
               <span className="bg-success size-2 rounded-full" />
             </div>
-            <time className="flex items-baseline gap-x-2">
+            <time className="flex flex-wrap items-baseline gap-x-2">
               <span className="type-label font-medium">
                 {formatMemoryDate(memory.updatedAt ?? memory.createdAt)}
               </span>
@@ -56,26 +66,43 @@ export function MemoryList({
                 {formatMemoryWeekday(memory.updatedAt ?? memory.createdAt)}
               </span>
             </time>
-            <article className="min-w-0">
-              <h3 className="type-label font-medium">{title}</h3>
+            <article className="col-start-2 col-end-4 row-start-2 min-w-0 @min-[36rem]/memory-list:col-start-3 @min-[36rem]/memory-list:row-start-1">
+              <h3 className="type-label font-medium break-words">{title}</h3>
               {description ? (
-                <p className="text-muted-foreground type-body mt-1 whitespace-pre-wrap">
+                <p className="text-muted-foreground type-body mt-1 break-words whitespace-pre-wrap">
                   {description}
                 </p>
               ) : null}
-              <p className="text-muted-foreground type-caption mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span>
-                  {t("list.scope")} {scopeName(memory)}
-                </span>
-                <span>
-                  {t("list.source")}{" "}
-                  {memory.sourceRunId
+              <p className="text-muted-foreground type-caption mt-2">
+                {t("list.source")}{" "}
+                {memory.source === "review"
+                  ? t("list.createdByReview")
+                  : memory.source === "mcp"
                     ? t("list.createdByMcp")
                     : t("list.createdManually")}
-                </span>
               </p>
+              {changingId === memory.id && error ? (
+                <p role="alert" className="text-destructive type-body mt-2">
+                  {localApiErrorMessage(error, t("coreChangeFailed"))}
+                </p>
+              ) : null}
             </article>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="col-start-3 row-start-1 flex shrink-0 items-center gap-1 @min-[36rem]/memory-list:col-start-4">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    aria-label={coreLabel}
+                    aria-disabled={pending || !memory.id}
+                    data-memory-core-action={memory.id}
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => onToggleCore(memory)}
+                  >
+                    <CoreIcon />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{coreLabel}</TooltipContent>
+              </Tooltip>
               <Button
                 aria-label={t("editAction")}
                 size="icon-sm"

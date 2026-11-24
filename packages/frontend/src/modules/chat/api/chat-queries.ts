@@ -35,7 +35,10 @@ import { useEffect } from "react";
 import { clearChatLastActiveIfMatches } from "@/shared/lib/chat-navigation";
 import { refreshQueryFromEvent } from "@/shared/api/use-query-events";
 
-import { getChatQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
+import {
+  getChatQueryKey,
+  listChatSkillSuggestionsQueryKey,
+} from "@/shared/api/generated/@tanstack/react-query.gen";
 import { listChatMessages, listChats } from "@/shared/api/generated/sdk.gen";
 import type {
   GetChatResponse,
@@ -62,6 +65,12 @@ type ChatMessageHistory = InfiniteData<
 > & {
   deliverySequence?: number;
 };
+
+function invalidateResourceTimeline(queryClient: QueryClient, chatId: string) {
+  void queryClient.invalidateQueries({
+    queryKey: listChatSkillSuggestionsQueryKey({ path: { chatId } }),
+  });
+}
 
 import { chatListKey } from "@/shared/api/chat-list-key";
 export { chatListKey };
@@ -125,6 +134,9 @@ export function chatMessageSource(
     reconcile: async (signal) => {
       if (!chatId) return undefined;
       const key = chatMessagesKey(chatId);
+      const before =
+        queryClient.getQueryData<ChatMessageHistory>(key)?.pages[0]
+          ?.latestSequence ?? 0;
       await refreshQueryFromEvent(
         queryClient,
         key,
@@ -136,10 +148,11 @@ export function chatMessageSource(
         0,
         signal,
       );
-      return (
+      const after =
         queryClient.getQueryData<InfiniteData<ListChatMessagesResponse>>(key)
-          ?.pages[0]?.latestSequence ?? 0
-      );
+          ?.pages[0]?.latestSequence ?? 0;
+      if (after > before) invalidateResourceTimeline(queryClient, chatId);
+      return after;
     },
   };
 }
@@ -157,6 +170,7 @@ export function mergeChatHistoryEvents(
   let sequence = head.latestSequence ?? 0;
   let deliverySequence = current.deliverySequence;
   let forkLatestExecutionId = head.forkLatestExecutionId;
+  let resourceChanged = false;
   const updates = new Map<string, ChatMessage>();
   const appendable = new Set<string>();
   for (const event of events) {
@@ -166,6 +180,8 @@ export function mergeChatHistoryEvents(
       return undefined;
     if (next <= sequence) continue;
     sequence = next;
+    if (event.type === "skill.changed" || event.type === "connector.changed")
+      resourceChanged = true;
     const delivery = event.type === "execution.delivery";
     if (delivery) deliverySequence = next;
     if (event.fileChanges) {
@@ -237,6 +253,7 @@ export function mergeChatHistoryEvents(
         : page,
     ),
   });
+  if (resourceChanged) invalidateResourceTimeline(queryClient, chatId);
   return sequence;
 }
 

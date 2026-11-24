@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -15,6 +16,9 @@ func (g *GetMemoryStatus) Path() string { return "/status" }
 
 // Output 返回记忆服务状态。
 func (g *GetMemoryStatus) Output(ctx *gin.Context) (interface{}, error) {
+	if global.MemoryService == nil {
+		return nil, ginx.WithStack(status_error.MemoryServiceUnavailable)
+	}
 	status, err := global.MemoryService.Status(ctx)
 	if err != nil {
 		return nil, ginx.WithStack(err)

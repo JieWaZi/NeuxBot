@@ -4,7 +4,7 @@ import { Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { useNavigate } from "react-router-dom";
-import { PartnerPicker } from "@/modules/plugin";
+import { PartnerPicker } from "@/modules/waker";
 import {
   getPluginOptions,
   listWakerSkillsOptions,

@@ -28,6 +28,8 @@ type TurnRequest struct {
 	Content []AgentContent
 	// Context holds trusted per-turn facts separate from the business input and media.
 	Context []TurnFact
+	// CoreMemory is an optional bounded snapshot offered only on verified public workbench turns.
+	CoreMemory *CoreMemoryContext
 }
 
 func validTurnInput(input TurnRequest) bool {
@@ -136,6 +138,8 @@ type Turn struct {
 	binding NativeBinding
 	// effective is the native configuration reported before prompt submission.
 	effective AgentSession
+	// freshSession indicates this native session has no earlier provider inputs.
+	freshSession bool
 	// opened indicates this Turn opened a connection that must be committed to keep it.
 	opened bool
 	// admitted records a successful durable BeforeSubmit.
@@ -239,10 +243,8 @@ func (t *Turn) runPrompt() TurnResult {
 		return res
 	}
 	t.live.start(t.ctx, t.ports.Observe)
-	run, err := client.ReservePrompt(t.ctx, AgentPromptRequest{
-		SessionID: t.binding.Session.SessionID, HostInvocationID: t.input.HostInvocationID,
-		Text: t.input.Text, Content: t.input.Content, Context: t.input.Context, BeforeSubmit: t.beforeSubmit,
-	})
+	prompt, coreMemory := t.promptRequest()
+	run, err := client.ReservePrompt(t.ctx, prompt)
 	if err != nil {
 		res.OperationError = err
 	} else {
@@ -289,6 +291,9 @@ func (t *Turn) runPrompt() TurnResult {
 		res.StorageError = errors.Join(res.StorageError, err)
 	}
 	res.DeliveryError = errors.Join(res.DeliveryError, t.live.finish(finalize))
+	if coreMemory != nil {
+		t.confirmCoreMemory(*coreMemory, res)
+	}
 	return res
 }
 

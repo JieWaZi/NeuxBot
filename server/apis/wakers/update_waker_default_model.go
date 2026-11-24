@@ -2,6 +2,7 @@ package wakers
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/global"
@@ -36,13 +37,23 @@ func (u *UpdateWakerDefaultModel) Output(ctx *gin.Context) (interface{}, error) 
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	now := time.Now().UnixMilli()
-	err = global.TransactionControllerManager.Transaction(ctx, func(tx context.Context) error {
-		if _, err := global.WakerControllerManager.Get(tx, u.WakerID); err != nil {
-			return err
-		}
-		return global.WakerControllerManager.UpdateDefaultModel(tx, u.WakerID, defaultModel, now)
-	})
+	change := func() (bool, error) {
+		changed := false
+		err := global.TransactionControllerManager.Transaction(ctx, func(tx context.Context) error {
+			waker, err := global.WakerControllerManager.Get(tx, u.WakerID)
+			if err != nil || reflect.DeepEqual(waker.DefaultModel, defaultModel) {
+				return err
+			}
+			changed = true
+			return global.WakerControllerManager.UpdateDefaultModel(tx, u.WakerID, defaultModel, time.Now().UnixMilli())
+		})
+		return changed, err
+	}
+	if global.ReviewWorker == nil {
+		_, err = change()
+	} else {
+		err = global.ReviewWorker.ChangeFollowedDefault(ctx, u.WakerID, change)
+	}
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

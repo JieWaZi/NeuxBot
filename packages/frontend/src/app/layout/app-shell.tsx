@@ -26,6 +26,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 
+import { isPartnerReviewDetail } from "@/shared/lib/partner-review-settings";
 import type { ChatRightPanel } from "@/modules/chat";
 import { listChatsOptions, getChatOptions } from "@/modules/chat";
 import {
@@ -885,8 +886,12 @@ function AppShellContent({
             tab.kind === "workspace" && tab.ownerTabId === activeRouteSceneId,
         )
       : [];
+  const partnerReviewDetail =
+    settingsSection === "agents" && isPartnerReviewDetail(searchParams);
   const pageBack =
-    settingsOpen && settingsSection === "agents" && searchParams.has("agent")
+    settingsOpen &&
+    settingsSection === "agents" &&
+    (searchParams.has("agent") || partnerReviewDetail)
       ? () => navigate("/settings/agents", { flushSync: true })
       : settingsOpen && searchParams.has("connection")
         ? () => {
@@ -1241,6 +1246,7 @@ function AppShellContent({
                 <SettingsScene
                   section={settingsSection}
                   runtimeId={searchParams.get("agent") || undefined}
+                  partnerReviewDetail={partnerReviewDetail}
                   storageOwnerId={
                     searchParams.get("files") === "wakers"
                       ? searchParams.get("owner") || undefined

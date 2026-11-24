@@ -1,4 +1,4 @@
-export type SkillSource = "git" | "zip";
+export type SkillSource = "git" | "zip" | "learned";
 
 export type SkillSummary = {
   id: string;

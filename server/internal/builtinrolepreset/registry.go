@@ -24,7 +24,6 @@ type WakerSeed struct {
 //  3. 若需要首次启动即可用的默认伙伴，在 Definition 上填写 DefaultWaker。
 var definitions = []Definition{
 	personalAssistantDefinition(),
-	wikiResearcherDefinition(),
 }
 
 func init() {

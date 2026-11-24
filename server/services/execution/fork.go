@@ -68,13 +68,7 @@ func (m *service) prepareNativeFork(ctx context.Context, input chatservice.Nativ
 		return fail(err)
 	}
 	workspace := nativeWorkspace(state, request, &preparedMessageFiles{executionWorkspaceDirectory: input.Workspace})
-	var enabledSkills []models.SkillWithState
-	if m.skillController != nil {
-		enabledSkills, err = m.skillController.ListEnabled(ctx, state.chat.WakerID)
-		if err != nil {
-			return fail(err)
-		}
-	}
+	enabledSkills, skillCatalogUnavailable := m.enabledChatSkills(ctx, state.chat.WakerID)
 	var enabledConnectors []models.MCPConnector
 	if m.connectorController != nil {
 		enabledConnectors, err = m.connectorController.ExecutionDeclarations(ctx, state.chat.WakerID)
@@ -92,11 +86,8 @@ func (m *service) prepareNativeFork(ctx context.Context, input chatservice.Nativ
 	}
 	skills, connectors := m.nativeSkills(enabledSkills), runtimeConnectorDeclarations(enabledConnectors)
 	// Ordinary forks acquire no execution-scoped grants because they submit no user input.
-	if m.agent != nil {
+	if m.agent != nil && availableSystemSkill(m.systemSkillDirectory) {
 		skill := m.systemSkillDirectory
-		if skill == "" {
-			return fail(status_error.AgentContextStorageError)
-		}
 		skills = append(skills, agent.Skill{Name: constants.AgentCLISkillName, Path: skill, Digest: filepath.Base(skill)})
 		instructions = append(instructions, agent.CapabilitiesInstructions(false, builtinskills.CLIPath(skill), skill))
 	}
@@ -112,20 +103,20 @@ func (m *service) prepareNativeFork(ctx context.Context, input chatservice.Nativ
 	if err != nil {
 		return fail(err)
 	}
-	mergedSkills, err := mergePluginSkills(skills, pluginSkills)
+	mergedSkills := mergePluginSkills(skills, pluginSkills)
+	selection.Skills, err = agent.FreezeOptionalSkills(environment.Detection, workspace, mergedSkills, selection.Plugins, state.chat.WakerID, skillCatalogUnavailable)
 	if err != nil {
 		return fail(err)
 	}
-	selection.Skills, err = agent.FreezeSkills(environment.Detection, workspace, mergedSkills, selection.Plugins)
-	if err != nil {
-		return fail(err)
-	}
-	metadata, err := json.Marshal([]any{instructions, skills, connectors, workspace, frozen.native})
+	metadata, err := json.Marshal([]any{instructions, connectors, workspace, frozen.native})
 	if err != nil {
 		return fail(status_error.RuntimeConfigurationInvalid)
 	}
 	key := sessionResourceKey(frozen.key, string(metadata), enabledConnectors)
 	thread := nativeThreadRequest(input.ChatID, workspace, instructions, request, environment, selection, key)
+	if config.EntryPoint == WorkbenchEntryPoint && !state.chat.HiddenFromWakerHistory && !state.profileOptimization {
+		thread.CoreMemoryOwner = state.chat.WakerID
+	}
 	thread.Connection.Account, err = m.resolveAccount(ctx, thread.Connection.Account, thread.Connection.Launch.ConfigHome)
 	if err != nil {
 		return fail(err)
@@ -138,7 +129,7 @@ func (m *service) prepareNativeFork(ctx context.Context, input chatservice.Nativ
 	}
 	thread.Fork = &agent.AgentForkRequest{HistoryIdentity: input.Boundary.HistoryIdentity, SourceSessionID: input.Boundary.Session.SessionID, SourceCWD: input.Workspace, Position: input.Boundary.Position, ReceiptDirectory: input.ReceiptDirectory, ReconcileOnly: input.ReconcileOnly, BeforeFork: input.BeforeFork}
 	acquire := func(ctx context.Context, selection agent.ResourceSelection) (agent.ResourceLease, error) {
-		return m.acquireNativeResources(ctx, input.ChatID, state.chat.WakerID, workspace, environment.Detection, skills, connectors, enabledConnectors, frozen, selection)
+		return m.acquireNativeResources(ctx, input.ChatID, state.chat.WakerID, workspace, environment.Detection, skills, skillCatalogUnavailable, connectors, enabledConnectors, frozen, selection)
 	}
 	return thread, acquire, nil
 }

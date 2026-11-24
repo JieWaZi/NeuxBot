@@ -275,7 +275,7 @@ func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 		before := updatedWaker
 		beforeDocument := checkAgents("  explicit AGENTS\n")
 		setDefault := UpdateWakerDefaultModel{WakerID: waker.ID}
-		for _, payload := range []string{
+		for index, payload := range []string{
 			`{"defaultModel":{"runtimeId":" codex ","accountId":" system ","model":" review-model ","reasoning":" high "}}`,
 			`{"defaultModel":{}}`,
 		} {
@@ -299,6 +299,10 @@ func TestLegacyWakerAPIResolvesAndMaintainsIndependentDocuments(t *testing.T) {
 			}) {
 				t.Fatalf("default model was not normalized: %+v", current.DefaultModel)
 			}
+			if current.DefaultModelRevision != before.DefaultModelRevision+uint64(index)+1 {
+				t.Fatalf("default model change did not advance revision: %+v", current)
+			}
+			current.DefaultModelRevision = before.DefaultModelRevision
 			current.DefaultModel, current.UpdatedAt = before.DefaultModel, before.UpdatedAt
 			if !reflect.DeepEqual(current, before) {
 				t.Fatalf("default model update overwrote other partner fields: before=%+v after=%+v", before, current)

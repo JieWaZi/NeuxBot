@@ -1,13 +1,8 @@
 package mcp
 
 import (
-	"context"
 	"strings"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -31,61 +26,9 @@ func (c *CreateWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
 
 // createConnector 复用相同资源用例，空伙伴范围表示全局库。
 func createConnector(ctx *gin.Context, c *CreateWakerConnector) (ConnectorResponse, error) {
-	wakerID := strings.TrimSpace(c.WakerID)
-	if wakerID != "" {
-		if _, err := global.WakerControllerManager.Get(ctx, wakerID); err != nil {
-			return ConnectorResponse{}, ginx.WithStack(err)
-		}
-	}
-	connector, err := newPublicConnector(c.Body)
+	created, err := connectorService().Create(ctx, strings.TrimSpace(c.WakerID), connectorDefinition(c.Body))
 	if err != nil {
 		return ConnectorResponse{}, ginx.WithStack(err)
 	}
-	connector.OwnerWakerID = wakerID
-	if wakerID != "" {
-		connector.Scope = constants.MCPConnectorScopePrivate
-	}
-	err = global.TransactionControllerManager.Transaction(
-		ctx,
-		func(transactionContext context.Context) error {
-			if err := global.MCPConnectorControllerManager.Create(
-				transactionContext,
-				connector,
-			); err != nil {
-				return err
-			}
-			if len(connector.Categories) > 0 {
-				if err := global.ResourceCategoryControllerManager.Ensure(transactionContext, constants.ResourceCategoryTypeConnector, connector.Categories); err != nil {
-					return err
-				}
-			}
-			if wakerID == "" {
-				return nil
-			}
-			return global.MCPConnectorControllerManager.UpsertWakerConnector(
-				transactionContext,
-				models.WakerMCPConnector{
-					ID:             util.New(),
-					WakerID:        wakerID,
-					MCPConnectorID: connector.ID,
-					Enabled:        true,
-					CreatedAt:      connector.CreatedAt,
-					UpdatedAt:      connector.UpdatedAt,
-				},
-			)
-		},
-	)
-	if err != nil {
-		return ConnectorResponse{}, ginx.WithStack(err)
-	}
-	notifyResourceChanged(ctx, connector.ID)
-	item, err := visibleConnector(ctx, wakerID, connector.ID)
-	if err != nil {
-		return ConnectorResponse{}, ginx.WithStack(err)
-	}
-	result, err := connectorResponse(ctx, item)
-	if err != nil {
-		return ConnectorResponse{}, ginx.WithStack(err)
-	}
-	return result, nil
+	return connectorResponse(ctx, created)
 }

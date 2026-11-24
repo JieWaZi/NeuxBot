@@ -47,13 +47,13 @@ import (
 func TestNativeTurnPromptPreservesBusinessReferences(t *testing.T) {
 	turn := nativePromptFixture()
 	text := turn.prompt()
-	for _, want := range []string{"review this", "report.csv", "/tmp/report.csv", "main.go", "return 42", "search-guide", "docs-mcp"} {
+	for _, want := range []string{"review this", "report.csv", "/tmp/report.csv", "main.go", "return 42", "search-guide"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("prompt lost %q: %s", want, text)
 		}
 	}
-	if strings.Contains(text, "previous answer") {
-		t.Fatalf("consumer seeded history independently: %s", text)
+	if !strings.Contains(text, `{"path":"go.mod"}`) || strings.Contains(text, "previous answer") {
+		t.Fatalf("native input includes unnecessary history or file fields: %s", text)
 	}
 }
 
@@ -90,9 +90,9 @@ func nativePromptFixture() recordedRun {
 		Message: agent.Message{
 			Text:           "review this",
 			Attachments:    []agent.Attachment{{Name: "report.csv", Path: "artifacts/report.csv", RuntimePath: "/tmp/report.csv"}},
-			CodeReferences: []agent.CodeReference{{Path: "main.go", StartLine: 2, EndLine: 2, Content: "return 42"}},
+			CodeReferences: []agent.CodeReference{{Path: "main.go", StartLine: 2, EndLine: 2, Content: "return 42"}, {Path: "go.mod"}},
 		},
-		SelectedSkills: []string{"search-guide"}, SelectedConnectors: []string{"docs-mcp"},
+		SelectedSkills: []string{"search-guide"},
 	}
 }
 
@@ -525,14 +525,17 @@ func TestNativeProductWorkflowResumesAfterToolConnectionChanges(t *testing.T) {
 	}
 }
 
-func TestNativeProductLocalWorkflowKeepsStableInstructionsOutOfUserTurns(t *testing.T) {
+func TestNativeProductLocalWorkflowSendsOnlyCurrentSelection(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
 	core, _, store, closeRuntime := fixture.open()
 	defer closeRuntime()
-	core.(*service).bindLocalWorkflowTurn = func(_ context.Context, _ models.Chat, _ string, selected *workinput.WorkflowReference, _ string) (WorkflowTurnBinding, error) {
-		bound := WorkflowTurnBinding{Capability: &ToolCapability{ID: "workflow.local"}, DeveloperInstruction: agent.WorkflowLocalInstructions}
+	manager, tools := core.(*service), agentPreparationFixture(t)
+	manager.agent, manager.agentEndpoint, manager.systemSkillDirectory = tools.agent, tools.agentEndpoint, tools.systemSkillDirectory
+	workflowBinding := agentPreparationBinding(t, "workflow.runs.start")
+	manager.bindLocalWorkflowTurn = func(_ context.Context, _ models.Chat, _ string, selected *workinput.WorkflowReference, _ string) (WorkflowTurnBinding, error) {
+		bound := WorkflowTurnBinding{Capability: &ToolCapability{ID: "workflow.local", Bindings: []capability.Binding{workflowBinding}}}
 		if selected != nil {
 			bound.Reference = &workinput.WorkflowReference{ID: selected.ID, RevisionID: "selected-v1"}
 		}
@@ -572,8 +575,9 @@ func TestNativeProductLocalWorkflowKeepsStableInstructionsOutOfUserTurns(t *test
 		switch {
 		case strings.Contains(line, `"method":"thread/start"`):
 			starts++
-			if !strings.Contains(line, agent.WorkflowLocalInstructions) || !strings.Contains(line, `"developerInstructions"`) {
-				t.Fatal("Codex thread did not receive the stable workflow rules")
+			if !strings.Contains(line, `"developerInstructions"`) || !strings.Contains(line, "bot_capabilities") ||
+				strings.Contains(line, "Follow the user's request to read, edit, or run a workflow") || strings.Contains(line, "workflow.source.save receipt proves saving") {
+				t.Fatal("ordinary chat must keep its tools without workflow-specific instructions")
 			}
 		case strings.Contains(line, `"method":"turn/start"`):
 			var frame struct {

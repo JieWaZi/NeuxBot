@@ -15,4 +15,16 @@ const (
 	SkillSourceGit SkillSource = "git"
 	// SkillSourceZip 表示从 ZIP 压缩包导入的技能。
 	SkillSourceZip SkillSource = "zip"
+	// SkillSourceLearned 表示从伙伴聊天复盘学习的本地技能。
+	SkillSourceLearned SkillSource = "learned"
 )
+
+// Independent 表示此来源可以在全局独立技能库中管理。
+func (source SkillSource) Independent() bool {
+	return source == SkillSourceGit || source.RevisableByLearning()
+}
+
+// RevisableByLearning 表示此本地来源允许发布学习修订。
+func (source SkillSource) RevisableByLearning() bool {
+	return source == SkillSourceZip || source == SkillSourceLearned
+}

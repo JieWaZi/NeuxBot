@@ -29,6 +29,8 @@ type chatState struct {
 	executions map[string]*models.Execution
 	// chat 是对话身份、工作范围和当前执行状态。
 	chat models.Chat
+	// profileOptimization 是 Chat 冻结的档案优化用途。
+	profileOptimization bool
 	// createRequestID 是普通 Chat 首次发送的客户端幂等标识。
 	createRequestID string
 	// createRequestHash 是普通 Chat 首次发送规范化业务内容的摘要。
@@ -354,10 +356,11 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 			LastActivityAt:         records[0].RecordedAt,
 			UpdatedAt:              last.RecordedAt,
 		},
-		createRequestID:   strings.TrimSpace(data.ClientRequestID),
-		createRequestHash: strings.TrimSpace(data.ClientRequestHash),
-		projectSources:    append([]eventlog.ProjectSourceSnapshot(nil), data.ProjectSources...),
-		threadWorkspaceID: strings.TrimSpace(data.ThreadWorkspaceID),
+		profileOptimization: data.ProfileOptimization,
+		createRequestID:     strings.TrimSpace(data.ClientRequestID),
+		createRequestHash:   strings.TrimSpace(data.ClientRequestHash),
+		projectSources:      append([]eventlog.ProjectSourceSnapshot(nil), data.ProjectSources...),
+		threadWorkspaceID:   strings.TrimSpace(data.ThreadWorkspaceID),
 	}
 	if data.ForkConfiguration != nil {
 		state.chat.LastAccountID = data.ForkConfiguration.AccountID
@@ -870,6 +873,7 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 			return err
 		}
 		m.logStore.Forget(canonicalChatIDs)
+		m.queueReviewDeletion(canonicalChatIDs)
 		return m.cancelForksFromDeletedChats(seen)
 	}
 	// 只为仍存在的子 Chat 补发布标记，避免在清理缺失关联时重新创建日志。
@@ -1113,6 +1117,7 @@ func (m *service) deleteAggregatesAtomically(
 		retention.committed = true
 	}
 	m.logStore.Forget(canonicalChatIDs)
+	m.queueReviewDeletion(canonicalChatIDs)
 	if err := staged.Commit(); err != nil {
 		return err
 	}

@@ -50,6 +50,7 @@ export function toConnectorSummary(
     enabled: view.enabled ?? false,
     id: connector.id,
     name: connector.name,
+    ownerWakerId: connector.ownerWakerId,
     scope,
     testStatus,
     toolCount: connector.testToolCount ?? 0,

@@ -47,8 +47,8 @@ func TestLocalWorkflowToolSetSurvivesChangingSelection(t *testing.T) {
 	if unselected.Reference != nil || selected.Reference == nil || selected.Reference.RevisionID != definition.CurrentRevisionID {
 		t.Fatal("workflow turns must retain only the current frozen target")
 	}
-	if unselected.DeveloperInstruction == "" || unselected.DeveloperInstruction != selected.DeveloperInstruction {
-		t.Fatal("the selected revision changed the stable workflow instructions")
+	if unselected.DeveloperInstruction != "" || selected.DeveloperInstruction != "" {
+		t.Fatal("local chat should discover workflow guidance on demand")
 	}
 	if _, err := call("workflow.runs.repeat", "repeat", map[string]any{"runId": "prior-run"}); !errors.Is(err, status_error.AgentOperationForbidden) {
 		t.Fatalf("selected turn allowed repeat: %v", err)

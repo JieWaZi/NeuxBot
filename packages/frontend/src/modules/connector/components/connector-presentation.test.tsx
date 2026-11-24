@@ -23,7 +23,7 @@ const state = vi.hoisted(() => ({
 }));
 const connectorRead = vi.hoisted(() => vi.fn());
 const pluginRead = vi.hoisted(() => vi.fn());
-vi.mock("@/modules/plugin", () => ({
+vi.mock("@/modules/waker", () => ({
   PartnerPicker: ({ onChange }: { onChange: (ids: string[]) => void }) => (
     <button onClick={() => onChange(["w1"])}>选择伙伴一</button>
   ),

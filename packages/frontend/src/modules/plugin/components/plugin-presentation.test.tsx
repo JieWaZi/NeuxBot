@@ -28,6 +28,19 @@ const state = vi.hoisted(() => ({
   sourceCommit: "commit-one",
   archiveSHA256: "archive-one",
 }));
+vi.mock("@/modules/waker/api/waker-queries", () => ({
+  listWakersOptions: () => ({
+    queryKey: ["example-partners"],
+    queryFn: async () => ({
+      resources: [{ id: "w1", name: "伙伴一" }],
+      totalSize: 1,
+    }),
+  }),
+  getWakerOptions: () => ({
+    queryKey: ["example-partner"],
+    queryFn: async () => ({ id: "w1", name: "伙伴一" }),
+  }),
+}));
 vi.mock("../api/plugin-queries", () => ({
   getPluginOptions: () => ({
     queryKey: ["example-plugin"],
@@ -54,17 +67,6 @@ vi.mock("../api/plugin-queries", () => ({
           ]
         : [],
     }),
-  }),
-  listWakersOptions: () => ({
-    queryKey: ["example-partners"],
-    queryFn: async () => ({
-      resources: [{ id: "w1", name: "伙伴一" }],
-      totalSize: 1,
-    }),
-  }),
-  getWakerOptions: () => ({
-    queryKey: ["example-partner"],
-    queryFn: async () => ({ id: "w1", name: "伙伴一" }),
   }),
 }));
 vi.mock("./deferred-plugin-dialogs", () => ({

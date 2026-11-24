@@ -73,6 +73,64 @@ func TestMCPExecutionDeclarationsExcludeDisabledSecretsAndDeferDecryption(t *tes
 	}
 }
 
+func TestMCPConnectorLibraryFindsDisabledPartnerOwnedResource(t *testing.T) {
+	ctx := t.Context()
+	store := NewMCPConnectorController(newTestDB(t))
+	owned := connectorFixture("owned-mcp", "Postman", constants.MCPConnectorScopePrivate, 2)
+	owned.OwnerWakerID = "owner"
+	owned.Environment = []models.MCPSecretDefinition{{ID: "token", Name: "TOKEN", Value: "test-value", Configured: true}}
+	if err := store.Create(ctx, owned); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertWakerConnector(ctx, models.WakerMCPConnector{ID: "relation", WakerID: "owner", MCPConnectorID: owned.ID}); err != nil {
+		t.Fatal(err)
+	}
+	items, total, err := store.ListLibrary(ctx, "postman", 0, 1)
+	if err != nil || total != 1 || len(items) != 1 || items[0].Connector.OwnerWakerID != "owner" {
+		t.Fatalf("owned connector missing from library: total=%d items=%d error=%v", total, len(items), err)
+	}
+	if secret := items[0].Connector.Environment[0]; !secret.Configured || secret.Value != "" {
+		t.Fatal("library listing should report configured state without decrypting credentials")
+	}
+	if item, err := store.GetForWaker(ctx, "owner", owned.ID); err != nil || item.Enabled {
+		t.Fatalf("owner cannot read the disabled connector: enabled=%t error=%v", item.Enabled, err)
+	}
+	if _, err := store.GetForWaker(ctx, "other", owned.ID); err == nil {
+		t.Fatal("library listing expanded another partner's connector access")
+	}
+}
+
+func TestMCPConnectorControllerKeepsExplicitConfigurationRevision(t *testing.T) {
+	const createdAt, updatedAt = int64(1000), int64(2000)
+	db := newTestDB(t).Session(&gorm.Session{NowFunc: func() time.Time { return time.UnixMilli(3000) }})
+	store := NewMCPConnectorController(db)
+	ctx := t.Context()
+	connector := connectorFixture("revision-test", "Original", constants.MCPConnectorScopePrivate, createdAt)
+	if err := store.Create(ctx, connector); err != nil {
+		t.Fatal(err)
+	}
+	current, err := store.Get(ctx, connector.ID)
+	if err != nil || current.UpdatedAt != createdAt {
+		t.Fatalf("created revision: %d %v", current.UpdatedAt, err)
+	}
+	current.Name, current.UpdatedAt = "Edited", updatedAt
+	if err := store.Update(ctx, current); err != nil {
+		t.Fatal(err)
+	}
+	current, err = store.Get(ctx, connector.ID)
+	if err != nil || current.UpdatedAt != updatedAt {
+		t.Fatalf("updated revision: %d %v", current.UpdatedAt, err)
+	}
+	current.TestStatus = constants.MCPTestStatusSucceeded
+	if err := store.UpdateTestSnapshot(ctx, current, updatedAt); err != nil {
+		t.Fatal(err)
+	}
+	current, err = store.Get(ctx, connector.ID)
+	if err != nil || current.UpdatedAt != updatedAt || current.TestStatus != constants.MCPTestStatusSucceeded {
+		t.Fatalf("test snapshot altered configuration revision: %+v %v", current, err)
+	}
+}
+
 func TestMCPConnectorControllerUsesScopeDefaultsAndExplicitState(t *testing.T) {
 	controller := NewMCPConnectorController(newTestDB(t))
 	ctx := context.Background()

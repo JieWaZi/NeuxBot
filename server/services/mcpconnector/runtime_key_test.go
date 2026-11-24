@@ -1,4 +1,4 @@
-package mcp
+package mcpconnector
 
 import (
 	"strings"

@@ -30,6 +30,8 @@ func (v ChatEventType) String() string {
 		return "chat.retention_protection_updated"
 	case ChatEventTypeTitleUpdated:
 		return "chat.title_updated"
+	case ChatEventTypeManagedConnectorChanged:
+		return "connector.changed"
 	case ChatEventTypeElicitationRequested:
 		return "elicitation.requested"
 	case ChatEventTypeElicitationResolved:
@@ -52,6 +54,8 @@ func (v ChatEventType) String() string {
 		return "message.user_created"
 	case ChatEventTypeRuntimeEvent:
 		return "runtime.event"
+	case ChatEventTypeManagedSkillChanged:
+		return "skill.changed"
 	case ChatEventTypeToolMessage:
 		return "tool.message"
 	case ChatEventTypeFileChanges:
@@ -78,6 +82,8 @@ func (v ChatEventType) Label() string {
 		return "ChatEventTypeRetentionProtectionUpdated 表示用户已更新会话保留例外。"
 	case ChatEventTypeTitleUpdated:
 		return "ChatEventTypeTitleUpdated 表示 Chat 标题已经更新。"
+	case ChatEventTypeManagedConnectorChanged:
+		return "ChatEventTypeManagedConnectorChanged 记录聊天已提交的连接器变更。"
 	case ChatEventTypeElicitationRequested:
 		return "ChatEventTypeElicitationRequested 表示 Runtime 正在等待用户提交结构化输入。"
 	case ChatEventTypeElicitationResolved:
@@ -100,6 +106,8 @@ func (v ChatEventType) Label() string {
 		return "ChatEventTypeUserMessageCreated 表示一条用户消息已经持久化。"
 	case ChatEventTypeRuntimeEvent:
 		return "ChatEventTypeRuntimeEvent 表示仅用于实时投影、不会进入权威日志的 Runtime 增量。"
+	case ChatEventTypeManagedSkillChanged:
+		return "ChatEventTypeManagedSkillChanged 记录聊天已提交的技能库变更。"
 	case ChatEventTypeToolMessage:
 		return "ChatEventTypeToolMessage 表示 Runtime 已完整形成一条工具结果执行消息。"
 	case ChatEventTypeFileChanges:
@@ -109,7 +117,7 @@ func (v ChatEventType) Label() string {
 }
 
 func (v ChatEventType) Values() []enum.Enum {
-	return []enum.Enum{ChatEventTypeUnspecified, ChatEventTypeAgentCommandCommitted, ChatEventTypeApprovalRequested, ChatEventTypeApprovalResolved, ChatEventTypeAssistantMessage, ChatEventTypeCreated, ChatEventTypeRetentionProtectionUpdated, ChatEventTypeTitleUpdated, ChatEventTypeElicitationRequested, ChatEventTypeElicitationResolved, ChatEventTypeExecutionCanceled, ChatEventTypeExecutionCompleted, ChatEventTypeExecutionCreated, ChatEventTypeExecutionDelivery, ChatEventTypeExecutionFailed, ChatEventTypeExecutionStarted, ChatEventTypeMessageInherited, ChatEventTypeUserMessageCreated, ChatEventTypeRuntimeEvent, ChatEventTypeToolMessage, ChatEventTypeFileChanges}
+	return []enum.Enum{ChatEventTypeUnspecified, ChatEventTypeAgentCommandCommitted, ChatEventTypeApprovalRequested, ChatEventTypeApprovalResolved, ChatEventTypeAssistantMessage, ChatEventTypeCreated, ChatEventTypeRetentionProtectionUpdated, ChatEventTypeTitleUpdated, ChatEventTypeManagedConnectorChanged, ChatEventTypeElicitationRequested, ChatEventTypeElicitationResolved, ChatEventTypeExecutionCanceled, ChatEventTypeExecutionCompleted, ChatEventTypeExecutionCreated, ChatEventTypeExecutionDelivery, ChatEventTypeExecutionFailed, ChatEventTypeExecutionStarted, ChatEventTypeMessageInherited, ChatEventTypeUserMessageCreated, ChatEventTypeRuntimeEvent, ChatEventTypeManagedSkillChanged, ChatEventTypeToolMessage, ChatEventTypeFileChanges}
 }
 
 func (v ChatEventType) Type() string {
@@ -118,7 +126,7 @@ func (v ChatEventType) Type() string {
 
 func (v ChatEventType) MarshalText() ([]byte, error) {
 	switch v {
-	case ChatEventTypeUnspecified, ChatEventTypeAgentCommandCommitted, ChatEventTypeApprovalRequested, ChatEventTypeApprovalResolved, ChatEventTypeAssistantMessage, ChatEventTypeCreated, ChatEventTypeRetentionProtectionUpdated, ChatEventTypeTitleUpdated, ChatEventTypeElicitationRequested, ChatEventTypeElicitationResolved, ChatEventTypeExecutionCanceled, ChatEventTypeExecutionCompleted, ChatEventTypeExecutionCreated, ChatEventTypeExecutionDelivery, ChatEventTypeExecutionFailed, ChatEventTypeExecutionStarted, ChatEventTypeMessageInherited, ChatEventTypeUserMessageCreated, ChatEventTypeRuntimeEvent, ChatEventTypeToolMessage, ChatEventTypeFileChanges:
+	case ChatEventTypeUnspecified, ChatEventTypeAgentCommandCommitted, ChatEventTypeApprovalRequested, ChatEventTypeApprovalResolved, ChatEventTypeAssistantMessage, ChatEventTypeCreated, ChatEventTypeRetentionProtectionUpdated, ChatEventTypeTitleUpdated, ChatEventTypeManagedConnectorChanged, ChatEventTypeElicitationRequested, ChatEventTypeElicitationResolved, ChatEventTypeExecutionCanceled, ChatEventTypeExecutionCompleted, ChatEventTypeExecutionCreated, ChatEventTypeExecutionDelivery, ChatEventTypeExecutionFailed, ChatEventTypeExecutionStarted, ChatEventTypeMessageInherited, ChatEventTypeUserMessageCreated, ChatEventTypeRuntimeEvent, ChatEventTypeManagedSkillChanged, ChatEventTypeToolMessage, ChatEventTypeFileChanges:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -143,6 +151,8 @@ func (v *ChatEventType) UnmarshalText(text []byte) error {
 		*v = ChatEventTypeRetentionProtectionUpdated
 	case ChatEventTypeTitleUpdated.String():
 		*v = ChatEventTypeTitleUpdated
+	case ChatEventTypeManagedConnectorChanged.String():
+		*v = ChatEventTypeManagedConnectorChanged
 	case ChatEventTypeElicitationRequested.String():
 		*v = ChatEventTypeElicitationRequested
 	case ChatEventTypeElicitationResolved.String():
@@ -165,6 +175,8 @@ func (v *ChatEventType) UnmarshalText(text []byte) error {
 		*v = ChatEventTypeUserMessageCreated
 	case ChatEventTypeRuntimeEvent.String():
 		*v = ChatEventTypeRuntimeEvent
+	case ChatEventTypeManagedSkillChanged.String():
+		*v = ChatEventTypeManagedSkillChanged
 	case ChatEventTypeToolMessage.String():
 		*v = ChatEventTypeToolMessage
 	case ChatEventTypeFileChanges.String():

@@ -1,48 +1,33 @@
-import {
-  PageAction,
-  ResourcePageHeader,
-  ResourcePageSearchField,
-  ResourcePageSurface,
-  ResourcePageToolbar,
-} from "@/shared/ui/resource-page";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { LoaderCircle, Plus, Settings } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+
+import {
+  deleteMemoryMutation,
+  invalidatePartnerMemory,
+  listMemoriesOptions,
+  removeMemoryFromGroup,
+  setMemoryCoreMutation,
+  usePartnerMemoryEvents,
+} from "../api/memory-queries";
+import { MemoryFormDialog } from "../components/memory-form-dialog";
+import { MemoryGroup } from "../components/memory-group";
+import { useDebouncedValue } from "../hooks/use-debounced-value";
+import { useImeSafeDraft } from "../hooks/use-ime-safe-draft";
+import type { MemoryResource } from "../model/types";
+import { WakerDetailLayout } from "@/modules/waker";
 import {
   localApiErrorMessage,
   withLocalErrorMutation,
   withLocalErrorSurface,
 } from "@/shared/api/local-error-surface";
 import {
-  FolderClosed,
-  LoaderCircle,
-  Plus,
-  Settings,
-  UserRound,
-} from "lucide-react";
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-import { useParams, useSearchParams } from "react-router-dom";
-
-import {
-  deleteMemoryMutation,
-  invalidateMemoryQueries,
-  listMemoriesOptions,
-} from "../api/memory-queries";
-import { MemoryFormDialog } from "../components/memory-form-dialog";
-import {
-  MemoryList,
-  MemoryListEmpty,
-  MemoryListError,
-} from "../components/memory-list";
-import { MemorySettingsDialog } from "../components/memory-settings-dialog";
-import { useDebouncedValue } from "../hooks/use-debounced-value";
-import { useImeSafeDraft } from "../hooks/use-ime-safe-draft";
-import type { MemoryResource, MemoryScope } from "../model/types";
-import { listProjectsOptions } from "@/modules/project";
-import { WakerDetailLayout } from "@/modules/waker";
-import {
   localDateRangeBounds,
   normalizeDateInput,
 } from "@/shared/lib/local-date";
+import { partnerReviewSettingsHref } from "@/shared/lib/partner-review-settings";
 import { Button } from "@/shared/ui/button";
 import { DateRangePicker } from "@/shared/ui/date-range-picker";
 import {
@@ -52,92 +37,121 @@ import {
   DialogFooter,
 } from "@/shared/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/shared/ui/dropdown-menu";
-import { Skeleton } from "@/shared/ui/skeleton";
+  PageAction,
+  ResourcePageHeader,
+  ResourcePageSearchField,
+  ResourcePageSurface,
+  ResourcePageToolbar,
+} from "@/shared/ui/resource-page";
 
-type ScopeTarget = {
-  projectId: string;
-  projectName: string;
-  scope: MemoryScope;
-};
+const PAGE_SIZE = 20;
 
-type FormTarget = ScopeTarget & {
-  memory: MemoryResource | null;
-};
-
-const PAGE_STEP = 20;
+function readPage(value: string | null) {
+  const page = Number(value);
+  return Number.isSafeInteger(page) && page >= 1 ? page : 1;
+}
 
 export function WakerMemoryPage() {
-  const { t } = useTranslation("memory");
   const { wakerId = "" } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const queryClient = useQueryClient();
-  const query = searchParams.get("search") ?? "";
-  const debouncedQuery = useDebouncedValue(query);
-  const from = normalizeDateInput(searchParams.get("from"));
-  const to = normalizeDateInput(searchParams.get("to"));
-  const range = localDateRangeBounds(from, to);
-  const [visibleCount, setVisibleCount] = useState(PAGE_STEP);
-  const [formTarget, setFormTarget] = useState<FormTarget | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<MemoryResource | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  return <PartnerMemory key={wakerId} wakerId={wakerId} />;
+}
 
-  const projectsQuery = useQuery({
-    ...listProjectsOptions({
-      path: { wakerId },
-      query: { pageNum: 1, pageSize: 100 },
-    }),
-    enabled: Boolean(wakerId),
-  });
-  const projects = projectsQuery.data?.resources ?? [];
-  const memories = useQuery({
+function PartnerMemory({ wakerId }: { wakerId: string }) {
+  const { t } = useTranslation("memory");
+  const [params, setParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const search = params.get("search") ?? "";
+  const debouncedSearch = useDebouncedValue(search);
+  const from = normalizeDateInput(params.get("from"));
+  const to = normalizeDateInput(params.get("to"));
+  const range = localDateRangeBounds(from, to);
+  const corePage = readPage(params.get("corePage"));
+  const regularPage = readPage(params.get("regularPage"));
+  const queryEnabled = Boolean(wakerId) && range.valid;
+  const sharedQuery = {
+    pageSize: PAGE_SIZE,
+    query: debouncedSearch || undefined,
+    updatedAtEnd: range.end,
+    updatedAtStart: range.start,
+  };
+  const core = useQuery({
     ...listMemoriesOptions(
       withLocalErrorSurface({
         path: { wakerId },
-        query: {
-          pageNum: 1,
-          pageSize: visibleCount,
-          query: debouncedQuery || undefined,
-          scope: "all",
-          updatedAtEnd: range.end,
-          updatedAtStart: range.start,
-        },
+        query: { ...sharedQuery, core: true, pageNum: corePage },
       }),
     ),
-    enabled: Boolean(wakerId) && range.valid,
-    placeholderData: (previous) => previous,
+    enabled: queryEnabled,
+  });
+  const regular = useQuery({
+    ...listMemoriesOptions(
+      withLocalErrorSurface({
+        path: { wakerId },
+        query: { ...sharedQuery, core: false, pageNum: regularPage },
+      }),
+    ),
+    enabled: queryEnabled,
+  });
+  usePartnerMemoryEvents(wakerId);
+
+  const [formTarget, setFormTarget] = useState<
+    MemoryResource | null | undefined
+  >(undefined);
+  const [deleteTarget, setDeleteTarget] = useState<MemoryResource | null>(null);
+  const [focusTarget, setFocusTarget] = useState<{
+    core: boolean;
+    id: string;
+  }>();
+  const coreGroup = useRef<HTMLElement>(null);
+  const regularGroup = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (!focusTarget) return;
+    const group = (focusTarget.core ? coreGroup : regularGroup).current;
+    const action = Array.from(
+      group?.querySelectorAll<HTMLButtonElement>("[data-memory-core-action]") ??
+        [],
+    ).find((button) => button.dataset.memoryCoreAction === focusTarget.id);
+    (action ?? group?.querySelector("h2"))?.focus();
+  }, [focusTarget]);
+
+  const setCore = useMutation({
+    ...withLocalErrorMutation(setMemoryCoreMutation()),
+    onSuccess: async (_data, { body, path }) => {
+      await removeMemoryFromGroup(
+        queryClient,
+        path.wakerId,
+        path.memoryId,
+        !body.core,
+      );
+      await invalidatePartnerMemory(queryClient, path.wakerId);
+      setFocusTarget({ core: body.core, id: path.memoryId });
+    },
   });
   const deleteMemory = useMutation({
     ...withLocalErrorMutation(deleteMemoryMutation()),
-    onSuccess: () => invalidateMemoryQueries(queryClient),
+    onSuccess: (_data, { path }) =>
+      invalidatePartnerMemory(queryClient, path.wakerId),
   });
-
-  const items = memories.data?.resources ?? [];
-  const total = memories.data?.totalSize ?? 0;
-
-  const scopeNameOf = (memory: MemoryResource) => {
-    if (memory.scope !== "project") return t("scope.partner");
-    const project = projects.find((item) => item.id === memory.scopeId);
-    return project?.name || t("scope.unnamedProject");
+  const toggleCore = (memory: MemoryResource) => {
+    if (!memory.id || setCore.isPending) return;
+    setCore.mutate({
+      path: { wakerId, memoryId: memory.id },
+      body: { core: !memory.core },
+    });
   };
 
-  const targetOf = (memory: MemoryResource): ScopeTarget =>
-    memory.scope === "project"
-      ? {
-          projectId: memory.scopeId ?? "",
-          projectName: scopeNameOf(memory),
-          scope: "project",
-        }
-      : { projectId: "", projectName: t("scope.partner"), scope: "partner" };
-
+  const coreItems = core.data?.resources ?? [];
+  const showCoreGroup =
+    coreItems.length > 0 || (core.data?.totalSize ?? 0) > 0 || core.isError;
+  const coreIds = new Set(coreItems.map(({ id }) => id));
+  const regularItems = (regular.data?.resources ?? []).filter(
+    ({ id }) => !coreIds.has(id),
+  );
   const updateFilters = (updates: Record<string, string>) => {
-    setVisibleCount(PAGE_STEP);
-    setSearchParams((current) => {
+    setParams((current) => {
       const next = new URLSearchParams(current);
+      next.delete("corePage");
+      next.delete("regularPage");
       for (const [key, value] of Object.entries(updates)) {
         if (value) next.set(key, value);
         else next.delete(key);
@@ -145,29 +159,30 @@ export function WakerMemoryPage() {
       return next;
     });
   };
-  const searchDraft = useImeSafeDraft(query, (value) =>
+  const searchDraft = useImeSafeDraft(search, (value) =>
     updateFilters({ search: value }),
   );
-  const hasReachedEnd = items.length > 0 && items.length >= total;
-  const memoryListFooter =
-    memories.isPending || memories.isError ? null : items.length < total ? (
-      <div className="flex justify-center">
-        <Button
-          disabled={memories.isFetching}
-          size="sm"
-          variant="ghost"
-          onClick={() => setVisibleCount((count) => count + PAGE_STEP)}
-        >
-          {memories.isFetching
-            ? t("expanding")
-            : t("expandMore", { count: PAGE_STEP })}
-        </Button>
-      </div>
-    ) : hasReachedEnd ? (
-      <p className="text-muted-foreground type-caption mt-4 text-center">
-        {t("noMore")}
-      </p>
-    ) : null;
+  const changePage = (key: "corePage" | "regularPage", page: number) => {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (page > 1) next.set(key, String(page));
+      else next.delete(key);
+      return next;
+    });
+  };
+  const groupActions = {
+    pending: setCore.isPending,
+    changingId: setCore.variables?.path.memoryId,
+    error: setCore.isError ? setCore.error : undefined,
+    deleting: deleteMemory.isPending,
+    onToggleCore: toggleCore,
+    onEdit: setFormTarget,
+    onDelete: (memory: MemoryResource) => {
+      deleteMemory.reset();
+      setDeleteTarget(memory);
+    },
+  };
+  const filtered = Boolean(search || from || to);
 
   return (
     <WakerDetailLayout active="memory">
@@ -175,9 +190,8 @@ export function WakerMemoryPage() {
         <ResourcePageHeader
           appearance="catalog"
           title={t("title")}
-          description={t("description")}
+          description={undefined}
         />
-
         <ResourcePageToolbar
           appearance="catalog"
           filters={
@@ -205,116 +219,65 @@ export function WakerMemoryPage() {
               <PageAction
                 appearance="catalog"
                 intent="edit"
-                className="shrink-0"
                 hitArea="comfortable"
                 aria-label={t("settingsAction")}
-                onClick={() => setSettingsOpen(true)}
+                asChild
               >
-                <Settings />
+                <Link to={partnerReviewSettingsHref(wakerId)}>
+                  <Settings />
+                </Link>
               </PageAction>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <PageAction
-                    appearance="catalog"
-                    intent="primary"
-                    className="shrink-0 whitespace-nowrap"
-                    aria-label={t("addAction")}
-                  >
-                    <Plus />
-                    {t("addAction")}
-                  </PageAction>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      setFormTarget({
-                        memory: null,
-                        projectId: "",
-                        projectName: t("scope.partner"),
-                        scope: "partner",
-                      })
-                    }
-                  >
-                    <UserRound />
-                    {t("addPartnerAction")}
-                  </DropdownMenuItem>
-                  {projects.map((project) => (
-                    <DropdownMenuItem
-                      key={project.id}
-                      onSelect={() =>
-                        setFormTarget({
-                          memory: null,
-                          projectId: project.id ?? "",
-                          projectName:
-                            project.name || t("scope.unnamedProject"),
-                          scope: "project",
-                        })
-                      }
-                    >
-                      <FolderClosed />
-                      {project.name || t("scope.unnamedProject")}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <PageAction
+                appearance="catalog"
+                intent="primary"
+                className="shrink-0 whitespace-nowrap"
+                onClick={() => setFormTarget(null)}
+              >
+                <Plus />
+                {t("addAction")}
+              </PageAction>
             </>
           }
-        >
-          <h2 className="type-body font-medium">{t("tabs.memories")}</h2>
-          <span className="text-muted-foreground type-caption">
-            {t("overview.count", { count: total })}
-          </span>
-        </ResourcePageToolbar>
+        />
 
-        <div className="mt-5">
-          {memories.isPending ? (
-            <div className="grid gap-4 py-4">
-              {Array.from({ length: 5 }, (_, index) => (
-                <Skeleton className="h-row-rich rounded-md" key={index} />
-              ))}
-            </div>
-          ) : memories.isError ? (
-            <MemoryListError
-              text={t("loadError")}
-              onRetry={() => void memories.refetch()}
+        <div className="mt-5 grid gap-6">
+          {showCoreGroup ? (
+            <MemoryGroup
+              {...groupActions}
+              sectionRef={coreGroup}
+              title={t("core.title")}
+              empty={t("manager.noResults")}
+              items={coreItems}
+              query={core}
+              page={corePage}
+              pageSize={PAGE_SIZE}
+              onPageChange={(page) => changePage("corePage", page)}
             />
-          ) : items.length ? (
-            <MemoryList
-              deleting={deleteMemory.isPending}
-              items={items}
-              scopeName={scopeNameOf}
-              onDelete={setDeleteTarget}
-              onEdit={(memory) =>
-                setFormTarget({ ...targetOf(memory), memory })
-              }
-            />
-          ) : (
-            <MemoryListEmpty
-              text={query ? t("manager.noResults") : t("empty")}
-            />
-          )}
-
-          {memoryListFooter}
+          ) : null}
+          <MemoryGroup
+            {...groupActions}
+            sectionRef={regularGroup}
+            title={t("regular.title")}
+            empty={t(filtered ? "manager.noResults" : "regular.empty")}
+            items={regularItems}
+            query={regular}
+            page={regularPage}
+            pageSize={PAGE_SIZE}
+            onPageChange={(page) => changePage("regularPage", page)}
+          />
         </div>
       </ResourcePageSurface>
 
-      {formTarget ? (
+      {formTarget !== undefined ? (
         <MemoryFormDialog
-          memory={formTarget.memory}
+          memory={formTarget}
           open
-          projectId={formTarget.projectId}
-          scope={formTarget.scope}
-          scopeName={formTarget.projectName}
           wakerId={wakerId}
           onOpenChange={(open) => {
-            if (!open) setFormTarget(null);
+            if (!open) setFormTarget(undefined);
           }}
         />
       ) : null}
-      <MemorySettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-      />
       <Dialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => {
@@ -347,18 +310,8 @@ export function WakerMemoryPage() {
               variant="danger"
               onClick={() => {
                 if (!deleteTarget?.id) return;
-                const target = targetOf(deleteTarget);
                 deleteMemory.mutate(
-                  {
-                    path: { memoryId: deleteTarget.id, wakerId },
-                    query: {
-                      projectId:
-                        target.scope === "project"
-                          ? target.projectId
-                          : undefined,
-                      scope: target.scope,
-                    },
-                  },
+                  { path: { memoryId: deleteTarget.id, wakerId } },
                   { onSuccess: () => setDeleteTarget(null) },
                 );
               }}

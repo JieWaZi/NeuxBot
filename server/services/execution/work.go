@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -93,6 +94,8 @@ type runtimeSelection struct {
 
 // pendingChat 保存新 Chat 尚未提交的身份和工作范围。
 type pendingChat struct {
+	// profileOptimization 表示该 Chat 的永久用途是修订伙伴档案。
+	profileOptimization bool
 	// hiddenFromWakerHistory 表示该 Chat 的历史由上层产品入口负责展示。
 	hiddenFromWakerHistory bool
 	// wakerID 是新 Chat 永久绑定的伙伴标识。
@@ -133,6 +136,8 @@ type pendingMessage struct {
 	message userMessage
 	// messagePlugins 仅附加到公开用户消息，不参与当前执行的插件选择。
 	messagePlugins []plugins.Snapshot
+	// entryPoint 保存宿主提供的接纳入口。
+	entryPoint string
 	// runtime 是本轮 Runtime 选择。
 	runtime runtimeSelection
 	// parentExecutionID 是编排产生的可选父执行标识。
@@ -147,6 +152,8 @@ type pendingMessage struct {
 	workflowCreationSessionID string
 	// localWorkflowTools 表示本轮使用共享本地工作流工具和连接凭据。
 	localWorkflowTools bool
+	// workflowBinding 保存接纳时解析的工具和使用规则，由实际签发的 host grant 交付。
+	workflowBinding WorkflowTurnBinding
 	// allowedAgentDomains 冻结默认软件能力的领域白名单。
 	allowedAgentDomains *[]string
 	// allowedConnectorIDs 是入口冻结的 MCP 白名单，nil 与空列表具有不同业务含义。
@@ -507,12 +514,7 @@ func (m *service) startMessage(
 		if state.isNew && request.message.Text == "" && binding.Reference != nil {
 			state.chat.Title = defaultTitle(binding.Reference.Name)
 		}
-		if binding.Capability != nil {
-			request.toolCapabilities = append(request.toolCapabilities, *binding.Capability)
-		}
-		if binding.DeveloperInstruction != "" {
-			request.supplementalInstructions = append(request.supplementalInstructions, agent.Instruction{Name: "Workflow tools", Content: binding.DeveloperInstruction})
-		}
+		request.workflowBinding = binding
 		if binding.AuthoringDefinitionID != "" {
 			request.supplementalInstructions = append(request.supplementalInstructions, agent.Instruction{Name: "Workflow authoring definition", Content: binding.AuthoringDefinitionID})
 		}
@@ -596,16 +598,7 @@ func (m *service) startMessage(
 	if m.threads == nil {
 		return AcceptedExecution{}, status_error.RuntimeUnavailable
 	}
-	var enabledSkills []models.SkillWithState
-	if m.skillController != nil {
-		enabledSkills, err = m.skillController.ListEnabled(ctx, state.chat.WakerID)
-		if err != nil {
-			return AcceptedExecution{}, err
-		}
-	}
-	if !selectedSkillsAreEnabled(request.message.SkillIDs, enabledSkills) {
-		return AcceptedExecution{}, status_error.BadRequest
-	}
+	enabledSkills, skillCatalogUnavailable := m.enabledChatSkills(ctx, state.chat.WakerID)
 	enabledConnectors := []models.MCPConnector{}
 	if m.connectorController != nil {
 		enabledConnectors, err = m.connectorController.ExecutionDeclarations(
@@ -628,7 +621,7 @@ func (m *service) startMessage(
 		return AcceptedExecution{}, err
 	}
 	return m.startNativeExecution(ctx, executionContext, state, request, executionID, userMessageID,
-		files, enabledSkills, enabledConnectors, runtimeEnvironment, frozenPlugins, &releaseReservation)
+		files, enabledSkills, skillCatalogUnavailable, enabledConnectors, runtimeEnvironment, frozenPlugins, &releaseReservation)
 
 }
 
@@ -666,6 +659,9 @@ func createRequestContent(request pendingMessage) []interface{} {
 		request.supplementalInstructions,
 		request.contextInstructions,
 		request.allowedAgentDomains,
+	}
+	if request.create.profileOptimization {
+		content = append(content, map[string]bool{"profileOptimization": true})
 	}
 	if request.runtime.Fast != nil {
 		content = append(content, map[string]any{"fast": *request.runtime.Fast})
@@ -752,6 +748,8 @@ func (m *service) replayCreateRequest(
 type messageChat struct {
 	// isNew 表示本次提交同时创建 Chat。
 	isNew bool
+	// profileOptimization 来自 Chat 的权威创建事实。
+	profileOptimization bool
 	// chat 是新建或从权威日志恢复的对话状态。
 	chat models.Chat
 	// lastExecutionID 是最近助手执行或继承消息的原续接游标。
@@ -876,11 +874,12 @@ func (m *service) resolveMessageChat(
 			return messageChat{}, err
 		}
 		state := messageChat{
-			chat:               detail.Chat,
-			lastExecutionID:    detail.LastExecutionID,
-			workspaceDirectory: detail.Chat.WorkspaceDirectory,
-			projectSources:     append([]eventlog.ProjectSourceSnapshot(nil), detail.ProjectSources...),
-			threadWorkspaceID:  strings.TrimSpace(detail.ThreadWorkspaceID),
+			profileOptimization: detail.ProfileOptimization,
+			chat:                detail.Chat,
+			lastExecutionID:     detail.LastExecutionID,
+			workspaceDirectory:  detail.Chat.WorkspaceDirectory,
+			projectSources:      append([]eventlog.ProjectSourceSnapshot(nil), detail.ProjectSources...),
+			threadWorkspaceID:   strings.TrimSpace(detail.ThreadWorkspaceID),
 		}
 		if state.workspaceDirectory == "" {
 			return messageChat{}, status_error.ChatDirectoryOwnershipInvalid
@@ -951,6 +950,7 @@ func (m *service) resolveMessageChat(
 	}
 	return messageChat{
 		isNew:                 true,
+		profileOptimization:   input.profileOptimization,
 		chat:                  chat,
 		workspaceDirectory:    workspaceDirectory,
 		additionalDirectories: resolvedWorkspace.additionalDirectories,
@@ -1441,6 +1441,7 @@ func startedMessageEvents(
 				Title:                  state.chat.Title,
 				ProjectSources:         append([]eventlog.ProjectSourceSnapshot(nil), state.projectSources...),
 				HiddenFromWakerHistory: state.chat.HiddenFromWakerHistory,
+				ProfileOptimization:    state.profileOptimization,
 			}),
 		})
 	}
@@ -1466,6 +1467,7 @@ func startedMessageEvents(
 			ExecutionID:  execution.ID,
 			InvocationID: invocationID,
 			Data: marshalData(eventlog.ExecutionCreatedData{
+				EntryPoint:        trustedWorkbenchEntryPoint(request, state),
 				RequestedAt:       request.requestedAt,
 				SteerExecutionID:  request.message.SteerExecutionID,
 				AutomaticRunID:    execution.AutomaticRunID,
@@ -1582,6 +1584,23 @@ func nativeInstructionInputs(request pendingMessage, files *preparedMessageFiles
 	return instructions, contextInstructions
 }
 
+// enabledChatSkills 区分权威空集合与暂时无法读取的伙伴技能目录。
+func (m *service) enabledChatSkills(ctx context.Context, partnerID string) ([]models.SkillWithState, bool) {
+	if m.skillController == nil {
+		return nil, false
+	}
+	skillCtx, cancel := context.WithTimeout(ctx, 25*time.Millisecond)
+	defer cancel()
+	values, err := m.skillController.ListEnabled(skillCtx, partnerID)
+	if err != nil {
+		if ctx.Err() == nil {
+			logx.Warnf("read optional chat skills: partner_id=%s error=%v", partnerID, err)
+		}
+		return nil, true
+	}
+	return values, false
+}
+
 // nativeSkills 直接读取启用技能的已发布版本位置。
 func (m *service) nativeSkills(enabledSkills []models.SkillWithState) []agent.Skill {
 	skills := make([]agent.Skill, 0, len(enabledSkills))
@@ -1617,13 +1636,24 @@ func selectedSkillNames(request pendingMessage, enabledSkills []models.SkillWith
 	return names
 }
 
-func selectedRuntimeConnectorsAreEnabled(selected []string, connectors []agent.Connector) bool {
+// selectedConnectorNames 只向模型提供所选连接器的原生服务名。
+func selectedConnectorNames(selected []string, connectors []agent.Connector) ([]string, bool) {
+	var names []string
 	for _, id := range selected {
-		if !slices.ContainsFunc(connectors, func(connector agent.Connector) bool { return connector.ID == id }) {
-			return false
+		index := slices.IndexFunc(connectors, func(connector agent.Connector) bool { return connector.ID == id })
+		if index < 0 {
+			return nil, false
+		}
+		connector := connectors[index]
+		name := connector.RuntimeKey
+		if name == "" {
+			name = connector.Name
+		}
+		if name != "" && !slices.Contains(names, name) {
+			names = append(names, name)
 		}
 	}
-	return true
+	return names, true
 }
 
 // runtimeProjectDirectories 把冻结项目来源转换为 Runtime 可理解的逻辑目录和默认落点。
@@ -1665,28 +1695,6 @@ func connectorSecretValues(
 		}
 	}
 	return result
-}
-
-func selectedSkillsAreEnabled(
-	selectedSkillIDs []string,
-	enabledSkills []models.SkillWithState,
-) bool {
-	if len(selectedSkillIDs) == 0 {
-		return true
-	}
-	enabled := make(map[string]struct{}, len(enabledSkills))
-	for _, item := range enabledSkills {
-		enabled[item.SkillPackage.ID] = struct{}{}
-	}
-	for _, skillID := range selectedSkillIDs {
-		if skillID == "" {
-			return false
-		}
-		if _, exists := enabled[skillID]; !exists {
-			return false
-		}
-	}
-	return true
 }
 
 func selectedConnectorsAreEnabled(

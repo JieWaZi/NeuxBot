@@ -369,14 +369,15 @@ func SelectedDigests(directory string, include func(string) bool) (string, strin
 }
 
 // CopyVersion 通过同文件系统 staging 原子保存一个不可变技能版本目录。
-func CopyVersion(dataDirectory string, packageID string, version string, sourceDirectory string) (string, string, error) {
+// directoryName 是技能包内唯一的版本号或版本标识。
+func CopyVersion(dataDirectory string, packageID string, directoryName string, sourceDirectory string) (string, string, error) {
 	dataDirectory = strings.TrimSpace(dataDirectory)
 	packageID = strings.TrimSpace(packageID)
-	version = strings.TrimSpace(version)
-	if dataDirectory == "" || packageID == "" || filepath.Base(packageID) != packageID || version == "" || filepath.Base(version) != version {
+	directoryName = strings.TrimSpace(directoryName)
+	if dataDirectory == "" || packageID == "" || filepath.Base(packageID) != packageID || directoryName == "" || filepath.Base(directoryName) != directoryName {
 		return "", "", status_error.SkillContentInvalid
 	}
-	relative := filepath.Join("skills", "versions", packageID, version)
+	relative := filepath.Join("skills", "versions", packageID, directoryName)
 	target := filepath.Join(dataDirectory, relative)
 	parent := filepath.Dir(target)
 	if err := os.MkdirAll(parent, 0o700); err != nil {
@@ -387,7 +388,7 @@ func CopyVersion(dataDirectory string, packageID string, version string, sourceD
 	} else if !os.IsNotExist(err) {
 		return "", "", status_error.SkillStorageError
 	}
-	staging, err := os.MkdirTemp(parent, "version-staging-"+version+"-")
+	staging, err := os.MkdirTemp(parent, "version-staging-"+directoryName+"-")
 	if err != nil {
 		return "", "", status_error.SkillStorageError
 	}

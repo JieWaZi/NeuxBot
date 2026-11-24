@@ -139,8 +139,16 @@ func migrateIndex(db *gorm.DB) error {
 	if err := db.Exec("CREATE INDEX IF NOT EXISTS " + usageTerminalIndex + " ON conversation_positions (stream, cursor) WHERE " + usageTerminalPredicate).Error; err != nil {
 		return err
 	}
-	return db.Exec("CREATE INDEX IF NOT EXISTS " + executionTerminalIndex +
-		" ON conversation_positions (stream, execution_ref, cursor) WHERE " + executionTerminalPredicate).Error
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS " + executionTerminalIndex +
+		" ON conversation_positions (stream, execution_ref, cursor) WHERE " + executionTerminalPredicate).Error; err != nil {
+		return err
+	}
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS conversation_skill_changes ON conversation_positions (stream, cursor) WHERE kind = " +
+		strconv.Itoa(int(indexManagedResourceChange))).Error; err != nil {
+		return err
+	}
+	return db.Exec("CREATE INDEX IF NOT EXISTS conversation_review_completed ON conversation_positions (stream, cursor) WHERE kind = " +
+		strconv.Itoa(int(indexExecutionCompleted))).Error
 }
 
 func (i *indexDB) open() error {

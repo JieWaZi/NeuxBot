@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -23,8 +25,16 @@ type TextMessage struct {
 // DetachedAccountResolver freezes the selected account's actual credential identity in an isolated working directory.
 type DetachedAccountResolver func(context.Context, AccountRequest, string) (AccountRequest, error)
 
-// TextRequest specifies a detached text invocation without application resources or tools.
+// TextRequest specifies a detached text invocation without application resources.
 type TextRequest struct {
+	// BeforeSubmit authorizes the detached input again after acquiring the process and account.
+	BeforeSubmit func(context.Context) error
+	// Ephemeral keeps bodies out of Core history and applies available native restrictions.
+	Ephemeral bool
+	// ScratchRoot is the Core-owned directory for recoverable ephemeral scratch.
+	ScratchRoot string
+	// UsageWakerID attributes this detached invocation to a partner.
+	UsageWakerID string
 	// Connection specifies the native account, executable, and model.
 	Connection ProviderConnectionRequest
 	// ResolveAccount resolves the account after preparing the isolated working directory.
@@ -45,7 +55,7 @@ type TextRequest struct {
 
 // TextResult returns natively confirmed text, terminal state, and usage evidence.
 type TextResult struct {
-	// Text is returned only when the native client confirms a complete message.
+	// Text is the answer from a completed native invocation.
 	Text string
 	// Turn holds native terminal state and independent host failures.
 	Turn TurnResult
@@ -72,7 +82,7 @@ func SupportsDetachedPolicy(provider string) bool {
 	return provider == constants.RuntimeIDClaude
 }
 
-// GenerateText runs detached generation without tools through a regular Turn.
+// GenerateText runs a fresh, detached generation through the regular Turn lifecycle.
 func (l *ThreadLifecycle) GenerateText(ctx context.Context, request TextRequest) (TextResult, error) {
 	var result TextResult
 	if request.MaxTokens != 0 {
@@ -85,7 +95,10 @@ func (l *ThreadLifecycle) GenerateText(ctx context.Context, request TextRequest)
 	if err != nil {
 		return result, err
 	}
-	if !SupportsDetachedPolicy(request.Connection.Account.Provider) || len(request.Connection.Resources.Plugins) != 0 || len(request.Connection.Resources.ConnectorIDs) != 0 {
+	provider := request.Connection.Account.Provider
+	resources := request.Connection.Resources
+	if resources.Skills != nil || len(resources.Plugins) != 0 || len(resources.ConnectorIDs) != 0 ||
+		!SupportsProvider(provider) || (!request.Ephemeral && !SupportsDetachedPolicy(provider)) {
 		return result, status_error.RuntimePolicyUnsupported
 	}
 	source := request.UsageSource
@@ -93,25 +106,74 @@ func (l *ThreadLifecycle) GenerateText(ctx context.Context, request TextRequest)
 		source = "generate_text"
 	}
 	input.UsageSource = source
-	request.Connection.Launch.RequireNoTools = true
-	turn, err := l.prepareDetached(ctx, ThreadRequest{
+	input.UsageWakerID = request.UsageWakerID
+	launch := &request.Connection.Launch
+	launch.RequireNoTools = SupportsDetachedPolicy(provider)
+	var mode string
+	lifecycle := l
+	var privateStore *ephemeralTextStore
+	if request.Ephemeral {
+		if !filepath.IsAbs(request.ScratchRoot) {
+			return result, status_error.RuntimePolicyUnsupported
+		}
+		launch.EphemeralText = true
+		launch.CursorPermissionMode, launch.ProcessPermissionMode = "default", "default"
+		if provider == constants.RuntimeIDCodex {
+			mode = "read-only"
+		}
+		if provider != constants.RuntimeIDCodex && !launch.usesEphemeralClaude(provider) {
+			result.Limitations = append(result.Limitations, "native_history_not_disabled")
+		}
+		if !launch.RequireNoTools {
+			result.Limitations = append(result.Limitations, "native_tools_not_disabled")
+			rule := "Use only the supplied text. Return the requested output without tools, file access, or network access."
+			if instructions != nil {
+				rule += "\n\n" + *instructions
+			}
+			instructions = &rule
+		}
+		privateStore = &ephemeralTextStore{ConversationStore: l.store, results: make(map[NativeResultKey]NativeResult)}
+		lifecycle = NewThreadLifecycle(l.provider, privateStore)
+		defer func() {
+			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			_ = lifecycle.Close(cleanup)
+		}()
+	}
+	ports := TurnPorts{}
+	if request.BeforeSubmit != nil {
+		ports.Authorize = func(ctx context.Context, _ TurnAdmission, _ CommitReceipt) (func(), error) {
+			return nil, request.BeforeSubmit(ctx)
+		}
+	}
+	turn, err := lifecycle.prepareDetached(ctx, ThreadRequest{
 		Connection: request.Connection, Settings: request.Settings, Selection: request.Selection,
-		Session: AgentSessionOptions{DeveloperInstructions: instructions},
-	}, input, TurnPorts{}, request.ResolveAccount)
+		Session: AgentSessionOptions{DeveloperInstructions: instructions}, Mode: mode,
+	}, input, ports, request.ResolveAccount, request.ScratchRoot)
 	if err != nil {
 		return result, err
 	}
-	result.ToolsDisabled = true
+	result.ToolsDisabled = launch.RequireNoTools
 	result.Turn = turn.Run(ctx)
-	if outcome := result.Turn.Outcome; outcome != nil && outcome.FinalMessage != nil &&
+	outcome := result.Turn.Outcome
+	if outcome != nil && outcome.FinalMessage != nil &&
 		outcome.Turn.Status == acpmeta.NativeTurnCompleted && outcome.NativeFailure == nil {
 		result.Text = outcome.FinalMessage.Text
 	}
-	err = turnExecutionError(result.Turn)
-	if err == nil && (result.Turn.Outcome == nil || result.Turn.Outcome.FinalMessage == nil) {
-		err = status_error.RuntimeExecutionFailed
+	if err = turnExecutionError(result.Turn); err != nil {
+		return result, err
 	}
-	return result, err
+	if outcome != nil && outcome.FinalMessage != nil {
+		return result, nil
+	}
+	if outcome != nil && privateStore != nil {
+		key := NativeResultKey{Session: result.Turn.Binding.Session, InvocationID: outcome.Turn.InvocationID}
+		if answer := privateStore.streamedText(key); answer != "" {
+			result.Text = answer
+			return result, nil
+		}
+	}
+	return result, status_error.RuntimeExecutionFailed
 }
 
 // ExecuteTask applies explicit detached tool permissions through a regular Turn.
@@ -135,7 +197,7 @@ func (l *ThreadLifecycle) ExecuteTask(ctx context.Context, request TaskRequest) 
 	if request.Input.UsageSource == "" {
 		request.Input.UsageSource = "background"
 	}
-	turn, err := l.prepareDetached(ctx, request.Thread, request.Input, request.Ports, request.ResolveAccount)
+	turn, err := l.prepareDetached(ctx, request.Thread, request.Input, request.Ports, request.ResolveAccount, "")
 	if err != nil {
 		return TurnResult{}, err
 	}
@@ -143,12 +205,20 @@ func (l *ThreadLifecycle) ExecuteTask(ctx context.Context, request TaskRequest) 
 	return result, turnExecutionError(result)
 }
 
-func (l *ThreadLifecycle) prepareDetached(ctx context.Context, thread ThreadRequest, input TurnRequest, ports TurnPorts, resolve DetachedAccountResolver) (*Turn, error) {
-	cwd, err := os.MkdirTemp("", "neux-detached-")
+func (l *ThreadLifecycle) prepareDetached(ctx context.Context, thread ThreadRequest, input TurnRequest, ports TurnPorts, resolve DetachedAccountResolver, scratchRoot string) (*Turn, error) {
+	if scratchRoot != "" {
+		if err := os.MkdirAll(scratchRoot, 0700); err != nil {
+			return nil, status_error.RuntimeConfigurationInvalid
+		}
+	}
+	cwd, err := os.MkdirTemp(scratchRoot, detachedScratchPrefix)
 	if err != nil {
 		return nil, status_error.RuntimeConfigurationInvalid
 	}
 	closeFiles := func(context.Context) error { return os.RemoveAll(cwd) }
+	if scratchRoot != "" {
+		closeFiles = func(context.Context) error { return l.provider.closeEphemeralScratch(cwd) }
+	}
 	account := &thread.Connection.Account
 	account.CWD = cwd
 	if resolve != nil {

@@ -24,6 +24,7 @@ const state = vi.hoisted(() => ({
   pluginCategoryAt: undefined as ((index: number) => string) | undefined,
   skillTotal: 13,
   connectorTotal: 13,
+  ownedConnector: false,
   failRefresh: false,
   independentEmpty: false,
   bundledEmpty: false,
@@ -172,15 +173,21 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => {
                 },
                 (_, i) => {
                   const index = i + (query.pageNum - 1) * query.pageSize;
+                  const owned = state.ownedConnector && index === 1;
                   return {
                     connector: {
                       id: `mcp${index}`,
                       name: `独立连接器${index}`,
-                      scope: index === 0 ? "built_in" : "public",
+                      scope: owned
+                        ? "private"
+                        : index === 0
+                          ? "built_in"
+                          : "public",
+                      ownerWakerId: owned ? "w1" : undefined,
                       transport: "stdio",
                     },
                     compatibility: [],
-                    affectedWakerCount: 2,
+                    affectedWakerCount: owned ? 1 : 2,
                   };
                 },
               ),
@@ -188,6 +195,22 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => {
         },
       };
     }),
+    getLibraryConnector: vi.fn(async () => ({
+      data: {
+        connector: { id: "mcp1", name: "独立连接器1", scope: "public" },
+        affectedWakerCount: 1,
+        installedPartnerIds: ["existing"],
+      },
+    })),
+    listWakers: vi.fn(async () => ({
+      data: {
+        resources: [
+          { id: "existing", name: "已安装伙伴" },
+          { id: "new", name: "待安装伙伴" },
+        ],
+        totalSize: 2,
+      },
+    })),
     deleteLibrarySkill: vi.fn(
       async (options: Parameters<typeof sdk.deleteLibrarySkill>[0]) => {
         state.removeSkill(options);
@@ -221,6 +244,7 @@ beforeEach(() => {
   state.pluginCategoryAt = undefined;
   state.skillTotal = 13;
   state.connectorTotal = 13;
+  state.ownedConnector = false;
   state.failRefresh = false;
   state.independentEmpty = false;
   state.bundledEmpty = false;
@@ -356,8 +380,8 @@ it.each(["", "&source=plugins", "&source=independent"])(
     mount(`?category=connectors${source}`);
     await screen.findByRole("link", { name: "查看连接器 独立连接器23" });
     expect(screen.getAllByRole("article")).toHaveLength(24);
-    expect(screen.getByText("29 个连接器")).toBeVisible();
-    expect(screen.queryByText("24 个连接器")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "我的连接器" })).toBeVisible();
+    expect(screen.queryByText(/^\d+ 个连接器$/)).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "查看连接器 mcp0" }),
     ).not.toBeInTheDocument();
@@ -367,7 +391,9 @@ it.each(["", "&source=plugins", "&source=independent"])(
     await scrollNext();
     await screen.findByRole("link", { name: "查看连接器 独立连接器28" });
     expect(screen.getAllByRole("article")).toHaveLength(29);
-    expect(screen.getByText("29 个连接器")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: /^我的连接器\s*29$/ }),
+    ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "加载更多" }),
     ).not.toBeInTheDocument();
@@ -385,7 +411,7 @@ it("连接器后续页失败保留已读条目，并可重试自动追加", asyn
   await scrollNext();
   await screen.findByRole("alert");
   expect(screen.getAllByRole("article")).toHaveLength(24);
-  expect(screen.getByText("29 个连接器")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "我的连接器" })).toBeVisible();
   state.failNextPage = false;
   fireEvent.click(screen.getByRole("button", { name: "重试" }));
   await screen.findByRole("link", { name: "查看连接器 独立连接器28" });
@@ -562,7 +588,7 @@ it.each([false, true])(
     state.bundledEmpty = bundledEmpty;
     mount("?category=connectors");
     await screen.findByText("暂无资源");
-    expect(screen.getByText("0 个连接器")).toBeVisible();
+    expect(screen.queryByText("0 个连接器")).not.toBeInTheDocument();
     expect(screen.getAllByText("暂无资源")).toHaveLength(1);
     expect(
       screen.queryByRole("heading", { name: /独立安装|来自插件/ }),
@@ -570,6 +596,21 @@ it.each([false, true])(
     expect(listPlugins).not.toHaveBeenCalled();
   },
 );
+
+it("资源库列出伙伴自有连接器并通过归属进入详情", async () => {
+  state.ownedConnector = true;
+  mount("?category=connectors");
+  const link = await screen.findByRole("link", {
+    name: "查看连接器 独立连接器1",
+  });
+  expect(link).toHaveAttribute("href", "/resources/connectors/mcp1?wakerId=w1");
+  const row = link.closest("article");
+  expect(screen.getByRole("region", { name: "我的连接器" })).toContainElement(
+    row,
+  );
+  expect(row).toHaveTextContent("已安装到 1 个伙伴");
+  expect(row?.querySelector("button")).toBeNull();
+});
 
 it("统一插件列表显示标题和整行搜索，不提供目录与我的插件切换", async () => {
   mount("");
@@ -680,4 +721,18 @@ it("技能摘要后续页失败不发布不完整分类，重试后恢复完整�
   expect(uncategorized.getAllByRole("article")).toHaveLength(6);
   expect(screen.getAllByRole("article")).toHaveLength(13);
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it("disables actual connector installations in the shared partner picker", async () => {
+  mount("?category=connectors");
+  const link = await screen.findByRole("link", {
+    name: "查看连接器 独立连接器1",
+  });
+  const row = link.closest("article");
+  if (!row) throw new Error("missing connector row");
+  fireEvent.click(within(row).getByRole("button"));
+  const existing = await screen.findByRole("checkbox", { name: "已安装伙伴" });
+  expect(existing).toBeChecked();
+  expect(existing).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "待安装伙伴" })).toBeEnabled();
 });

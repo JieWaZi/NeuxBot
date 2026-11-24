@@ -753,6 +753,12 @@ func TestNativeConnectorsRemainSelectedAfterProbeFailure(t *testing.T) {
 	if len(calls) != 1 || !strings.Contains(string(calls[0]), "stdio_resource") || !strings.Contains(string(calls[0]), "http_resource") {
 		t.Fatalf("native session did not receive both configured connectors: %s", calls)
 	}
+	turns := manager.nativeCalls(t, "turn/start")
+	if len(turns) != 1 || !strings.Contains(string(turns[0]), "Selected connectors") ||
+		!strings.Contains(string(turns[0]), "stdio_resource") || !strings.Contains(string(turns[0]), "http_resource") ||
+		strings.Contains(string(turns[0]), "stdio-resource") || strings.Contains(string(turns[0]), "http-resource") {
+		t.Fatalf("turn should refer to native connector names: %s", turns)
+	}
 	if err := core.CancelExecutionAndWait(t.Context(), accepted.Chat.ID, accepted.Execution.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -1192,8 +1198,6 @@ type recordedRun struct {
 	ContextInstructions []agent.Instruction
 	// SelectedSkills 是用户明确引用的技能名称。
 	SelectedSkills []string
-	// SelectedConnectors 是用户明确引用的连接器身份。
-	SelectedConnectors []string
 	// ReadOnly 表示本次执行要求只读范围。
 	ReadOnly bool
 }
@@ -1204,7 +1208,7 @@ func (r recordedRun) thread() agent.ThreadRequest {
 	return thread
 }
 func (r recordedRun) prompt() string {
-	facts := nativeTurnFacts(r.Message, r.ContextInstructions, r.SelectedSkills, r.SelectedConnectors)
+	facts := nativeTurnFacts(r.Message, r.ContextInstructions, r.SelectedSkills)
 	if len(facts) == 0 {
 		return r.Message.Text
 	}
@@ -1212,7 +1216,7 @@ func (r recordedRun) prompt() string {
 	return r.Message.Text + "\n" + string(encoded)
 }
 func (r recordedRun) turnRequest(id string, detection agent.DetectionResult) (agent.TurnRequest, error) {
-	return nativeTurnInput(id, r.Message, r.ContextInstructions, r.SelectedSkills, r.SelectedConnectors, detection)
+	return nativeTurnInput(id, r.Message, r.ContextInstructions, r.SelectedSkills, detection)
 }
 func (r *recordedRun) prepare(m *service, chat models.Chat, id string, capabilities []ToolCapability, domains *[]string, paths []string) (func(), func(), error) {
 	r.Runtime.WorkspaceReadOnly = r.ReadOnly
@@ -1222,7 +1226,7 @@ func (r *recordedRun) prepare(m *service, chat models.Chat, id string, capabilit
 }
 func recordBusinessInputs(m *service, state messageChat, request pendingMessage, files *preparedMessageFiles, skills []models.SkillWithState, connectors []models.MCPConnector, environment models.RuntimeEnvironment) recordedRun {
 	instructions, contextInstructions := nativeInstructionInputs(request, files)
-	r := recordedRun{Runtime: request.runtime, Detection: environment.Detection, Workspace: nativeWorkspace(state, request, files), Instructions: instructions, Skills: m.nativeSkills(skills), Connectors: runtimeConnectorDeclarations(connectors), Message: nativeMessage(request, files), ContextInstructions: contextInstructions, SelectedSkills: selectedSkillNames(request, skills), SelectedConnectors: request.message.ConnectorIDs}
+	r := recordedRun{Runtime: request.runtime, Detection: environment.Detection, Workspace: nativeWorkspace(state, request, files), Instructions: instructions, Skills: m.nativeSkills(skills), Connectors: runtimeConnectorDeclarations(connectors), Message: nativeMessage(request, files), ContextInstructions: contextInstructions, SelectedSkills: selectedSkillNames(request, skills)}
 	return r
 }
 

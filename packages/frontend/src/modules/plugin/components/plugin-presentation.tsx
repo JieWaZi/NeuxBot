@@ -18,7 +18,7 @@ import {
   type PluginCatalogEntry,
   type PluginDetail,
 } from "../model/plugin-view";
-import { PartnerPicker } from "./partner-picker";
+import { PartnerPicker } from "@/modules/waker";
 import { PluginInstallDialog } from "./deferred-plugin-dialogs";
 
 /** 作者示例或产品默认提示只贡献输入草稿；安装、启用与发送仍分别确认。 */

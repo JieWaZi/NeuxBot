@@ -1,4 +1,4 @@
-// Package memory 提供伙伴和项目范围的长期记忆、检索及变更记录。
+// Package memory 提供伙伴的长期记忆、检索及变更记录。
 // 内容、关键词与向量在独立数据库中维护，写操作通过受限命令调用。
 package memory
 
@@ -6,7 +6,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
-// Memory 是一条伙伴或项目范围内的长期记忆。
+// Memory 是一条伙伴的长期记忆。
 //
 // 内容与内容摘要分别用于阅读和精确去重。
 type Memory struct {
@@ -14,10 +14,8 @@ type Memory struct {
 	Seq int64
 	// ID 是记忆对外唯一标识，32 位无连字符 UUID。
 	ID string
-	// Scope 是记忆归属范围：partner 或 project。
-	Scope constants.MemoryScope
-	// ScopeID 是范围标识：PartnerID 或 ProjectID。
-	ScopeID string
+	// PartnerID 是记忆唯一属主。
+	PartnerID string
 	// Data 是记忆正文。
 	Data string
 	// Hash 是正文 MD5，仅用于 exact duplicate 判重，不承担密码学安全用途。
@@ -28,6 +26,27 @@ type Memory struct {
 	CreatedAt int64
 	// UpdatedAt 是最近更新时间的 Unix 毫秒值。
 	UpdatedAt int64
+	// Core 表示是否作为合格会话的核心上下文。
+	Core bool
+	// Revision 区分更新及用户接管，同一毫秒的编辑也不会合并。
+	Revision uint64
+	// Origin 是条目的首次写入来源。
+	Origin constants.MemoryTimelineSource
+	// control 记录正文接管或手动固定为核心的保护。
+	control memoryControl
+}
+
+// memoryControl 保存在 user_controlled 列。已有的 1 保留为持续保护。
+type memoryControl uint8
+
+const (
+	memoryControlAutomatic memoryControl = iota
+	memoryControlUser
+	memoryControlPinned
+)
+
+func (m Memory) reviewEditable() bool {
+	return m.Origin == constants.MemoryTimelineSourceReview && m.control == memoryControlAutomatic
 }
 
 // ScoredMemory 是一次检索命中的记忆及其相似度。
@@ -38,10 +57,7 @@ type ScoredMemory struct {
 	Score float64
 }
 
-// Context 是一次执行绑定的记忆访问上下文。
-//
-// identity 只能由 Run 注入：命令入参不暴露 scope_id，调用方只能表达
-// partner/project/all，具体标识由本结构体决定，调用方不能借元数据改变范围。
+// Context 是服务端绑定的伙伴记忆访问身份。
 type Context struct {
 	// RunID 是当前执行标识。
 	RunID string
@@ -49,20 +65,6 @@ type Context struct {
 	ChatID string
 	// PartnerID 是当前对话伙伴标识。
 	PartnerID string
-	// ProjectID 是当前对话冻结的项目标识；临时文件夹对话为空。
-	ProjectID string
-}
-
-// Accessible 判断指定范围标识是否属于当前上下文。
-func (c Context) Accessible(scope constants.MemoryScope, scopeID string) bool {
-	switch scope {
-	case constants.MemoryScopePartner:
-		return c.PartnerID != "" && scopeID == c.PartnerID
-	case constants.MemoryScopeProject:
-		return c.ProjectID != "" && scopeID == c.ProjectID
-	default:
-		return false
-	}
 }
 
 // WriteResult 是创建记忆的结果。
@@ -103,22 +105,12 @@ type Status struct {
 	NeedsReindex bool
 }
 
-// ScopeOwner 是一条记忆归属的范围与属主标识。
-type ScopeOwner struct {
-	// Scope 是伙伴或项目范围。
-	Scope constants.MemoryScope
-	// ScopeID 是范围属主标识：PartnerID 或 ProjectID。
-	ScopeID string
-}
-
-// ListFilter 描述记忆列表与时间线使用的范围和分页条件。
+// ListFilter 描述伙伴记忆列表与时间线使用的筛选和分页条件。
 type ListFilter struct {
-	// Scope 是要查询的记忆范围；all 表示按 Owners 合并查询。
-	Scope constants.MemoryScope
-	// ScopeID 是伙伴或项目标识；Scope 为 all 时忽略。
-	ScopeID string
-	// Owners 是 Scope 为 all 时要合并查询的范围属主；其他范围留空。
-	Owners []ScopeOwner
+	// PartnerID 是要查询的伙伴标识。
+	PartnerID string
+	// Core 选择一个分类；为空时包含全部条目。
+	Core *bool
 	// Query 是记忆正文的可选关键词过滤条件。
 	Query string
 	// UpdatedAtStart 是最近更新时间下界的 Unix 毫秒值；0 表示不限。

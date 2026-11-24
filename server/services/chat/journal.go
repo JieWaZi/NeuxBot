@@ -20,6 +20,8 @@ import (
 type ExecutionContext struct {
 	// Chat 是追平权威日志后的当前身份与执行摘要。
 	Chat models.Chat
+	// ProfileOptimization 表示 Chat 冻结的用途是优化伙伴档案。
+	ProfileOptimization bool
 	// LastExecutionID 是最近助手执行或继承消息的原续接游标。
 	LastExecutionID string
 	// ProjectSources 是 Chat 创建时冻结的项目来源映射。
@@ -294,7 +296,11 @@ func (m *service) LoadExecutionContext(
 			before = window.NextBeforeSequence
 		}
 	}
-	return ExecutionContext{Chat: chat, LastExecutionID: lastID, ProjectSources: append([]eventlog.ProjectSourceSnapshot(nil), created.ProjectSources...), ThreadWorkspaceID: strings.TrimSpace(created.ThreadWorkspaceID)}, nil
+	return ExecutionContext{
+		Chat: chat, ProfileOptimization: created.ProfileOptimization, LastExecutionID: lastID,
+		ProjectSources:    append([]eventlog.ProjectSourceSnapshot(nil), created.ProjectSources...),
+		ThreadWorkspaceID: strings.TrimSpace(created.ThreadWorkspaceID),
+	}, nil
 }
 
 // ReadHistoryCandidates 只在明确冷交接时定位最近成功轮，失败执行整体跳过。
@@ -461,6 +467,14 @@ func (m *service) CommitTerminal(
 // PublishTerminal 在 Execution Registry 已释放后公开 durable 终态。
 func (m *service) PublishTerminal(commit TerminalCommit) {
 	m.eventCommitter.publishCommitted(commit.records)
+	if m.reviewTerminal != nil {
+		for _, record := range commit.records {
+			switch record.Type {
+			case constants.ChatEventTypeExecutionCompleted, constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
+				m.reviewTerminal(record.ChatID)
+			}
+		}
+	}
 	if commit.publishNotifications != nil {
 		commit.publishNotifications()
 	}

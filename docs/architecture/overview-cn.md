@@ -63,7 +63,7 @@ flowchart LR
 
 当前交付方式包括原生应用和浏览器访问本机回环 Core。Web 包使用 Node.js 22+ 启动器；Native 使用随 Electron 交付的运行时。产品与主仓库名称为 NeuxBot，内部 workspace 包使用 `@neuxbot/*`，Go 模块使用 `github.com/JieWaZi/NeuxBot/server`；整个 Agent 子系统属于该模块，没有独立 `go.mod`。acp-go 继续在独立仓库维护并固定依赖版本。应用自有技术身份统一为 `bot-core`、`botcli`、系统 `bot` 技能、`bot.workflow`、`NEUXBOT_*` 环境变量与 `neuxbot-resource://`；CLI 装配使用 `BOTCLI_BINARY_PATH`。独立 neux-knowledge SDK 固定要求知识集成的 `service_kind=neuxally` 与 `neuxally-integration-v1`，这两个外部线上协议值在升级该 SDK 前保留；插件授权使用 `neuxbot-auth/1`，具体边界见[插件资源](plugin-resources-cn.md)。独立插件源位于 `JieWaZi/neux-plugins`。受管文件根目录与程序数据目录分别管理，具体布局见 [工作区与存储](workspace-and-storage-cn.md)。Agent 的调用、并发和清理边界见 [智能体与账号](runtimes-and-accounts-cn.md)。
 
-修改前阅读根目录 AGENTS.md，具体数据边界见 [工作区与存储](workspace-and-storage-cn.md)。
+修改前阅读根目录 AGENTS.md，提示词、补充上下文与历史输入见[模型指令与消息组装](../development/model-input-cn.md)。具体数据边界见 [工作区与存储](workspace-and-storage-cn.md)。
 
 插件资源、伙伴安装、共享授权与版本快照见 [插件资源](plugin-resources-cn.md)。
 

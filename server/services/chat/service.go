@@ -14,6 +14,7 @@ import (
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/memory/reviewstate"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -75,6 +76,12 @@ type Service interface {
 	ReadMessageHistory(ctx context.Context, chatID string, beforeSequence int64, limit int) (MessageHistoryPage, error)
 	// ReadMessageTimeline 读取界面消息及问答项，团队页可提供冻结日志上界。
 	ReadMessageTimeline(ctx context.Context, chatID string, beforeSequence, throughSequence int64, limit int) (MessageHistoryPage, error)
+	// ReadManagedResourceChanges 只读取已提交的资源变更及其原时间线位置。
+	ReadManagedResourceChanges(ctx context.Context, chatID string, fromSequence int64) ([]ManagedResourceChange, error)
+	// RecordManagedSkillChange 幂等记录本轮已提交的技能库变更。
+	RecordManagedSkillChange(ctx context.Context, chatID, executionID, action, skillID, versionID, name string) error
+	// RecordManagedConnectorChange 幂等记录本轮已提交的连接器变更。
+	RecordManagedConnectorChange(ctx context.Context, chatID, executionID, commandID, action, connectorID, ownerWakerID, name string) error
 	// GetMessageFileChange 按原消息授权范围读取独立快照的有界文件差异。
 	GetMessageFileChange(ctx context.Context, chatID string, messageID string, path string) (messageview.MessageFileChangeDiff, error)
 	// GetMessageFileChanges 读取独立快照提供的文件成果摘要。
@@ -102,6 +109,12 @@ type Service interface {
 
 // Module 是组合根同时交给查询入口和 Execution Core 的完整 Chat 模块。
 type Module interface {
+	// ReadReviewTurnStarts 读取合格终态的位置和时间。
+	ReadReviewTurnStarts(context.Context, string, int64, int64, reviewstate.Admission, int) ([]reviewstate.Turn, error)
+	// ReadReviewTurns 读取按持久终态排序的合格证据。
+	ReadReviewTurns(context.Context, string, int64, int64, reviewstate.Admission, int) ([]reviewstate.Turn, error)
+	// ListReviewChatIDs 返回有持久复盘授权的会话标识。
+	ListReviewChatIDs(context.Context) ([]string, error)
 	// PublishExecutionDelivery 将领域已确认的结果交付给原答复。
 	PublishExecutionDelivery(context.Context, ExecutionDelivery) error
 	// CheckOccupiedWorkspace 拒绝修改仍有执行或文件收尾所有者的伙伴空间。
@@ -118,6 +131,12 @@ type Module interface {
 
 // service 是 Service 的唯一实现，维护权威日志顺序、查询投影与事件订阅。
 type service struct {
+	// freezeReview 在普通 Chat 接纳时冻结当前复盘授权。
+	freezeReview func(context.Context, models.Chat) *reviewstate.Admission
+	// reviewTerminal 在接纳的轮次结束后唤醒复盘。
+	reviewTerminal func(string)
+	// reviewDeleted 撤销来源聊天的复盘授权。
+	reviewDeleted func(string)
 	// storage 统一确定普通 Chat 与团队成员 Chat 的日志和工作区地址。
 	storage *chatstorage.Layout
 	// deletions 管理整聚合 staging、数据库提交后的清理和崩溃恢复。
@@ -161,6 +180,12 @@ var _ Module = (*service)(nil)
 
 // Config 声明构造 Chat Service 所需的稳定外部依赖。
 type Config struct {
+	// FreezeReview 捕获已授权的配置及功能代次。
+	FreezeReview func(context.Context, models.Chat) *reviewstate.Admission
+	// ReviewTerminal 观察已提交的终态。
+	ReviewTerminal func(string)
+	// ReviewDeleted 观察权威聊天删除。
+	ReviewDeleted func(string)
 	// BeforeRecovery 在处理原中断工作之前建立历史阅读事实。
 	BeforeRecovery func(context.Context, Module) error
 	// CloseIdleNativeThread 在过期清理中核对原生占用并仅关闭闲置连接。
@@ -251,7 +276,7 @@ func newService(config Config) (*service, error) {
 	)
 	queryIndexes.reading = config.QueryIndexes.Reading
 	queryIndexes.logStore = logStore
-	implementation := &service{
+	implementation := &service{freezeReview: config.FreezeReview, reviewTerminal: config.ReviewTerminal, reviewDeleted: config.ReviewDeleted,
 		storage:               storage,
 		deletions:             deletions,
 		deletionIntents:       config.QueryIndexes.DeletionIntents,

@@ -78,6 +78,8 @@ type rowIndex struct {
 	Tool string
 	// Kind drives derived index projections.
 	Kind indexKind `gorm:"index:conversation_row_host,priority:3;index:conversation_row_native,priority:3"`
+	// ReviewAdmission is derived from the trusted review marker on execution creation.
+	ReviewAdmission bool `gorm:"index:conversation_review_admission,where:review_admission = 1"`
 	// Content distinguishes final text and each kind of tool or reasoning segment.
 	Content constants.RuntimeEventType
 	// Adapter addresses a durable input by its frozen session and adapter ID.
@@ -113,6 +115,7 @@ const (
 	indexNativeToolOutput
 	indexQuestionRequested
 	indexQuestionResolved
+	indexManagedResourceChange
 )
 
 func contextError(ctx context.Context) error {
