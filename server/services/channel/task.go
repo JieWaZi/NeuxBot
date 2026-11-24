@@ -2,8 +2,8 @@ package channel
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -16,6 +16,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
@@ -364,7 +365,7 @@ func (s *service) dispatchTask(
 		return nil, err
 	}
 	if task.DirectDelivery {
-		teamInstruction.Content += "\nDirect delivery: put the complete checked answer in `botcli team reports submit` with `readyForUser=true` only when it can be shown to the user without lead synthesis. Otherwise report the facts without that flag.\n"
+		teamInstruction.Content += agentapi.TeamDirectDeliveryInstructions
 	}
 	fence := task.CurrentFence + 1
 	now := time.Now().UnixMilli()
@@ -612,36 +613,32 @@ func taskCancellationRequested(task models.ChannelTask, fence int) bool {
 	return task.CancelRequestedAt != nil && task.CancelRequestedFence == fence
 }
 
-// dispatchTaskContent 按任务上下文组装成员任务正文：标题、说明与上游结果。
-func dispatchTaskContent(
-	task models.ChannelTask,
-	dependencies []models.ChannelTask,
-) string {
-	var builder strings.Builder
-	builder.WriteString("[Assigned task]: ")
-	builder.WriteString(task.Subject)
-	if description := strings.TrimSpace(task.Description); description != "" {
-		builder.WriteString("\n\n")
-		builder.WriteString(description)
+// taskDependencyFact 携带成员执行时可用的前置任务结果。
+type taskDependencyFact struct {
+	// Subject 是前置任务的标题。
+	Subject string `json:"subject"`
+	// Status 是前置任务记录中的状态值。
+	Status string `json:"status"`
+	// Report 是前置报告或其有界预览。
+	Report string `json:"report,omitempty"`
+	// Truncated 表示报告超过可交付上限。
+	Truncated bool `json:"truncated,omitempty"`
+}
+
+func taskDependencyContext(dependencies []models.ChannelTask) []workinput.Instruction {
+	if len(dependencies) == 0 {
+		return nil
 	}
-	if len(dependencies) > 0 {
-		builder.WriteString("\n\n=== Completed blocker task results ===")
-		for _, dependency := range dependencies {
-			dependencyReport, _ := teammateReportContent(
-				dependency.Status,
-				dependency.Result,
-				dependency.ErrorMessage,
-				[]string(dependency.ChangedPaths),
-			)
-			builder.WriteString(fmt.Sprintf(
-				"\n\n--- Result from blocker task (%s) [%s] ---\n%s",
-				dependency.Subject,
-				dependency.Status,
-				dependencyReport,
-			))
+	results := make([]taskDependencyFact, 0, len(dependencies))
+	for _, dependency := range dependencies {
+		report, truncated := teammateReportContent(dependency.Status, dependency.Result, dependency.ErrorMessage, []string(dependency.ChangedPaths))
+		if truncated {
+			report = strings.TrimSuffix(report, "\n\n"+agentapi.TeamReportTruncationNotice)
 		}
+		results = append(results, taskDependencyFact{Subject: dependency.Subject, Status: string(dependency.Status), Report: report, Truncated: truncated})
 	}
-	return builder.String()
+	encoded, _ := json.Marshal(results)
+	return []workinput.Instruction{{Name: agentapi.TeamDependencyContextName, Content: string(encoded)}}
 }
 
 // normalizeTaskInput 复制需要跨排队和重启保留的完整工作输入。
@@ -672,9 +669,10 @@ func taskWorkInput(
 	followUps []models.ChannelTaskFollowUp,
 ) (execution.WorkInput, error) {
 	workInput := execution.WorkInput{
-		Actor:         string(constants.ChannelMessageActorLead),
-		Content:       dispatchTaskContent(task, dependencies),
-		IMReplyLinkID: task.IMReplyLinkID,
+		Actor:               string(constants.ChannelMessageActorLead),
+		Content:             strings.TrimSpace(task.Subject + "\n\n" + task.Description),
+		ContextInstructions: taskDependencyContext(dependencies),
+		IMReplyLinkID:       task.IMReplyLinkID,
 	}
 	if task.DirectInput != nil {
 		directInput := *task.DirectInput

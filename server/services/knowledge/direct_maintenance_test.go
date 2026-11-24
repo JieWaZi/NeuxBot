@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
@@ -83,8 +84,13 @@ func TestOrdinaryChatMaintenanceUsesSharedTaskAndFrozenChatSelection(t *testing.
 	t.Cleanup(s.Close)
 	select {
 	case invocation := <-called:
-		if !strings.Contains(invocation.Message, current.message.Content) || !strings.Contains(invocation.Message, "发现两个同义目录") || !strings.HasPrefix(invocation.Instructions, guide) {
-			t.Fatalf("missing original request, findings or shared prompt: %+v", invocation)
+		if invocation.Message != current.message.Content || !strings.HasPrefix(invocation.Instructions, guide) {
+			t.Fatalf("maintenance changed original user text or the shared guide: message=%q", invocation.Message)
+		}
+		const findings = "发现两个同义目录；检查 concept/time 和 concept/ntp。"
+		if len(invocation.Context) != 2 || invocation.Context[0].Name != agent.WikiLibraryContextName ||
+			invocation.Context[1].Name != agent.WikiFindingsContextName || invocation.Context[1].Value != findings {
+			t.Fatalf("missing separate frozen context: %+v", invocation.Context)
 		}
 		operations := map[string]bool{}
 		for _, b := range invocation.Bindings {
@@ -113,7 +119,11 @@ func TestOrdinaryChatMaintenanceUsesSharedTaskAndFrozenChatSelection(t *testing.
 func TestOrdinaryChatMaintenanceRejectsSourcesRemoteAndRevokedExecution(t *testing.T) {
 	s, lib := newServiceFixture(t)
 	ctx := context.Background()
-	current := selectedChat{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}, message: messageview.Message{ID: "message"}}
+	current := selectedChat{
+		chat:      models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"},
+		message:   messageview.Message{ID: "message"},
+		execution: models.Execution{ID: "execution", UserMessageID: "message", RuntimeID: "codex"},
+	}
 	s.config.Chats = current
 	var start capability.Binding
 	for _, b := range s.AgentBindings(ctx, current.chat) {
@@ -123,6 +133,12 @@ func TestOrdinaryChatMaintenanceRejectsSourcesRemoteAndRevokedExecution(t *testi
 	}
 	if start.Call == nil {
 		t.Fatal("missing maintenance entry")
+	}
+	if _, err := start.Call(ctx, capability.Request{
+		RequestID: "missing-user-request",
+		Params:    map[string]any{"libraryId": lib.ID, "message": "伙伴发现了重复页面"},
+	}); !errors.Is(err, status_error.KnowledgeInvalid) {
+		t.Fatalf("companion findings authorized maintenance without user text: %v", err)
 	}
 	for _, params := range []map[string]any{
 		{"libraryId": lib.ID, "sourceVersionIds": []string{"source"}},

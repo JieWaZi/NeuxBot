@@ -58,6 +58,11 @@ func applyUpdateAvailability(provider string, snapshot *RuntimeInstallationSnaps
 	if order, known := installation.CompareVersions(provider, snapshot.Version, snapshot.LatestVersion); known {
 		available := order < 0
 		snapshot.UpdateAvailable = &available
+		if available && provider == constants.RuntimeIDOpenCode && snapshot.CanSwitchToManaged &&
+			!installation.SameReleaseMajor(snapshot.Version, snapshot.LatestVersion) {
+			// OpenCode 1.x and 2.x have separate channels and upgrade paths.
+			snapshot.CanUpdate = false
+		}
 	}
 }
 

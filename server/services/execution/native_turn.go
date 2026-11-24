@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -168,38 +167,39 @@ func nativeUsageSource(input pendingMessage, state messageChat) string {
 	return ""
 }
 
-// nativeTurnPrompt projects only the current business input. Thread owns any handoff prefix.
-func nativeTurnPrompt(message agent.Message, contextInstructions []agent.Instruction, selectedSkills, selectedConnectors []string) string {
-	var prompt strings.Builder
-	prompt.WriteString(message.Text)
+// nativeTurnFacts projects references as data owned by the current input.
+func nativeTurnFacts(message agent.Message, contextInstructions []agent.Instruction, selectedSkills, selectedConnectors []string) []agent.TurnFact {
+	var facts []agent.TurnFact
+	var attachments []map[string]string
 	for _, attachment := range message.Attachments {
-		fmt.Fprintf(&prompt, "\n\nAttachment %q is available at %q.", attachment.Name, attachment.RuntimePath)
+		attachments = append(attachments, map[string]string{"name": attachment.Name, "path": attachment.RuntimePath})
 	}
-	for _, reference := range message.CodeReferences {
-		if reference.StartLine == 0 {
-			fmt.Fprintf(&prompt, "\n\nReferenced file %q.", reference.Path)
-		} else {
-			fmt.Fprintf(&prompt, "\n\nReferenced lines %d-%d of %q:\n%s", reference.StartLine, reference.EndLine, reference.Path, reference.Content)
-		}
+	if len(attachments) != 0 {
+		facts = append(facts, agent.TurnFact{Name: "Attachments", Value: attachments})
+	}
+	if len(message.CodeReferences) != 0 {
+		facts = append(facts, agent.TurnFact{Name: "Code references", Value: message.CodeReferences})
 	}
 	if len(selectedSkills) > 0 {
-		fmt.Fprintf(&prompt, "\n\nSelected skills: %s.", strings.Join(selectedSkills, ", "))
+		facts = append(facts, agent.TurnFact{Name: "Selected skills", Value: selectedSkills})
 	}
 	if len(selectedConnectors) > 0 {
-		fmt.Fprintf(&prompt, "\n\nSelected connectors: %s.", strings.Join(selectedConnectors, ", "))
+		facts = append(facts, agent.TurnFact{Name: "Selected connectors", Value: selectedConnectors})
 	}
-	if len(contextInstructions) > 0 {
-		encoded, _ := json.Marshal(contextInstructions)
-		prompt.WriteString("\n\n<neuxbot-turn-context>\n")
-		prompt.Write(encoded)
-		prompt.WriteString("\n</neuxbot-turn-context>")
+	for _, instruction := range contextInstructions {
+		var value any = instruction.Content
+		if encoded := json.RawMessage(instruction.Content); json.Valid(encoded) {
+			value = encoded
+		}
+		facts = append(facts, agent.TurnFact{Name: instruction.Name, Value: value})
 	}
-	return prompt.String()
+	return facts
 }
 
 // nativeTurnInput includes bounded native image data when the detected runtime advertises support.
 func nativeTurnInput(id string, message agent.Message, contextInstructions []agent.Instruction, selectedSkills, selectedConnectors []string, detection agent.DetectionResult) (agent.TurnRequest, error) {
-	request := agent.TurnRequest{HostInvocationID: id, ExecutionID: id, AssistantMessageID: id, Text: nativeTurnPrompt(message, contextInstructions, selectedSkills, selectedConnectors)}
+	request := agent.TurnRequest{HostInvocationID: id, ExecutionID: id, AssistantMessageID: id, Text: message.Text,
+		Context: nativeTurnFacts(message, contextInstructions, selectedSkills, selectedConnectors)}
 	if !detection.Capabilities[agent.CapabilityImagePath] {
 		return request, nil
 	}
@@ -216,7 +216,7 @@ func nativeTurnInput(id string, message agent.Message, contextInstructions []age
 		if err := errors.Join(readErr, file.Close()); err != nil || len(data) > attachmentLimit {
 			return agent.TurnRequest{}, status_error.AgentInputInvalid
 		}
-		if len(request.Content) == 0 {
+		if request.Text != "" {
 			request.Content = []agent.AgentContent{{Kind: "text", Text: request.Text}}
 			request.Text = ""
 		}
@@ -241,9 +241,8 @@ func (m *service) startNativeExecution(
 	skills := m.nativeSkills(enabledSkills)
 	configuredConnectors := runtimeConnectorDeclarations(enabledConnectors)
 	connectors := configuredConnectors
-	contextInstructions := nativeContextInstructions(request, files)
+	instructions, contextInstructions := nativeInstructionInputs(request, files)
 	message := nativeMessage(request, files)
-	instructions := nativeInstructions(request, files)
 	grant, err := m.prepareAgent(ctx, executionContext, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, request, files.referencedFiles, files.attachments.RuntimePaths)
 	if err != nil {
 		return AcceptedExecution{}, err
@@ -345,8 +344,10 @@ func (m *service) startNativeExecution(
 		}
 		work.selectedPlugins = append(work.selectedPlugins, work.resources.plugins[index])
 	}
-	if err := turn.AppendPromptContext(pluginSelectionHint(work.selectedPlugins, work.resources.connectors)); err != nil {
-		return AcceptedExecution{}, err
+	if len(work.selectedPlugins) != 0 {
+		if err := turn.AddContext(agent.TurnFact{Name: "Selected plugins", Value: pluginSelectionFacts(work.selectedPlugins, work.resources.connectors)}); err != nil {
+			return AcceptedExecution{}, err
+		}
 	}
 	work.execution.PluginResources = slices.Clone(work.resources.plugins)
 	work.skills = selectedSkillReferences(request.message.SkillIDs, enabledSkills)

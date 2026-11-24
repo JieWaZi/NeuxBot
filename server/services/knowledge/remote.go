@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
+
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/JieWaZi/neux-knowledge/httpapi"
-	"strings"
 )
 
 // ProfileProvider 只读取服务器固定模型配置，不接收客户端本机账号和路径。
@@ -102,7 +104,7 @@ func (a *RemoteAdapter) Organize(ctx context.Context, in httpapi.OrganizeRequest
 	session.ID = in.RequestID
 	message := in.Instruction
 	if strings.TrimSpace(message) == "" {
-		message = "整理服务器已授权的指定来源"
+		message = agent.WikiRemoteOrganizeTask
 	}
 	receipt, _, err := a.Service.Organize(ctx, OrganizeCommand{RequestID: in.RequestID, LibraryID: in.LibraryID, SourceVersionIDs: in.SourceVersionIDs, Rebuild: in.Rebuild, ExplicitSources: true, Configuration: session, Message: message})
 	return receipt, err
@@ -155,7 +157,14 @@ func (a *RemoteAdapter) Maintain(ctx context.Context, in httpapi.MaintenanceRequ
 	if err != nil {
 		return nil, err
 	}
-	generated, err := generator.Generate(ctx, core.GenerateRequest{JobID: operationID, StageID: operationID, Stage: "page-maintenance", MaxTokens: 32768, Temperature: .3, Thinking: false, Messages: []core.ModelMessage{{Role: "system", Content: "Revise only the supplied wiki page according to the user's instruction. Preserve existing factual details and citations. Return only the complete Markdown page body, without code fences or commentary."}, {Role: "user", Content: in.Instruction + "\n\n" + page.Content}}})
+	generated, err := generator.Generate(ctx, core.GenerateRequest{
+		JobID: operationID, StageID: operationID, Stage: "page-maintenance", MaxTokens: 32768, Temperature: .3,
+		Messages: []core.ModelMessage{
+			{Role: "system", Content: agent.WikiPageRevisionInstructions},
+			{Role: "user", Content: page.Content},
+			{Role: "user", Content: in.Instruction},
+		},
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
+	"gorm.io/gorm"
 )
 
 func TestChannelThreadCursorRoundTrip(t *testing.T) {
@@ -109,6 +111,14 @@ func TestListChannelThreadsOutputPagesUpdatedRange(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
+	if err := database.DB.Create(&models.Chat{
+		ID:            "dddddddddddddddddddddddddddddddd",
+		WakerID:       wakerID,
+		LastRuntimeID: "claude",
+		LastModel:     "claude-sonnet",
+	}).Error; err != nil {
+		t.Fatalf("create lead chat: %v", err)
+	}
 	for _, thread := range []models.ChannelThread{
 		{
 			ID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ChannelID: channelID, Title: "较新任务", LeadWakerID: wakerID,
@@ -129,6 +139,14 @@ func TestListChannelThreadsOutputPagesUpdatedRange(t *testing.T) {
 		}
 	}
 
+	chatReads := 0
+	if err := database.DB.Callback().Query().Before("gorm:query").Register("test:count_lead_chat_queries", func(tx *gorm.DB) {
+		if tx.Statement.Table == "chats" {
+			chatReads++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
 	output, err := (&ListChannelThreads{
 		ChannelID:      channelID,
 		Query:          "任务",
@@ -149,5 +167,37 @@ func TestListChannelThreadsOutputPagesUpdatedRange(t *testing.T) {
 	}
 	if len(response.Resources) != 1 || response.Resources[0].ID != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" {
 		t.Fatalf("resources = %+v, want older channel thread", response.Resources)
+	}
+	assertLeadModels := func(t *testing.T, threads []models.ChannelThread) {
+		t.Helper()
+		data, err := json.Marshal(threads)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var resources []map[string]any
+		if err := json.Unmarshal(data, &resources); err != nil {
+			t.Fatal(err)
+		}
+		last := resources[len(resources)-1]
+		if last["leadRuntimeId"] != "claude" || last["leadModel"] != "claude-sonnet" {
+			t.Fatalf("lead execution selection = %v, %v", last["leadRuntimeId"], last["leadModel"])
+		}
+		if len(resources) > 1 && (resources[0]["leadRuntimeId"] != nil || resources[0]["leadModel"] != nil) {
+			t.Fatalf("thread without lead chat inherited a model: %v", resources[0])
+		}
+	}
+	assertLeadModels(t, response.Resources)
+	if chatReads != 1 {
+		t.Fatalf("numbered page read chats %d times, want 1", chatReads)
+	}
+
+	chatReads = 0
+	output, err = (&ListChannelThreads{ChannelID: channelID, PageSize: 2}).Output(ctx)
+	if err != nil {
+		t.Fatalf("cursor list error: %v", err)
+	}
+	assertLeadModels(t, output.(ListChannelThreadsResponse).Resources)
+	if chatReads != 1 {
+		t.Fatalf("cursor page read chats %d times, want 1", chatReads)
 	}
 }

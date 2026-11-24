@@ -11358,6 +11358,14 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThread = {
      */
     leadChatId?: string;
     /**
+     * LeadModel 是团队负责人会话最近一次执行选择的模型。
+     */
+    leadModel?: string;
+    /**
+     * LeadRuntimeID 是团队负责人会话最近一次执行选择的智能体。
+     */
+    leadRuntimeId?: string;
+    /**
      * LeadWakerID 是首发时冻结的唯一团队负责人伙伴标识。
      */
     leadWakerId?: string;
@@ -14040,6 +14048,10 @@ export type GithubComJieWaZiNeuxBotServerServicesRuntimeenvironmentRuntimeInstal
      * 允许安装
      */
     canInstall?: boolean;
+    /**
+     * 可安装托管新版并切换
+     */
+    canSwitchToManaged?: boolean;
     /**
      * 允许卸载
      */
@@ -37830,7 +37842,12 @@ export type InstallRuntimeData = {
          */
         runtimeId: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * 切换托管新版
+         */
+        managed?: boolean;
+    };
     url: '/api/v1/runtimes/{runtimeId}/installation';
 };
 

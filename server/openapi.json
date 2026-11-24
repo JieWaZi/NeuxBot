@@ -39322,6 +39322,18 @@
               "x-tag-name": "runtimeId",
               "x-tag-validate": "required,max=120"
             }
+          },
+          {
+            "name": "managed",
+            "in": "query",
+            "description": "切换托管新版",
+            "schema": {
+              "type": "boolean",
+              "description": "切换托管新版",
+              "x-go-field-name": "Managed",
+              "x-tag-in": "query",
+              "x-tag-name": "managed"
+            }
           }
         ],
         "responses": {
@@ -84461,6 +84473,18 @@
             "description": "LeadChatID 是负责人用于成员执行、团队规划、协调和最终汇总的同一个 Chat 标识。",
             "x-go-field-name": "LeadChatID"
           },
+          "leadModel": {
+            "type": "string",
+            "description": "LeadModel 是团队负责人会话最近一次执行选择的模型。",
+            "x-go-field-name": "LeadModel",
+            "x-tag-json": "leadModel,omitempty"
+          },
+          "leadRuntimeId": {
+            "type": "string",
+            "description": "LeadRuntimeID 是团队负责人会话最近一次执行选择的智能体。",
+            "x-go-field-name": "LeadRuntimeID",
+            "x-tag-json": "leadRuntimeId,omitempty"
+          },
           "leadWakerId": {
             "type": "string",
             "description": "LeadWakerID 是首发时冻结的唯一团队负责人伙伴标识。",
@@ -89028,6 +89052,11 @@
             "type": "boolean",
             "description": "允许安装",
             "x-go-field-name": "CanInstall"
+          },
+          "canSwitchToManaged": {
+            "type": "boolean",
+            "description": "可安装托管新版并切换",
+            "x-go-field-name": "CanSwitchToManaged"
           },
           "canUninstall": {
             "type": "boolean",

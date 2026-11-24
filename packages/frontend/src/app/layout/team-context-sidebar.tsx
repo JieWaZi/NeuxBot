@@ -8,7 +8,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Folder, LoaderCircle, MoreHorizontal, Trash2 } from "lucide-react";
+import { Folder, LoaderCircle } from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -16,15 +16,9 @@ import {
   useState,
   type Dispatch,
   type SetStateAction,
-  type UIEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Link,
-  useLocation,
-  useNavigate,
-  useSearchParams,
-} from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   TeamMemberStrip,
@@ -46,23 +40,13 @@ import {
 import { TeamConfirmationDialog } from "@/modules/team/components/team-confirmation-dialog";
 import { projectTeamMembers } from "@/modules/team/model/team-member-projection";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThread as ChannelThread } from "@/shared/api/generated/types.gen";
-import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/shared/ui/dropdown-menu";
+import { ResourceInfiniteScroll } from "@/shared/ui/resource-infinite-scroll";
 import { useSceneWorkspace } from "@/shared/workspace/workspace-context";
 
 import type { ChatAttention } from "@/modules/workspaceattention";
 import { captureChatOpenIntent } from "@/shared/api/chat-reading";
 import { useQueryEvents } from "@/shared/api/use-query-events";
-import {
-  ConversationAttentionMark,
-  conversationAttentionMark,
-} from "@/shared/ui/conversation-attention";
 import {
   workAttentionHref,
   waitingConversations,
@@ -70,7 +54,7 @@ import {
   type WaitingConversation,
 } from "@/modules/work-board";
 import { navigateRouteImmediately } from "./immediate-route-navigation";
-import { ChatGroupHeader, ChatHistoryRowStatus } from "@/modules/chat";
+import { ChatGroupHeader, ChatHistoryNavigationRow } from "@/modules/chat";
 import {
   forgetTeamThread,
   type PartnerNavigationPreferences,
@@ -158,7 +142,6 @@ type TeamNavigationProps = {
   attention?: ChatAttention[];
   channelId: string;
   onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
-  onThreadOpened?: () => void;
   preferences: PartnerNavigationPreferences;
   threadId?: string;
 };
@@ -287,7 +270,6 @@ export function TeamChatTree({
   channelId,
   attention,
   onPreferencesChange,
-  onThreadOpened,
   preferences,
   threadId,
 }: TeamNavigationProps) {
@@ -301,7 +283,6 @@ export function TeamChatTree({
     ? `team:${channelId}:${threadId}`
     : `team:${channelId}:draft:${draftId}`;
   const workspace = useSceneWorkspace(workspaceScopeKey);
-  const [menuOpenThreadId, setMenuOpenThreadId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     title: string;
@@ -405,16 +386,6 @@ export function TeamChatTree({
       forgetTeamThread(current, channelId, targetThreadId),
     );
   };
-  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
-    const element = event.currentTarget;
-    if (
-      threadsQuery.hasNextPage &&
-      !threadsQuery.isFetchingNextPage &&
-      element.scrollHeight - element.scrollTop - element.clientHeight < 120
-    ) {
-      void threadsQuery.fetchNextPage();
-    }
-  };
 
   const threadRow = (thread: ChannelThread) => {
     const targetThreadId = thread.id ?? "";
@@ -438,107 +409,65 @@ export function TeamChatTree({
       thread.activityState === "running" || thread.activityState === "waiting"
         ? thread.activityState
         : "idle";
-    const mark = conversationAttentionMark({
-      requestKinds: chatAttention?.requestKinds,
-      unread: chatAttention?.unreadMessageCount,
-    });
     return (
-      <div
+      <ChatHistoryNavigationRow
         key={targetThreadId}
-        className={cn(
-          "group/chat hover:bg-muted min-h-row-compact relative grid grid-cols-[minmax(0,1fr)_32px] items-center rounded-sm",
-          targetThreadId === threadId && "bg-muted text-foreground",
-        )}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          setMenuOpenThreadId(targetThreadId);
+        active={targetThreadId === threadId}
+        title={title}
+        status={status}
+        runtimeId={thread.leadRuntimeId}
+        modelId={thread.leadModel}
+        requestKinds={chatAttention?.requestKinds}
+        unreadCount={chatAttention?.unreadMessageCount}
+        href={href}
+        metadata={
+          thread.updatedAt ? (
+            <time className="text-content-secondary type-caption shrink-0 whitespace-nowrap tabular-nums">
+              {formatRelativeTime(thread.updatedAt)}
+            </time>
+          ) : null
+        }
+        allowRename={false}
+        onAction={() => {
+          setDeleteError("");
+          setDeleteTarget({ id: targetThreadId, title });
         }}
-      >
-        <Link
-          to={href}
-          onClick={(event) => {
-            if (
-              choices.length > 1 &&
-              event.button === 0 &&
-              !event.ctrlKey &&
-              !event.metaKey &&
-              !event.shiftKey &&
-              !event.altKey
-            ) {
-              event.preventDefault();
-              setPendingRequests(choices);
-              return;
-            }
-            onThreadOpened?.();
-            navigateRouteImmediately(event, navigate, href, () =>
-              !first && thread.leadChatId
-                ? captureChatOpenIntent(queryClient, thread.leadChatId)
-                : undefined,
-            );
-          }}
-          className="focus-visible:ring-ring type-body grid min-w-0 grid-cols-[14px_20px_minmax(0,1fr)_auto_auto] items-center gap-1 rounded-sm px-1 py-1 outline-none focus-visible:ring-2 focus-visible:ring-inset"
-          title={title}
-        >
-          <span aria-hidden="true" />
-          <ChatHistoryRowStatus status={status} mark={mark} />
-          <span className="truncate">{title}</span>
-          <ConversationAttentionMark
-            mark={mark?.kind === "unread" ? mark : undefined}
-          />
-          <time className="text-muted-foreground type-caption group-focus-within/chat:hidden group-hover/chat:hidden">
-            {formatRelativeTime(thread.updatedAt)}
-          </time>
-        </Link>
-        <DropdownMenu
-          open={menuOpenThreadId === targetThreadId}
-          onOpenChange={(open) =>
-            setMenuOpenThreadId(open ? targetThreadId : "")
+        onOpen={(event) => {
+          if (
+            choices.length > 1 &&
+            event.button === 0 &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.shiftKey &&
+            !event.altKey
+          ) {
+            event.preventDefault();
+            setPendingRequests(choices);
+            return;
           }
-        >
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              className="opacity-0 group-focus-within/chat:opacity-100 group-hover/chat:opacity-100 hover:bg-transparent data-[state=open]:bg-transparent data-[state=open]:opacity-100"
-              aria-label={t("common:partnerNavigation.chatMenu", { title })}
-            >
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              variant="destructive"
-              onSelect={() => {
-                setDeleteError("");
-                setDeleteTarget({ id: targetThreadId, title });
-              }}
-            >
-              <Trash2 />
-              {t("chatNavigation.delete")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+          navigateRouteImmediately(event, navigate, href, () =>
+            !first && thread.leadChatId
+              ? captureChatOpenIntent(queryClient, thread.leadChatId)
+              : undefined,
+          );
+        }}
+      />
     );
   };
 
   return (
     <>
       <div
-        className="min-h-0 min-w-0 overflow-hidden bg-transparent pb-1"
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-transparent"
         data-chat-tree="team"
       >
-        <div
-          className="scrollbar-hidden max-h-72 min-h-0 overflow-x-hidden overflow-y-auto pr-1"
-          onScroll={handleScroll}
-        >
+        <div className="scrollbar-hidden min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1 pb-1">
           {threadsQuery.isPending ? (
             <div className="text-muted-foreground type-caption flex items-center gap-2 px-2 py-4">
               <LoaderCircle className="size-icon-sm animate-spin" />
               {t("chatNavigation.loading")}
             </div>
-          ) : threadsQuery.isError ? (
+          ) : threadsQuery.isLoadingError ? (
             <div className="px-2 py-4">
               <p className="text-muted-foreground type-caption">
                 {t("chatNavigation.loadError")}
@@ -558,7 +487,7 @@ export function TeamChatTree({
             </p>
           ) : (
             groups.map((group, index) => (
-              <div className="mt-0.5" key={group.key}>
+              <div className="mt-3 first:mt-0" key={group.key}>
                 <ChatGroupHeader
                   action={
                     index === 0
@@ -572,34 +501,30 @@ export function TeamChatTree({
                   collapsed={collapsedGroups.has(group.key)}
                   icon={Folder}
                   label={group.label}
-                  onActionOpened={onThreadOpened}
                   onToggle={() => toggleGroup(group.key)}
                 />
                 {!collapsedGroups.has(group.key) ? (
-                  <div className="grid gap-0.5 pl-3">
+                  <div className="mt-1 grid gap-0.5 pl-2">
                     {group.threads.map((thread) => threadRow(thread))}
                   </div>
                 ) : null}
               </div>
             ))
           )}
-          {threadsQuery.isFetchingNextPage ? (
-            <div
-              aria-busy="true"
-              className="text-muted-foreground type-caption flex items-center justify-center gap-2 py-3"
-              role="status"
-            >
-              <LoaderCircle className="size-icon-sm animate-spin" />
-              {t("chatNavigation.loadingMore")}
-            </div>
-          ) : null}
+          <ResourceInfiniteScroll
+            hasMore={threadsQuery.hasNextPage}
+            pending={threadsQuery.isFetching}
+            error={
+              threadsQuery.isFetchNextPageError ? threadsQuery.error : undefined
+            }
+            onLoadMore={() => void threadsQuery.fetchNextPage()}
+          />
         </div>
       </div>
       <WorkRequestChooser
         choices={pendingRequests}
         onClose={() => setPendingRequests(undefined)}
         onOpen={(href) => {
-          onThreadOpened?.();
           navigate(href, { flushSync: true });
         }}
       />

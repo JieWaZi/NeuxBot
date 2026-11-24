@@ -2,11 +2,13 @@ package channel
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	messageview "github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -61,7 +63,7 @@ func TestTeamReportKeepsIMReplyLinkThroughAttemptAndSynthesis(t *testing.T) {
 			}
 			lead := captured.startAt(1)
 			if test.withDesktopReport {
-				if lead.Input.IMReplyLinkID != "" || strings.Contains(lead.Input.Content, "IM result") {
+				if lead.Input.IMReplyLinkID != "" || strings.Contains(lead.Input.ContextInstructions[1].Content, "IM result") {
 					t.Fatalf("desktop synthesis mixed in IM work: %+v", lead.Input)
 				}
 				complete := chatservice.PublicEvent{ExecutionID: lead.ExecutionID, ExecutionStatus: constants.ExecutionStatusCompleted}
@@ -73,7 +75,7 @@ func TestTeamReportKeepsIMReplyLinkThroughAttemptAndSynthesis(t *testing.T) {
 				}
 				lead = captured.startAt(2)
 			}
-			if lead.Input.IMReplyLinkID != linkID || !strings.Contains(lead.Input.Content, "IM result") || strings.Contains(lead.Input.Content, "desktop result") || strings.Contains(lead.Input.Content, "desktop review") {
+			if lead.Input.Content != agent.TeamNotificationTask || lead.Input.IMReplyLinkID != linkID || !strings.Contains(lead.Input.ContextInstructions[1].Content, "IM result") || strings.Contains(lead.Input.ContextInstructions[1].Content, "desktop result") || strings.Contains(lead.Input.ContextInstructions[1].Content, "desktop review") {
 				t.Fatalf("IM synthesis mixed sources or lost its reply destination: %+v", lead.Input)
 			}
 		})
@@ -169,26 +171,17 @@ func TestFinalResultContentOnlyKeepsUserFacingText(t *testing.T) {
 	}
 }
 
-func TestTeamNotificationPromptIncludesMemberReportOnceWithoutTechnicalMetadata(t *testing.T) {
-	prompt := teamNotificationPrompt([]announceEntry{{
+func TestTeamNotificationContextIncludesMemberReportOnceWithoutTechnicalMetadata(t *testing.T) {
+	context := teamNotificationContext([]announceEntry{{
 		MemberDisplayName: "研究伙伴",
 		Content:           "最终研究结果",
-	}}, "=== Task Board ===\nAll 1 tasks have reached a terminal state.", []models.ChannelTask{{Status: constants.ChannelTaskStatusCompleted}})
-	for _, required := range []string{
-		"[System message]",
-		"1 member result report(s)",
-		"one complete final summary",
-	} {
-		if !strings.Contains(prompt, required) {
-			t.Fatalf("announce prompt missing %q: %q", required, prompt)
-		}
+	}}, []models.ChannelTask{{Status: constants.ChannelTaskStatusCompleted}})
+	if context.Name != agent.TeamNotificationContextName || strings.Count(context.Content, "最终研究结果") != 1 {
+		t.Fatalf("member report should enter the leader context exactly once: %+v", context)
 	}
-	if strings.Count(prompt, "最终研究结果") != 1 {
-		t.Fatalf("member report should enter the leader prompt exactly once: %q", prompt)
-	}
-	for _, forbidden := range []string{"attemptId", "taskId", "changedPaths"} {
-		if strings.Contains(prompt, forbidden) {
-			t.Fatalf("announce prompt leaked technical field %q: %q", forbidden, prompt)
+	for _, forbidden := range []string{"attemptId", "taskId", "changedPaths", "[System message]", "one complete final summary"} {
+		if strings.Contains(context.Content, forbidden) {
+			t.Fatalf("announce context contains %q: %q", forbidden, context.Content)
 		}
 	}
 }
@@ -214,35 +207,25 @@ func TestTeamTasksStillRunningIncludesPendingAndInProgress(t *testing.T) {
 	}
 }
 
-func TestTeamNotificationPromptDoesNotClaimCompletionBeforeHumanReview(t *testing.T) {
-	tasks := []models.ChannelTask{{Subject: "确认发布", Status: constants.ChannelTaskStatusInReview}}
-	prompt := teamNotificationPrompt(
+func TestTeamNotificationContextDoesNotAllowFinalSummaryBeforeHumanReview(t *testing.T) {
+	context := teamNotificationContext(
 		[]announceEntry{{MemberDisplayName: "发布伙伴", Content: "result"}},
-		buildTaskBoardSnapshot(tasks),
-		tasks,
+		[]models.ChannelTask{{Subject: "确认发布", Status: constants.ChannelTaskStatusInReview}},
 	)
-	if !strings.Contains(prompt, "awaiting user review") ||
-		!strings.Contains(prompt, "do not claim that all team work is complete") {
-		t.Fatalf("review prompt does not preserve human-review semantics: %q", prompt)
+	var facts teamNotificationFacts
+	if err := json.Unmarshal([]byte(context.Content), &facts); err != nil || facts.AwaitingReview != 1 || facts.FinalSummaryAllowed {
+		t.Fatalf("review context does not preserve human-review semantics: %+v, %v", facts, err)
 	}
 }
 
-func TestTeamNotificationPromptAllowsFinalSummaryOnlyWhenBoardResolved(t *testing.T) {
-	tasks := []models.ChannelTask{
-		{Status: constants.ChannelTaskStatusCompleted},
-		{Status: constants.ChannelTaskStatusFailed},
-	}
-	prompt := teamNotificationPrompt(
-		[]announceEntry{
-			{MemberDisplayName: "甲", Content: "result one"},
-			{MemberDisplayName: "乙", Content: "[FAILED] failed"},
-		},
-		buildTaskBoardSnapshot(tasks),
-		tasks,
+func TestTeamNotificationContextAllowsFinalSummaryOnlyWhenBoardResolved(t *testing.T) {
+	context := teamNotificationContext(
+		[]announceEntry{{MemberDisplayName: "甲", Content: "result one"}, {MemberDisplayName: "乙", Content: "failed"}},
+		[]models.ChannelTask{{Status: constants.ChannelTaskStatusCompleted}, {Status: constants.ChannelTaskStatusFailed}},
 	)
-	if !strings.Contains(prompt, "All 2 tasks have reached a terminal state") ||
-		!strings.Contains(prompt, "one complete final summary") {
-		t.Fatalf("terminal prompt does not request final summary: %q", prompt)
+	var facts teamNotificationFacts
+	if err := json.Unmarshal([]byte(context.Content), &facts); err != nil || facts.TerminalCount != 2 || !facts.FinalSummaryAllowed {
+		t.Fatalf("terminal context lost facts for final summary: %+v, %v", facts, err)
 	}
 }
 
@@ -256,16 +239,16 @@ func TestTeammateReportContentCapsPreviewAndMarksItUnactionable(t *testing.T) {
 	if !truncated || len([]rune(report)) != constants.ChannelMemberReportMaximumRunes {
 		t.Fatalf("truncated report length=%d truncated=%t", len([]rune(report)), truncated)
 	}
-	if !strings.Contains(report, memberReportTruncationNotice) {
+	if !strings.Contains(report, agent.TeamReportTruncationNotice) {
 		t.Fatalf("truncated report missing safety notice: %q", report[len(report)-120:])
 	}
-	prompt := teamNotificationPrompt(
-		[]announceEntry{{MemberDisplayName: "研究伙伴", Truncated: true}},
-		buildTaskBoardSnapshot([]models.ChannelTask{{Status: constants.ChannelTaskStatusCompleted}}),
+	context := teamNotificationContext(
+		[]announceEntry{{MemberDisplayName: "研究伙伴", Content: report, Truncated: true}},
 		[]models.ChannelTask{{Status: constants.ChannelTaskStatusCompleted}},
 	)
-	if !strings.Contains(prompt, "Do not draw conclusions") || strings.Contains(prompt, "one complete final summary") {
-		t.Fatalf("truncated report prompt is unsafe: %q", prompt)
+	var facts teamNotificationFacts
+	if err := json.Unmarshal([]byte(context.Content), &facts); err != nil || len(facts.TruncatedMembers) != 1 || len(facts.Reports) != 0 || facts.FinalSummaryAllowed {
+		t.Fatalf("truncated report context is unsafe: %+v, %v", facts, err)
 	}
 }
 
@@ -284,39 +267,26 @@ func TestTeammateReportContentPreservesMemberSummaryWithoutInventingSections(t *
 	}
 }
 
-func TestDispatchTaskContentUsesBoundedPayload(t *testing.T) {
-	content := dispatchTaskContent(
-		models.ChannelTask{
-			Subject:     "实现页面",
-			Description: "完成首页布局并验证构建。",
-		},
-		[]models.ChannelTask{{
-			Subject: "设计稿",
-			Status:  constants.ChannelTaskStatusCompleted,
-			Result:  "设计已确认",
-		}},
+func TestDispatchTaskKeepsDependencyFactsSeparate(t *testing.T) {
+	input, err := taskWorkInput(
+		models.ChannelTask{Subject: "实现页面", Description: "完成首页布局并验证构建。"},
+		[]models.ChannelTask{{Subject: "设计稿", Status: constants.ChannelTaskStatusCompleted, Result: "设计已确认"}},
+		nil,
 	)
-	for _, unexpected := range []string{
-		"你正在作为团队执行伙伴",
-		"完成后请在最终答复中简洁总结",
-		"只能使用以下五个标题",
-		"[Team workspace:",
-		"Team Workspace",
-	} {
-		if strings.Contains(content, unexpected) {
-			t.Fatalf("dispatch content still embeds %q: %q", unexpected, content)
-		}
+	if err != nil || input.Content != "实现页面\n\n完成首页布局并验证构建。" || len(input.ContextInstructions) != 1 {
+		t.Fatalf("invalid member dispatch: %+v, %v", input, err)
 	}
-	for _, expected := range []string{
-		"[Assigned task]: 实现页面",
-		"完成首页布局并验证构建。",
-		"=== Completed blocker task results ===",
-		"设计稿",
-		"设计已确认",
-	} {
-		if !strings.Contains(content, expected) {
-			t.Fatalf("dispatch content missing %q: %q", expected, content)
-		}
+	context := input.ContextInstructions[0]
+	if context.Name != agent.TeamDependencyContextName || !strings.Contains(context.Content, "设计已确认") {
+		t.Fatalf("dispatch lost dependency evidence: %+v", context)
+	}
+	large := models.ChannelTask{Subject: "长报告", Result: strings.Repeat("附录", 3_000)}
+	var dependencies []taskDependencyFact
+	context = taskDependencyContext([]models.ChannelTask{large})[0]
+	if err := json.Unmarshal([]byte(context.Content), &dependencies); err != nil ||
+		len(dependencies) != 1 || !dependencies[0].Truncated || dependencies[0].Report == "" ||
+		strings.Contains(dependencies[0].Report, agent.TeamReportTruncationNotice) {
+		t.Fatalf("dispatch lost the bounded dependency preview or mixed in the warning: %v", err)
 	}
 }
 

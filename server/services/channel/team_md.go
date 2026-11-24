@@ -30,11 +30,11 @@ func (s *service) teamInstruction(
 
 // leaderTurnInstruction 仅描述当前负责人的执行模式，不改变稳定 TEAM 或执行权限。
 func leaderTurnInstruction(directExecution bool) workinput.Instruction {
-	instruction := workinput.Instruction{Name: "Current Lead Turn", Content: "This section applies only to the current execution and replaces the execution mode from earlier turns.\n"}
+	instruction := workinput.Instruction{Name: agentapi.TeamLeadTurnName, Content: agentapi.TeamLeadTurnIntroduction}
 	if directExecution {
-		instruction.Content += "This is a direct-execution turn: the user mentioned you through the structured `@` mechanism. Execute the current request in this Chat. You may delegate independent subtasks to non-lead members, but do not create a team task for yourself."
+		instruction.Content += agentapi.TeamLeadDirectInstructions
 	} else {
-		instruction.Content += "This is a coordination turn: delegate file changes, command execution, or formal deliverables to non-lead members. You may answer explanations, clarifications, and final summaries directly. Do not carry forward direct-execution mode from an earlier turn."
+		instruction.Content += agentapi.TeamLeadCoordinationInstructions
 	}
 	return instruction
 }
@@ -59,10 +59,7 @@ func (s *service) buildTeamMD(
 		selfRole = "Lead"
 	}
 	var builder strings.Builder
-	builder.WriteString("## Collaboration Priority\n")
-	builder.WriteString("Team coordination rules take precedence over general advice in the partner profile. ")
-	builder.WriteString("The lead may perform formal implementation directly in this Chat only when the user mentions the lead through the structured `@` mechanism; that path does not create a task assigned to the lead. ")
-	builder.WriteString("Dispatching a task does not mean that the task is complete.\n\n")
+	builder.WriteString(agentapi.TeamCollaborationInstructions)
 	builder.WriteString("# Team: ")
 	builder.WriteString(strings.TrimSpace(channel.Name))
 	builder.WriteString("\n")
@@ -81,44 +78,14 @@ func (s *service) buildTeamMD(
 	}
 	roster := memberRoster(members, selfWakerID, selfIsLead)
 	builder.WriteString("\n## Members\n")
-	builder.WriteString("This is the authoritative list of current team members; do not use tools to verify it again.\n")
-	builder.WriteString("Names are for readability only. `assigneeWakerId` must use a Waker ID shown in backticks below; ")
-	builder.WriteString("do not use `you`, a member name, or another natural-language alias.\n\n")
+	builder.WriteString(agentapi.TeamRosterInstructions)
 	builder.WriteString(roster)
 	if selfIsLead {
-		builder.WriteString("\n## Workflow\n\n")
-		builder.WriteString("You are the sole lead for this team Chat and are responsible for planning, delegation, coordination, and the final summary. ")
-		builder.WriteString("This Chat is both the lead session and the main team session. ")
-		builder.WriteString("During a normal coordination turn, any file creation or modification, command execution, or formal deliverable must be delegated to a non-lead member by creating a task with `botcli team tasks`. ")
-		builder.WriteString("When the user mentions the lead through the structured `@` mechanism, the system sends the original input directly to this Chat as a direct-execution turn. In that turn, you may implement the request yourself or delegate independent subtasks to non-lead members, but you must not create a task for yourself. ")
-		builder.WriteString("The final summary is the lead's coordination closeout after receiving member results. Reply to the user directly and do not create a task for it. ")
-		builder.WriteString("You may directly handle explanations, clarifications, or short answers that require no formal execution.\n\n")
-		builder.WriteString("Rules:\n")
-		builder.WriteString("- Call `list` or `search` before creating, updating, or retrying a task to avoid duplicate work\n")
-		builder.WriteString("- `assigneeWakerId` must be the Waker ID of a non-lead member from Members; the lead cannot be a task assignee\n")
-		builder.WriteString("- Describe exactly one clear deliverable per task; split work that spans specialties into separate tasks\n")
-		builder.WriteString("- Match tasks semantically to member roles and biographies; structured `@` mentions are already routed by the system, so do not reassign them\n")
-		builder.WriteString("- Build the complete task graph in one pass, tell the user work has started, and then end the turn; do not poll or wait for members\n")
-		builder.WriteString("- When a single task can answer the user in one complete member report, set `directDelivery=true` on create. Use normal lead review for multiple tasks, dependencies, human review, or work needing synthesis\n")
-		builder.WriteString("- Do not claim that team work is complete while the task board contains any pending, in_progress, or in_review task\n")
-		builder.WriteString("- Member reports appear directly in this Chat; after the task board settles, the system wakes you only when coordination or synthesis is needed\n")
-		builder.WriteString("- Do not act on a truncated report\n")
-		builder.WriteString("- Do not expose the internal task board, notification queue, or tool protocol directly to the user\n\n")
-		builder.WriteString("## botcli team tasks\n\n")
-		builder.WriteString("Read botcli guide team.lead for the method and discover authorized commands with botcli capabilities.\n")
+		builder.WriteString(agentapi.TeamLeadInstructions)
+		fmt.Fprintf(&builder, agentapi.TeamNotificationInstructions, constants.ChannelMemberReportMaximumRunes)
 		return builder.String(), nil
 	}
-	builder.WriteString("\n## Rules\n\n")
-	builder.WriteString("As an execution member, focus on the task assigned to you.\n\n")
-	builder.WriteString("- Stay within the task scope and do not drift from the assigned objective\n")
-	builder.WriteString("- After completing the work and required verification, call `botcli team reports submit` exactly once before your final response\n")
-	builder.WriteString("- Put the complete result in `report.text`: findings or changes, verification, and remaining risks. For a direct-delivery task, set `readyForUser=true` only when this text itself is a complete answer the user can read; otherwise let the lead synthesize it\n")
-	builder.WriteString("- If blocked, still use `report` to state truthfully what information, permission, or decision is missing\n")
-	builder.WriteString("- After the report succeeds, final is one natural acknowledgement sentence. Never repeat the report or write a second complete answer in final\n")
-	builder.WriteString("- If `report` is unavailable or still fails after retrying, the final response must instead contain the complete factual report as a factual final response\n")
-	builder.WriteString("- The system commits task status automatically after the run ends; no additional completion action is needed\n")
-	builder.WriteString("\n## botcli team tasks\n\n")
-	builder.WriteString("Read botcli guide team.member and submit the factual report with botcli team reports submit.\n")
+	builder.WriteString(agentapi.TeamMemberInstructions)
 	return builder.String(), nil
 }
 
@@ -218,8 +185,7 @@ func teamWorkspaceSection(workspaceDirectory string) string {
 	if path == "" {
 		return ""
 	}
-	return "## Team Workspace\nYour working directory `" + path +
-		"` is the team scope root. Each member has an isolated cwd under leader/ or members/. The shared/ directory contains true shared files; authorized projects remain at their original absolute paths."
+	return fmt.Sprintf(agentapi.TeamWorkspaceInstructions, path)
 }
 
 // rosterText 把成员公开资料压成单行并按字符数截断，避免破坏 roster 结构。

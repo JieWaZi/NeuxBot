@@ -9,6 +9,7 @@ import (
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
@@ -257,7 +258,12 @@ func (s *Service) Organize(ctx context.Context, in OrganizeCommand) (*core.Recei
 	in.Configuration.ConnectionID = "local"
 	in.Configuration.Message = in.Message
 	// 摘要固定用户意图，不能因后续pending来源或Runtime默认变化改写同键请求。
-	raw, _ := json.Marshal(in)
+	identityInput := in
+	if in.Configuration.CompanionFindings != "" {
+		// 保留已记录的请求摘要；正文与补充发现分别冻结并交付。
+		identityInput.Message += agent.WikiCompanionFindingsLabel + in.Configuration.CompanionFindings
+	}
+	raw, _ := json.Marshal(identityInput)
 	sum := sha256.Sum256(raw)
 	link := models.KnowledgeOperationLink{RequestID: in.RequestID, Operation: "job.accept", Digest: hex.EncodeToString(sum[:]), Backend: "local", ConnectionID: "local", KnowledgeBaseID: in.LibraryID, ConfigurationID: in.Configuration.ID}
 	if err := s.config.References.BeginOperation(ctx, link); err != nil {
@@ -292,7 +298,11 @@ func (s *Service) Organize(ctx context.Context, in OrganizeCommand) (*core.Recei
 	}
 	// 核心接纳暂未完成也沿用已落盘选择，不能重新解析后来变化的库或 Runtime 默认值。
 	frozenConfiguration := false
-	if _, err := s.config.References.GetTaskConfiguration(ctx, in.Configuration.ID); err == nil {
+	if stored, err := s.config.References.GetTaskConfiguration(ctx, in.Configuration.ID); err == nil {
+		if in.Configuration.CompanionFindings != "" && stored.CompanionFindings == "" && stored.Message == identityInput.Message {
+			// 独立知识核心尚未确认接纳时沿用已经冻结的原配置。
+			in.Configuration.Message, in.Configuration.CompanionFindings = stored.Message, ""
+		}
 		in.Configuration, err = s.config.References.FreezeTaskConfiguration(ctx, in.Configuration)
 		if err != nil {
 			return nil, in.Configuration, err

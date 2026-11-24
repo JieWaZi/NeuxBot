@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -630,16 +629,11 @@ func mergePluginSkills(independent, derived []agentapi.Skill) ([]agentapi.Skill,
 	return result, nil
 }
 
-// pluginSelectionHint 使用已交付的组件传达本轮插件意图。
-func pluginSelectionHint(selected []plugins.Snapshot, connectors []agentapi.Connector) string {
-	if len(selected) == 0 {
-		return ""
-	}
-	var hint strings.Builder
-	hint.WriteByte('\n')
+// pluginSelectionFacts 投影本轮实际选中的插件与已交付连接器名称。
+func pluginSelectionFacts(selected []plugins.Snapshot, connectors []agentapi.Connector) []selectedPluginFact {
+	result := make([]selectedPluginFact, 0, len(selected))
 	for _, plugin := range selected {
-		fmt.Fprintf(&hint, "\nUse %q to carry out this request.", plugin.Name)
-		var names []string
+		fact := selectedPluginFact{Name: plugin.Name}
 		for _, connector := range connectors {
 			if connector.RuntimeKey == "" || !slices.Contains(plugin.ComponentIDs, connector.ID) {
 				continue
@@ -648,13 +642,19 @@ func pluginSelectionHint(selected []plugins.Snapshot, connectors []agentapi.Conn
 			if plugin.Runtime == agentapi.RuntimeIDCodex {
 				name = "mcp__" + name
 			}
-			names = append(names, name)
+			fact.Connectors = append(fact.Connectors, name)
 		}
-		if len(names) > 0 {
-			fmt.Fprintf(&hint, " (MCP: %s)", strings.Join(names, ", "))
-		}
+		result = append(result, fact)
 	}
-	return hint.String()
+	return result
+}
+
+// selectedPluginFact 描述当前输入引用的已交付插件。
+type selectedPluginFact struct {
+	// Name 是插件展示名称。
+	Name string `json:"name"`
+	// Connectors 是本次选中插件可调用的原生连接器名称。
+	Connectors []string `json:"connectors,omitempty"`
 }
 
 var pluginCLIVersion = regexp.MustCompile(`([0-9]+)\.([0-9]+)\.([0-9]+)`)

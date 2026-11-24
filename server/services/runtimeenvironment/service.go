@@ -43,6 +43,8 @@ type Service interface {
 	InstallationSnapshot(context.Context, string) (RuntimeInstallationSnapshot, error)
 	// InstallRuntime 接纳安装、重试或更新程序任务。
 	InstallRuntime(context.Context, string) error
+	// InstallManagedRuntime 接纳显式切换到托管新版的任务。
+	InstallManagedRuntime(context.Context, string) error
 	// UninstallRuntime 卸载同一基础智能体的程序，保留账号和配置。
 	UninstallRuntime(context.Context, string) error
 	// CancelRuntimeInstallation 请求取消当前安装任务。

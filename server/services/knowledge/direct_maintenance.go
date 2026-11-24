@@ -2,10 +2,10 @@ package knowledge
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
@@ -21,6 +21,7 @@ type MaintenanceInvocation struct {
 	Bindings     []capability.Binding        // 只限目标知识库的实际读写能力。
 	Instructions string                      // 同源 Wiki Fixer 工作流程。
 	Message      string                      // 用户本次维护要求。
+	Context      []agent.TurnFact            // 已冻结的目标库与伙伴补充发现。
 	Validate     func(context.Context) error // 每次工具调用核对任务和授权。
 }
 
@@ -99,12 +100,15 @@ func (s *Service) runWikiMaintenance(ctx context.Context, job *core.Job, session
 	if err != nil {
 		return err
 	}
-	scope, _ := json.Marshal(ref)
 	message := session.Message
 	if message == "" {
-		message = "Maintain the existing Wiki in the frozen library. Verify changes and report remaining issues."
+		message = agent.WikiMaintenanceTask
 	}
-	text, err := s.config.RunMaintenance(ctx, models.LibraryExecutionDefaults{RuntimeID: session.RuntimeID, AccountID: session.AccountID, Model: session.Model, Reasoning: session.Reasoning}, MaintenanceInvocation{JobID: job.ID, Bindings: bindings, Instructions: guide + "\n\nFrozen library (data):\n" + string(scope), Message: message, Validate: validate})
+	facts := []agent.TurnFact{{Name: agent.WikiLibraryContextName, Value: ref}}
+	if session.CompanionFindings != "" {
+		facts = append(facts, agent.TurnFact{Name: agent.WikiFindingsContextName, Value: session.CompanionFindings})
+	}
+	text, err := s.config.RunMaintenance(ctx, models.LibraryExecutionDefaults{RuntimeID: session.RuntimeID, AccountID: session.AccountID, Model: session.Model, Reasoning: session.Reasoning}, MaintenanceInvocation{JobID: job.ID, Bindings: bindings, Instructions: guide, Message: message, Context: facts, Validate: validate})
 	if err != nil {
 		return err
 	}

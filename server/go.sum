@@ -6,8 +6,6 @@ github.com/BurntSushi/toml v1.1.0/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbi
 github.com/BurntSushi/toml v1.5.0 h1:W5quZX/G/csjUnuI8SUYlsHs9M38FC7znL0lIO+DvMg=
 github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
-github.com/JieWaZi/acp-go v0.1.1-0.20261112030522-c220d9708b52 h1:MHImpK5EqfvOumq8igaqfRvt4aOyqtv+yyXrIsVxO8s=
-github.com/JieWaZi/acp-go v0.1.1-0.20261112030522-c220d9708b52/go.mod h1:GC3wtmyMzKixwzHmH0IgYY++4UDJnSQS2a8d0C6SJQs=
 github.com/JieWaZi/acp-go v0.1.1-0.20261121112353-0efc9e5553a9 h1:snfdXSuQzsujia1m7xsfK3Lg6d3IrUMLfZrTYJV0Ulo=
 github.com/JieWaZi/acp-go v0.1.1-0.20261121112353-0efc9e5553a9/go.mod h1:GC3wtmyMzKixwzHmH0IgYY++4UDJnSQS2a8d0C6SJQs=
 github.com/JieWaZi/acp-go-sdk v0.13.6-0.20261106052225-bbb4e22da7a0 h1:Y46nCi5hp+5nSYHyGqW5wwxiaWpjM8ET9balw/wfcOk=

@@ -1025,7 +1025,6 @@ export function WorkflowDetailPage() {
         <WorkflowChatHistory
           sessions={detail.data?.creationSessions ?? []}
           selectedId={session?.id}
-          onNew={newChat}
           onRefresh={() => detail.refetch().then(() => {})}
           onSelect={(sessionId) => {
             setChatExpanded(true);

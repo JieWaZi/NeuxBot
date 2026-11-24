@@ -7,7 +7,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/gin-gonic/gin"
@@ -98,9 +100,13 @@ func startWakerOnboarding(ctx *gin.Context, waker models.Waker, retry bool) Wake
 	intent := execution.WorkIntent{
 		ClientRequestID: waker.ID,
 		Chat:            execution.ChatTarget{Create: &execution.CreateChatSpec{WakerID: waker.ID}},
-		Input:           execution.WorkInput{Actor: constants.WakerOnboardingActor, Content: "Set up my partner profile. Use any previously accepted interview answers supplied by Core, or begin with an interactive choice card. Start in " + language + ", unless my overview clearly indicates another language."},
-		Options:         options,
-		Admission:       constants.ExecutionAdmissionCommitBeforeDispatch,
+		Input: execution.WorkInput{
+			Actor:               constants.WakerOnboardingActor,
+			Content:             agent.WakerOnboardingTask,
+			ContextInstructions: []workinput.Instruction{{Name: "Onboarding language", Content: language}},
+		},
+		Options:   options,
+		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
 	}
 	if retryAfter != "" {
 		intent.ClientRequestID = ""

@@ -272,6 +272,9 @@ func (c *channelThreadController) ListByChannel(
 		last := result.Threads[len(result.Threads)-1]
 		result.NextCursor = &ChannelThreadListCursor{UpdatedAt: last.UpdatedAt, ID: last.ID}
 	}
+	if err := c.loadLeadExecutionSelections(ctx, result.Threads); err != nil {
+		return ChannelThreadListResult{}, err
+	}
 	return result, nil
 }
 
@@ -303,7 +306,39 @@ func (c *channelThreadController) ListByChannelUpdatedRange(
 	if err != nil {
 		return nil, databaseError("list_channel_threads_by_updated_range", "channel_id="+channelID, err)
 	}
+	if err := c.loadLeadExecutionSelections(ctx, threads); err != nil {
+		return nil, err
+	}
 	return threads, nil
+}
+
+// loadLeadExecutionSelections 只为当前分页读取负责人 Chat 的执行选择。
+func (c *channelThreadController) loadLeadExecutionSelections(ctx context.Context, threads []models.ChannelThread) error {
+	ids := make([]string, 0, len(threads))
+	for _, thread := range threads {
+		if thread.LeadChatID != "" {
+			ids = append(ids, thread.LeadChatID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var chats []models.Chat
+	if err := controllerDB(ctx, c.db).
+		Select("id", "last_runtime_id", "last_model").
+		Where("id IN ?", ids).
+		Find(&chats).Error; err != nil {
+		return databaseError("list_channel_thread_lead_selections", "channel_id="+threads[0].ChannelID, err)
+	}
+	byID := make(map[string]models.Chat, len(chats))
+	for _, chat := range chats {
+		byID[chat.ID] = chat
+	}
+	for i := range threads {
+		chat := byID[threads[i].LeadChatID]
+		threads[i].LeadRuntimeID, threads[i].LeadModel = chat.LastRuntimeID, chat.LastModel
+	}
+	return nil
 }
 
 // CountByChannelUpdatedRange 返回团队符合搜索词和最近活动时间筛选的已就绪对话总数。

@@ -3,24 +3,21 @@ import {
   conversationAttentionMark,
   type ConversationMark,
 } from "@/shared/ui/conversation-attention";
+import { MoreHorizontal, Pencil, Trash2, ShieldCheck } from "lucide-react";
 import {
-  ArrowLeft,
-  MessageSquareText,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Trash2,
-  ShieldCheck,
-} from "lucide-react";
-import { useState, type MouseEvent, type ReactNode } from "react";
+  createContext,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { useChatProtection } from "@/shared/api/chat-protection";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { cn } from "@/shared/lib/cn";
+import { runtimeDisplayName } from "@/shared/lib/runtime-display-name";
 import { Button } from "@/shared/ui/button";
-import { CornerLauncherButton } from "@/shared/ui/corner-launcher-button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { RuntimeCliIcon } from "@/shared/ui/runtime-cli-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,90 +25,20 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 
-/** 会话来源由入口提供；导航浮层、列表和操作样式共用。 */
-export function ChatHistoryPopover({
-  children,
-}: {
-  children: (close: () => void) => ReactNode;
-}) {
-  const { t } = useTranslation("common");
-  const [open, setOpen] = useState(false);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <CornerLauncherButton
-          icon={<MessageSquareText strokeWidth={1.5} />}
-          label={t("partnerNavigation.viewChatHistory")}
-        />
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        aria-label={t("partnerNavigation.conversationHistory")}
-        collisionPadding={16}
-        side="top"
-        sideOffset={8}
-        variant="navigation"
-      >
-        {children(() => setOpen(false))}
-      </PopoverContent>
-    </Popover>
-  );
-}
+export const ChatHistoryContentContext = createContext<ReactNode>(null);
 
-export function ChatHistoryPanelSurface({
-  children,
-  onBack,
-  onNew,
-}: {
-  children: ReactNode;
-  onBack?: () => void;
-  onNew: () => void;
-}) {
-  const { t } = useTranslation("common");
+export function ChatHistoryPanelSurface({ children }: { children: ReactNode }) {
   return (
     <div
-      className="flex h-80 max-h-[calc(var(--radix-popover-content-available-height)-0.5rem)] min-h-0 w-80 flex-col p-1"
-      data-chat-history-panel
+      className="scrollbar-hidden flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain p-2"
+      data-chat-history-list
     >
-      <div className="min-h-row-default mb-1 flex items-center justify-between gap-2 px-1">
-        <div className="flex min-w-0 items-center gap-1">
-          {onBack ? (
-            <Button
-              aria-label={t("partnerNavigation.backToEntities")}
-              onClick={onBack}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <ArrowLeft />
-            </Button>
-          ) : null}
-          <h2 className="type-label truncate font-medium">
-            {t("partnerNavigation.conversationList")}
-          </h2>
-        </div>
-        <Button
-          aria-label={t("partnerNavigation.newChat")}
-          onClick={onNew}
-          size="icon-sm"
-          title={t("partnerNavigation.newChat")}
-          type="button"
-          variant="ghost"
-        >
-          <Plus />
-        </Button>
-      </div>
-      <div
-        className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain"
-        data-chat-history-list
-      >
-        {children}
-      </div>
+      {children}
     </div>
   );
 }
 
-export function ChatHistoryRowStatus({
+function ChatHistoryRowStatus({
   status,
   mark,
 }: {
@@ -129,7 +56,7 @@ export function ChatHistoryRowStatus({
         "block size-1.5 shrink-0 place-self-center rounded-full",
         status === "running" && "bg-success",
         status === "waiting" && "bg-warning",
-        status === "idle" && "bg-border",
+        status === "idle" && "bg-border-strong",
       )}
     />
   );
@@ -174,29 +101,41 @@ export function ChatHistoryNavigationRow({
   active,
   title,
   status,
+  runtimeId,
+  modelId,
   requestKinds,
   unreadCount,
   href,
   onOpen,
   onPrefetch,
   onAction,
+  allowRename = true,
+  metadata,
   extraMenu,
   protection,
 }: {
   active: boolean;
   title: string;
   status: "idle" | "running" | "waiting";
+  runtimeId?: string;
+  modelId?: string;
   requestKinds?: readonly string[];
   unreadCount?: number;
   href?: string;
   onOpen: (event: MouseEvent<HTMLElement>) => void;
   onPrefetch?: () => void;
   onAction: (mode: "rename" | "delete") => void;
+  allowRename?: boolean;
+  metadata?: ReactNode;
   protection?: ProtectionChoice;
   extraMenu?: (open: boolean) => ReactNode;
 }) {
   const { t } = useTranslation("common");
   const [menuOpen, setMenuOpen] = useState(false);
+  const model = modelId?.trim();
+  const runtime = runtimeId?.trim();
+  const modelLabel =
+    model || (runtime ? runtimeDisplayName({ id: runtime }) : undefined);
   const mark = conversationAttentionMark({
     requestKinds,
     unread: unreadCount,
@@ -204,10 +143,30 @@ export function ChatHistoryNavigationRow({
   const contents = (
     <>
       <ChatHistoryRowStatus status={status} mark={mark} />
-      <span className="min-w-0 truncate">{title}</span>
-      <ConversationAttentionMark
-        mark={mark?.kind === "unread" ? mark : undefined}
-      />
+      <span
+        aria-hidden="true"
+        className="size-icon-sm grid place-items-center"
+        title={modelLabel}
+      >
+        {modelLabel ? (
+          <RuntimeCliIcon
+            runtimeId={runtime}
+            size={14}
+            className="size-icon-sm"
+          />
+        ) : null}
+      </span>
+      <span className={cn("min-w-0 truncate", active && "font-medium")}>
+        {title}
+      </span>
+      {metadata || mark?.kind === "unread" ? (
+        <span className="flex shrink-0 items-center gap-1.5">
+          <ConversationAttentionMark
+            mark={mark?.kind === "unread" ? mark : undefined}
+          />
+          {metadata}
+        </span>
+      ) : null}
     </>
   );
   const props = {
@@ -215,14 +174,18 @@ export function ChatHistoryNavigationRow({
     onFocus: onPrefetch,
     onMouseEnter: onPrefetch,
     title,
+    "aria-current": active ? ("page" as const) : undefined,
+    "aria-description": modelLabel,
     className:
-      "focus-visible:ring-ring type-body grid min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-1 overflow-hidden rounded-sm px-1 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset",
+      "focus-visible:ring-ring type-label grid min-h-row-compact min-w-0 grid-cols-[var(--spacing-icon-sm)_var(--spacing-icon-sm)_minmax(0,1fr)_auto] items-center gap-1.5 rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset",
   };
   return (
     <div
       className={cn(
-        "group/chat hover:bg-muted min-h-row-compact relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)_32px] items-center overflow-hidden rounded-sm",
-        active && "bg-muted text-foreground",
+        "group/chat grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-md pr-0.5",
+        active
+          ? "bg-action-quiet-pressed text-foreground"
+          : "hover:bg-action-quiet-hover",
       )}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -234,11 +197,7 @@ export function ChatHistoryNavigationRow({
           {contents}
         </Link>
       ) : (
-        <button
-          type="button"
-          aria-current={active ? "page" : undefined}
-          {...props}
-        >
+        <button type="button" {...props}>
           {contents}
         </button>
       )}
@@ -262,10 +221,12 @@ export function ChatHistoryNavigationRow({
               onDone={() => setMenuOpen(false)}
             />
           ) : null}
-          <DropdownMenuItem onSelect={() => onAction("rename")}>
-            <Pencil />
-            {t("partnerNavigation.renameChat")}
-          </DropdownMenuItem>
+          {allowRename ? (
+            <DropdownMenuItem onSelect={() => onAction("rename")}>
+              <Pencil />
+              {t("partnerNavigation.renameChat")}
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem
             variant="destructive"
             onSelect={() => onAction("delete")}

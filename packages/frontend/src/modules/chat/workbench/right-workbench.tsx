@@ -86,6 +86,7 @@ export type WorkbenchContentTab = {
 
 type RightWorkbenchProps = {
   parentBusy: boolean;
+  chatHistory?: ReactNode;
   contentTab?: WorkbenchContentTab;
   displayWidth?: number;
   animateLayout?: boolean;
@@ -107,6 +108,7 @@ type RightWorkbenchProps = {
 };
 
 export function RightWorkbench({
+  chatHistory,
   contentTab,
   displayWidth,
   animateLayout = false,
@@ -403,6 +405,8 @@ export function RightWorkbench({
   );
 
   const renderTab = (tab: WorkbenchTab, active: boolean) => {
+    if (tab.kind === "chat-history")
+      return active && visible ? chatHistory : null;
     if (tab.kind === "content") {
       if (tab.contentReference?.type === workflowRunContentType)
         return (

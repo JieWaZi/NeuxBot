@@ -168,7 +168,9 @@ func normalizePendingMessage(input pendingMessage) pendingMessage {
 	input.chatID = strings.TrimSpace(input.chatID)
 	input.parentExecutionID = strings.TrimSpace(input.parentExecutionID)
 	input.message.Actor = strings.TrimSpace(input.message.Actor)
-	input.message.Text = strings.TrimSpace(input.message.Text)
+	if strings.TrimSpace(input.message.Text) == "" {
+		input.message.Text = ""
+	}
 	if input.message.Workflow != nil {
 		workflow := *input.message.Workflow
 		workflow.ID = strings.TrimSpace(workflow.ID)
@@ -287,7 +289,10 @@ func (m *service) startMessage(
 	}
 	isNew := request.chatID == ""
 	if request.submissionID != "" {
-		content := []any{request.chatID, request.message, request.runtime, request.parentExecutionID, request.admission, stableToolCapabilities(request.toolCapabilities), request.supplementalInstructions, request.contextInstructions, request.allowedConnectorIDs, request.allowedAgentDomains}
+		// 原提交摘要继续匹配已接纳请求，保存和原生发送使用本次正文。
+		identityMessage := request.message
+		identityMessage.Text = strings.TrimSpace(identityMessage.Text)
+		content := []any{request.chatID, identityMessage, request.runtime, request.parentExecutionID, request.admission, stableToolCapabilities(request.toolCapabilities), request.supplementalInstructions, request.contextInstructions, request.allowedConnectorIDs, request.allowedAgentDomains}
 		if request.message.Workflow != nil {
 			content = append(content, map[string]string{"workflowId": request.message.Workflow.ID})
 		}
@@ -505,8 +510,15 @@ func (m *service) startMessage(
 		if binding.Capability != nil {
 			request.toolCapabilities = append(request.toolCapabilities, *binding.Capability)
 		}
-		if binding.Instruction != "" {
-			request.contextInstructions = append(request.contextInstructions, agent.Instruction{Name: "Workflow", Content: binding.Instruction})
+		if binding.DeveloperInstruction != "" {
+			request.supplementalInstructions = append(request.supplementalInstructions, agent.Instruction{Name: "Workflow tools", Content: binding.DeveloperInstruction})
+		}
+		if binding.AuthoringDefinitionID != "" {
+			request.supplementalInstructions = append(request.supplementalInstructions, agent.Instruction{Name: "Workflow authoring definition", Content: binding.AuthoringDefinitionID})
+		}
+		if binding.Reference != nil {
+			encoded, _ := json.Marshal(binding.Reference)
+			request.contextInstructions = append(request.contextInstructions, agent.Instruction{Name: "Workflow target", Content: string(encoded)})
 		}
 	} else if request.message.Workflow != nil {
 		return AcceptedExecution{}, status_error.WorkflowCapabilityUnsupported
@@ -630,7 +642,7 @@ func createRequestContent(request pendingMessage) []interface{} {
 		request.create.executionWorkspaceDirectory,
 		request.create.hiddenFromWakerHistory,
 		request.message.Actor,
-		request.message.Text,
+		strings.TrimSpace(request.message.Text),
 		request.message.Attachments,
 		request.message.SkillIDs,
 		request.message.ConnectorIDs,
@@ -1177,7 +1189,10 @@ func (m *service) prepareNativeInstructions(ctx context.Context, state messageCh
 		return nil, err
 	}
 	profileDocument := builtinrolepreset.ResolveWakerAgents(state.chat.WakerID, storedDocuments, 0)
-	instructions := []agent.Instruction{{Name: "Workspace directories", Content: "The working directory is persistent and may be shared by several chats of this partner. Organize your persistent files here as needed; no output or temporary subdirectory is required. Use the system temporary directory (TMPDIR or /tmp) for disposable intermediate files. User projects remain at their authorized absolute roots. Use the exact attachment paths supplied for this input. Leave original uploads intact and do not enumerate their parent directories."}}
+	instructions := []agent.Instruction{
+		{Name: "Workspace directories", Content: agent.WorkspaceInstructions},
+		{Name: "Current input context", Content: agent.TurnContextInstructions},
+	}
 	if profileDocument.Content != "" {
 		instructions = append(instructions, agent.Instruction{Name: profileDocument.FileName, Content: profileDocument.Content})
 	}
@@ -1541,16 +1556,30 @@ func nativeMessage(request pendingMessage, files *preparedMessageFiles) agent.Me
 	return agent.Message{Text: request.message.Text, Attachments: attachments, CodeReferences: codeReferences}
 }
 
-// nativeInstructions 合并伙伴与入口已经读取的稳定指令。
-func nativeInstructions(request pendingMessage, files *preparedMessageFiles) []agent.Instruction {
+// nativeInstructionInputs 分开会话持续使用的规则与本轮事实。
+func nativeInstructionInputs(request pendingMessage, files *preparedMessageFiles) ([]agent.Instruction, []agent.Instruction) {
 	instructions := append([]agent.Instruction(nil), files.instructions...)
+	contextInstructions := slices.Clone(request.contextInstructions)
 	for _, instruction := range request.supplementalInstructions {
+		if instruction.Name == constants.TeamInstructionFileName {
+			// 保留已接纳的角色文本用于去重，把本轮直交模式单独交付给原生层。
+			content := strings.TrimRight(instruction.Content, "\n")
+			if role, direct := strings.CutSuffix(content, strings.TrimRight(agent.TeamDirectDeliveryInstructions, "\n")); direct {
+				instruction.Content = strings.TrimSpace(role)
+				contextInstructions = append(contextInstructions, agent.Instruction{Name: agent.TeamDirectDeliveryContextName, Content: "true"})
+			}
+		}
 		if instruction.Name != "" && instruction.Content != "" {
 			instructions = append(instructions, instruction)
 		}
 	}
 
-	return instructions
+	instructions, contextInstructions = agent.TurnInstructions(instructions, contextInstructions)
+	if len(files.projectEntries) > 0 {
+		encoded, _ := json.Marshal(files.projectEntries)
+		instructions = append(instructions, agent.Instruction{Name: "Project entries", Content: agent.ProjectEntryInstructions + "\n" + string(encoded)})
+	}
+	return instructions, contextInstructions
 }
 
 // nativeSkills 直接读取启用技能的已发布版本位置。
@@ -1576,16 +1605,6 @@ func nativeWorkspace(state messageChat, request pendingMessage, files *preparedM
 		directories = nil
 	}
 	return agent.Workspace{Path: files.executionWorkspaceDirectory, Managed: true, AdditionalWritableDirectories: directories, ProjectDirectories: runtimeProjectDirectories(state.additionalDirectories, state.projectSources)}
-}
-
-// nativeContextInstructions 只携带本轮路径及业务引用。
-func nativeContextInstructions(request pendingMessage, files *preparedMessageFiles) []agent.Instruction {
-	contextInstructions := slices.Clone(request.contextInstructions)
-	if len(files.projectEntries) > 0 {
-		encoded, _ := json.Marshal(files.projectEntries)
-		contextInstructions = append(contextInstructions, agent.Instruction{Name: "Current project entries", Content: "This native client uses the following cwd-relative project entries. Use each entry path for project tools; sourcePath remains the original authorized file location.\n" + string(encoded)})
-	}
-	return contextInstructions
 }
 
 func selectedSkillNames(request pendingMessage, enabledSkills []models.SkillWithState) []string {

@@ -803,7 +803,7 @@ func TestLeadCreatedTasksDispatchAfterLeadTerminalAndStartupRecovery(t *testing.
 	}
 	memberIntent := executionFake.firstStart()
 	if memberIntent.Input.Actor != "team_lead" ||
-		!strings.Contains(memberIntent.Input.Content, "[Assigned task]: 实现任务面板") ||
+		!strings.HasPrefix(memberIntent.Input.Content, "实现任务面板\n\n") ||
 		strings.Contains(memberIntent.Input.Content, "你正在作为团队执行伙伴完成一个正式任务。") ||
 		strings.Contains(memberIntent.Input.Content, "完成后请在最终答复中简洁总结") {
 		t.Fatalf("member task prompt = %q", memberIntent.Input.Content)

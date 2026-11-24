@@ -108,3 +108,16 @@ func TestRestartRuntimeUsesNativeOwnerBeforeDetection(t *testing.T) {
 		t.Fatalf("restart did not close then inspect the actual provider: closed=%v probes=%d error=%v", closed, catalog.detectionCount(), err)
 	}
 }
+
+// TestOpenCodeMajorUpgradeRequiresManagedSwitch 验证不同发行渠道的新版只允许并排安装。
+func TestOpenCodeMajorUpgradeRequiresManagedSwitch(t *testing.T) {
+	snapshot := RuntimeInstallationSnapshot{
+		Installed: true, CanUpdate: true, CanSwitchToManaged: true,
+		CheckState: constants.RuntimeUpdateCheckStateChecked,
+		Version:    "1.19.4", LatestVersion: "2.0.29",
+	}
+	applyUpdateAvailability(constants.RuntimeIDOpenCode, &snapshot)
+	if snapshot.UpdateAvailable == nil || !*snapshot.UpdateAvailable || snapshot.CanUpdate || !snapshot.CanSwitchToManaged {
+		t.Fatalf("cross-major OpenCode update produced the wrong actions: %+v", snapshot)
+	}
+}

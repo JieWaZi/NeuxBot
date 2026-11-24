@@ -2,13 +2,18 @@ package installation
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 func managedFixture(t *testing.T) (*Installer, func(string) Result) {
@@ -497,5 +502,210 @@ func TestManagedVersionReclamationPreservesCurrentAndConfiguredVersions(t *testi
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("retained %s: %v", path, err)
 		}
+	}
+}
+
+func TestOfficialKimiUsesItsUpdaterWithoutNeuxBotReceipt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	binary := filepath.Join(home, ".kimi-code", "bin", "kimi")
+	writeFixture(t, binary, []byte("\xcf\xfa\xed\xfeKimi"))
+	var calls [][]string
+	i := NewWithOptions(t.TempDir(), Options{OS: "darwin", Arch: "arm64", Runner: fakeRunner{run: func(_ context.Context, input Command) (string, error) {
+		if input.Binary != binary {
+			t.Fatalf("ran an unselected executable: %s", input.Binary)
+		}
+		if len(input.Args) == 1 && input.Args[0] == "--version" {
+			if len(calls) == 0 {
+				return "2.0.2", nil
+			}
+			return "2.7.2", nil
+		}
+		calls = append(calls, input.Args)
+		return "", nil
+	}}})
+	view, err := i.Inspect(t.Context(), "kimi", binary, nil)
+	if err != nil || !view.CanUpdate || view.CanUninstall {
+		t.Fatalf("official Kimi capability = %+v error=%v", view, err)
+	}
+	result, err := i.InstallAt(t.Context(), "kimi", binary, nil, nil)
+	if err != nil || result.Version != "2.7.2" || !reflect.DeepEqual(calls, [][]string{{"upgrade", "--yes"}}) {
+		t.Fatalf("official Kimi update = %+v calls=%v error=%v", result, calls, err)
+	}
+}
+
+func TestOfficialClaudeSkipsUpdateWhenStableCannotReachOfferedVersion(t *testing.T) {
+	home := resolvedFile(t.TempDir())
+	t.Setenv("HOME", home)
+	target := filepath.Join(home, ".local", "share", "claude", "versions", "2.0.1")
+	entry := filepath.Join(home, ".local", "bin", "claude")
+	writeFixture(t, target, []byte("\xcf\xfa\xed\xfeClaude"))
+	if err := os.MkdirAll(filepath.Dir(entry), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, entry); err != nil {
+		t.Fatal(err)
+	}
+	platformPackage := "@anthropic-ai/claude-agent-sdk-darwin-arm64"
+	integration := base64.StdEncoding.EncodeToString(make([]byte, 64))
+	requests := map[string]string{
+		"https://downloads.claude.ai/claude-code-releases/stable":          "2.0.2",
+		"https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/latest": `{"version":"0.1.1","claudeCodeVersion":"2.0.3"}`,
+		"https://registry.npmjs.org/" + platformPackage + "/0.1.1":         `{"name":"` + platformPackage + `","version":"0.1.1","dist":{"tarball":"https://registry.npmjs.org/` + platformPackage + `/-/release.tgz","integrity":"sha512-` + integration + `"}}`,
+	}
+	upgraded := false
+	i := NewWithOptions(t.TempDir(), Options{OS: "darwin", Arch: "arm64",
+		Client: &http.Client{Transport: retryTransport(func(request *http.Request) (*http.Response, error) {
+			body, ok := requests[request.URL.String()]
+			if !ok {
+				t.Fatalf("unexpected upstream request: %s", request.URL)
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+		})},
+		Runner: fakeRunner{run: func(_ context.Context, command Command) (string, error) {
+			if command.Args[0] == "update" {
+				upgraded = true
+				return "", nil
+			}
+			if upgraded {
+				return "2.0.2", nil
+			}
+			return "2.0.1", nil
+		}},
+	})
+	_, err := i.InstallAt(t.Context(), "claude", entry, nil, nil)
+	if !errors.Is(err, status_error.RuntimeMaintenanceUnsupported) || upgraded {
+		t.Fatalf("native updater was allowed to change installations below the offered release: updated=%t, error=%v", upgraded, err)
+	}
+}
+
+func TestOfficialNativeLayoutKeepsPublisherOwnershipDespiteMatchingReceipt(t *testing.T) {
+	home := resolvedFile(t.TempDir())
+	t.Setenv("HOME", home)
+	target := filepath.Join(home, ".kimi-code", "bin", "kimi")
+	writeFixture(t, target, []byte("\xcf\xfa\xed\xfeKimi"))
+	i := NewWithOptions(t.TempDir(), Options{OS: "darwin", Arch: "arm64"})
+	digest, err := digestFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := json.Marshal(nativeOwner{RuntimeID: "kimi", Path: target, Digest: digest, Version: "2.0.1", SourceURL: "https://cdn.kimi.com/kimi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, i.nativeReceiptPath("kimi", target), receipt)
+	view, err := i.Inspect(t.Context(), "kimi", target, nil)
+	if err != nil || !view.CanUpdate || view.CanUninstall {
+		t.Fatalf("the publisher layout lost ownership: %+v, %v", view, err)
+	}
+}
+
+func TestOpenCodeHomebrewPublisherTapUsesQualifiedFormula(t *testing.T) {
+	prefix := resolvedFile(t.TempDir())
+	root := filepath.Join(prefix, "Cellar", "opencode", "1.0.0")
+	receipt := filepath.Join(root, "INSTALL_RECEIPT.json")
+	writeFixture(t, receipt, []byte(`{"source":{"tap":"anomalyco/tap"}}`))
+	target := filepath.Join(root, "bin", "opencode")
+	writeFixture(t, target, []byte("Homebrew OpenCode fixture"))
+	brew := filepath.Join(prefix, "bin", "brew")
+	writeFixture(t, brew, nil)
+	entry := filepath.Join(prefix, "bin", "opencode")
+	if err := os.Symlink(target, entry); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	i := NewWithOptions(t.TempDir(), Options{OS: "darwin", Arch: "arm64", Runner: fakeRunner{run: func(_ context.Context, command Command) (string, error) {
+		if command.Binary == brew {
+			calls = command.Args
+		}
+		return "2.0.0", nil
+	}}})
+	view, err := i.Inspect(t.Context(), "opencode", entry, nil)
+	if err != nil || view.Method != "homebrew" || !view.CanUpdate {
+		t.Fatalf("publisher tap capability = %+v error=%v", view, err)
+	}
+	result, err := i.InstallAt(t.Context(), "opencode", entry, nil, nil)
+	if err != nil || result.Binary != entry || !reflect.DeepEqual(calls, []string{"upgrade", "--formula", "anomalyco/tap/opencode"}) {
+		t.Fatalf("publisher formula update = %+v command=%v error=%v", result, calls, err)
+	}
+}
+
+func TestOfficialCursorUpgradeTargetsVendorLauncherAndReprobesAfterRelink(t *testing.T) {
+	home := resolvedFile(t.TempDir())
+	t.Setenv("HOME", home)
+	entry := filepath.Join(home, ".local", "bin", "cursor-agent")
+	writeFixture(t, entry, nil)
+	if err := os.Remove(entry); err != nil {
+		t.Fatal(err)
+	}
+	versions := filepath.Join(home, ".local", "share", "cursor-agent", "versions")
+	build := func(version string) string {
+		dir := filepath.Join(versions, version)
+		for _, name := range []string{"cursor-agent", "node", "index.js"} {
+			writeFixture(t, filepath.Join(dir, name), []byte("#!/usr/bin/env bash\n"))
+		}
+		return filepath.Join(dir, "cursor-agent")
+	}
+	old, next := build("2026.11.01-abcdef0"), build("2026.11.23-abcdef1")
+	if err := os.Symlink(old, entry); err != nil {
+		t.Fatal(err)
+	}
+	i := NewWithOptions(t.TempDir(), Options{OS: "darwin", Arch: "arm64", Runner: fakeRunner{run: func(_ context.Context, command Command) (string, error) {
+		if command.Binary != entry {
+			t.Fatalf("unexpected launch target %s", command.Binary)
+		}
+		switch command.Args[0] {
+		case "--version":
+			return filepath.Base(filepath.Dir(resolvedFile(entry))), nil
+		case "update":
+			if err := os.Remove(entry); err != nil {
+				t.Fatal(err)
+			}
+			return "", os.Symlink(next, entry)
+		default:
+			t.Fatalf("unexpected command args %v", command.Args)
+			return "", nil
+		}
+	}}})
+	result, err := i.InstallAt(t.Context(), "cursor", entry, nil, nil)
+	if err != nil || result.Binary != entry || result.Version != "2026.11.23-abcdef1" {
+		t.Fatalf("Cursor launcher update = %+v, err = %v", result, err)
+	}
+}
+
+func TestOfficialQoderDispatcherDelegatesOnlyToItsVerifiedCLI(t *testing.T) {
+	home := resolvedFile(t.TempDir())
+	t.Setenv("HOME", home)
+	dispatcher := filepath.Join(home, ".qoder", "entry", "qoder")
+	writeFixture(t, dispatcher, []byte("#!/usr/bin/env bash\n# Qoder Command Dispatcher\n"))
+	entry := filepath.Join(home, ".local", "bin", "qodercli")
+	writeFixture(t, entry, nil)
+	if err := os.Remove(entry); err != nil {
+		t.Fatal(err)
+	}
+	versions := filepath.Join(home, ".qoder", "bin", "qodercli")
+	old, next := filepath.Join(versions, "qodercli-1.1.85"), filepath.Join(versions, "qodercli-1.2.0")
+	writeFixture(t, old, []byte("\xcf\xfa\xed\xfeQoder"))
+	writeFixture(t, next, []byte("\xcf\xfa\xed\xfeQoder"))
+	if err := os.Symlink(old, entry); err != nil {
+		t.Fatal(err)
+	}
+	i := NewWithOptions(t.TempDir(), Options{OS: "darwin", Arch: "arm64",
+		LookPath: func(string) (string, error) { return entry, nil },
+		Runner: fakeRunner{run: func(_ context.Context, command Command) (string, error) {
+			if command.Binary != entry {
+				t.Fatalf("dispatched through an unverified binary: %s", command.Binary)
+			}
+			if command.Args[0] == "update" {
+				if err := os.Remove(entry); err != nil {
+					t.Fatal(err)
+				}
+				return "", os.Symlink(next, entry)
+			}
+			return strings.TrimPrefix(filepath.Base(resolvedFile(entry)), "qodercli-"), nil
+		}}})
+	result, err := i.InstallAt(t.Context(), "qoder", dispatcher, nil, nil)
+	if err != nil || result.Binary != dispatcher || result.Version != "1.2.0" {
+		t.Fatalf("Qoder dispatcher update = %+v, err = %v", result, err)
 	}
 }

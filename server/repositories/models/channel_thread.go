@@ -53,6 +53,10 @@ type ChannelThread struct {
 	UpdatedAt int64 `gorm:"column:updated_at;autoUpdateTime:milli;index;index:idx_thread_board_activity,priority:1,sort:desc;index:idx_thread_board_executor,priority:2,sort:desc" json:"updatedAt"`
 	// ActivityState 是列表查询按任务与成员 Chat 聚合出的只读活动状态。
 	ActivityState constants.ChannelActivityState `gorm:"column:activity_state;->;-:migration" json:"activityState,omitempty"`
+	// LeadRuntimeID 是团队负责人会话最近一次执行选择的智能体。
+	LeadRuntimeID string `gorm:"-" json:"leadRuntimeId,omitempty"`
+	// LeadModel 是团队负责人会话最近一次执行选择的模型。
+	LeadModel string `gorm:"-" json:"leadModel,omitempty"`
 }
 
 // TableName 返回团队对话使用的表名。

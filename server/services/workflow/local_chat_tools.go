@@ -9,6 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	agentcap "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
@@ -29,6 +30,7 @@ func (s *Service) BindLocalWorkflowTurn(ctx context.Context, chat models.Chat, e
 			return bound, status_error.WorkflowAuthoringSuperseded
 		}
 		scope.DefaultWorkflowID = session.DefinitionID
+		bound.AuthoringDefinitionID = session.DefinitionID
 	} else if selected != nil {
 		reference, err := s.FreezeWorkflowSelection(ctx, selected)
 		if err != nil {
@@ -41,13 +43,7 @@ func (s *Service) BindLocalWorkflowTurn(ctx context.Context, chat models.Chat, e
 	ids := append(append([]string{}, workflowAuthoringOperations...), workflowRunOperations...)
 	ids = append(ids, "workflow.runs.list", "workflow.runs.repeat")
 	bound.Capability = &execution.ToolCapability{ID: "workflow.local", Name: "工作流", Bindings: s.agentBindings(scope, ids)}
-	bound.Instruction = "Follow the user's request to read, edit, or run a workflow. Use workflow.definitions.list to find a named workflow, or workflow.runs.list to locate a prior run in this chat. For a repair, read the run evidence when relevant and read the current source before saving. Use the saved revision for any subsequent run the user requests."
-	if scope.DefaultWorkflowID != "" {
-		bound.Instruction += " The default workflow for this turn is " + scope.DefaultWorkflowID + "."
-	}
-	if scope.Selection != nil {
-		bound.Instruction += " Read and run the selected revision " + scope.Selection.RevisionID + " unless the user asks you to run a revision you explicitly save in this turn."
-	}
+	bound.DeveloperInstruction = agent.WorkflowLocalInstructions
 	return bound, nil
 }
 

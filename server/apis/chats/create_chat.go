@@ -7,6 +7,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/gin-gonic/gin"
@@ -56,8 +57,8 @@ func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
 	input, options := c.Body.MessageRequest.workInput()
 	if c.Body.OptimizeProfile {
 		input.ContextInstructions = []workinput.Instruction{{
-			Name:    "Partner profile edit",
-			Content: "The user opened this conversation from their partner profile editor. Interpret the first message as a profile edit request. Read the current profile with waker.profile.get and follow the partner profile guide. Ask for clarification if needed.",
+			Name:    agent.ProfileEditContextName,
+			Content: agent.ProfileEditAdmission,
 		}}
 	}
 	intent := execution.WorkIntent{

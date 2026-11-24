@@ -44,6 +44,12 @@ func TestLocalWorkflowToolSetSurvivesChangingSelection(t *testing.T) {
 	if !slices.Equal(operations(unselected), operations(selected)) {
 		t.Fatalf("workflow catalog changed on selection: unselected %v, selected %v", operations(unselected), operations(selected))
 	}
+	if unselected.Reference != nil || selected.Reference == nil || selected.Reference.RevisionID != definition.CurrentRevisionID {
+		t.Fatal("workflow turns must retain only the current frozen target")
+	}
+	if unselected.DeveloperInstruction == "" || unselected.DeveloperInstruction != selected.DeveloperInstruction {
+		t.Fatal("the selected revision changed the stable workflow instructions")
+	}
 	if _, err := call("workflow.runs.repeat", "repeat", map[string]any{"runId": "prior-run"}); !errors.Is(err, status_error.AgentOperationForbidden) {
 		t.Fatalf("selected turn allowed repeat: %v", err)
 	}

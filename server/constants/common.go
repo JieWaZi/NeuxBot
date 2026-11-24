@@ -250,8 +250,6 @@ const (
 	ChannelNotificationBatchLimit = 50
 	// ChannelMemberReportMaximumRunes 是单条成员结果报告进入负责人上下文的最大字符数。
 	ChannelMemberReportMaximumRunes = 4_000
-	// ChannelMemberReportFinalInstruction 是成员报告成功后避免再次输出完整成果的短提示。
-	ChannelMemberReportFinalInstruction = "Report saved. End this turn with one short acknowledgement; do not repeat the report."
 	// ChannelEventHeartbeatIntervalSeconds 是团队事件流心跳间隔。
 	ChannelEventHeartbeatIntervalSeconds = 15
 	// ChannelTasksMCPTitle 是团队协作工具的展示名称。
@@ -262,8 +260,6 @@ const (
 	ChannelCapabilityRoleLead = "lead"
 	// ChannelCapabilityRoleMember 是协作 MCP 的执行成员调用角色。
 	ChannelCapabilityRoleMember = "member"
-	// ChannelTasksMCPCapabilityInstructions 是注入 Runtime 的短能力说明，细则见 TEAM.md。
-	ChannelTasksMCPCapabilityInstructions = "Follow TEAM.md to use the shared task board or submit a member work report."
 	// TeamInstructionFileName 是团队协作虚拟上下文文件名。
 	TeamInstructionFileName = "TEAM.md"
 	// ChannelAttemptWatcherMaximumImmediateRetries 是终态提交在重新订阅前的最大立即重试次数。
@@ -304,11 +300,6 @@ const (
 	MemoryForgetMCPToolName = "memory_forget"
 	// MemoryForgetMCPToolDescription 是协议与连接器详情共用的英文遗忘说明。
 	MemoryForgetMCPToolDescription = "Forget one memory by deleting its current content while retaining deletion history."
-	// BuiltinMemoryRuntimeInstructions 是执行时注入 Runtime 的统一记忆使用策略。
-	BuiltinMemoryRuntimeInstructions = "Prefer system memory: search it when relevant before answering; " +
-		"save stable, reusable user preferences, facts, or project conventions; " +
-		"when the user asks to remember, update, or forget something, perform the corresponding operation and rely on the tool result. " +
-		"Do not use the Runtime's built-in memory."
 )
 
 const (
@@ -329,6 +320,9 @@ const (
 	// MCPConnectorRuntimeKeySuffixLength 是 Runtime 注入键冲突摘要后缀长度。
 	MCPConnectorRuntimeKeySuffixLength = 8
 )
+
+// RuntimeInstallationOperationSwitchManaged 表示安装托管新版并切换当前选择。
+const RuntimeInstallationOperationSwitchManaged = "install-managed"
 
 const (
 	// RuntimeIDCodex 是内置 Codex CLI Runtime 标识。

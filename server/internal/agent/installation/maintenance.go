@@ -20,6 +20,8 @@ type Maintenance struct {
 	Method string
 	// Path is the selected executable or its managed script.
 	Path string
+	// Version is the publisher version in the selected verified managed receipt.
+	Version string
 	// Installed reports whether the selected program files actually exist.
 	Installed bool
 	// CanInstall permits creating a private program when no selected installation exists.
@@ -52,6 +54,8 @@ type maintenancePlan struct {
 	pending *uninstallJournal
 	// native binds a self-contained external file to a verified publisher digest.
 	native *nativeOwner
+	// updater is the fixed official upgrade path for a recognized external layout.
+	updater *officialUpdate
 }
 
 type uninstallEntry struct {
@@ -155,6 +159,7 @@ func (i *Installer) inspect(ctx context.Context, id, binary string, args []strin
 			return plan, nil
 		}
 		plan.managed = &version
+		plan.view.Version = version.record.Version
 		plan.view.CanUpdate, plan.view.CanUninstall, plan.view.Reason = i.Supported(id), true, ""
 		if !i.Supported(id) {
 			plan.view.Reason = "platform_unsupported"
@@ -168,6 +173,17 @@ func (i *Installer) inspect(ctx context.Context, id, binary string, args []strin
 		if owner.executable == "" {
 			plan.view.Reason = "package-manager-unavailable"
 		} else if !i.Supported(id) {
+			plan.view.Reason = "platform_unsupported"
+		} else if owner.name == "@mariozechner/pi-coding-agent" {
+			plan.view.CanUpdate, plan.view.Reason = false, "legacy-package"
+		}
+		return plan, nil
+	}
+	if owner := i.officialUpdater(id, binary, args); owner != nil {
+		plan.updater = owner
+		plan.view.Method, plan.view.Reason = "native", ""
+		plan.view.CanUpdate = i.Supported(id)
+		if !plan.view.CanUpdate {
 			plan.view.Reason = "platform_unsupported"
 		}
 		return plan, nil
@@ -387,6 +403,9 @@ func (i *Installer) InstallAt(ctx context.Context, id, binary string, args []str
 	}
 	if plan.native != nil {
 		return i.maintainNative(ctx, id, *plan.native, notify)
+	}
+	if plan.updater != nil {
+		return i.updateOfficial(ctx, id, *plan.updater, notify)
 	}
 	// A repair must verify and publish fresh bytes for this damaged selection,
 	// even when another private installation already matches the release.

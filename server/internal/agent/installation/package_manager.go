@@ -19,6 +19,8 @@ type packageOwner struct {
 	prefix string
 	// name is an allowlisted official package or installed formula/cask token.
 	name string
+	// tap identifies an allowlisted publisher tap when the formula is outside Homebrew Core.
+	tap string
 	// cask distinguishes Homebrew casks from formulas.
 	cask bool
 	// identity is the local package manifest or Homebrew installation receipt.
@@ -38,6 +40,7 @@ var npmPackages = map[string][]string{
 	"kimi": {"@moonshot-ai/kimi-code"}, "opencode": {"@opencode/cli", "opencode-ai"},
 	"pi":     {"@earendil-works/pi-coding-agent", "@mariozechner/pi-coding-agent"},
 	"gemini": {"@google/gemini-cli"}, "qoder": {"@qoder-ai/qodercli"},
+	"grok":      {"@xai-official/grok"},
 	"workbuddy": {"@tencent-ai/codebuddy-code"},
 }
 
@@ -119,6 +122,12 @@ func (i *Installer) packageOwnership(id, binary string, args []string) *packageO
 			continue
 		}
 		manager, _ := i.lookPath("npm")
+		if id != "workbuddy" && i.os != "windows" {
+			sibling := filepath.Join(prefix, "bin", "npm")
+			if info, err := os.Stat(sibling); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
+				manager = sibling
+			}
+		}
 		digest, err := digestFile(manifest)
 		if err != nil {
 			return nil
@@ -206,7 +215,7 @@ func (i *Installer) packageProbe(owner packageOwner) (string, []string, error) {
 	if owner.method == "homebrew" {
 		entry := map[string]string{"codex": "codex", "claude-code": "claude", "gemini-cli": "gemini", "opencode": "opencode"}[owner.name]
 		candidate := filepath.Join(owner.prefix, "bin", entry)
-		if verified := i.brewOwnership(map[string]string{"codex": "codex", "claude-code": "claude", "gemini-cli": "gemini", "opencode": "opencode"}[owner.name], resolvedFile(candidate)); verified != nil && verified.prefix == owner.prefix && verified.name == owner.name {
+		if verified := i.brewOwnership(map[string]string{"codex": "codex", "claude-code": "claude", "gemini-cli": "gemini", "opencode": "opencode"}[owner.name], resolvedFile(candidate)); verified != nil && verified.prefix == owner.prefix && verified.name == owner.name && verified.tap == owner.tap {
 			return candidate, nil, nil
 		}
 		return "", nil, failure("updated Homebrew entry ownership", nil)
@@ -271,14 +280,22 @@ func (i *Installer) brewOwnership(id, real string) *packageOwner {
 		if kind == "Cellar" {
 			manifest := filepath.Join(versionRoot, "INSTALL_RECEIPT.json")
 			doc, ok := readLocalJSON(manifest)
-			if !ok || textValue(objectValue(doc["source"])["tap"]) != "homebrew/core" {
+			tap := textValue(objectValue(doc["source"])["tap"])
+			switch {
+			case tap == "homebrew/core":
+				tap = ""
+			case id == "opencode" && tap == "anomalyco/tap":
+			default:
+				return nil
+			}
+			if !ok {
 				return nil
 			}
 			digest, err := digestFile(manifest)
 			if err != nil {
 				return nil
 			}
-			return &packageOwner{method: "homebrew", executable: manager, prefix: prefix, name: wanted, identity: manifest, digest: digest}
+			return &packageOwner{method: "homebrew", executable: manager, prefix: prefix, name: wanted, tap: tap, identity: manifest, digest: digest}
 		}
 		metadata := filepath.Join(tokenRoot, ".metadata", filepath.Base(versionRoot))
 		entries, err := os.ReadDir(metadata)
@@ -325,6 +342,13 @@ func (i *Installer) maintainPackage(ctx context.Context, id string, owner packag
 	env := privateEnvironment(scratch)
 	var args []string
 	if owner.method == "npm" {
+		if id != "workbuddy" && i.os != "windows" {
+			path := filepath.Dir(owner.executable)
+			if inherited := os.Getenv("PATH"); inherited != "" {
+				path += string(os.PathListSeparator) + inherited
+			}
+			env = append(env, "PATH="+path)
+		}
 		verb, target := "install", owner.name+"@latest"
 		if uninstall {
 			verb, target = "uninstall", owner.name
@@ -342,7 +366,11 @@ func (i *Installer) maintainPackage(ctx context.Context, id string, owner packag
 		if owner.cask {
 			kind = "--cask"
 		}
-		args = []string{verb, kind, owner.name}
+		target := owner.name
+		if owner.tap != "" {
+			target = owner.tap + "/" + target
+		}
+		args = []string{verb, kind, target}
 		env = append(env, "HOMEBREW_NO_INSTALL_CLEANUP=1", "HOMEBREW_NO_ANALYTICS=1", "HOMEBREW_NO_ENV_HINTS=1")
 	}
 	executable := owner.executable

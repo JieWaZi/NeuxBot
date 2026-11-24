@@ -30,6 +30,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -422,6 +423,8 @@ func TestNativeProductWorkflowResumesAfterToolConnectionChanges(t *testing.T) {
 	options := WorkOptions{RuntimeID: "codex", Model: "fixture-model", PermissionLevel: constants.PermissionLevelAuto,
 		ToolCapabilities: []ToolCapability{{ID: "workflow.sample", Name: "Workflow sample", Bindings: []capability.Binding{
 			agentPreparationBinding(t, "workflow.source.get"),
+			agentPreparationBinding(t, "workflow.source.save"),
+			agentPreparationBinding(t, "workflow.authoring.prepare"),
 		}}},
 	}
 	run := func(core Core, store *conversation.Store, intent WorkIntent) (AcceptedExecution, agent.NativeSessionKey) {
@@ -442,7 +445,10 @@ func TestNativeProductWorkflowResumesAfterToolConnectionChanges(t *testing.T) {
 	}
 	core, store, closeRuntime := open()
 	defer func() { closeRuntime() }()
-	first, session := run(core, store, WorkIntent{ClientRequestID: "workflow-core-restart", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}}, Input: WorkInput{Actor: "user", Content: "first workflow input"}, Options: options})
+	first, session := run(core, store, WorkIntent{ClientRequestID: "workflow-core-restart", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}}, Input: WorkInput{
+		Actor: "user", Content: "first workflow input",
+		ContextInstructions: []workinput.Instruction{{Name: "WORKFLOW_CANVAS_REFERENCES.md", Content: `[{"revisionId":"test-revision","kind":"node","id":"test-node"}]`}},
+	}, Options: options})
 	closeRuntime()
 	core, store, closeRuntime = open()
 	intent := WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", Content: "second workflow input"}, Options: options}
@@ -454,6 +460,160 @@ func TestNativeProductWorkflowResumesAfterToolConnectionChanges(t *testing.T) {
 	_, changed := run(core, store, intent)
 	if changed == resumed {
 		t.Fatal("Codex reused a native session with a different tool catalog")
+	}
+	trace, err := os.ReadFile(fixture.trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var methods, prompts []string
+	for _, line := range strings.Split(string(trace), "\n") {
+		var frame struct {
+			// Method 是 Codex 原生协议的方法名。
+			Method string `json:"method"`
+			// Params 是发往原生线程或回合的参数。
+			Params struct {
+				// DeveloperInstructions 是原生线程收到的开发者指令。
+				DeveloperInstructions string `json:"developerInstructions"`
+				// Input 是原生回合收到的输入块。
+				Input []struct {
+					// Text 是输入块中的文本。
+					Text string `json:"text"`
+				} `json:"input"`
+			} `json:"params"`
+		}
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		if err := json.Unmarshal([]byte(line), &frame); err != nil {
+			t.Fatal(err)
+		}
+		switch frame.Method {
+		case "thread/start", "thread/resume":
+			methods = append(methods, frame.Method)
+			if strings.Count(frame.Params.DeveloperInstructions, "Create or modify a reusable NeuxBot workflow in this chat.") != 1 {
+				t.Errorf("%s did not receive exactly one workflow authoring bootstrap", frame.Method)
+			}
+		case "turn/start":
+			methods = append(methods, frame.Method)
+			blocks := frame.Params.Input
+			if len(blocks) == 0 {
+				t.Fatal("workflow turn lost the user input")
+			}
+			switch len(prompts) {
+			case 0:
+				if len(blocks) != 2 || !strings.Contains(blocks[1].Text, `"Current workflow references":`) || !strings.Contains(blocks[1].Text, "test-node") {
+					t.Errorf("selected canvas reference must travel in a separate context block: %+v", blocks)
+				}
+			case 1:
+				if len(blocks) != 1 {
+					t.Errorf("resumed turn without a selection must send only the user input: %+v", blocks)
+				}
+			case 2:
+				if len(blocks) != 2 || !strings.Contains(blocks[1].Text, `"Recent conversation history":`) || strings.Contains(blocks[1].Text, `"Current workflow references":`) {
+					t.Errorf("replacement thread must carry history without stale or empty references: %+v", blocks)
+				}
+			}
+			prompts = append(prompts, blocks[0].Text)
+		}
+	}
+	want := []string{"thread/start", "turn/start", "thread/resume", "turn/start", "thread/start", "turn/start"}
+	if !slices.Equal(methods, want) {
+		t.Errorf("workflow authoring lifecycle: got %v, want %v", methods, want)
+	}
+	if want := []string{"first workflow input", "second workflow input", "second workflow input"}; !slices.Equal(prompts, want) {
+		t.Errorf("workflow authoring changed user text: got %q, want %q", prompts, want)
+	}
+}
+
+func TestNativeProductLocalWorkflowKeepsStableInstructionsOutOfUserTurns(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	core, _, store, closeRuntime := fixture.open()
+	defer closeRuntime()
+	core.(*service).bindLocalWorkflowTurn = func(_ context.Context, _ models.Chat, _ string, selected *workinput.WorkflowReference, _ string) (WorkflowTurnBinding, error) {
+		bound := WorkflowTurnBinding{Capability: &ToolCapability{ID: "workflow.local"}, DeveloperInstruction: agent.WorkflowLocalInstructions}
+		if selected != nil {
+			bound.Reference = &workinput.WorkflowReference{ID: selected.ID, RevisionID: "selected-v1"}
+		}
+		return bound, nil
+	}
+	intent := WorkIntent{
+		ClientRequestID: "workflow-clean-turns",
+		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}},
+		Input:           WorkInput{Actor: "user"},
+		Options:         WorkOptions{RuntimeID: "codex", Model: "fixture-model", PermissionLevel: constants.PermissionLevelAuto},
+	}
+	want := []string{"你好", "搜集今日新闻", "运行选中的工作流", "继续回答"}
+	for i, message := range want {
+		intent.Input.Content = message
+		intent.Input.Workflow = nil
+		if i == 2 {
+			intent.Input.Workflow = workinput.SelectWorkflow("selected-definition")
+		}
+		accepted, err := core.Start(ctx, intent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitNativeProductStatus(t, ctx, store, accepted, constants.ExecutionStatusCompleted)
+		if err := core.CancelExecutionAndWait(ctx, accepted.Chat.ID, accepted.Execution.ID); err != nil {
+			t.Fatal(err)
+		}
+		intent.ClientRequestID = ""
+		intent.Chat = ChatTarget{ChatID: accepted.Chat.ID}
+	}
+	trace, err := os.ReadFile(fixture.trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	starts := 0
+	var prompts []string
+	for _, line := range strings.Split(string(trace), "\n") {
+		switch {
+		case strings.Contains(line, `"method":"thread/start"`):
+			starts++
+			if !strings.Contains(line, agent.WorkflowLocalInstructions) || !strings.Contains(line, `"developerInstructions"`) {
+				t.Fatal("Codex thread did not receive the stable workflow rules")
+			}
+		case strings.Contains(line, `"method":"turn/start"`):
+			var frame struct {
+				// Params 保存发往真实协议子进程的原生回合参数。
+				Params struct {
+					// Input 是将写入原生用户历史的输入块。
+					Input []struct {
+						// Text 是原生用户文本。
+						Text string `json:"text"`
+					} `json:"input"`
+				} `json:"params"`
+			}
+			if err := json.Unmarshal([]byte(line), &frame); err != nil || len(frame.Params.Input) == 0 {
+				t.Fatalf("invalid native user turn: %v", err)
+			}
+			if len(prompts) == 2 {
+				if len(frame.Params.Input) != 2 {
+					t.Fatal("selected workflow must travel in a separate context block")
+				}
+				context := frame.Params.Input[1].Text
+				start, end := "\n\n<neuxbot-turn-context>\n", "\n</neuxbot-turn-context>"
+				if !strings.HasPrefix(context, start) || !strings.HasSuffix(context, end) ||
+					!json.Valid([]byte(strings.TrimSuffix(strings.TrimPrefix(context, start), end))) ||
+					!strings.Contains(context, `"Workflow target":{`) || !strings.Contains(context, "selected-v1") ||
+					strings.Contains(context, "Use workflow.definitions.list") {
+					t.Fatalf("invalid context envelope: %q", context)
+				}
+			} else if len(frame.Params.Input) != 1 {
+				t.Fatal("plain user turn contained extra input blocks")
+			}
+			prompts = append(prompts, frame.Params.Input[0].Text)
+		}
+	}
+	if starts != 1 || len(prompts) != len(want) || fixture.accounts.Load() != 1 {
+		t.Fatalf("workflow selection restarted the conversation: starts=%d turns=%d launches=%d", starts, len(prompts), fixture.accounts.Load())
+	}
+	for i, prompt := range prompts {
+		if prompt != want[i] {
+			t.Fatalf("plain native turn %d contains extra text: %q", i+1, prompt)
+		}
 	}
 }
 

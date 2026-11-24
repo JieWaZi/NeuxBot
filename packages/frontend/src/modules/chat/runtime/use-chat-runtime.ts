@@ -157,11 +157,11 @@ type FirstSubmissionRecovery = {
 };
 
 function textOf(message: AppendMessage): string {
-  return message.content
+  const text = message.content
     .filter((part) => part.type === "text")
     .map((part) => part.text)
-    .join("\n")
-    .trim();
+    .join("\n");
+  return text.trim() ? text : "";
 }
 
 function optimisticID(role: "user" | "assistant"): string {

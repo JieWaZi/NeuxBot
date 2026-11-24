@@ -8,6 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
@@ -342,7 +343,7 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 	}
 	encodedWorkspace, _ := json.Marshal(internalWorkspace)
 	contextInstructions := append([]workinput.Instruction(nil), session.ContextInstructions...)
-	contextInstructions = append(contextInstructions, workinput.Instruction{Name: constants.WorkflowWorkspaceInstructionFileName, Content: "Workflow workspace: " + string(encodedWorkspace) + "\nKeep scripts in scriptsDirectory, persistent state in stateDirectory, regenerable caches in cacheDirectory, and temporary support files in temporaryDirectory. Keep scripts and support files inside rootDirectory. Do not create external support directories such as /tmp or paths under the home directory. Keep deliverables in the workflow workspace by default and run deliverables in the corresponding runDirectory. Write business files to an external directory only if the user specifies it explicitly. Keep scripts and support files out of project directories."})
+	contextInstructions = append(contextInstructions, workinput.Instruction{Name: constants.WorkflowWorkspaceInstructionFileName, Content: agent.WorkflowCreationWorkspacePrefix + string(encodedWorkspace) + "\n" + agent.WorkflowCreationWorkspaceInstructions})
 	target := execution.ChatTarget{ChatID: session.ChatID}
 	clientID := ""
 	if session.ChatID == "" {

@@ -2,7 +2,6 @@ package execution
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -34,29 +33,41 @@ func TestTurnPathsAndContextDoNotChangeNativeSessionSettings(t *testing.T) {
 	manager := &service{}
 	state := messageChat{chat: models.Chat{WakerID: "partner", WorkspaceDirectory: root, AdditionalWorkingDirectories: []string{root}}}
 	files := &preparedMessageFiles{executionWorkspaceDirectory: root, instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "persistent partner"}}}
-	request := pendingMessage{supplementalInstructions: []agentapi.Instruction{{Name: "TEAM.md", Content: "stable team role"}}, contextInstructions: []agentapi.Instruction{{Name: "Current Lead Turn", Content: "coordination"}}}
+	request := pendingMessage{
+		message:                  userMessage{Text: "检查当前任务"},
+		supplementalInstructions: []agentapi.Instruction{{Name: "TEAM.md", Content: "stable team role"}},
+		contextInstructions:      []agentapi.Instruction{{Name: agentapi.TeamLeadTurnName, Content: agentapi.TeamLeadTurnIntroduction + agentapi.TeamLeadCoordinationInstructions}},
+	}
 	firstPlan := recordBusinessInputs(manager, state, request, files, nil, nil, models.RuntimeEnvironment{})
 
-	firstTurn := firstPlan
-	request.contextInstructions[0].Content = "direct execution"
+	request.contextInstructions[0].Content = agentapi.TeamLeadTurnIntroduction + agentapi.TeamLeadDirectInstructions
 	secondPlan := recordBusinessInputs(manager, state, request, files, nil, nil, models.RuntimeEnvironment{})
 
-	secondTurn := secondPlan
 	if !reflect.DeepEqual(firstPlan.thread(), secondPlan.thread()) {
 		t.Fatal("turn data changed stable session configuration")
 	}
-	if reflect.DeepEqual(firstTurn.ContextInstructions, secondTurn.ContextInstructions) {
-		t.Fatal("current task context was not delivered independently")
+	if firstPlan.prompt() != request.message.Text {
+		t.Fatal("default coordination added text to the user turn")
 	}
-	static, _ := json.Marshal(firstPlan.thread())
-	if strings.Contains(string(static), "execution-one") || strings.Contains(string(static), "Current Lead Turn") {
-		t.Fatalf("dynamic context entered session fingerprint: %s", static)
+	if !reflect.DeepEqual(secondPlan.ContextInstructions, []agentapi.Instruction{{Name: agentapi.TeamLeadTurnName, Content: "direct-execution"}}) ||
+		!strings.Contains(secondPlan.prompt(), "direct-execution") {
+		t.Fatal("native turn lost its exact direct-execution mode")
 	}
-	if !strings.Contains(secondTurn.prompt(), "direct execution") {
-		t.Fatal("native turn lost current mode")
+	stable := agentapi.DeveloperInstructions(secondPlan.Instructions)
+	if !strings.Contains(stable, "stable team role") || !strings.Contains(stable, "defaults to coordination") {
+		t.Fatal("native developer instructions lost team role or mode rules")
 	}
-	if !strings.Contains(agentapi.DeveloperInstructions(secondPlan.Instructions), "stable team role") {
-		t.Fatal("stable team role was removed from developer instructions")
+}
+
+func TestMemberDirectDeliveryKeepsTheSameNativeInstructions(t *testing.T) {
+	request := pendingMessage{supplementalInstructions: []agentapi.Instruction{{Name: constants.TeamInstructionFileName, Content: "team member role"}}}
+	files := &preparedMessageFiles{}
+	stable, ordinary := nativeInstructionInputs(request, files)
+	request.supplementalInstructions[0].Content = strings.TrimSpace("team member role" + agentapi.TeamDirectDeliveryInstructions)
+	directStable, direct := nativeInstructionInputs(request, files)
+	if !reflect.DeepEqual(stable, directStable) || len(ordinary) != 0 ||
+		!reflect.DeepEqual(direct, []agentapi.Instruction{{Name: agentapi.TeamDirectDeliveryContextName, Content: "true"}}) {
+		t.Fatalf("direct delivery changed the native instructions or lost its per-turn flag: %+v %+v", directStable, direct)
 	}
 }
 
@@ -199,6 +210,9 @@ func TestProjectEntryDeliveryUsesNativeEvidenceAndIsolatesSharedWakerChats(t *te
 	}
 	if !strings.Contains(input.prompt(), "projects/chat-one/same-name") || len(plan.Workspace.ProjectDirectories) != 1 || plan.Workspace.ProjectDirectories[0].Path != projectOne {
 		t.Fatal("projection lost actual project identity or native discovery entry")
+	}
+	if len(input.ContextInstructions) != 0 || !strings.Contains(*thread.Session.DeveloperInstructions, "projects/chat-one/same-name") {
+		t.Fatal("stable project entry was not delivered through developer instructions")
 	}
 	unknown, _ := prepare("unknown-chat", projectOne, nil)
 	defer unknown.rollback()

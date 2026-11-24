@@ -26,7 +26,11 @@ func TestRemoteMaintenanceEmitsOnlyCommittedChanges(t *testing.T) {
 			subscription := s.config.Events.Subscribe("knowledge", events.Resource{})
 			defer subscription.Close()
 			s.config.Generator = func(context.Context, models.LibraryExecutionDefaults) (core.Generator, error) {
-				return remoteIndexGenerator(func(context.Context, core.GenerateRequest) (core.GenerateResult, error) {
+				return remoteIndexGenerator(func(_ context.Context, input core.GenerateRequest) (core.GenerateResult, error) {
+					if len(input.Messages) != 3 || input.Messages[0].Role != "system" ||
+						input.Messages[1].Content != page.Content || input.Messages[2].Content != "修订" {
+						t.Fatalf("page material was joined to the user's revision request: %+v", input.Messages)
+					}
 					if outcome == "generation-failed" {
 						return core.GenerateResult{}, status_error.RuntimeUnavailable
 					}

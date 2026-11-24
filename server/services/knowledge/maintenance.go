@@ -6,8 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
+
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
@@ -323,8 +326,9 @@ func (s *Service) chatJobBinding(ctx context.Context, chat models.Chat, refs []b
 			}
 			// 原始要求由权威消息读取，不能被模型提交的摘要或补充发现替换。
 			requirements := message.Content
+			findings := ""
 			if in.Message != "" && in.Message != message.Content {
-				requirements += "\n\nCompanion findings and additional requirements (within the user's requested scope):\n" + in.Message
+				findings = in.Message
 			}
 			configuration := models.KnowledgeTaskConfiguration{RuntimeID: active.RuntimeID, AccountID: active.AccountID, Model: active.Model, Reasoning: active.Reasoning}
 			// Chat 的空账号已解析为系统登录；知识入口的空账号却会重选默认值。
@@ -332,6 +336,10 @@ func (s *Service) chatJobBinding(ctx context.Context, chat models.Chat, refs []b
 				configuration.AccountID = constants.AiAccountSystemID
 			}
 			if maintenance {
+				if strings.TrimSpace(requirements) == "" {
+					return capability.Result{}, status_error.KnowledgeInvalid
+				}
+				configuration.CompanionFindings = findings
 				accepted, _, err := s.Organize(ctx, OrganizeCommand{RequestID: key, LibraryID: in.LibraryID, Maintenance: true, Configuration: configuration, Message: requirements})
 				if err != nil {
 					return capability.Result{}, err
@@ -340,6 +348,9 @@ func (s *Service) chatJobBinding(ctx context.Context, chat models.Chat, refs []b
 					return capability.Result{}, err
 				}
 				return capability.Result{CommandID: r.RequestID, Data: map[string]any{"receipt": accepted, "noop": false}}, nil
+			}
+			if findings != "" {
+				requirements += agent.WikiCompanionFindingsLabel + findings
 			}
 			attachments := make([]execution.AttachmentInput, len(message.Attachments))
 			// 聊天只提交业务选择，本轮执行配置由服务端冻结，不接受模型覆盖。

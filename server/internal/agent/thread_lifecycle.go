@@ -237,7 +237,7 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 	if request.ChatID == "" && input.HostInvocationID == "" {
 		input.HostInvocationID = newTurnID()
 	}
-	if input.HostInvocationID == "" || input.Text == "" && len(input.Content) == 0 || input.Text != "" && len(input.Content) != 0 ||
+	if input.HostInvocationID == "" || !validTurnInput(input) ||
 		request.ChatID != "" && (input.ExecutionID == "" || input.AssistantMessageID == "" || ports.Admit == nil) ||
 		request.ChatID == "" && (input.ExecutionID != "" || input.AssistantMessageID != "" || ports.Admit != nil) {
 		if closeFiles != nil {
@@ -246,6 +246,7 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 		return nil, status_error.AgentInputInvalid
 	}
 	input.Content = slices.Clone(input.Content)
+	input.Context = slices.Clone(input.Context)
 	id := request.ChatID
 	if id == "" {
 		id = "private:" + input.HostInvocationID
@@ -522,13 +523,13 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	if err != nil || version == 0 {
 		return err
 	}
-	pairs, prefix, err := l.selectHistory(ctx, state.chatID, version, request.HistoryTurns)
+	pairs, history, err := l.selectHistory(ctx, state.chatID, version, request.HistoryTurns)
 	if err != nil {
 		return err
 	}
 	if len(pairs) != 0 {
 		t.binding.Handoff = &NativeHandoff{History: pairs}
-		t.addPrefix(prefix)
+		t.input.Context = append(t.input.Context, TurnFact{Name: "Recent conversation history", Value: history})
 	}
 	return nil
 }

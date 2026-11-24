@@ -35,10 +35,9 @@ export { WorkbenchProvider } from "./workbench/workbench-store";
 export type { ChatWorkspaceEntry } from "./pages/chat-page";
 
 export {
-  ChatHistoryPopover,
+  ChatHistoryContentContext,
   ChatHistoryPanelSurface,
   ChatHistoryNavigationRow,
-  ChatHistoryRowStatus,
 } from "./components/chat-history-navigation";
 export { ChatGroupHeader } from "./components/chat-group-header";
 

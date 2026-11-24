@@ -107,7 +107,11 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 	}
 	bindings = append(bindings, onboardingBindings...)
 	if len(onboardingBindings) == 0 {
-		bindings = append(bindings, m.wakerProfileEditBindings(chat, executionID, request)...)
+		profileEditBindings := m.wakerProfileEditBindings(chat, executionID, request)
+		bindings = append(bindings, profileEditBindings...)
+		if len(profileEditBindings) != 0 {
+			*instructions = append(*instructions, agentapi.Instruction{Name: "Profile editor rules", Content: agentapi.ProfileEditInstructions})
+		}
 	}
 	if request.allowedAgentDomains == nil || slices.Contains(*request.allowedAgentDomains, "interaction") {
 		for _, question := range m.questionBindings(chat.ID, executionID) {
@@ -134,16 +138,15 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 	}
 	supportsStdio, _ := agentapi.ConnectorCompatibility(baseRuntimeID, agentapi.ConnectorTransportStdio)
 	useMCP := hasWorkflowCapabilities && supportsStdio
-	m.appendAgentInstructions(instructions, useMCP, binary, skill)
+	*instructions = append(*instructions, agentapi.CapabilitiesInstructions(useMCP, binary, skill))
 	// 工具绑定是确定的场景事实，不让模型从用户短句猜测当前入口。
 	for _, binding := range bindings {
 		if binding.Operation == "workflow.source.save" && (!request.localWorkflowTools || request.workflowCreationSessionID != "") {
-			// 创作角色与正式指南进入稳定指令，本轮只补充当前引用。
-			guide, err := builtinskills.Guide("workflow.authoring")
-			if err != nil {
-				return preparedAgentConnection{}, err
-			}
-			*instructions = append(*instructions, agentapi.Instruction{Name: "WORKFLOW_AUTHORING.md", Content: fmt.Sprintf("Apply this host-bound workflow authoring role instead of general instructions to immediately perform business requests. The required guide below is supplied from %q; resolve its relative references from %q.\n\n%s", filepath.Join(skill, "references", "workflow-authoring.md"), filepath.Join(skill, "references"), guide)})
+			// 创作角色进入会话指令，本轮只补充当前引用。
+			*instructions = append(*instructions,
+				agentapi.Instruction{Name: "WORKFLOW_AUTHORING.md", Content: fmt.Sprintf(agentapi.WorkflowAuthoringInstructions, filepath.Join(skill, "references", "workflow-authoring.md"))},
+				agentapi.Instruction{Name: "Workflow reference rules", Content: agentapi.WorkflowReferenceInstructions},
+			)
 			appendCurrentWorkflowReferences(contextInstructions)
 			break
 		}
@@ -191,30 +194,24 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 	return prepared, nil
 }
 
-// appendAgentInstructions 提供稳定的工具说明，连接由宿主交付。
-func (m *service) appendAgentInstructions(instructions *[]agentapi.Instruction, useMCP bool, binary, skill string) {
-	discovery := fmt.Sprintf("Run `botcli capabilities` to discover the current authorized commands. If the shell cannot resolve the bundled `botcli`, invoke the executable at %q with the same arguments. The host provides the active connection.", binary)
-	if useMCP {
-		discovery = "Use the injected bot_capabilities MCP tools for NeuxBot operations in this execution. Their schemas define the current inputs; use capabilities or guide only when discovery or relevant guidance is missing. Use requestId for mutations. Recover uncertain outcomes with receipts_get using the original operation and requestId; do not create a replacement request. Preserve actual tool errors and follow their retryAdvice. Do not run CLI discovery or switch to CLI after a tool error."
-	}
-	*instructions = append(*instructions, agentapi.Instruction{Name: "NeuxBot capabilities", Content: fmt.Sprintf("For NeuxBot-provided operations, read the bot skill at %q. %s Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract. A successful workflow.source.save receipt proves saving; a run start receipt is only acceptance.", filepath.Join(skill, "SKILL.md"), discovery, filepath.Join(skill, "references", "wiki-guide.md"))})
-}
-
 // appendCurrentWorkflowReferences 归并本轮引用，由统一上下文投影发送一次。
-// 空列表明确清除前轮选择；伙伴和团队等稳定指令不参与本轮引用。
+// 本轮没有引用时省略字段，其余本轮事实继续发送。
 func appendCurrentWorkflowReferences(contextInstructions *[]agentapi.Instruction) {
-	references := []agentapi.Instruction{}
+	var references []agentapi.TurnFact
 	context := make([]agentapi.Instruction, 0, len((*contextInstructions))+1)
 	for _, instruction := range *contextInstructions {
 		switch instruction.Name {
 		case "WORKFLOW_CANVAS_REFERENCES.md", "WORKFLOW_RUN_REFERENCE.md":
-			if json.Valid([]byte(instruction.Content)) {
-				references = append(references, instruction)
+			if value := json.RawMessage(instruction.Content); json.Valid(value) {
+				references = append(references, agentapi.TurnFact{Name: instruction.Name, Value: value})
 			}
 		default:
 			context = append(context, instruction)
 		}
 	}
-	encoded, _ := json.Marshal(references)
-	(*contextInstructions) = append(context, agentapi.Instruction{Name: "Current workflow references", Content: "This is the authoritative reference context for this turn. For canvas selections, read the referenced revision to locate the exact stable targets before editing the current head. Never infer the selected node or phase from wording alone. For a run reference, read its full evidence and revision source before editing. An empty list means this turn has no selected canvas or run references; do not silently reuse references from earlier turns. Keep internal identities out of user-facing replies.\n" + string(encoded)})
+	if len(references) > 0 {
+		encoded, _ := json.Marshal(references)
+		context = append(context, agentapi.Instruction{Name: "Current workflow references", Content: string(encoded)})
+	}
+	*contextInstructions = context
 }

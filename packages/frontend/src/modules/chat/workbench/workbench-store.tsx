@@ -28,6 +28,7 @@ const tabSchema = z.object({
   kind: z.enum([
     "files",
     "changes",
+    "chat-history",
     "browser",
     "terminal",
     "file",

@@ -448,3 +448,57 @@ it("多个本机版本可在版本行切换并保留默认设置", async () => {
     ),
   );
 });
+
+it("同版本的多个路径只展示当前选中的入口", async () => {
+  runtimeRows.current[0] = {
+    ...runtimeRows.current[0],
+    resolvedBinary: "/bin/codex",
+    installations: [
+      {
+        path: "/packages/codex.js",
+        version: "codex-cli v1.2.3",
+        available: true,
+      },
+      { path: "/bin/codex", version: "1.2.3", available: true },
+    ],
+  };
+  show("codex");
+  expect(await screen.findByTitle("/bin/codex")).toHaveTextContent("1.2.3");
+  expect(screen.queryByText("/bin/codex")).not.toBeInTheDocument();
+  expect(screen.queryByTitle("/packages/codex.js")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("combobox", { name: "版本" }),
+  ).not.toBeInTheDocument();
+  expect(update).not.toHaveBeenCalled();
+});
+
+it("不同版本仍可切换，版本未知的安装保留各自路径", async () => {
+  const user = userEvent.setup();
+  runtimeRows.current[0] = {
+    ...runtimeRows.current[0],
+    resolvedBinary: "/bin/codex",
+    installations: [
+      {
+        path: "/packages/codex.js",
+        version: "codex-cli v1.2.3",
+        available: true,
+      },
+      { path: "/bin/codex", version: "1.2.3", available: true },
+      { path: "/older/codex", version: "1.2.3-alpha.1", available: true },
+      { path: "/unknown-one/codex", available: true },
+      { path: "/unknown-two/codex", version: "unknown", available: true },
+    ],
+  };
+  show("codex");
+  await user.click(await screen.findByRole("combobox", { name: "版本" }));
+
+  expect(
+    await screen.findByRole("option", { name: /\/bin\/codex$/ }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("option", { name: /packages/ }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("option", { name: /1.2.3-alpha.1/ })).toBeVisible();
+  expect(screen.getByRole("option", { name: /unknown-one/ })).toBeVisible();
+  expect(screen.getByRole("option", { name: /unknown-two/ })).toBeVisible();
+});

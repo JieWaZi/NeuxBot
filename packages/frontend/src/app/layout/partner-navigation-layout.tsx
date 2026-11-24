@@ -1,6 +1,6 @@
 import { waitingConversations, workAttentionHref } from "@/modules/work-board";
 import {
-  ChatHistoryPopover,
+  ChatHistoryContentContext,
   ChatHistoryPanelSurface,
   ChatHistoryNavigationRow,
   ChatForkMenuItem,
@@ -19,7 +19,6 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type SetStateAction,
-  type UIEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -55,6 +54,7 @@ import type { ChatSceneOwner } from "@/shared/workspace/app-scene-model";
 import { chatDraftHref, chatHref } from "@/shared/lib/chat-navigation";
 import { Button } from "@/shared/ui/button";
 import { CornerLauncherButton } from "@/shared/ui/corner-launcher-button";
+import { ResourceInfiniteScroll } from "@/shared/ui/resource-infinite-scroll";
 import {
   clampContextSidebarWidth,
   defaultContextSidebarWidth,
@@ -365,7 +365,7 @@ function PartnerNavigationLayoutContent({
   };
   const settingsLayout = settingsOpen ? settingsSidebar : undefined;
   const partnerContext = !settingsOpen && navigation.sidebarKind === "partners";
-  const cornerLauncherItem =
+  const chatHistoryItem =
     partnerContext && !workflowChatOpen ? selectedRailItem : undefined;
   const sidebar = settingsLayout ?? moduleSidebar;
   const pageSidebar = Boolean(sidebar);
@@ -611,7 +611,6 @@ function PartnerNavigationLayoutContent({
           ) : null}
           <section
             aria-label={t("sceneWorkspace")}
-            data-chat-corner-launcher={Boolean(cornerLauncherItem) || undefined}
             data-content-spans-sidebar={!hasSidebar || undefined}
             className={cn(
               "relative row-start-1 grid min-h-0 min-w-0 grid-rows-[var(--shell-titlebar-height)_minmax(0,1fr)] overflow-hidden",
@@ -637,22 +636,25 @@ function PartnerNavigationLayoutContent({
             >
               {showContextSidebar ? contextSidebar : null}
               <div className="app-scene-body-clip h-full min-h-0 min-w-0">
-                {children}
+                <ChatHistoryContentContext.Provider
+                  value={
+                    chatHistoryItem ? (
+                      <ChatHistoryPanel
+                        key={chatHistoryItem.key}
+                        activeChatId={activeChatId}
+                        item={chatHistoryItem}
+                        onPreferencesChange={onPreferencesChange}
+                        preferences={preferences}
+                        teamContext={teamContext}
+                      />
+                    ) : null
+                  }
+                >
+                  {children}
+                </ChatHistoryContentContext.Provider>
               </div>
             </div>
-            {cornerLauncherItem ? (
-              <div className="absolute right-0 bottom-0 z-40">
-                <CornerLauncher>
-                  <ChatHistoryLauncher
-                    activeChatId={activeChatId}
-                    item={cornerLauncherItem}
-                    onPreferencesChange={onPreferencesChange}
-                    preferences={preferences}
-                    teamContext={teamContext}
-                  />
-                </CornerLauncher>
-              </div>
-            ) : null}
+            {chatHistoryItem ? <CornerLauncher /> : null}
           </section>
         </div>
         <WakerShowcaseDialog
@@ -673,109 +675,58 @@ function PartnerNavigationLayoutContent({
   );
 }
 
-function CornerLauncher({ children }: { children: ReactNode }) {
+function CornerLauncher() {
   const floatingChat = useFloatingChatLauncher();
-  if (!floatingChat) return children;
+  if (!floatingChat) return null;
 
   return (
-    <CornerLauncherButton
-      aria-label={floatingChat.ariaLabel}
-      data-activity-state={floatingChat.state}
-      data-floating-chat-shell-launcher
-      icon={
-        floatingChat.state === "running" ? (
-          <LoaderCircle
-            className="motion-safe:animate-spin"
-            strokeWidth={1.5}
-          />
-        ) : (
-          <MessageSquareText strokeWidth={1.5} />
-        )
-      }
-      indicator={
-        floatingChat.state === "waiting" ? (
-          <span className="bg-warning absolute top-0.5 right-0.5 size-1 rounded-full" />
-        ) : null
-      }
-      label={floatingChat.label}
-      onClick={floatingChat.onActivate}
-      title={floatingChat.ariaLabel}
-      wide
-    />
-  );
-}
-
-function ChatHistoryLauncher({
-  activeChatId,
-  item,
-  onPreferencesChange,
-  preferences,
-  teamContext,
-}: {
-  activeChatId?: string;
-  item: NavigationEntity;
-  onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
-  preferences: PartnerNavigationPreferences;
-  teamContext?: { channelId: string; threadId?: string };
-}) {
-  return (
-    <ChatHistoryPopover>
-      {(close) => (
-        <ChatHistoryPanel
-          activeChatId={activeChatId}
-          item={item}
-          onClose={close}
-          onPreferencesChange={onPreferencesChange}
-          preferences={preferences}
-          teamContext={teamContext}
-        />
-      )}
-    </ChatHistoryPopover>
+    <div className="absolute right-0 bottom-0 z-40">
+      <CornerLauncherButton
+        aria-label={floatingChat.ariaLabel}
+        data-activity-state={floatingChat.state}
+        data-floating-chat-shell-launcher
+        icon={
+          floatingChat.state === "running" ? (
+            <LoaderCircle
+              className="motion-safe:animate-spin"
+              strokeWidth={1.5}
+            />
+          ) : (
+            <MessageSquareText strokeWidth={1.5} />
+          )
+        }
+        indicator={
+          floatingChat.state === "waiting" ? (
+            <span className="bg-warning absolute top-0.5 right-0.5 size-1 rounded-full" />
+          ) : null
+        }
+        label={floatingChat.label}
+        onClick={floatingChat.onActivate}
+        title={floatingChat.ariaLabel}
+        wide
+      />
+    </div>
   );
 }
 
 function ChatHistoryPanel({
   activeChatId,
   item,
-  onBack,
-  onClose,
   onPreferencesChange,
   preferences,
   teamContext,
 }: {
   activeChatId?: string;
   item: NavigationEntity;
-  onBack?: () => void;
-  onClose: () => void;
   onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
   preferences: PartnerNavigationPreferences;
   teamContext?: { channelId: string; threadId?: string };
 }) {
-  const navigate = useNavigate();
-  const appScenes = useOptionalAppSceneWorkspace();
-  const openNewChat = () => {
-    onClose();
-    if (
-      appScenes?.openNewChat?.({
-        kind: item.kind === "waker" ? "waker" : "team",
-        id: item.id,
-      })
-    )
-      return;
-    navigate(
-      item.kind === "waker"
-        ? chatDraftHref(item.id)
-        : `/teams/${item.id}?draftId=${crypto.randomUUID()}`,
-      { flushSync: true },
-    );
-  };
-
   return (
-    <ChatHistoryPanelSurface onBack={onBack} onNew={openNewChat}>
+    <ChatHistoryPanelSurface>
       {item.kind === "waker" ? (
         <PartnerChatTree
           activeChatId={activeChatId}
-          onChatOpened={onClose}
           onPreferencesChange={onPreferencesChange}
           preferences={preferences}
           selectedPartnerId={item.id}
@@ -786,7 +737,6 @@ function ChatHistoryPanel({
           channelId={item.id}
           attention={item.attention?.chats}
           onPreferencesChange={onPreferencesChange}
-          onThreadOpened={onClose}
           preferences={preferences}
           threadId={
             teamContext?.channelId === item.id
@@ -802,14 +752,12 @@ function ChatHistoryPanel({
 function PartnerChatTree({
   activeChatId,
   attention,
-  onChatOpened,
   onPreferencesChange,
   preferences,
   selectedPartnerId,
 }: {
   activeChatId?: string;
   attention?: ChatAttention[];
-  onChatOpened?: () => void;
   onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
   preferences: PartnerNavigationPreferences;
   selectedPartnerId: string;
@@ -903,22 +851,12 @@ function PartnerChatTree({
     void queryClient.prefetchQuery(getChatOptions({ path: { chatId } }));
     void queryClient.prefetchInfiniteQuery(chatMessagesInfiniteOptions(chatId));
   };
-  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
-    const element = event.currentTarget;
-    if (
-      chatsQuery.hasNextPage &&
-      !chatsQuery.isFetchingNextPage &&
-      element.scrollHeight - element.scrollTop - element.clientHeight < 120
-    ) {
-      void chatsQuery.fetchNextPage();
-    }
-  };
   return (
-    <div className="min-w-0 pb-1" data-chat-tree="partner">
-      <div
-        className="scrollbar-hidden max-h-72 min-h-0 overflow-x-hidden overflow-y-auto pr-1"
-        onScroll={handleScroll}
-      >
+    <div
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
+      data-chat-tree="partner"
+    >
+      <div className="scrollbar-hidden min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1 pb-1">
         {selectedPartnerId ? (
           <>
             {chatsQuery.isPending ? (
@@ -930,7 +868,7 @@ function PartnerChatTree({
                 <LoaderCircle className="size-icon-sm animate-spin" />
                 {t("partnerNavigation.loadingChats")}
               </div>
-            ) : chatsQuery.isError ? (
+            ) : chatsQuery.isLoadingError ? (
               <div className="px-2 py-4">
                 <p className="text-muted-foreground type-caption">
                   {t("partnerNavigation.chatsUnavailable")}
@@ -950,7 +888,7 @@ function PartnerChatTree({
               </p>
             ) : (
               groups.map((group, index) => (
-                <div className="mt-0.5" key={group.key}>
+                <div className="mt-3 first:mt-0" key={group.key}>
                   <ChatGroupHeader
                     action={
                       index === 0
@@ -967,11 +905,10 @@ function PartnerChatTree({
                     collapsed={collapsedGroups.has(group.key)}
                     icon={Folder}
                     label={group.label}
-                    onActionOpened={onChatOpened}
                     onToggle={() => toggleGroup(group.key)}
                   />
                   {!collapsedGroups.has(group.key) ? (
-                    <div className="grid gap-0.5 pl-5">
+                    <div className="mt-1 grid gap-0.5 pl-2">
                       {group.chats.map((chat) => (
                         <ChatNavigationRow
                           key={chat.id}
@@ -988,7 +925,6 @@ function PartnerChatTree({
                             })
                           }
                           onPrefetch={prefetchChat}
-                          onOpened={onChatOpened}
                         />
                       ))}
                     </div>
@@ -996,16 +932,14 @@ function PartnerChatTree({
                 </div>
               ))
             )}
-            {chatsQuery.isFetchingNextPage ? (
-              <div
-                aria-busy="true"
-                className="text-muted-foreground type-caption flex items-center justify-center gap-2 py-3"
-                role="status"
-              >
-                <LoaderCircle className="size-icon-sm animate-spin" />
-                {t("partnerNavigation.loadingMore")}
-              </div>
-            ) : null}
+            <ResourceInfiniteScroll
+              hasMore={chatsQuery.hasNextPage}
+              pending={chatsQuery.isFetching}
+              error={
+                chatsQuery.isFetchNextPageError ? chatsQuery.error : undefined
+              }
+              onLoadMore={() => void chatsQuery.fetchNextPage()}
+            />
           </>
         ) : null}
       </div>
@@ -1045,7 +979,6 @@ type ChatNavigationRowProps = {
   chat: Chat;
   onAction: (mode: "delete" | "rename") => void;
   onPrefetch: (chatId: string) => void;
-  onOpened?: () => void;
 };
 
 function ChatNavigationRow({
@@ -1054,7 +987,6 @@ function ChatNavigationRow({
   chat,
   onAction,
   onPrefetch,
-  onOpened,
 }: ChatNavigationRowProps) {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
@@ -1082,6 +1014,8 @@ function ChatNavigationRow({
     <ChatHistoryNavigationRow
       active={active}
       title={chat.title || t("partnerNavigation.untitledChat")}
+      runtimeId={chat.lastRuntimeId}
+      modelId={chat.lastModel}
       protection={
         typeof chat.retentionProtected === "boolean" && chatId
           ? {
@@ -1096,7 +1030,6 @@ function ChatNavigationRow({
       unreadCount={attention?.unreadMessageCount}
       href={href}
       onOpen={(event) => {
-        onOpened?.();
         navigateRouteImmediately(event, navigate, href, () =>
           pending ? undefined : captureChatOpenIntent(queryClient, chatId),
         );

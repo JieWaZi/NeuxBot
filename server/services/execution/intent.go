@@ -31,8 +31,10 @@ type WorkflowTurnBinding struct {
 	Reference *workinput.WorkflowReference
 	// Capability 是可用于本轮的工作流命令，声明为空时不注入工具。
 	Capability *ToolCapability
-	// Instruction 把本轮的已选版本和权限边界交给当前伙伴。
-	Instruction string
+	// AuthoringDefinitionID 是该创作会话拥有的固定定义，普通聊天留空。
+	AuthoringDefinitionID string
+	// DeveloperInstruction 说明本地或消费工具集的稳定用法。
+	DeveloperInstruction string
 }
 
 // AdmissionBoundary 让宿主在耐久接纳时校验仍然有效的提交来源。

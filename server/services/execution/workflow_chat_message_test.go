@@ -23,7 +23,7 @@ func TestChatWorkflowSelectionPersistsThroughPublicStartAndContinuation(t *testi
 		if ref.ID != selection.ID {
 			t.Fatalf("wrong selected definition: %+v", ref)
 		}
-		return WorkflowTurnBinding{Reference: &selection, Instruction: "Use the selected review workflow."}, nil
+		return WorkflowTurnBinding{Reference: &selection}, nil
 	}
 	intent := WorkIntent{
 		ClientRequestID: "selection-only", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}},

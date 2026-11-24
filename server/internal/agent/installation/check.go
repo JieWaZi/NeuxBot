@@ -78,6 +78,17 @@ func CompareVersions(runtimeID, local, latest string) (int, bool) {
 	return semver.Compare(left, right), true
 }
 
+// SameReleaseMajor reports whether versions belong to the same publisher major.
+func SameReleaseMajor(local, latest string) bool {
+	major := func(value string) string {
+		version := strings.TrimPrefix(strings.TrimPrefix(versionToken(value), "rust-"), "v")
+		part, _, _ := strings.Cut(version, ".")
+		return part
+	}
+	left, right := major(local), major(latest)
+	return left != "" && left == right
+}
+
 func versionToken(value string) string {
 	var result string
 	for _, part := range strings.Fields(strings.TrimSpace(value)) {

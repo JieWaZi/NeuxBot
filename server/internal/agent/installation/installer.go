@@ -34,7 +34,7 @@ const downloadLimit int64 = 1 << 30
 
 // Progress reports bounded transfer and installation phases without owning a background task.
 type Progress struct {
-	// Phase is resolving, downloading, extracting, dependencies, verifying, or publishing.
+	// Phase is resolving, downloading, extracting, dependencies, updating, verifying, or publishing.
 	Phase string
 	// ReceivedBytes is the verified stream's downloaded byte count.
 	ReceivedBytes int64
@@ -60,9 +60,9 @@ type Command struct {
 	Binary string
 	// Args preserves argument boundaries without passing through a shell.
 	Args []string
-	// Dir confines the command's working files to private staging.
+	// Dir is the working directory for staging or an explicit publisher upgrade.
 	Dir string
-	// Env is a minimal environment with all writable homes and caches inside staging.
+	// Env contains the scoped environment for the operation.
 	Env []string
 }
 
@@ -557,7 +557,7 @@ func officialURL(value *url.URL) bool {
 		return false
 	}
 	switch value.Hostname() {
-	case "api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "registry.npmjs.org", "cursor.com", "downloads.cursor.com", "x.ai", "code.kimi.com", "cdn.kimi.com", "qoder-ide.oss-accelerate.aliyuncs.com", "acc-1258344699.cos.accelerate.myqcloud.com":
+	case "api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "registry.npmjs.org", "cursor.com", "downloads.cursor.com", "x.ai", "code.kimi.com", "cdn.kimi.com", "downloads.claude.ai", "qoder-ide.oss-accelerate.aliyuncs.com", "acc-1258344699.cos.accelerate.myqcloud.com":
 		return true
 	}
 	return false
@@ -625,7 +625,7 @@ func failureReason(operation string, err error) string {
 		return "prerequisite"
 	case strings.Contains(operation, "npm package dependencies"):
 		return "dependencies"
-	case strings.Contains(operation, "installed CLI version"):
+	case strings.Contains(operation, "installed CLI version") || strings.Contains(operation, "updated CLI version") || strings.Contains(operation, "official CLI version"):
 		return "version"
 	case strings.Contains(operation, "manifest") || strings.Contains(operation, "release") || strings.Contains(operation, "metadata") || strings.Contains(operation, "npm artifact"):
 		return "manifest"

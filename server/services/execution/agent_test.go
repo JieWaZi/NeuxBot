@@ -456,8 +456,8 @@ func agentPreparationBinding(t *testing.T, operation string) capability.Binding 
 	}}
 }
 
-func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t *testing.T) {
-	// 移除共用入口的稳定创作角色或把本轮消息混入静态前缀，应使本回归失败。
+func TestWorkflowAuthoringPreparationKeepsBoundedStableInstructions(t *testing.T) {
+	// 创作启动约定进入稳定指令，完整指南由授权工具提供。
 	targets := map[string]string{"unsupported": ""}
 	for _, base := range agentapi.BaseRuntimeIDs() {
 		targets[base] = ""
@@ -491,13 +491,17 @@ func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t
 							inline = instruction.Content
 						}
 					}
-					if inline == "" || !strings.Contains(inline, guide) {
-						t.Error("authoring preparation did not supply the complete bundled guide in stable instructions")
+					if len(inline) >= len(guide) || strings.Contains(inline, guide) {
+						t.Error("authoring bootstrap must remain smaller than the full guide")
 					}
-					for _, required := range []string{"a bare business goal", "first message", "native CLI workflow", "Pure explanations", "saved:true"} {
+					for _, required := range []string{"a bare business goal", "first message", "native CLI workflow", "Pure explanations", "saved:true", "workflow_authoring_prepare", "workflow-authoring.md"} {
 						if !strings.Contains(strings.ToLower(inline), strings.ToLower(required)) {
-							t.Errorf("inlined guide lost authoring contract %q", required)
+							t.Errorf("authoring bootstrap lost contract %q", required)
 						}
+					}
+					native := request.thread().Session.DeveloperInstructions
+					if native == nil || strings.Count(*native, inline) != 1 {
+						t.Error("native developer instructions must carry the authoring bootstrap exactly once")
 					}
 					if index == 0 {
 						stableInstructions = request.Instructions

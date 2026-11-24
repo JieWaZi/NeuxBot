@@ -181,13 +181,34 @@ function RuntimeDetail({
         : "off";
   const modelDisabled =
     modelPending || selection.loading || selection.models.length === 0;
-  const installations = (runtime.installations ?? []).filter(
-    (item) => item.available && item.path,
-  );
-  const multipleInstallations = installations.length > 1;
   const version = runtimeDisplayVersion(
     installation.data?.version || runtime.version,
   );
+  const installationsByVersion = new Map<
+    string,
+    { path: string; version: string }
+  >();
+  for (const item of runtime.installations ?? []) {
+    if (!item.available || !item.path) continue;
+    const selected = item.path === runtime.resolvedBinary;
+    const itemVersion = runtimeDisplayVersion(item.version);
+    const displayVersion = selected ? version || itemVersion : itemVersion;
+    const versionKey = displayVersion.replace(/^(?:rust-)?v(?=\d)/i, "");
+    const key = versionKey ? `version:${versionKey}` : `path:${item.path}`;
+    if (selected || !installationsByVersion.has(key)) {
+      installationsByVersion.set(key, {
+        path: item.path,
+        version: displayVersion,
+      });
+    }
+  }
+  const installations = [...installationsByVersion.values()];
+  const multipleInstallations = installations.length > 1;
+  const installationPath = programInstalled
+    ? runtime.resolvedBinary ||
+      installation.data?.installationPath ||
+      installations[0]?.path
+    : undefined;
   const versionDescription = !programInstalled
     ? t("agents.status.notInstalled")
     : !version
@@ -281,9 +302,7 @@ function RuntimeDetail({
             title={t("agents.version")}
             description={
               multipleInstallations ? undefined : (
-                <span title={installation.data?.installationPath}>
-                  {versionDescription}
-                </span>
+                <span title={installationPath}>{versionDescription}</span>
               )
             }
           >
@@ -303,10 +322,8 @@ function RuntimeDetail({
                 </SelectTrigger>
                 <SelectContent>
                   {installations.map((item) => (
-                    <SelectItem key={item.path} value={item.path ?? ""}>
-                      {runtimeDisplayVersion(item.version) ||
-                        t("agents.versionUnknown")}{" "}
-                      · {item.path}
+                    <SelectItem key={item.path} value={item.path}>
+                      {item.version || t("agents.versionUnknown")} · {item.path}
                     </SelectItem>
                   ))}
                 </SelectContent>

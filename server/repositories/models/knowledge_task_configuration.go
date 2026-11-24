@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
@@ -20,6 +21,7 @@ type KnowledgeTaskConfiguration struct {
 	Model                     string            `json:"model"`                                 // 冻结的模型标识。
 	Reasoning                 string            `json:"reasoning,omitempty"`                   // 冻结的推理强度，空值使用模型最低档。
 	Message                   string            `json:"-"`                                     // 用户本次明确要求。
+	CompanionFindings         string            `json:"-"`                                     // 伙伴提交的补充发现，独立于用户维护要求。
 	RemoteSubject             string            `json:"-"`                                     // 服务端验证的实际主体。
 	RemoteProfileID           string            `json:"-"`                                     // 服务端固定模型配置引用。
 	RemoteAuthorization       json.RawMessage   `gorm:"type:text" json:"-"`                    // 不含凭据正文的可恢复授权身份。

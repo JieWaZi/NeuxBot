@@ -19,7 +19,6 @@ type ChatGroupHeaderProps = {
   collapsed: boolean;
   icon?: LucideIcon;
   label: string;
-  onActionOpened?: () => void;
   onToggle: () => void;
 };
 
@@ -28,7 +27,6 @@ export function ChatGroupHeader({
   collapsed,
   icon: Icon,
   label,
-  onActionOpened,
   onToggle,
 }: ChatGroupHeaderProps) {
   return (
@@ -38,7 +36,7 @@ export function ChatGroupHeader({
         aria-expanded={!collapsed}
         onClick={onToggle}
         className={cn(
-          "group/toggle text-muted-foreground hover:text-foreground focus-visible:ring-ring type-ui flex h-full min-w-0 flex-1 items-center rounded-sm px-3 text-left outline-none focus-visible:ring-2",
+          "group/toggle text-content-secondary hover:text-foreground focus-visible:ring-ring type-ui flex h-full min-w-0 flex-1 items-center rounded-sm px-2 text-left font-medium outline-none focus-visible:ring-2",
           Icon && "gap-2",
         )}
       >
@@ -67,7 +65,6 @@ export function ChatGroupHeader({
                 aria-current={action.current ? "page" : undefined}
                 aria-label={action.label}
                 className="text-muted-foreground hover:text-foreground focus-visible:ring-ring size-control-sm mr-1 grid shrink-0 place-items-center rounded-sm opacity-0 transition-opacity outline-none group-hover/group:opacity-100 focus-visible:opacity-100 focus-visible:ring-2"
-                onClick={onActionOpened}
               >
                 <Table2 className="size-icon-sm" strokeWidth={1.5} />
               </Link>

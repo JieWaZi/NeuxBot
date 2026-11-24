@@ -1,15 +1,16 @@
 package channel
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	messageview "github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
-
-const memberReportTruncationNotice = "> Report truncated: this is only a limited preview. The lead must not act on it; ask the member to resend a concise report."
 
 // announceEntry 保存一个等待批量交给负责人的成员任务报告。
 type announceEntry struct {
@@ -100,7 +101,7 @@ func truncateMemberReport(content string) (string, bool) {
 	if len(runes) <= constants.ChannelMemberReportMaximumRunes {
 		return content, false
 	}
-	notice := []rune("\n\n" + memberReportTruncationNotice)
+	notice := []rune("\n\n" + agent.TeamReportTruncationNotice)
 	keep := constants.ChannelMemberReportMaximumRunes - len(notice)
 	if keep < 0 {
 		keep = 0
@@ -108,82 +109,62 @@ func truncateMemberReport(content string) (string, bool) {
 	return string(runes[:keep]) + string(notice), true
 }
 
-// buildTaskBoardSnapshot 创建不携带任务结果正文的结构化任务板快照。
-func buildTaskBoardSnapshot(tasks []models.ChannelTask) string {
-	var terminal int
-	activeLines := make([]string, 0, len(tasks))
-	for index, task := range tasks {
-		switch task.Status {
-		case constants.ChannelTaskStatusCompleted,
-			constants.ChannelTaskStatusCancelled,
-			constants.ChannelTaskStatusFailed:
-			terminal++
-		default:
-			activeLines = append(activeLines, fmt.Sprintf("  #%d %s — %s", index+1, task.Subject, task.Status))
-		}
-	}
-	if len(tasks) == 0 {
-		return ""
-	}
-	if len(activeLines) == 0 {
-		return fmt.Sprintf("=== Task Board ===\nAll %d tasks have reached a terminal state.", len(tasks))
-	}
-	return fmt.Sprintf(
-		"=== Task Board ===\n%d/%d tasks have reached a terminal state. Remaining:\n%s",
-		terminal,
-		len(tasks),
-		strings.Join(activeLines, "\n"),
-	)
+// teamNotificationFacts 携带本批报告及任务板状态，供负责人处理。
+type teamNotificationFacts struct {
+	// Reports 是本批完整报告，投影不包含内部任务标识。
+	Reports []teamNotificationReport `json:"reports"`
+	// TruncatedMembers 是需要重新提交完整报告的成员。
+	TruncatedMembers []string `json:"truncatedMembers,omitempty"`
+	// TaskCount 是该来源工作组的任务总数。
+	TaskCount int `json:"taskCount"`
+	// TerminalCount 是已经进入终态的任务数。
+	TerminalCount int `json:"terminalCount"`
+	// RemainingTasks 是尚未进入终态的任务状态。
+	RemainingTasks []teamNotificationTask `json:"remainingTasks,omitempty"`
+	// AwaitingReview 是等待用户验收的任务数。
+	AwaitingReview int `json:"awaitingReview"`
+	// FinalSummaryAllowed 表示本批具备汇总所需的完整报告且无待完成任务。
+	FinalSummaryAllowed bool `json:"finalSummaryAllowed"`
 }
 
-// teamNotificationPrompt 把本批非截断报告作为当前输入交给负责人，历史重放会排除报告投影。
-func teamNotificationPrompt(
-	entries []announceEntry,
-	taskBoardSnapshot string,
-	tasks []models.ChannelTask,
-) string {
-	truncatedMembers := make([]string, 0)
+// teamNotificationReport 是负责人可用的一份完整成员报告。
+type teamNotificationReport struct {
+	// Member 是报告来源成员的展示名称。
+	Member string `json:"member"`
+	// Content 是原报告正文。
+	Content string `json:"content"`
+}
+
+// teamNotificationTask 提供尚未终止的任务状态。
+type teamNotificationTask struct {
+	// Subject 是任务标题。
+	Subject string `json:"subject"`
+	// Status 是当前任务记录中的状态值。
+	Status string `json:"status"`
+}
+
+func teamNotificationContext(entries []announceEntry, tasks []models.ChannelTask) workinput.Instruction {
+	facts := teamNotificationFacts{Reports: make([]teamNotificationReport, 0, len(entries)), TaskCount: len(tasks)}
 	for _, entry := range entries {
 		if entry.Truncated {
-			truncatedMembers = append(truncatedMembers, memberLabel(entry))
-		}
-	}
-	prompt := fmt.Sprintf(
-		"[System message] %d member result report(s) were durably delivered to this lead session. Continue coordination using only the non-truncated reports and structured task board below. Do not repeat this internal notification or claim to have seen the members' complete execution process.",
-		len(entries),
-	)
-	for _, entry := range entries {
-		if entry.Truncated {
+			facts.TruncatedMembers = append(facts.TruncatedMembers, memberLabel(entry))
 			continue
 		}
-		prompt += fmt.Sprintf("\n\n--- Member report from %s ---\n%s", memberLabel(entry), entry.Content)
+		facts.Reports = append(facts.Reports, teamNotificationReport{Member: memberLabel(entry), Content: entry.Content})
 	}
-	if taskBoardSnapshot != "" {
-		prompt += "\n\n" + taskBoardSnapshot
-	}
-	if len(truncatedMembers) > 0 {
-		prompt += fmt.Sprintf(
-			"\n\nThe following member reports were truncated: %s. Do not draw conclusions, modify tasks, or claim completion based on these previews. Ask those members to resend concise reports of no more than 4,000 characters.",
-			strings.Join(truncatedMembers, ", "),
-		)
-	}
-	reviewCount := 0
 	for _, task := range tasks {
-		if task.Status == constants.ChannelTaskStatusInReview {
-			reviewCount++
+		if task.Status.Terminal() {
+			facts.TerminalCount++
+			continue
 		}
+		if task.Status == constants.ChannelTaskStatusInReview {
+			facts.AwaitingReview++
+		}
+		facts.RemainingTasks = append(facts.RemainingTasks, teamNotificationTask{Subject: task.Subject, Status: string(task.Status)})
 	}
-	if reviewCount > 0 {
-		return fmt.Sprintf(
-			"%s\n\n%d task(s) are still awaiting user review. Describe the results available for review; do not claim that all team work is complete.",
-			prompt,
-			reviewCount,
-		)
-	}
-	if !teamTasksStillRunning(tasks) && len(truncatedMembers) == 0 {
-		prompt += "\n\nAll tasks in this turn have reached a terminal state. Give the user one complete final summary based on all non-truncated member reports."
-	}
-	return prompt
+	facts.FinalSummaryAllowed = facts.TerminalCount == facts.TaskCount && len(facts.TruncatedMembers) == 0
+	encoded, _ := json.Marshal(facts)
+	return workinput.Instruction{Name: agent.TeamNotificationContextName, Content: string(encoded)}
 }
 
 // memberLabel 返回负责人提示中使用的成员名称。

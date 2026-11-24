@@ -459,3 +459,46 @@ it("迟到低修订GET不能覆盖较新快照；Core恢复接受新的revision�
     )?.revision,
   ).toBe(0);
 });
+
+it("外部程序明确安装托管新版时发送切换动作", async () => {
+  current.snapshot = {
+    ...current.snapshot,
+    installed: true,
+    canUpdate: false,
+    canSwitchToManaged: true,
+    updateAvailable: true,
+    checkState: "checked",
+    latestVersion: "2.0.0",
+  };
+  show({ installed: true });
+  await userEvent.click(
+    await screen.findByRole("button", { name: "安装新版并切换" }),
+  );
+  expect(install).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: { runtimeId: "codex" },
+      query: { managed: true },
+    }),
+  );
+  expect(check).not.toHaveBeenCalled();
+});
+
+it("托管切换取消后仍可重试同一动作", async () => {
+  current.snapshot = {
+    ...current.snapshot,
+    installed: true,
+    canUpdate: true,
+    canSwitchToManaged: true,
+    updateAvailable: true,
+    checkState: "checked",
+    state: "cancelled",
+    operation: "install-managed",
+  };
+  show({ installed: true });
+  await userEvent.click(
+    await screen.findByRole("button", { name: "安装新版并切换" }),
+  );
+  expect(install).toHaveBeenCalledWith(
+    expect.objectContaining({ query: { managed: true } }),
+  );
+});

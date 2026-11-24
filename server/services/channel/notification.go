@@ -7,6 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
@@ -111,7 +112,7 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 	projectedEntries := entries
 	entries, ids = entries[:end], ids[:end]
 	groupTasks := notificationGroupTasks(tasks, entries, replyLinkID)
-	prompt := teamNotificationPrompt(entries, buildTaskBoardSnapshot(groupTasks), groupTasks)
+	resultContext := teamNotificationContext(entries, groupTasks)
 	leadExecutionID := util.New()
 	capability, capabilityToken, err := s.mintLeadCapability(ctx, thread, leadExecutionID, false)
 	if err != nil {
@@ -150,9 +151,9 @@ func (s *service) drainNotifications(ctx context.Context, threadID string) error
 		Chat:        execution.ChatTarget{ChatID: thread.LeadChatID},
 		Input: execution.WorkInput{
 			Actor:               string(constants.ChannelMessageActorSystem),
-			Content:             prompt,
+			Content:             agent.TeamNotificationTask,
 			IMReplyLinkID:       replyLinkID,
-			ContextInstructions: []workinput.Instruction{leaderTurnInstruction(false)},
+			ContextInstructions: []workinput.Instruction{leaderTurnInstruction(false), resultContext},
 		},
 		Options:   options,
 		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,

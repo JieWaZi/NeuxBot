@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -29,6 +30,8 @@ type RuntimeInstallationSnapshot struct {
 	CanInstall bool `json:"canInstall"`
 	// 允许更新
 	CanUpdate bool `json:"canUpdate"`
+	// 可安装托管新版并切换
+	CanSwitchToManaged bool `json:"canSwitchToManaged"`
 	// 允许卸载
 	CanUninstall bool `json:"canUninstall"`
 	// 维护限制原因
@@ -132,6 +135,11 @@ func (s *service) InstallationSnapshot(ctx context.Context, runtimeID string) (R
 	if job := s.installationJobs[base]; job != nil {
 		snapshot = job.snapshot
 		checkedBinary, checkedVersion, checkedAvailable = job.checkedBinary, job.checkedLocalVersion, job.checkedLocalAvailable
+		if job.cancel == nil && snapshot.Operation == constants.RuntimeInstallationOperationSwitchManaged && snapshot.RuntimeID != runtimeID {
+			// 其他配置只共享官方版本检查事实，保留自己的程序选择和维护状态。
+			snapshot.Operation, snapshot.State, snapshot.Phase = "", constants.RuntimeInstallationStateIdle, ""
+			snapshot.ErrorCode, snapshot.ErrorOperation, snapshot.ErrorReason, snapshot.ErrorStatus = "", "", "", 0
+		}
 		snapshot.RuntimeID = runtimeID
 		if job.cancel != nil {
 			s.installationMutex.Unlock()
@@ -170,6 +178,8 @@ func (s *service) InstallationSnapshot(ctx context.Context, runtimeID string) (R
 	}
 	snapshot.CanInstall, snapshot.CanUpdate, snapshot.CanUninstall = maintenance.CanInstall, maintenance.CanUpdate, maintenance.CanUninstall
 	snapshot.MaintenanceReason, snapshot.OfficialURL = maintenance.Reason, maintenance.OfficialURL
+	snapshot.CanSwitchToManaged = base != constants.RuntimeIDWorkBuddy && snapshot.Supported &&
+		snapshot.Installed && maintenance.Method != "managed" && maintenance.Reason != "cleanup_pending"
 	if maintenance.Reason == "cleanup_pending" {
 		// 文件提交已开始但清理尚未完成；重启后也只允许继续原卸载。
 		snapshot.Operation, snapshot.State, snapshot.Phase = "uninstall", constants.RuntimeInstallationStateFailed, "uninstalling"
@@ -196,6 +206,12 @@ func (s *service) InstallationSnapshot(ctx context.Context, runtimeID string) (R
 		applyUpdateAvailability(environment.BaseRuntimeID, &snapshot)
 		return snapshot, nil
 	}
+	if maintenance.Version != "" {
+		snapshot.Source = constants.RuntimeInstallationSourceManaged
+		snapshot.Version = maintenance.Version
+		applyUpdateAvailability(environment.BaseRuntimeID, &snapshot)
+		return snapshot, nil
+	}
 	result, err := s.installer.Installed(base)
 	if err == nil {
 		snapshot.Installed, snapshot.Version = true, result.Version
@@ -218,6 +234,15 @@ func (s *service) InstallationSnapshot(ctx context.Context, runtimeID string) (R
 
 // InstallRuntime 接纳独立于 HTTP 请求的受管安装或更新，同一基础智能体只运行一个任务。
 func (s *service) InstallRuntime(ctx context.Context, runtimeID string) error {
+	return s.installRuntime(ctx, runtimeID, false)
+}
+
+// InstallManagedRuntime 显式安装托管新版并切换选中的外部程序。
+func (s *service) InstallManagedRuntime(ctx context.Context, runtimeID string) error {
+	return s.installRuntime(ctx, runtimeID, true)
+}
+
+func (s *service) installRuntime(ctx context.Context, runtimeID string, switchToManaged bool) error {
 	environment, err := s.environments.Get(ctx, runtimeID)
 	if err != nil {
 		return err
@@ -233,10 +258,11 @@ func (s *service) InstallRuntime(ctx context.Context, runtimeID string) error {
 	if previous.State == constants.RuntimeInstallationStateInstalling {
 		return status_error.RuntimeInstallationBusy
 	}
-	if !previous.CanInstall && !previous.CanUpdate {
+	if switchToManaged && !previous.CanSwitchToManaged ||
+		!switchToManaged && !previous.CanInstall && !previous.CanUpdate {
 		return status_error.RuntimeMaintenanceUnsupported
 	}
-	if previous.MaintenanceReason != "repairable" && previous.Installed && previous.State != constants.RuntimeInstallationStateFailed {
+	if switchToManaged || previous.MaintenanceReason != "repairable" && previous.Installed && previous.State != constants.RuntimeInstallationStateFailed {
 		if err := s.CheckRuntimeUpdates(ctx, runtimeID); err != nil {
 			return err
 		}
@@ -244,12 +270,21 @@ func (s *service) InstallRuntime(ctx context.Context, runtimeID string) error {
 		if err != nil {
 			return err
 		}
+		if !switchToManaged && !previous.CanUpdate {
+			return status_error.RuntimeMaintenanceUnsupported
+		}
 		if previous.UpdateAvailable == nil {
 			return status_error.RuntimeVersionUnknown
 		}
 		if !*previous.UpdateAvailable {
 			return nil
 		}
+	}
+	if switchToManaged {
+		if !previous.CanSwitchToManaged {
+			return status_error.RuntimeMaintenanceUnsupported
+		}
+		return s.startRuntimeMaintenance(ctx, environment, previous, constants.RuntimeInstallationOperationSwitchManaged)
 	}
 	return s.startRuntimeMaintenance(ctx, environment, previous, "install")
 }
@@ -310,6 +345,16 @@ func (s *service) startRuntimeMaintenance(ctx context.Context, environment model
 	}
 	if s.installationJobs == nil {
 		s.installationJobs = make(map[string]*runtimeInstallationJob)
+	}
+	current, err := s.environments.Get(ctx, environment.RuntimeID)
+	if err != nil {
+		s.installationMutex.Unlock()
+		return err
+	}
+	if current.Detection.ResolvedBinary != environment.Detection.ResolvedBinary ||
+		!slices.Equal(s.programSelectionArguments(current), s.programSelectionArguments(environment)) {
+		s.installationMutex.Unlock()
+		return status_error.RuntimeConfigurationInvalid
 	}
 	taskContext, cancel := context.WithTimeout(s.lifecycleContext, 30*time.Minute)
 	previous.Operation = operation
@@ -380,7 +425,11 @@ func (s *service) runInstallation(ctx context.Context, base string, job *runtime
 		if job.snapshot.Operation == "uninstall" {
 			err = s.installer.Uninstall(ctx, base, job.binary, job.prefixArgs)
 		} else {
-			result, err = s.installer.InstallAt(ctx, base, job.binary, job.prefixArgs, progress)
+			binary, args := job.binary, job.prefixArgs
+			if job.snapshot.Operation == constants.RuntimeInstallationOperationSwitchManaged {
+				binary, args = "", nil
+			}
+			result, err = s.installer.InstallAt(ctx, base, binary, args, progress)
 			if err == nil && result.Binary == "" {
 				err = status_error.RuntimeInstallationFailed.WithParams(map[string]interface{}{"operation": "verifying", "reason": "source", "status": 0})
 			}
@@ -397,7 +446,7 @@ func (s *service) runInstallation(ctx context.Context, base string, job *runtime
 		job.snapshot.Phase, job.snapshot.Installed, job.snapshot.Version = "detecting", job.snapshot.Operation != "uninstall", result.Version
 		if job.snapshot.Operation == "uninstall" {
 			job.snapshot.Source = constants.RuntimeInstallationSourceUnknown
-		} else if job.snapshot.Source == constants.RuntimeInstallationSourceUnknown || job.snapshot.InstallationMethod == "managed" {
+		} else if job.snapshot.Source == constants.RuntimeInstallationSourceUnknown || job.snapshot.InstallationMethod == "managed" || job.snapshot.Operation == constants.RuntimeInstallationOperationSwitchManaged {
 			job.snapshot.Source = constants.RuntimeInstallationSourceManaged
 		}
 		job.snapshot.Cancelable = false
@@ -406,47 +455,19 @@ func (s *service) runInstallation(ctx context.Context, base string, job *runtime
 		s.installationMutex.Unlock()
 		s.publishInstallation(base)
 		// 同一基础程序的全部配置重读新版本；账号目录仍分别由原租约持有。
-		var environments []models.RuntimeEnvironment
-		environments, err = s.environments.List(ctx)
-		if err == nil {
-			err = s.transactions.Transaction(ctx, func(transactionContext context.Context) error {
-				summaries := make(map[string]agent.RuntimeSummary)
-				for _, summary := range s.runtimeCatalog.Runtimes() {
-					summaries[summary.ID] = summary
-				}
-				for _, selected := range environments {
-					if selected.BaseRuntimeID != base {
-						continue
-					}
-					summary, exists := summaries[selected.RuntimeID]
-					if !exists {
-						return status_error.RuntimeUnavailable
-					}
-					// 文件提交后、围栏释放前统一所有配置的真实启动事实，默认执行设置保留。
-					detection := agent.DetectionResult{Runtime: summary}
-					if job.snapshot.Operation != "uninstall" {
-						detection = selected.Detection
-						detection.Runtime = summary
-						detection.Runtime.PrefixArgs = append(append([]string(nil), result.PrefixArgs...), summary.PrefixArgs...)
-						detection.ResolvedBinary, detection.Version = result.Binary, result.Version
-					}
-					if err := s.environments.UpdateDetection(transactionContext, selected.RuntimeID, detection, time.Now().UnixMilli()); err != nil {
-						return err
-					}
-				}
-				return nil
-			})
-		}
+		var updated []string
+		updated, err = s.commitProgramMaintenance(ctx, base, job, result)
 		if release != nil {
 			release()
 		}
-		for _, selected := range environments {
-			if err == nil && selected.BaseRuntimeID == base {
-				if job.snapshot.Operation == "uninstall" {
-					err = s.refreshAfterProgramRemoval(ctx, selected.RuntimeID)
-				} else {
-					err = s.RefreshOne(ctx, selected.RuntimeID)
-				}
+		for _, runtimeID := range updated {
+			if err != nil {
+				break
+			}
+			if job.snapshot.Operation == "uninstall" {
+				err = s.refreshAfterProgramRemoval(ctx, runtimeID)
+			} else {
+				err = s.RefreshOne(ctx, runtimeID)
 			}
 		}
 	}
@@ -484,6 +505,102 @@ func (s *service) runInstallation(ctx context.Context, base string, job *runtime
 	if s.eventPublisher != nil {
 		s.eventPublisher.Publish(events.Event{Topic: constants.RuntimeEventTopic, Type: constants.RuntimeContractChangedEventType, Resource: events.Resource{Kind: "global"}})
 	}
+}
+
+// commitProgramMaintenance 与正在提交旧发现结果的探测互斥，并在原生围栏释放前提交新选择。
+func (s *service) commitProgramMaintenance(ctx context.Context, base string, job *runtimeInstallationJob, result installation.Result) ([]string, error) {
+	summaries := make(map[string]agent.RuntimeSummary)
+	for _, summary := range s.runtimeCatalog.Runtimes() {
+		summaries[summary.ID] = summary
+	}
+	var locks []*sync.Mutex
+	for _, runtimeID := range slices.Sorted(slices.Values(job.runtimeIDs)) {
+		if job.snapshot.Operation == constants.RuntimeInstallationOperationSwitchManaged && runtimeID != job.snapshot.RuntimeID {
+			continue
+		}
+		lock := s.runtimeRefreshLock(runtimeID)
+		lock.Lock()
+		locks = append(locks, lock)
+	}
+	defer func() {
+		for _, lock := range locks {
+			lock.Unlock()
+		}
+	}()
+
+	retained := make(map[string]bool)
+	if job.snapshot.Operation == "uninstall" {
+		environments, err := s.environments.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, selected := range environments {
+			if !slices.Contains(job.runtimeIDs, selected.RuntimeID) || selected.RuntimeID == job.snapshot.RuntimeID || selected.Detection.ResolvedBinary == "" {
+				continue
+			}
+			// 指向独立程序的配置继续使用原选择，解释器启动还要核对实际入口脚本。
+			paths := []string{selected.Detection.ResolvedBinary}
+			if arguments := s.programSelectionArguments(selected); len(arguments) > 0 && filepath.IsAbs(arguments[0]) {
+				paths = append(paths, arguments[0])
+			}
+			retained[selected.RuntimeID] = !slices.ContainsFunc(paths, func(path string) bool {
+				_, err := os.Stat(path)
+				return errors.Is(err, os.ErrNotExist)
+			})
+		}
+	}
+
+	var updated []string
+	err := s.transactions.Transaction(ctx, func(transactionContext context.Context) error {
+		updated = nil
+		environments, err := s.environments.List(transactionContext)
+		if err != nil {
+			return err
+		}
+		for _, selected := range environments {
+			if selected.BaseRuntimeID != base || !slices.Contains(job.runtimeIDs, selected.RuntimeID) || retained[selected.RuntimeID] {
+				continue
+			}
+			switch job.snapshot.Operation {
+			case constants.RuntimeInstallationOperationSwitchManaged:
+				if selected.RuntimeID != job.snapshot.RuntimeID {
+					continue
+				}
+			case "install":
+				// 原地更新只迁移同一程序的使用者，空选择继续继承基础程序。
+				if base != constants.RuntimeIDWorkBuddy && job.binary != "" && selected.Detection.ResolvedBinary != "" &&
+					(selected.Detection.ResolvedBinary != job.binary || !slices.Equal(s.programSelectionArguments(selected), job.prefixArgs)) {
+					continue
+				}
+			}
+			summary, exists := summaries[selected.RuntimeID]
+			if !exists {
+				return status_error.RuntimeUnavailable
+			}
+			detection := agent.DetectionResult{Runtime: summary}
+			if job.snapshot.Operation != "uninstall" {
+				detection = selected.Detection
+				if job.snapshot.Operation == constants.RuntimeInstallationOperationSwitchManaged &&
+					!slices.ContainsFunc(detection.Installations, func(item agent.CLIInstallation) bool { return item.Path == job.binary }) {
+					detection.Installations = append(detection.Installations, agent.CLIInstallation{
+						Path: job.binary, Version: detection.Version, Available: true,
+					})
+				}
+				detection.Runtime = summary
+				detection.Runtime.PrefixArgs = append(append([]string(nil), result.PrefixArgs...), summary.PrefixArgs...)
+				detection.ResolvedBinary, detection.Version = result.Binary, result.Version
+			}
+			if err := s.environments.UpdateDetection(transactionContext, selected.RuntimeID, detection, time.Now().UnixMilli()); err != nil {
+				return err
+			}
+			updated = append(updated, selected.RuntimeID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 // programSelectionArguments 从程序归属判断中去掉 Catalog 已知的配置参数，仅保留解释器入口。

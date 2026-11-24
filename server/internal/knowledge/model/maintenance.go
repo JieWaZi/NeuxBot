@@ -43,10 +43,12 @@ type MaintenanceRequest struct {
 	JobID string
 	// Bindings 是入口已经冻结的单库操作集合。
 	Bindings []capability.Binding
-	// Instructions 保留上游 Wiki Fixer 工作流和当前库边界。
+	// Instructions 保留上游 Wiki Fixer 工作流。
 	Instructions string
 	// Message 是本次明确的维护要求。
 	Message string
+	// Context 是本次维护调用的目标库与补充事实。
+	Context []agent.TurnFact
 	// Validate 每次工具调用重新检查任务与库授权。
 	Validate func(context.Context) error
 }
@@ -99,7 +101,7 @@ func (runner *MaintenanceRunner) Run(ctx context.Context, input MaintenanceReque
 	}
 	const bridgeName = "bot_capabilities"
 	const toolPrefix = "mcp__" + bridgeName + "__"
-	instructions := input.Instructions + "\n\nUse the supplied bot_capabilities MCP tools for every knowledge read and change. In the guide, CLI command names refer to their equivalent advertised MCP tools. Use their current schemas and provide requestId for mutations. Recover uncertain outcomes with receipts_get and the original requestId. Follow the frozen library scope and verify actual operation results."
+	instructions := input.Instructions + "\n\n" + agent.WikiMaintenanceToolInstructions + "\n\n" + agent.TurnContextInstructions
 	var authorized atomic.Bool
 	var successfulCalls atomic.Uint64
 	// 只认服务端真正完成的领域调用，发现命令和模型自述不能证明执行过维护检查。
@@ -139,7 +141,7 @@ func (runner *MaintenanceRunner) Run(ctx context.Context, input MaintenanceReque
 			Session:   agent.AgentSessionOptions{DeveloperInstructions: &instructions},
 			Selection: &agent.TurnSelection{Reasoning: runner.config.Reasoning}},
 		ResolveAccount: runner.config.ResolveAccount,
-		Input:          agent.TurnRequest{Text: input.Message, UsageSource: "knowledge_maintenance"},
+		Input:          agent.TurnRequest{Text: input.Message, Context: input.Context, UsageSource: "knowledge_maintenance"},
 		Ports: agent.TurnPorts{
 			AcquireResources: func(ctx context.Context, _ agent.ResourceSelection) (agent.ResourceLease, error) {
 				lease, revokeGrant, err := runner.acquireBridge(ctx, runCtx, input, bindings, binary, bridgeName)

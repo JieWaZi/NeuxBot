@@ -795,6 +795,7 @@ export const baseEn = {
         repairRequired:
           "Program files are damaged or missing. Please reinstall.",
         update: "Update",
+        switchToManaged: "Install and switch",
         check: "Check for updates",
         checking: "Checking",
         current: "No update needed",
@@ -833,6 +834,7 @@ export const baseEn = {
         cancelled: "Installation canceled",
         preparing: "Preparing installation",
         downloading: "Downloading",
+        updating: "Updating",
         extracting: "Extracting",
         dependencies: "Installing dependencies",
         verifying: "Verifying",

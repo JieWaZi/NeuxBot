@@ -300,7 +300,7 @@ func (c *knowledgeController) FreezeTaskConfiguration(ctx context.Context, in mo
 	if err != nil {
 		return stored, err
 	}
-	if stored.Backend != in.Backend || stored.ConnectionID != in.ConnectionID || stored.KnowledgeBaseID != in.KnowledgeBaseID || stored.Message != in.Message || stored.RemoteSubject != in.RemoteSubject || stored.RemoteProfileID != in.RemoteProfileID || string(stored.RemoteAuthorization) != string(in.RemoteAuthorization) || !reflect.DeepEqual(stored.PublicationAuthorizations, in.PublicationAuthorizations) {
+	if stored.Backend != in.Backend || stored.ConnectionID != in.ConnectionID || stored.KnowledgeBaseID != in.KnowledgeBaseID || stored.Message != in.Message || stored.CompanionFindings != in.CompanionFindings || stored.RemoteSubject != in.RemoteSubject || stored.RemoteProfileID != in.RemoteProfileID || string(stored.RemoteAuthorization) != string(in.RemoteAuthorization) || !reflect.DeepEqual(stored.PublicationAuthorizations, in.PublicationAuthorizations) {
 		return stored, status_error.KnowledgeConflict
 	}
 	return stored, nil

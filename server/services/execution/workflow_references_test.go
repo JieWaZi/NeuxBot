@@ -50,41 +50,52 @@ func TestWorkflowReferencesReachNativeResumePromptWithoutReloadingInstructions(t
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Count(native.Text, "<neuxbot-turn-context>") != 1 || strings.Contains(native.Text, "stable team role") {
-			t.Fatalf("native continuation duplicated context or replayed stable instructions: %s", native.Text)
+		context, err := json.Marshal(native.Context)
+		if err != nil || native.Text != input.message.Text || strings.Contains(string(context), "stable team role") {
+			t.Fatalf("native continuation rewrote user text or replayed stable instructions: %q %s %v", native.Text, context, err)
 		}
-		var selected []agentapi.Instruction
+		var selected []struct {
+			// Name 是引用的稳定语义。
+			Name string `json:"name"`
+			// Value 是原生输入使用的结构化引用。
+			Value json.RawMessage `json:"value"`
+		}
 		for _, instruction := range turn.ContextInstructions {
 			if instruction.Name != "Current workflow references" {
 				continue
 			}
-			_, encoded, found := strings.Cut(instruction.Content, "\n")
-			if !found || json.Unmarshal([]byte(encoded), &selected) != nil {
+			if json.Unmarshal([]byte(instruction.Content), &selected) != nil {
 				t.Fatalf("authoritative reference list is not valid JSON: %s", instruction.Content)
 			}
 		}
-		if len(selected) != len(references) || len(selected) > 0 && !reflect.DeepEqual(selected, references) {
+		if len(selected) != len(references) {
 			t.Fatalf("authoritative selection lost current references: got %+v, want %+v", selected, references)
 		}
-		for _, reference := range references {
-			if strings.Count(native.Text, reference.Name) != 1 {
-				t.Fatalf("native continuation duplicated or lost reference %s: %s", reference.Name, native.Text)
+		for i, reference := range references {
+			if selected[i].Name != reference.Name || string(selected[i].Value) != reference.Content {
+				t.Fatalf("reference %d lost its structured value: %+v", i, selected[i])
+			}
+			if strings.Count(string(context), reference.Name) != 1 {
+				t.Fatalf("native continuation duplicated or lost reference %s: %s", reference.Name, context)
 			}
 			var content map[string]string
 			if err := json.Unmarshal([]byte(reference.Content), &content); err != nil {
 				t.Fatal(err)
 			}
 			for _, value := range content {
-				if !strings.Contains(native.Text, value) {
-					t.Fatalf("resume input lost exact reference %q: %s", value, native.Text)
+				if !strings.Contains(string(context), value) {
+					t.Fatalf("resume input lost exact reference %q: %s", value, context)
 				}
 			}
 		}
-		if index > 0 && strings.Contains(native.Text, "original-revision") {
+		if index > 0 && strings.Contains(string(context), "original-revision") {
 			t.Fatal("continuation replayed an earlier reference")
 		}
-		if index == 2 && (!strings.Contains(native.Text, "empty list") || !strings.Contains(native.Text, "[]") || strings.Contains(native.Text, "new-node")) {
-			t.Fatalf("removed references were not explicitly cleared: %s", native.Text)
+		if strings.Contains(string(context), "Never infer the selected node") || !strings.Contains(*plan.thread().Session.DeveloperInstructions, "Never infer the selected node") {
+			t.Fatal("reference handling rules were not delivered through the native instruction port")
+		}
+		if index == 2 && len(native.Context) != 0 {
+			t.Fatalf("turn without references must omit empty context: %s", context)
 		}
 	}
 }
@@ -96,8 +107,11 @@ func TestWorkflowResultsReachNativeTurnOnceWithoutChangingSessionSettings(t *tes
 	files := &preparedMessageFiles{executionWorkspaceDirectory: root}
 	state := messageChat{chat: journal.chat}
 	var stableThread agentapi.ThreadRequest
-	for index, contract := range []string{"actual attempt one result schema", "actual attempt two result schema"} {
-		input := pendingMessage{message: userMessage{Text: "验证原始证据"}, runtime: runtimeSelection{RuntimeID: "codex"}, contextInstructions: []agentapi.Instruction{{Name: constants.WorkflowResultsInstructionFileName, Content: contract}}}
+	for index, contract := range []string{`{"type":"object"}`, `{"type":"array"}`} {
+		input := pendingMessage{
+			message: userMessage{Text: "验证原始证据"}, runtime: runtimeSelection{RuntimeID: "codex"},
+			contextInstructions: []agentapi.Instruction{{Name: constants.WorkflowResultsInstructionFileName, Content: agentapi.WorkflowResultInstructions + contract + agentapi.WorkflowResultCompletion}},
+		}
 		plan := recordBusinessInputs(manager, state, input, files, nil, nil, models.RuntimeEnvironment{})
 
 		turn := plan
@@ -113,7 +127,10 @@ func TestWorkflowResultsReachNativeTurnOnceWithoutChangingSessionSettings(t *tes
 			t.Fatal("current result contract changed stable session configuration")
 		}
 		prompt := turn.prompt()
-		if turn.Message.Text != input.message.Text || strings.Count(prompt, contract) != 1 || strings.Contains(agentapi.DeveloperInstructions(plan.Instructions), contract) {
+		if turn.Message.Text != input.message.Text ||
+			!reflect.DeepEqual(turn.ContextInstructions, []agentapi.Instruction{{Name: constants.WorkflowResultsInstructionFileName, Content: contract}}) ||
+			strings.Contains(prompt, "Final chat text is not a result submission") ||
+			!strings.Contains(agentapi.DeveloperInstructions(plan.Instructions), "Final chat text is not a result submission") {
 			t.Fatalf("result contract rewrote business input, was duplicated, or entered stable instructions: %s", prompt)
 		}
 	}

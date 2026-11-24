@@ -26,6 +26,15 @@ type TurnRequest struct {
 	Text string
 	// Content carries ordered structured native input.
 	Content []AgentContent
+	// Context holds trusted per-turn facts separate from the business input and media.
+	Context []TurnFact
+}
+
+func validTurnInput(input TurnRequest) bool {
+	if input.Text != "" {
+		return len(input.Content) == 0
+	}
+	return len(input.Content) != 0 || len(input.Context) != 0
 }
 
 // TurnAdmission carries the opened binding and the exact reserved adapter input.
@@ -172,11 +181,8 @@ func (t *Turn) setSession(conn *providerConnection, binding NativeBinding) {
 	t.mu.Unlock()
 }
 
-// AppendPromptContext adds host context from acquired resources before native submission.
-func (t *Turn) AppendPromptContext(text string) error {
-	if text == "" {
-		return nil
-	}
+// AddContext records current facts from acquired resources before native submission.
+func (t *Turn) AddContext(facts ...TurnFact) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.phase != turnPrepared {
@@ -185,11 +191,7 @@ func (t *Turn) AppendPromptContext(text string) error {
 	if err := t.ctx.Err(); err != nil {
 		return err
 	}
-	if len(t.input.Content) == 0 {
-		t.input.Text += text
-	} else {
-		t.input.Content = append(t.input.Content, AgentContent{Kind: "text", Text: text})
-	}
+	t.input.Context = append(t.input.Context, facts...)
 	return nil
 }
 
@@ -239,7 +241,7 @@ func (t *Turn) runPrompt() TurnResult {
 	t.live.start(t.ctx, t.ports.Observe)
 	run, err := client.ReservePrompt(t.ctx, AgentPromptRequest{
 		SessionID: t.binding.Session.SessionID, HostInvocationID: t.input.HostInvocationID,
-		Text: t.input.Text, Content: t.input.Content, BeforeSubmit: t.beforeSubmit,
+		Text: t.input.Text, Content: t.input.Content, Context: t.input.Context, BeforeSubmit: t.beforeSubmit,
 	})
 	if err != nil {
 		res.OperationError = err
@@ -395,7 +397,7 @@ func authorizeInput(ctx context.Context, ports TurnPorts, admission TurnAdmissio
 func (t *Turn) Steer(ctx context.Context, input TurnRequest, ports TurnPorts) (AgentSteerResult, error) {
 	if t.thread.chatID == "" || input.HostInvocationID == "" || input.HostInvocationID == t.input.HostInvocationID ||
 		input.ExecutionID == "" || input.AssistantMessageID == "" || ports.Admit == nil ||
-		(input.Text == "") == (len(input.Content) == 0) {
+		!validTurnInput(input) {
 		return AgentSteerResult{}, status_error.AgentInputInvalid
 	}
 	t.mu.Lock()
@@ -422,7 +424,7 @@ func (t *Turn) Steer(ctx context.Context, input TurnRequest, ports TurnPorts) (A
 	var revoke func()
 	result, steerErr := client.Steer(control, AgentSteerRequest{
 		SessionID: scope.SessionID, Target: scope, HostInvocationID: input.HostInvocationID,
-		Text: input.Text, Content: input.Content,
+		Text: input.Text, Content: input.Content, Context: input.Context,
 		BeforeSubmit: func(ctx context.Context, submission AgentPromptSubmission) error {
 			if !t.matches(scope) {
 				return status_error.RuntimeUnavailable

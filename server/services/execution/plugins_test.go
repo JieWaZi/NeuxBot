@@ -272,7 +272,8 @@ func TestPluginIntentAndVersionSurviveAdmissionAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Resources) < 1 || len(snapshot.Resources[0].Plugins) != 1 || snapshot.Resources[0].Plugins[0].VersionID != "p1-v1" {
+	if len(snapshot.Resources) < 1 || snapshot.Resources[0].Content != intent.Input.Content ||
+		len(snapshot.Resources[0].Plugins) != 1 || snapshot.Resources[0].Plugins[0].VersionID != "p1-v1" {
 		t.Fatalf("history lost plugin snapshot: %+v", snapshot.Resources)
 	}
 	replay, err := manager.execution.Start(context.Background(), intent)
@@ -288,19 +289,19 @@ func TestPluginIntentAndVersionSurviveAdmissionAndHistory(t *testing.T) {
 		t.Fatalf("native turn count = %d, want 1", len(frames))
 	}
 	var frame struct {
-		// Input is the product text sent to the Codex fixture.
+		// Input 保存实际发给 Codex 的有序原生输入块。
 		Input []struct {
-			// Text contains the user's message and runtime instructions.
+			// Text 保存各自独立的正文或本轮事实。
 			Text string `json:"text"`
 		} `json:"input"`
 	}
-	if err := json.Unmarshal(frames[0], &frame); err != nil || len(frame.Input) != 1 {
+	if err := json.Unmarshal(frames[0], &frame); err != nil || len(frame.Input) != 2 || frame.Input[0].Text != intent.Input.Content {
 		t.Fatalf("unexpected native input: %s, error=%v", frames[0], err)
 	}
-	prompt := frame.Input[0].Text
-	if !strings.Contains(prompt, `Use "办公" to carry out this request.`) ||
-		!strings.Contains(prompt, "(MCP: mcp__bot_plugin_") {
-		t.Fatalf("explicit plugin intent missing from native prompt: %s", prompt)
+	context := frame.Input[1].Text
+	if !strings.Contains(context, `"Selected plugins":[`) || !strings.Contains(context, `"name":"办公"`) ||
+		!strings.Contains(context, `"connectors":["mcp__bot_plugin_`) || strings.Contains(context, "carry out this request") {
+		t.Fatalf("explicit plugin intent missing from the shared context block: %s", context)
 	}
 }
 

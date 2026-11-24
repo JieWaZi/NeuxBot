@@ -2,13 +2,13 @@ package workflow
 
 import (
 	"context"
-	"encoding/json"
 	"path/filepath"
 	"slices"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
@@ -116,13 +116,7 @@ func (s *Service) bindChatWorkflowTurn(ctx context.Context, chat models.Chat, ex
 	}
 	bound.Reference = lease.Selection
 	bound.Capability = &execution.ToolCapability{ID: "workflow.consumer", Name: "工作流使用", Bindings: s.consumerAgentBindings(lease)}
-	guide := "Follow the Workflow execution guide from the provided bot skill."
-	if reference == nil {
-		bound.Instruction = "Prior runs in this chat are available when relevant. " + guide
-	} else {
-		encoded, _ := json.Marshal(reference)
-		bound.Instruction = "The user selected this exact workflow revision for this turn: " + string(encoded) + ". " + guide
-	}
+	bound.DeveloperInstruction = agent.WorkflowConsumerInstructions
 	return bound, nil
 }
 

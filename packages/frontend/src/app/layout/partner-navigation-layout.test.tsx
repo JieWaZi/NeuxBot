@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { AssistantRuntime } from "@assistant-ui/react";
 import {
   act,
   fireEvent,
@@ -8,7 +9,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -16,11 +17,18 @@ import type * as ChatModule from "@/modules/chat";
 import type * as WakerModule from "@/modules/waker";
 import type { Waker } from "@/modules/waker";
 import { FloatingChat } from "@/modules/chat/components/floating-chat";
+import { ChatWorkspaceSurface } from "@/modules/chat/components/chat-workspace-surface";
+import type { ChatRightPanel } from "@/modules/chat/components/chat-right-panel-host";
+import { conversationKeyOf } from "@/modules/chat/model/conversation-identity";
+import { WorkbenchProvider } from "@/modules/chat/workbench/workbench-store";
 import { SettingsContextSidebar } from "@/modules/settings/components/settings-context-sidebar";
 import type { GlobalEventObserver } from "@/shared/api/global-events";
 import { i18n } from "@/shared/i18n";
 import { configurePlatform, platform } from "@/shared/platform/provider";
-import { WorkspaceProvider } from "@/shared/workspace/workspace-context";
+import {
+  useSceneWorkspace,
+  WorkspaceProvider,
+} from "@/shared/workspace/workspace-context";
 import { ResourcesContextSidebar } from "./resources-context-sidebar";
 import { PartnerNavigationLayout } from "./partner-navigation-layout";
 import type { PartnerNavigationPreferences } from "./partner-navigation-preferences";
@@ -29,9 +37,14 @@ const history = vi.hoisted(() => ({
   executionId: undefined as string | undefined,
   waitingApproval: false,
   waitingElicitation: false,
+  nextPage: false,
   observers: new Set<GlobalEventObserver>(),
 }));
 const duplicateWaker = vi.hoisted(() => vi.fn());
+
+vi.mock("@/modules/chat/components/chat-thread", () => ({
+  ChatThread: () => null,
+}));
 
 vi.mock("@/modules/waker", async (importOriginal) => ({
   ...(await importOriginal<typeof WakerModule>()),
@@ -55,49 +68,54 @@ vi.mock("@/modules/chat", async (importOriginal) => ({
   ChatForkMenuItem: () => null,
   ChatTaskDialog: () => null,
   chatListInfiniteOptions: (wakerId: string) => ({
-    getNextPageParam: () => undefined,
-    initialPageParam: undefined,
-    queryFn: async () => ({
+    getNextPageParam: (page: { nextCursor?: string }) => page.nextCursor,
+    initialPageParam: "",
+    queryFn: async ({ pageParam }: { pageParam: string }) => ({
+      nextCursor: !pageParam && history.nextPage ? "older" : undefined,
       resources:
-        wakerId === "waker-6"
-          ? [
-              {
-                id: "chat-project",
-                activeExecutionId: history.executionId,
-                waitingApproval: history.waitingApproval,
-                waitingElicitation: history.waitingElicitation,
-                projectId: "project-1",
-                projectName: "项目甲",
-                title: "项目会话",
-                updatedAt: Date.now(),
-                wakerId,
-              },
-              {
-                additionalWorkingDirectories: ["/managed/chat-a/workspace"],
-                projectName: "workspace",
-                id: "chat-temp-a",
-                title: "临时会话甲",
-                updatedAt: 2,
-                wakerId,
-              },
-              {
-                additionalWorkingDirectories: [
-                  "C:\\managed\\chat-b\\workspace",
-                ],
-                id: "chat-temp-b",
-                title: "临时会话乙",
-                updatedAt: 1,
-                wakerId,
-              },
-              {
-                additionalWorkingDirectories: ["/tmp/临时目录"],
-                id: "chat-folder",
-                title: "临时会话",
-                updatedAt: Date.now() - 60_000,
-                wakerId,
-              },
-            ]
-          : [],
+        pageParam === "older"
+          ? [{ id: "chat-older", title: "更早的会话", wakerId }]
+          : wakerId === "waker-6"
+            ? [
+                {
+                  id: "chat-project",
+                  activeExecutionId: history.executionId,
+                  waitingApproval: history.waitingApproval,
+                  waitingElicitation: history.waitingElicitation,
+                  lastRuntimeId: "codex",
+                  lastModel: "gpt-5.6",
+                  projectId: "project-1",
+                  projectName: "项目甲",
+                  title: "项目会话",
+                  updatedAt: Date.now(),
+                  wakerId,
+                },
+                {
+                  additionalWorkingDirectories: ["/managed/chat-a/workspace"],
+                  projectName: "workspace",
+                  id: "chat-temp-a",
+                  title: "临时会话甲",
+                  updatedAt: 2,
+                  wakerId,
+                },
+                {
+                  additionalWorkingDirectories: [
+                    "C:\\managed\\chat-b\\workspace",
+                  ],
+                  id: "chat-temp-b",
+                  title: "临时会话乙",
+                  updatedAt: 1,
+                  wakerId,
+                },
+                {
+                  additionalWorkingDirectories: ["/tmp/临时目录"],
+                  id: "chat-folder",
+                  title: "临时会话",
+                  updatedAt: Date.now() - 60_000,
+                  wakerId,
+                },
+              ]
+            : [],
     }),
     queryKey: ["chats", wakerId],
   }),
@@ -167,6 +185,8 @@ vi.mock("@/modules/team/api/channel-queries", () => ({
       resources: [
         {
           id: "thread-project",
+          leadRuntimeId: "claude",
+          leadModel: "claude-sonnet",
           projectId: "project-1",
           projectName: "项目甲",
           title: "团队项目会话",
@@ -228,6 +248,46 @@ function LocationProbe() {
       {location.pathname}
       {location.search}
     </output>
+  );
+}
+
+function LayoutChatWorkbench() {
+  const scopeKey = useId();
+  const workspace = useSceneWorkspace(scopeKey);
+  const [panel, setPanel] = useState<ChatRightPanel>();
+  return (
+    <ChatWorkspaceSurface
+      activeRightPanel={panel}
+      workspace={workspace}
+      onAddCodeReference={() => {}}
+      onDismissRightPanel={() => setPanel(undefined)}
+      onOpenRightPanel={() => setPanel("workspace")}
+      adapter={{
+        identity: {
+          scopeKey,
+          key: conversationKeyOf(scopeKey),
+          workspaceDirectory: "",
+        },
+        snapshot: {
+          isRunning: false,
+          pendingApprovalCount: 0,
+          pendingElicitationCount: 0,
+          streamState: "closed",
+        },
+        thread: {
+          runtime: {} as AssistantRuntime,
+          messages: [],
+          wakerName: "伙伴 6",
+          emptyState: null,
+          sendFailure: { kind: "none" },
+          hasEarlierMessages: false,
+          isHistoryLoading: false,
+          isLoadingEarlier: false,
+          onLoadEarlier: async () => {},
+        },
+      }}
+      showSummary={false}
+    />
   );
 }
 
@@ -298,7 +358,11 @@ function TestLayout({
       preferences={preferences}
       sceneContentFlush={sceneContentFlush}
       selectedPartnerId={selectedPartnerId}
-      selectedRailKey={`waker:${selectedPartnerId}`}
+      selectedRailKey={
+        teamContext
+          ? `team:${teamContext.channelId}`
+          : `waker:${selectedPartnerId}`
+      }
       settingsOpen={activeSettings}
       settingsSidebar={
         activeSettings
@@ -327,6 +391,13 @@ function TestLayout({
           {JSON.stringify(preferences)}
         </output>
         <LocationProbe />
+        {!fullView &&
+        !activeSettings &&
+        (teamContext ||
+          location.pathname === "/chat" ||
+          location.pathname.startsWith("/chats/")) ? (
+          <LayoutChatWorkbench />
+        ) : null}
         {floatingChat ? (
           <>
             <button type="button" onClick={() => setFullView(false)}>
@@ -391,21 +462,23 @@ function renderLayout({
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <WorkspaceProvider>
-          <TestLayout
-            activeChatId={activeChatId}
-            contextSidebarHidden={contextSidebarHidden}
-            floatingChat={floatingChat}
-            sceneContentFlush={sceneContentFlush}
-            selectedPartnerId={selectedPartnerId}
-            settingsOpen={settingsOpen}
-            settingsSidebar={settingsSidebar}
-            renderTitlebar={renderTitlebar}
-            navigationPreferences={navigationPreferences}
-            sidebarToolbar={sidebarToolbar}
-            notificationBell={notificationBell}
-            teamContext={teamContext}
-            channels={channels}
-          />
+          <WorkbenchProvider>
+            <TestLayout
+              activeChatId={activeChatId}
+              contextSidebarHidden={contextSidebarHidden}
+              floatingChat={floatingChat}
+              sceneContentFlush={sceneContentFlush}
+              selectedPartnerId={selectedPartnerId}
+              settingsOpen={settingsOpen}
+              settingsSidebar={settingsSidebar}
+              renderTitlebar={renderTitlebar}
+              navigationPreferences={navigationPreferences}
+              sidebarToolbar={sidebarToolbar}
+              notificationBell={notificationBell}
+              teamContext={teamContext}
+              channels={channels}
+            />
+          </WorkbenchProvider>
         </WorkspaceProvider>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -811,10 +884,10 @@ describe("PartnerNavigationLayout", () => {
     expect(await screen.findByText("项目会话")).toBeVisible();
     expect(screen.queryByRole("button", { name: "返回身份列表" })).toBeNull();
     expect(
-      within(screen.getByLabelText("历史会话")).getByRole("button", {
+      within(screen.getByRole("tabpanel")).queryByRole("button", {
         name: "新建会话",
-      }).textContent,
-    ).toBe("");
+      }),
+    ).toBeNull();
     const rail = screen.getByRole("navigation", { name: "伙伴" });
     expect(
       within(rail).getByRole("button", { name: "伙伴 5，需要操作" }),
@@ -822,10 +895,83 @@ describe("PartnerNavigationLayout", () => {
     expect(
       within(rail).getByRole("button", { name: "伙伴 6，工作中" }),
     ).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("button", { name: "查看历史会话" })).toBe(history);
+    expect(history).not.toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "当前伙伴功能" }),
     ).toBeNull();
+  });
+
+  it("右下展开工作台的会话列表标签，重复点击聚焦原标签", async () => {
+    const user = userEvent.setup();
+    renderLayout();
+
+    const launcher = screen.getByRole("button", { name: "查看历史会话" });
+    await user.click(launcher);
+    const tab = screen.getByRole("tab", { name: "会话列表" });
+    const workbench = screen.getByRole("region", { name: "工作台" });
+    const list = within(workbench).getByRole("tabpanel");
+    expect(tab).toHaveAttribute("aria-controls", list.id);
+    expect(tab).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.queryByRole("button", { name: "查看历史会话" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "历史会话" })).toBeNull();
+    const chat = await within(list).findByRole("link", { name: "项目会话" });
+    expect(chat).toHaveAccessibleDescription("gpt-5.6");
+    const icon = within(chat).getByTitle("gpt-5.6");
+    expect(icon.previousElementSibling).toHaveAttribute("data-history-status");
+    expect(icon.nextElementSibling).toHaveTextContent("项目会话");
+    const oldChat = within(list).getByRole("link", { name: "临时会话" });
+    expect(oldChat).not.toHaveAttribute("aria-description");
+
+    await user.click(screen.getByRole("button", { name: "添加工作台标签" }));
+    await user.click(screen.getByRole("menuitem", { name: "浏览器" }));
+    const browser = screen.getByRole("tab", { name: "新标签页" });
+    expect(browser).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+    expect(screen.getByRole("tab", { name: "会话列表" })).toBe(tab);
+    expect(tab).toHaveAttribute("aria-selected", "true");
+    expect(browser).toBeInTheDocument();
+    await user.click(within(list).getByRole("link", { name: "临时会话" }));
+    expect(screen.getByTestId("current-route")).toHaveTextContent(
+      "/chats/chat-folder",
+    );
+    await user.click(screen.getByRole("button", { name: /关闭.*会话列表/ }));
+    expect(tab).not.toBeInTheDocument();
+    expect(browser).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "查看历史会话" })).toBeVisible();
+  });
+
+  it("键盘打开会话列表后聚焦页签，关闭最后一个标签后返回入口", async () => {
+    const user = userEvent.setup();
+    renderLayout();
+
+    screen.getByRole("button", { name: "查看历史会话" }).focus();
+    await user.keyboard("{Enter}");
+    const tab = screen.getByRole("tab", { name: "会话列表" });
+    expect(tab).toHaveFocus();
+
+    await user.keyboard("{Delete}");
+    expect(screen.getByRole("button", { name: "查看历史会话" })).toHaveFocus();
+  });
+
+  it("会话列表无需先滚动即可读取下一页", async () => {
+    const user = userEvent.setup();
+    history.nextPage = true;
+    try {
+      renderLayout();
+      await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+      const list = screen.getByRole("tabpanel");
+      const loadMore = await within(list).findByRole("button", {
+        name: "加载更多",
+      });
+      await user.click(loadMore);
+      expect(
+        await within(list).findByRole("link", { name: "更早的会话" }),
+      ).toBeVisible();
+    } finally {
+      history.nextPage = false;
+    }
   });
 
   it("详情导航位于左侧，场景顶栏和主体保持各自内容边界", async () => {
@@ -1010,8 +1156,7 @@ describe("PartnerNavigationLayout", () => {
     },
   );
 
-  it("伙伴菜单不包含会话，并从右下角浮层按来源查看会话", async () => {
-    const user = userEvent.setup();
+  it("伙伴详情菜单不包含工作台的会话入口", async () => {
     renderLayout({ initialEntry: "/wakers/waker-6" });
 
     const menu = await screen.findByRole("navigation", {
@@ -1024,31 +1169,52 @@ describe("PartnerNavigationLayout", () => {
     ).toEqual(["概览", "项目", "记忆", "资源"]);
     expect(within(menu).queryByText("伙伴 6")).toBeNull();
     expect(within(menu).queryByText("会话")).toBeNull();
-    expect(screen.queryByText("项目会话")).toBeNull();
+    expect(screen.queryByRole("button", { name: "查看历史会话" })).toBeNull();
+  });
+
+  it("团队会话列表展示负责人最近使用的模型，并省略列表内新建入口", async () => {
+    const user = userEvent.setup();
+    renderLayout({
+      initialEntry: "/teams/team-1/threads/thread-project",
+      teamContext: { channelId: "team-1", threadId: "thread-project" },
+      channels: [{ channel: { id: "team-1", name: "研发团队" } }],
+      navigationPreferences: { entityMode: "team" },
+    });
     await user.click(screen.getByRole("button", { name: "查看历史会话" }));
-    const historyPanel = screen.getByLabelText("历史会话");
-    expect(historyPanel).toBeVisible();
+    const list = screen.getByRole("tabpanel");
+    const chat = await within(list).findByRole("link", {
+      name: /团队项目会话/,
+    });
+    expect(chat).toHaveAccessibleDescription("claude-sonnet");
+    expect(chat).toHaveAttribute("aria-current", "page");
     expect(
-      within(historyPanel).getByRole("heading", { name: "会话列表" }),
-    ).toBeVisible();
-    expect(historyPanel.querySelector("[data-chat-history-panel]")).toHaveClass(
-      "h-80",
-    );
+      within(chat).getByTitle("claude-sonnet").previousElementSibling,
+    ).toHaveAttribute("data-history-status");
+    expect(within(list).queryByRole("button", { name: "新建会话" })).toBeNull();
+    const olderChat = within(list).getByRole("link", { name: /团队临时会话/ });
+    expect(olderChat).not.toHaveAttribute("aria-description");
+  });
+
+  it("会话列表标签按来源分组，列表顶部直接显示分组", async () => {
+    const user = userEvent.setup();
+    renderLayout();
+    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+    const historyPanel = screen.getByRole("tabpanel");
     expect(historyPanel.querySelector("[data-chat-history-list]")).toHaveClass(
       "overflow-y-auto",
     );
     expect(
-      within(historyPanel).getByRole("button", { name: "新建会话" }),
-    ).toBeVisible();
-    expect(
-      within(historyPanel).getByRole("button", { name: "新建会话" })
-        .textContent,
-    ).toBe("");
-    expect(
-      within(screen.getByLabelText("历史会话")).queryByText("伙伴 6"),
+      within(historyPanel).queryByRole("button", { name: "新建会话" }),
     ).toBeNull();
-    expect(screen.queryByRole("button", { name: "伙伴 6，工作中" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "置顶" })).toBeNull();
+    expect(
+      within(screen.getByRole("tabpanel")).queryByText("伙伴 6"),
+    ).toBeNull();
+    expect(
+      within(historyPanel).queryByRole("button", { name: "伙伴 6，工作中" }),
+    ).toBeNull();
+    expect(
+      within(historyPanel).queryByRole("button", { name: "置顶" }),
+    ).toBeNull();
     const taskListLink = await screen.findByRole("link", { name: "对话任务" });
     expect(taskListLink).toHaveAttribute("href", "/wakers/waker-6/chats");
     expect(taskListLink.textContent).toBe("");
@@ -1064,7 +1230,7 @@ describe("PartnerNavigationLayout", () => {
     expect(screen.getByText("临时会话")).toBeVisible();
     expect(
       screen.getByText("项目会话").parentElement?.parentElement?.parentElement,
-    ).toHaveClass("pl-5");
+    ).toHaveClass("pl-2");
     for (const menuButton of screen.getAllByRole("button", {
       name: "会话“项目会话”操作",
     })) {
@@ -1109,13 +1275,15 @@ describe("PartnerNavigationLayout", () => {
         name: /项目会话/,
       }),
     );
-    expect(
-      projectChatRows.filter((link) =>
-        link.parentElement?.classList.contains("bg-muted"),
-      ),
-    ).toHaveLength(1);
+    const selected = projectChatRows.filter(
+      (link) => link.getAttribute("aria-current") === "page",
+    );
+    expect(selected).toHaveLength(1);
+    expect(selected[0]?.parentElement).toHaveClass("bg-action-quiet-pressed");
     for (const link of projectChatRows) {
-      expect(link.parentElement).not.toHaveClass("focus-within:bg-muted");
+      expect(link.parentElement).not.toHaveClass(
+        "focus-within:bg-action-quiet-pressed",
+      );
     }
   });
 });
@@ -1167,7 +1335,7 @@ it.each([
     const dot = () => link.querySelector("[data-history-status]");
     expect(dot()).toHaveAttribute("data-history-status", "running");
     expect(dot()).toHaveClass("bg-success");
-    expect(link.querySelector("svg")).toBeNull();
+    expect(link.querySelector(".lucide-loader-circle")).toBeNull();
     history.executionId = undefined;
     act(() => {
       for (const observer of history.observers)

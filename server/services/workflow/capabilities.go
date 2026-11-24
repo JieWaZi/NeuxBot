@@ -14,6 +14,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
@@ -42,7 +43,7 @@ func (s *Service) handleCreationTool(ctx context.Context, session models.Workflo
 			return map[string]any{"sdk": constants.WorkflowSDKIdentifier, "topic": input.Topic, "content": content}, err
 		case constants.WorkflowQueryExamples:
 			source, err := workflowdsl.SDKExample(input.Topic)
-			return map[string]any{"source": source, "guidance": "Replace all example resource IDs with actual query resources results; validate complete source before saving."}, err
+			return map[string]any{"source": source, "guidance": agent.WorkflowExampleGuidance}, err
 		case constants.WorkflowQueryResources:
 			return s.resourcePage(ctx, session.DefinitionID, input.Kind, input.Cursor)
 		}
@@ -759,7 +760,7 @@ func workerResultSchema(run models.WorkflowRun, effect models.WorkflowEffect) ma
 
 func (s *Service) handleResultTool(ctx context.Context, effect models.WorkflowEffect, schema map[string]any, input workflowtool.Input) (map[string]any, error) {
 	if input.Action == constants.WorkflowActionQuery {
-		return map[string]any{"schema": schema, "nodeId": effect.Boundary.NodeID, "guidance": "Complete actual work, then invoke workflow.results.submit through the host-provided capability transport with data matching this schema and a stable requestId. When bot_capabilities MCP is injected, use workflow_results_submit and its advertised input schema. A final reply is not a structured result. Submission remains a candidate until this execution succeeds."}, nil
+		return map[string]any{"schema": schema, "nodeId": effect.Boundary.NodeID, "guidance": agent.WorkflowResultSchemaGuidance}, nil
 	}
 	encoded, err := json.Marshal(input.Data)
 	if err != nil || len(encoded) > constants.WorkflowOutputLimitBytes {

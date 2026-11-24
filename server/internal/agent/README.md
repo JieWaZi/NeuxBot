@@ -9,7 +9,7 @@
 | `catalog.go`、`runtime_installation.go` | CLI 注册及 Profile；安装发现、程序定位及探测启动环境 |
 | `runtime_options.go`、`model_catalog.go`、`session_settings.go` | 安装探测结果、模型目录与原生有效设置 |
 | `client_contracts.go` | 共享原生事件、指令、交互和资源字段 |
-| `developer_instructions.go` | 稳定指令组合，交给原生指令入口，不改写工作区指令文件 |
+| `developer_instructions.go` | 宿主模型提示模板、原生会话指令组合及本轮事实块编码 |
 | `skills.go` | 技能复制、摘要清单、暂存发布与仅清理受管安装 |
 | `detached_task.go`、`history_handoff.go` | 独立文本及受限任务；摘要和有界历史接力 |
 | `conversation_store.go`、`delta_buffer.go`、`native_outcomes.go` | 存储消费合同、实时消息聚合及原生结果持久化 |

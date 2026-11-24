@@ -2059,7 +2059,7 @@ it("删除历史版本先确认，删除所查看版本后返回当前版本并�
 });
 
 it.each([false, true])(
-  "Shell 收起状态 %s 时工作流只展示自身会话，历史加号继续当前工作流",
+  "Shell 收起状态 %s 时工作流只展示自身会话，主区可新建创作会话",
   async (collapsed) => {
     readyCreationRuntime();
     const creationMessage = vi.fn();
@@ -2132,6 +2132,8 @@ it.each([false, true])(
           chat: {
             id: params.chatId,
             title: titles[String(params.chatId)],
+            lastRuntimeId: "claude",
+            lastModel: "claude-sonnet",
             workspaceDirectory: "/tmp/workflow",
             additionalWorkingDirectories: ["/tmp/workflow"],
           },
@@ -2166,7 +2168,11 @@ it.each([false, true])(
       screen.queryByRole("button", { name: /打开身份切换器/ }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "查看历史会话" }));
-    const history = screen.getByLabelText("历史会话");
+    const workbench = screen.getByRole("region", { name: "工作台" });
+    const historyTab = screen.getByRole("tab", { name: "会话列表" });
+    expect(historyTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("dialog", { name: "历史会话" })).toBeNull();
+    const history = within(workbench).getByRole("tabpanel");
     expect(
       await within(history).findByRole("button", { name: titles["chat-a"] }),
     ).toBeInTheDocument();
@@ -2182,7 +2188,22 @@ it.each([false, true])(
     expect(
       within(history).queryByText(titles["other-chat"] ?? ""),
     ).not.toBeInTheDocument();
-    await user.click(within(history).getByRole("button", { name: "新建会话" }));
+    const savedChat = within(history).getByRole("button", {
+      name: titles["chat-b"],
+    });
+    expect(savedChat).toHaveAccessibleDescription("claude-sonnet");
+    await user.click(savedChat);
+    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+    const nextHistory = within(
+      screen.getByRole("region", { name: "工作台" }),
+    ).getByRole("tabpanel");
+    expect(
+      within(nextHistory).getByRole("button", { name: titles["chat-b"] }),
+    ).toHaveAttribute("aria-current", "page");
+    expect(
+      within(nextHistory).queryByRole("button", { name: "新建会话" }),
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: "新建会话" }));
     const input = screen.getByRole("textbox", { name: "输入消息" });
     await user.click(input);
     await user.paste("继续修改当前工作流");
@@ -2228,7 +2249,7 @@ it("工作流收起对话后保留唯一历史入口和输入草稿", async () =
   ).not.toBeInTheDocument();
 });
 
-it("对话历史复用浮层并显示默认目录，关闭时保留对话输入", async () => {
+it("会话列表标签显示默认目录，关闭时保留对话输入", async () => {
   server.use(
     http.get(`${origin}/api/v1/workflows/flow`, () =>
       HttpResponse.json({
@@ -2281,7 +2302,7 @@ it("对话历史复用浮层并显示默认目录，关闭时保留对话输入"
     "默认",
   );
   expect(screen.getByTestId("composer-workspace-control").tagName).toBe("SPAN");
-  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: /关闭.*会话列表/ }));
   expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveTextContent(
     "保留未发送内容",
   );
@@ -2434,7 +2455,7 @@ it("工作流主容器与工具 Tab 独立，历史切换保留各自输入并�
   await user.click(await screen.findByRole("button", { name: "会话甲" }));
   expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(inputA);
   expect(inputA).toHaveTextContent("甲未发送");
-  expect(screen.getByRole("tab", { name: "新标签页" })).toHaveAttribute(
+  expect(screen.getByRole("tab", { name: "会话列表" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -2546,7 +2567,9 @@ it("创作待办通知打开指定历史会话并展开聊天", async () => {
     "true",
   );
   await user.click(screen.getByRole("button", { name: "查看历史会话" }));
-  const history = screen.getByLabelText("历史会话");
+  const history = within(
+    screen.getByRole("region", { name: "工作台" }),
+  ).getByRole("tabpanel");
   await user.click(
     await within(history).findByRole("button", { name: "最新会话" }),
   );

@@ -98,7 +98,7 @@ func (m *service) prepareNativeFork(ctx context.Context, input chatservice.Nativ
 			return fail(status_error.AgentContextStorageError)
 		}
 		skills = append(skills, agent.Skill{Name: constants.AgentCLISkillName, Path: skill, Digest: filepath.Base(skill)})
-		m.appendAgentInstructions(&instructions, false, builtinskills.CLIPath(skill), skill)
+		instructions = append(instructions, agent.CapabilitiesInstructions(false, builtinskills.CLIPath(skill), skill))
 	}
 	selection := agent.ResourceSelection{Plugins: make(map[string]string, len(frozen.declarations))}
 	for _, item := range frozen.declarations {

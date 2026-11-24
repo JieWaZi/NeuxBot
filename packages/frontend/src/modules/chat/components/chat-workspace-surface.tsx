@@ -1,5 +1,6 @@
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import {
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -7,7 +8,12 @@ import {
   type MouseEvent as ReactMouseEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { ArrowLeftRight, MessageSquare, Plus } from "lucide-react";
+import {
+  ArrowLeftRight,
+  MessageSquare,
+  MessageSquareText,
+  Plus,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -21,6 +27,7 @@ import {
 } from "@/shared/ui/scene-chrome-portal";
 import { SceneTabStrip } from "@/shared/ui/scene-tab-strip";
 import { Button } from "@/shared/ui/button";
+import { CornerLauncherButton } from "@/shared/ui/corner-launcher-button";
 import { VerticalResizeHandle } from "@/shared/ui/vertical-resize-handle";
 import type { ChatSceneOwner } from "@/shared/workspace/app-scene-model";
 import type { SceneWorkspace } from "@/shared/workspace/workspace-context";
@@ -34,6 +41,7 @@ import {
 } from "./chat-right-panel-host";
 import { ChatThread } from "./chat-thread";
 import { ChatSummary } from "./chat-summary";
+import { ChatHistoryContentContext } from "./chat-history-navigation";
 import { FloatingChat } from "./floating-chat";
 import type { ChatScopeKey } from "../model/conversation-identity";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
@@ -43,7 +51,10 @@ import { RightWorkbench } from "../workbench/right-workbench";
 import { useWorkbench } from "../workbench/workbench-store";
 import type { WorkbenchFileWorkspaceProps } from "../workbench/file/workbench-file-workspace";
 import type { ScopedGitChangesProps } from "./scoped-git-changes";
-import { workbenchMinWidth } from "../workbench/workbench-model";
+import {
+  workbenchMinWidth,
+  workbenchPaneWithTab,
+} from "../workbench/workbench-model";
 
 export type ChatWorkspaceAdapter = {
   identity: {
@@ -82,7 +93,7 @@ type ChatWorkspaceSurfaceProps = {
   showSummary?: boolean;
   directoryLabel?: string;
   onNewChat?: () => void;
-  history?: ReactNode;
+  chatHistory?: ReactNode;
   activeRightPanel?: ChatRightPanel;
   adapter: ChatWorkspaceAdapter;
   onAddCodeReference: (reference: ChatCodeReference) => void;
@@ -117,7 +128,7 @@ export function ChatWorkspaceSurface({
   showSummary = true,
   directoryLabel,
   onNewChat,
-  history,
+  chatHistory,
   activeRightPanel,
   adapter,
   onAddCodeReference,
@@ -138,8 +149,37 @@ export function ChatWorkspaceSurface({
   const sceneActive = active && routeActive;
   const { identity, snapshot } = adapter;
   const { snapshot: workbench, dispatch } = useWorkbench(identity.scopeKey);
+  const defaultChatHistory = useContext(ChatHistoryContentContext);
+  const history = chatHistory === undefined ? defaultChatHistory : chatHistory;
   const workbenchVisible = !canvasInput && activeRightPanel === "workspace";
   const fullView = workbenchVisible && workbench.fullscreen;
+  const historyTab = workbench.tabs.find((tab) => tab.kind === "chat-history");
+  const historyVisible =
+    workbenchVisible &&
+    historyTab !== undefined &&
+    workbenchPaneWithTab(workbench.layout, historyTab.id)?.activeTabId ===
+      historyTab.id;
+  const showHistoryLauncher = Boolean(
+    history && sceneActive && !historyVisible && !fullView && !canvasInput,
+  );
+  const historyTabId = historyTab ? `workbench-tab-${historyTab.id}` : "";
+  const historyLauncher = useRef<HTMLButtonElement>(null);
+  const historyFocus = useRef<"tab" | "launcher" | null>(null);
+  useLayoutEffect(() => {
+    if (!sceneActive) {
+      historyFocus.current = null;
+      return;
+    }
+    const target =
+      historyFocus.current === "tab" && historyVisible
+        ? document.getElementById(historyTabId)
+        : historyFocus.current === "launcher" && showHistoryLauncher
+          ? historyLauncher.current
+          : null;
+    if (!target) return;
+    historyFocus.current = null;
+    target.focus({ preventScroll: true });
+  }, [historyTabId, historyVisible, sceneActive, showHistoryLauncher]);
   const rightPanelOpen = Boolean(activeRightPanel);
   const layoutRef = useRef<HTMLDivElement>(null);
   const [layoutWidth, setLayoutWidth] = useState(0);
@@ -353,7 +393,6 @@ export function ChatWorkspaceSurface({
     />
   ) : undefined;
 
-  const showHistoryLauncher = Boolean(history && sceneActive && !fullView);
   return (
     <WorkbenchOpeningProvider
       value={{ scopeKey: identity.scopeKey, onOpen: onOpenRightPanel }}
@@ -573,6 +612,7 @@ export function ChatWorkspaceSurface({
           }
           workspacePanel={
             <RightWorkbench
+              chatHistory={history}
               parentBusy={
                 adapter.snapshot.isRunning ||
                 adapter.snapshot.pendingApprovalCount > 0 ||
@@ -581,7 +621,17 @@ export function ChatWorkspaceSurface({
               displayWidth={displayWidth}
               onAddCodeReference={onAddCodeReference}
               onDismiss={onDismissRightPanel}
-              onEmpty={onDismissRightPanel}
+              onEmpty={() => {
+                if (
+                  historyVisible &&
+                  document
+                    .getElementById(historyTabId)
+                    ?.parentElement?.contains(document.activeElement)
+                ) {
+                  historyFocus.current = "launcher";
+                }
+                onDismissRightPanel();
+              }}
               onOpenFile={(file) =>
                 adapter.thread.onOpenFile?.({ ...file, reference: file })
               }
@@ -604,7 +654,22 @@ export function ChatWorkspaceSurface({
           }
         />
         {showHistoryLauncher ? (
-          <div className="absolute right-0 bottom-0 z-30">{history}</div>
+          <div className="absolute right-0 bottom-0 z-40">
+            <CornerLauncherButton
+              ref={historyLauncher}
+              icon={<MessageSquareText strokeWidth={1.5} />}
+              label={t("common:partnerNavigation.viewChatHistory")}
+              onClick={(event) => {
+                if (event.detail === 0) historyFocus.current = "tab";
+                dispatch({
+                  type: "open-page",
+                  kind: "chat-history",
+                  title: t("common:partnerNavigation.conversationList"),
+                });
+                onOpenRightPanel();
+              }}
+            />
+          </div>
         ) : null}
       </div>
     </WorkbenchOpeningProvider>

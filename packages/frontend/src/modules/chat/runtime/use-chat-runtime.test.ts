@@ -445,6 +445,25 @@ describe("useChatRuntime queue", () => {
     ]);
   });
 
+  it("发送保留正文首尾的空白", async () => {
+    const options = runtimeOptions("chat-original-text");
+    const text = "    return value\n\n";
+    renderHook(() => useChatRuntime(options), { wrapper });
+
+    await act(async () => {
+      await runtimeAdapter.current?.onNew?.({
+        ...queuedMessage,
+        content: [{ type: "text", text }],
+      });
+    });
+    expect(options.send).toHaveBeenCalledWith(
+      text,
+      "chat-original-text",
+      [],
+      expect.anything(),
+    );
+  });
+
   it("发送中卸载后收到网络错误，不污染重新打开的聊天", async () => {
     let reject!: (error: Error) => void;
     const send = vi.fn(

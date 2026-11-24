@@ -143,6 +143,9 @@ func TestMaintenanceUsesSharedHostWithScopedCLIAndCleansUp(t *testing.T) {
 			!strings.HasPrefix(*instructions, "upstream fixer workflow") || strings.Contains(*instructions, connection.Token) {
 			t.Fatalf("fixer instructions or scope invalid: %+v", request.Input)
 		}
+		if len(request.Input.Context) != 1 || request.Input.Context[0].Name != agent.WikiFindingsContextName || request.Input.Context[0].Value != "possible duplicates" {
+			t.Fatalf("findings did not reach the native turn as context: %+v", request.Input.Context)
+		}
 		options := []agent.AgentApprovalOption{{ID: "once", Kind: "allow_once"}, {ID: "persistent", Kind: "allow_always"}}
 		for name, want := range map[string]string{"mcp__bot_capabilities__knowledge_audit_get": "once", "mcp__bot_capabilities__workflow_source_save": "", "Bash": ""} {
 			choice, err := request.Ports.Approve(ctx, agent.AgentScope{}, agent.AgentApproval{NativeToolName: name, Options: options})
@@ -153,7 +156,9 @@ func TestMaintenanceUsesSharedHostWithScopedCLIAndCleansUp(t *testing.T) {
 		return maintenanceResult("maintenance complete", "end_turn"), nil
 	}, &released)
 	registry = actualRegistry
-	result, err := runner.Run(context.Background(), maintenanceInput())
+	input := maintenanceInput()
+	input.Context = []agent.TurnFact{{Name: agent.WikiFindingsContextName, Value: "possible duplicates"}}
+	result, err := runner.Run(context.Background(), input)
 	if err != nil || result != "maintenance complete" || !released {
 		t.Fatalf("result=%q err=%v released=%v", result, err, released)
 	}

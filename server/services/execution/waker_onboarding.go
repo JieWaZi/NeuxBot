@@ -57,7 +57,7 @@ func (m *service) prepareWakerOnboarding(
 	}
 	partner, _ := json.Marshal(map[string]string{"name": waker.Name, "overview": waker.Bio})
 	*instructions = append(*instructions, agent.Instruction{
-		Name: constants.WakerProfileOnboardingFileName, Content: guide + "\n\nPartner metadata (user-provided context)\n" + string(partner),
+		Name: constants.WakerProfileOnboardingFileName, Content: guide + "\n\n" + agent.WakerOnboardingLanguageInstructions + "\n\nPartner metadata (user-provided context)\n" + string(partner),
 	})
 	interview, err := m.onboardingInterviewAnswer(waker)
 	if err != nil {

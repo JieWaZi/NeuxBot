@@ -16,6 +16,7 @@ import {
   FileDiff,
   Files,
   Globe,
+  MessageSquareText,
   MessagesSquare,
   PanelsTopLeft,
   TerminalSquare,
@@ -51,6 +52,8 @@ function tabIcon(kind: WorkbenchTab["kind"]) {
       return TerminalSquare;
     case "sidechat":
       return MessagesSquare;
+    case "chat-history":
+      return MessageSquareText;
     case "task-board":
       return Columns3;
     case "content":

@@ -465,6 +465,8 @@ type AgentSteerRequest struct {
 	Text string
 	// Content supplies the ordered structured input when present.
 	Content []AgentContent
+	// Context contains current host facts delivered as a separate block.
+	Context []TurnFact
 	// Prepare acquires optional per-input resources before admission.
 	Prepare func(context.Context) (func(), error)
 	// BeforeSubmit durably admits the exact input before native bytes are allowed.
@@ -501,6 +503,8 @@ type AgentPromptRequest struct {
 	Text string
 	// Content is the complete ordered structured input, mutually exclusive with Text.
 	Content []AgentContent
+	// Context contains current host facts delivered as a separate block.
+	Context []TurnFact
 	// BeforeSubmit is called before native input bytes can be written.
 	BeforeSubmit func(context.Context, AgentPromptSubmission) error
 }
@@ -1212,7 +1216,7 @@ func (c *directAgentClient) SetSessionMode(ctx context.Context, id, mode string)
 }
 
 func (c *directAgentClient) ReservePrompt(ctx context.Context, input AgentPromptRequest) (func() AgentPromptResult, error) {
-	blocks, err := c.promptContent(input.Text, input.Content)
+	blocks, err := c.promptContent(input.Text, input.Content, input.Context)
 	if err != nil {
 		return nil, err
 	}
@@ -1798,14 +1802,14 @@ func nativeTool(id string, kind, title, status *string, input, output any, conte
 	return result
 }
 
-func (c *directAgentClient) promptContent(text string, content []AgentContent) ([]acp.ContentBlock, error) {
-	if len(content) == 0 {
-		return []acp.ContentBlock{acp.TextBlock(text)}, nil
-	}
-	if text != "" {
+func (c *directAgentClient) promptContent(text string, content []AgentContent, facts []TurnFact) ([]acp.ContentBlock, error) {
+	if text != "" && len(content) != 0 {
 		return nil, status_error.AgentInputInvalid
 	}
-	blocks := make([]acp.ContentBlock, 0, len(content))
+	blocks := make([]acp.ContentBlock, 0, max(1, len(content))+1)
+	if text != "" {
+		blocks = append(blocks, acp.TextBlock(text))
+	}
 	for _, part := range content {
 		var block acp.ContentBlock
 		switch part.Kind {
@@ -1864,6 +1868,16 @@ func (c *directAgentClient) promptContent(text string, content []AgentContent) (
 			return nil, status_error.AgentInputInvalid
 		}
 		blocks = append(blocks, block)
+	}
+	contextText, err := turnContextText(facts)
+	if err != nil {
+		return nil, err
+	}
+	if contextText != "" {
+		blocks = append(blocks, acp.TextBlock(contextText))
+	}
+	if len(blocks) == 0 {
+		return nil, status_error.AgentInputInvalid
 	}
 	return blocks, nil
 }
@@ -2002,7 +2016,7 @@ func (c *directAgentClient) Steer(ctx context.Context, input AgentSteerRequest) 
 		input.HostInvocationID == "" || input.HostInvocationID == input.Target.HostInvocationID || input.BeforeSubmit == nil {
 		return AgentSteerResult{}, status_error.RuntimeConfigurationInvalid
 	}
-	content, err := c.promptContent(input.Text, input.Content)
+	content, err := c.promptContent(input.Text, input.Content, input.Context)
 	if err != nil {
 		return AgentSteerResult{}, err
 	}

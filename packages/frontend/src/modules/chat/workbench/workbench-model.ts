@@ -40,6 +40,7 @@ export type WorkbenchTab = {
   kind:
     | "files"
     | "changes"
+    | "chat-history"
     | "browser"
     | "terminal"
     | "file"
@@ -88,7 +89,11 @@ export type WorkbenchCommand =
       reference: WorkbenchContentReference;
     }
   | { type: "register-content"; contentId: string; title: string }
-  | { type: "open-page"; kind: "files" | "changes"; title: string }
+  | {
+      type: "open-page";
+      kind: "files" | "changes" | "chat-history";
+      title: string;
+    }
   | { type: "open-task-board"; title: string; paneId?: string }
   | {
       type: "open-browser";

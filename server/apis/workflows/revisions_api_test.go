@@ -27,7 +27,9 @@ func TestSourceSaveReplayConflictAndImmutableRestore(t *testing.T) {
 	if _, err := createDefinition(ctx, workflowAPIDependencies(s), command); !errors.Is(err, status_error.WorkflowRequestConflict) {
 		t.Fatalf("create conflict: %v", err)
 	}
-	save := workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save-1", Source: workflowTestSource(t), SDK: constants.WorkflowSDKIdentifier}
+	// 保存按请求原文冻结，不能调整缩进或去掉结尾换行。
+	original := "\n    " + workflowTestSource(t) + "\n\n"
+	save := workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save-1", Source: original, SDK: constants.WorkflowSDKIdentifier}
 	first, diagnostics, err := s.SaveSource(ctx, save)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
@@ -54,7 +56,7 @@ func TestSourceSaveReplayConflictAndImmutableRestore(t *testing.T) {
 		t.Fatalf("ordinal %+v", second)
 	}
 	old, err := store.GetRevision(ctx, definition.ID, first.RevisionID)
-	if err != nil || strings.Contains(old.Source, "修改名称") || old.Manifest.Meta.Title != "纯计算验收" {
+	if err != nil || old.Source != original || old.Manifest.Meta.Title != "纯计算验收" {
 		t.Fatal("history was mutated")
 	}
 	restored, _, err := restoreSource(ctx, workflowAPIDependencies(s), definition.ID, first.RevisionID, second.RevisionID, "restore-1")

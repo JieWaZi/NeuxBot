@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"reflect"
 	"slices"
@@ -13,8 +12,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
-
-const handoffInstructions = "Prepare a concise private handoff for another assistant. Summarize the user's goals, decisions, work completed, outstanding issues and essential file references. Use only the conversation already available. Do not call tools or change anything."
 
 func (t *Turn) summarize(conn *providerConnection, binding NativeBinding, previous AgentSession, previousRequest *ThreadRequest) *NativeResultKey {
 	client, err := conn.Client()
@@ -59,18 +56,6 @@ func (t *Turn) summarize(conn *providerConnection, binding NativeBinding, previo
 	return &NativeResultKey{Session: binding.Session, InvocationID: result.Outcome.Turn.InvocationID}
 }
 
-func (t *Turn) addPrefix(prefix string) {
-	if prefix == "" {
-		return
-	}
-	prefix += "\n\nCurrent user message:\n"
-	if len(t.input.Content) == 0 {
-		t.input.Text = prefix + t.input.Text
-	} else {
-		t.input.Content = append([]AgentContent{{Kind: "text", Text: prefix}}, t.input.Content...)
-	}
-}
-
 func (t *Turn) applyHandoff(handoff *NativeHandoff) error {
 	if handoff == nil || handoff.Claim != nil {
 		return nil
@@ -83,7 +68,7 @@ func (t *Turn) applyHandoff(handoff *NativeHandoff) error {
 		if result.FinalMessage == nil || result.Turn.Status != acpmeta.NativeTurnCompleted || strings.TrimSpace(result.FinalMessage.Text) == "" {
 			return status_error.RuntimeHandoffInvalid
 		}
-		t.addPrefix("Private handoff from the previous assistant:\n" + boundedHistoryTail(strings.TrimSpace(result.FinalMessage.Text), constants.RuntimeHandoffMaximumBytes))
+		t.input.Context = append(t.input.Context, TurnFact{Name: "Private handoff", Value: boundedHistoryTail(strings.TrimSpace(result.FinalMessage.Text), constants.RuntimeHandoffMaximumBytes)})
 		return nil
 	}
 	var turns [][2]TextMessage
@@ -98,15 +83,13 @@ func (t *Turn) applyHandoff(handoff *NativeHandoff) error {
 		}
 		turns = append(turns, handoffPairMessages(input, reply))
 	}
-	prefix, err := encodeHandoffHistory(turns)
-	if err != nil {
-		return err
+	if history := boundedHandoffHistory(turns); len(history) != 0 {
+		t.input.Context = append(t.input.Context, TurnFact{Name: "Recent conversation history", Value: history})
 	}
-	t.addPrefix(prefix)
 	return nil
 }
 
-func (l *ThreadLifecycle) selectHistory(ctx context.Context, chatID string, version int64, limit int) ([]HandoffPair, string, error) {
+func (l *ThreadLifecycle) selectHistory(ctx context.Context, chatID string, version int64, limit int) ([]HandoffPair, []TextMessage, error) {
 	if limit <= 0 {
 		limit = constants.RuntimeHistoryDefaultTurns
 	}
@@ -119,14 +102,14 @@ func (l *ThreadLifecycle) selectHistory(ctx context.Context, chatID string, vers
 	for before != 0 && len(pairs) < limit {
 		candidates, next, err := l.store.ReadHistoryCandidates(ctx, MessageQuery{ChatID: chatID, Before: before, Limit: limit * 2})
 		if err != nil {
-			return nil, "", err
+			return nil, nil, err
 		}
 		for _, candidate := range candidates {
 			var input, reply StoredMessage
 			if candidate.Inherited {
 				message, err := l.store.ReadMessage(ctx, chatID, candidate.MessageID)
 				if err != nil {
-					return nil, "", err
+					return nil, nil, err
 				}
 				switch {
 				case message.Role == constants.MessageRoleAssistant:
@@ -146,11 +129,11 @@ func (l *ThreadLifecycle) selectHistory(ctx context.Context, chatID string, vers
 				}
 				input, err = l.store.ReadMessage(ctx, chatID, candidate.UserMessageID)
 				if err != nil {
-					return nil, "", err
+					return nil, nil, err
 				}
 				reply, err = l.store.ReadMessage(ctx, chatID, candidate.MessageID)
 				if err != nil {
-					return nil, "", err
+					return nil, nil, err
 				}
 				if !reply.Complete {
 					continue
@@ -173,14 +156,13 @@ func (l *ThreadLifecycle) selectHistory(ctx context.Context, chatID string, vers
 			}
 		}
 		if next >= before {
-			return nil, "", status_error.ChatLogCorrupted
+			return nil, nil, status_error.ChatLogCorrupted
 		}
 		before = next
 	}
 	slices.Reverse(pairs)
 	slices.Reverse(turns)
-	prefix, err := encodeHandoffHistory(turns)
-	return pairs, prefix, err
+	return pairs, boundedHandoffHistory(turns), nil
 }
 
 func handoffPairMessages(input, reply StoredMessage) [2]TextMessage {
@@ -191,11 +173,10 @@ func handoffPairMessages(input, reply StoredMessage) [2]TextMessage {
 	}
 }
 
-func encodeHandoffHistory(turns [][2]TextMessage) (string, error) {
+func boundedHandoffHistory(turns [][2]TextMessage) []TextMessage {
 	if len(turns) == 0 {
-		return "", nil
+		return nil
 	}
-	ordered := make([]TextMessage, 0, len(turns)*2)
 	var bytes int
 	for i := len(turns) - 1; i >= 0; i-- {
 		turn := turns[i]
@@ -205,14 +186,11 @@ func encodeHandoffHistory(turns [][2]TextMessage) (string, error) {
 			break
 		}
 	}
+	ordered := make([]TextMessage, 0, len(turns)*2)
 	for _, turn := range turns {
 		ordered = append(ordered, turn[:]...)
 	}
-	encoded, err := json.Marshal(ordered)
-	if err != nil {
-		return "", status_error.RuntimeEventEncodingFailed
-	}
-	return "Recent conversation history:\n" + string(encoded), nil
+	return ordered
 }
 
 func cloneBinding(binding NativeBinding) NativeBinding {

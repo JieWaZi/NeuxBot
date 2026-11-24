@@ -142,6 +142,7 @@ export type ChatWorkspaceEntry = {
   wakerId: string;
   directoryLabel: string;
   mainContent?: ChatWorkspaceMainContent;
+  history?: ReactNode;
   draft?: string;
   composerReferences?: ChatComposerContextReference[];
   onComposerReferencesChange?: (ids: string[]) => void;
@@ -163,7 +164,6 @@ export type ChatWorkspaceEntry = {
   onConfigurationChange?: (selection: ChatSendSelection | undefined) => void;
   onRunningChange?: (running: boolean) => void;
   onNewChat?: () => void;
-  history?: ReactNode;
 };
 
 type ChatPageContentProps = {
@@ -1647,7 +1647,7 @@ function ChatView({
           showSummary={entry?.showSummary}
           directoryLabel={entry?.directoryLabel}
           onNewChat={entry?.onNewChat}
-          history={entry?.history}
+          chatHistory={entry ? (entry.history ?? null) : undefined}
           activeRightPanel={chatRightPanel}
           adapter={chatAdapter}
           onAddCodeReference={addCodeReference}

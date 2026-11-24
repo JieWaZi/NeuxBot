@@ -412,6 +412,59 @@ func TestProgramUninstallIsScopedAndRetainsExecutionSettings(t *testing.T) {
 	}
 }
 
+func TestProgramUninstallPreservesAnotherInstalledSelection(t *testing.T) {
+	svc, fake, catalog := installationLifecycleFixture(t)
+	const managed = "/managed/codex"
+	external := filepath.Join(t.TempDir(), "codex")
+	if err := os.WriteFile(external, []byte("external program"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for index, path := range []string{managed, external} {
+		summary := catalog.Runtimes()[index+1]
+		if err := svc.environments.UpdateDetection(t.Context(), summary.ID, agent.DetectionResult{
+			Runtime: summary, ResolvedBinary: path, Version: "1.0.0",
+		}, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fake.published = installation.Result{Binary: managed, Version: "1.0.0"}
+	svc.probeProvider = func(_ context.Context, summary agent.RuntimeSummary, environment models.RuntimeEnvironment, _ agent.DetectRequest) agent.DetectionResult {
+		return agent.DetectionResult{Runtime: summary, ResolvedBinary: environment.Detection.ResolvedBinary, Version: environment.Detection.Version}
+	}
+	if err := svc.UninstallRuntime(t.Context(), constants.RuntimeIDCodex); err != nil {
+		t.Fatal(err)
+	}
+	<-fake.entered
+	close(fake.release)
+	waitInstallationState(t, svc, constants.RuntimeInstallationStateIdle)
+	profile, err := svc.environments.Get(t.Context(), "codex-profile")
+	if err != nil || profile.Detection.ResolvedBinary != external || profile.Detection.Version != "1.0.0" {
+		t.Fatalf("uninstall changed the remaining selection: %+v, %v", profile.Detection, err)
+	}
+}
+
+func TestProgramUninstallRejectsASelectionChangedBeforeAdmission(t *testing.T) {
+	svc, _, catalog := installationLifecycleFixture(t)
+	const runtimeID = constants.RuntimeIDCodex
+	selected, err := svc.environments.Get(t.Context(), runtimeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := svc.InstallationSnapshot(t.Context(), runtimeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.environments.UpdateDetection(t.Context(), runtimeID, agent.DetectionResult{
+		Runtime: catalog.Runtimes()[1], ResolvedBinary: "/selected/after/codex", Version: "1.0.0",
+	}, 2); err != nil {
+		t.Fatal(err)
+	}
+	err = svc.startRuntimeMaintenance(t.Context(), selected, snapshot, "uninstall")
+	if !errors.Is(err, status_error.RuntimeConfigurationInvalid) {
+		t.Fatalf("uninstall admitted an outdated selection: %v", err)
+	}
+}
+
 func TestProgramMaintenanceRefusesUnprovenOwnership(t *testing.T) {
 	svc, fake, _ := installationLifecycleFixture(t)
 	fake.maintenance = &installation.Maintenance{Method: "unknown", Reason: "ownership_unknown"}
@@ -638,6 +691,26 @@ func TestDetectionRetainsSelectedOlderManagedVersion(t *testing.T) {
 	}
 }
 
+func TestVersionCheckUsesSelectedOlderManagedVersion(t *testing.T) {
+	svc, fake, catalog := installationLifecycleFixture(t)
+	const selected = "/managed/old"
+	if err := svc.environments.UpdateDetection(t.Context(), constants.RuntimeIDCodex, agent.DetectionResult{
+		Runtime: catalog.Runtimes()[1], ResolvedBinary: selected, Version: "1.0.0",
+	}, 1); err != nil {
+		t.Fatal(err)
+	}
+	fake.published = installation.Result{Binary: "/managed/new", Version: "2.0.0"}
+	fake.readError = status_error.RuntimeInstallationFailed
+	fake.maintenance = &installation.Maintenance{Method: "managed", Path: selected, Version: "1.0.0", Installed: true, CanUpdate: true, CanUninstall: true}
+	if err := svc.CheckRuntimeUpdates(t.Context(), constants.RuntimeIDCodex); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := svc.InstallationSnapshot(t.Context(), constants.RuntimeIDCodex)
+	if err != nil || snapshot.InstallationPath != selected || snapshot.Version != "1.0.0" || snapshot.UpdateAvailable == nil || !*snapshot.UpdateAvailable {
+		t.Fatalf("version check ignored the selected managed program: %+v, %v", snapshot, err)
+	}
+}
+
 func TestStorageReclaimRetainsManagedScriptLaunchedThroughSystemNode(t *testing.T) {
 	service, _, catalog := installationLifecycleFixture(t)
 	summary := catalog.Runtimes()[1]
@@ -713,5 +786,50 @@ func TestStorageReclaimSerializesVersionSelection(t *testing.T) {
 	environment, err := svc.environments.Get(t.Context(), id)
 	if err != nil || len(environment.Detection.Installations) != 2 || !environment.Detection.Installations[0].Available || environment.Detection.Installations[1].Available || environment.Detection.ResolvedBinary != current {
 		t.Fatalf("installation availability not refreshed: %+v, %v", environment.Detection, err)
+	}
+}
+
+// TestExternalProgramCanSwitchToManagedRelease 验证显式托管切换保留系统程序和其他选择。
+func TestExternalProgramCanSwitchToManagedRelease(t *testing.T) {
+	for _, failed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "published", true: "failed"}[failed], func(t *testing.T) {
+			svc, fake, catalog := installationLifecycleFixture(t)
+			const original, other = "/old/system/codex", "/another/system/codex"
+			if err := svc.environments.UpdateDetection(t.Context(), "codex-profile", agent.DetectionResult{
+				Runtime: catalog.Runtimes()[2], ResolvedBinary: other, Version: "1.3.0",
+			}, 1); err != nil {
+				t.Fatal(err)
+			}
+			fake.maintenance = &installation.Maintenance{Installed: true, Method: "unknown", Reason: "unmanaged", Path: original}
+			svc.probeProvider = func(_ context.Context, summary agent.RuntimeSummary, _ models.RuntimeEnvironment, request agent.DetectRequest) agent.DetectionResult {
+				return agent.DetectionResult{Runtime: summary, State: agent.DetectionStateReady, ResolvedBinary: request.LaunchOverride.Binary, Version: "2.0.0"}
+			}
+			fake.fail = failed
+			if err := svc.InstallRuntime(t.Context(), constants.RuntimeIDCodex); !errors.Is(err, status_error.RuntimeMaintenanceUnsupported) {
+				t.Fatalf("default operation changed an external program: %v", err)
+			}
+			if err := svc.InstallManagedRuntime(t.Context(), constants.RuntimeIDCodex); err != nil {
+				t.Fatal(err)
+			}
+			<-fake.entered
+			fake.mutex.Lock()
+			binary := fake.lastBinary
+			fake.mutex.Unlock()
+			if binary != "" {
+				t.Fatalf("managed install targeted external path %q", binary)
+			}
+			close(fake.release)
+			state, path := constants.RuntimeInstallationStateInstalled, "/managed/node"
+			if failed {
+				state, path = constants.RuntimeInstallationStateFailed, original
+			}
+			waitInstallationState(t, svc, state)
+			for id, expected := range map[string]string{constants.RuntimeIDCodex: path, "codex-profile": other} {
+				selected, err := svc.environments.Get(t.Context(), id)
+				if err != nil || selected.Detection.ResolvedBinary != expected {
+					t.Fatalf("%s selected %q, want %q: %v", id, selected.Detection.ResolvedBinary, expected, err)
+				}
+			}
+		})
 	}
 }

@@ -42,6 +42,7 @@ export type RuntimeInstallationControlsProps = {
 const phaseKeys = {
   resolving: "agents.installation.preparing",
   downloading: "agents.installation.downloading",
+  updating: "agents.installation.updating",
   extracting: "agents.installation.extracting",
   dependencies: "agents.installation.dependencies",
   verifying: "agents.installation.verifying",
@@ -146,6 +147,13 @@ export function RuntimeInstallationControls({
   const repairable =
     data?.canUpdate === true && data.maintenanceReason === "repairable";
   const updatable = data?.updateAvailable === true && data.canUpdate === true;
+  const switchToManaged =
+    data?.canSwitchToManaged === true &&
+    data.updateAvailable === true &&
+    (!updatable ||
+      (data.state === "failed" && data.operation === "install") ||
+      (data.operation === "install-managed" &&
+        (data.state === "failed" || data.state === "cancelled")));
   const removing = data?.operation === "uninstall";
   const officialUrl = data?.officialUrl || official?.url;
   const actionError = install.isError || cancel.isError;
@@ -180,7 +188,10 @@ export function RuntimeInstallationControls({
   const start = () => {
     cancel.reset();
     check.reset();
-    install.mutate({ path: { runtimeId } });
+    install.mutate({
+      path: { runtimeId },
+      ...(switchToManaged ? { query: { managed: true } } : {}),
+    });
   };
   const stop = () => {
     install.reset();
@@ -283,10 +294,19 @@ export function RuntimeInstallationControls({
             )}
             <Button
               size="settings"
-              variant={hasInstallation ? "settings-outline" : "primary"}
+              variant={
+                hasInstallation && !switchToManaged
+                  ? "settings-outline"
+                  : "primary"
+              }
               disabled={pending || checking}
               onClick={() => {
-                if (hasInstallation && !updatable && !repairable) {
+                if (
+                  hasInstallation &&
+                  !updatable &&
+                  !repairable &&
+                  !switchToManaged
+                ) {
                   install.reset();
                   cancel.reset();
                   check.mutate({ path: { runtimeId } });
@@ -305,11 +325,13 @@ export function RuntimeInstallationControls({
                       ? "agents.installation.reinstall"
                       : data.state === "failed" && !hasInstallation
                         ? "agents.installation.retry"
-                        : hasInstallation
-                          ? updatable
-                            ? "agents.installation.update"
-                            : "agents.installation.check"
-                          : "agents.installation.install",
+                        : switchToManaged
+                          ? "agents.installation.switchToManaged"
+                          : hasInstallation
+                            ? updatable
+                              ? "agents.installation.update"
+                              : "agents.installation.check"
+                            : "agents.installation.install",
               )}
             </Button>
           </>

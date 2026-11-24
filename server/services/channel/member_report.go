@@ -7,6 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	agentcap "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -75,7 +76,7 @@ func (s *service) submitMemberReport(
 		if err := s.tasks.UpdateAttemptFields(ctx, attempt.ID, map[string]interface{}{"result": report, "user_ready": readyForUser, "updated_at": time.Now().UnixMilli()}); err != nil {
 			return err
 		}
-		return agentcap.Commit(ctx, map[string]any{"reported": true, "taskId": task.ID, "attemptId": attempt.ID, "nextStep": constants.ChannelMemberReportFinalInstruction})
+		return agentcap.Commit(ctx, map[string]any{"reported": true, "taskId": task.ID, "attemptId": attempt.ID, "nextStep": agent.TeamMemberReportAcknowledgement})
 	}); err != nil {
 		return channeltool.TaskOutput{}, err
 	}
@@ -92,6 +93,6 @@ func (s *service) submitMemberReport(
 	}
 	return channeltool.TaskOutput{
 		Reported: true,
-		NextStep: constants.ChannelMemberReportFinalInstruction,
+		NextStep: agent.TeamMemberReportAcknowledgement,
 	}, nil
 }

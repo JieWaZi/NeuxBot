@@ -413,6 +413,7 @@ func TestCreateChatReplaysSameFirstRequestAndRejectsChangedContent(t *testing.T)
 		t.Fatalf("first send error = %v", err)
 	}
 	waitForChatTerminal(t, manager, first.Chat.ID)
+	request.Message.Text = "\n  " + request.Message.Text + "  "
 	replayed, err := manager.sendTestMessage(context.Background(), request)
 	if err != nil {
 		t.Fatalf("replay send error = %v", err)
@@ -430,6 +431,54 @@ func TestCreateChatReplaysSameFirstRequestAndRejectsChangedContent(t *testing.T)
 		status_error.CreateRequestConflict,
 	) {
 		t.Fatalf("changed replay error = %v, want CreateRequestConflict", err)
+	}
+}
+
+func TestChatKeepsOriginalWhitespaceInHistoryAndNativeInput(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir())
+	request := testMessageInput{
+		ClientRequestID: "preserve-message-whitespace",
+		NewChat:         &testChatInput{WakerID: "waker-1"},
+		Runtime:         runtimeSelection{RuntimeID: constants.RuntimeIDCodex},
+	}
+	texts := []string{"    return first\n", "\n\treturn second  "}
+	for index, text := range texts {
+		request.Message = userMessage{Text: text}
+		accepted, err := manager.sendTestMessage(t.Context(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitForChatTerminal(t, manager, accepted.Chat.ID)
+		history, err := manager.chats.ReadMessageHistory(t.Context(), accepted.Chat.ID, 0, 20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		kept := false
+		for _, message := range history.Resources {
+			if message.ID == accepted.Execution.UserMessageID {
+				kept = message.Content == text
+			}
+		}
+		if !kept {
+			t.Errorf("turn %d did not preserve history text %q", index+1, text)
+		}
+		request.ChatID, request.NewChat = accepted.Chat.ID, nil
+	}
+	frames := manager.nativeCalls(t, "turn/start")
+	if len(frames) != len(texts) {
+		t.Fatalf("native turn count = %d, want %d", len(frames), len(texts))
+	}
+	for index, raw := range frames {
+		var frame struct {
+			// Input 保留发给 Codex 的原生正文块。
+			Input []struct {
+				// Text 是独立正文的原始内容。
+				Text string `json:"text"`
+			} `json:"input"`
+		}
+		if err := json.Unmarshal(raw, &frame); err != nil || len(frame.Input) == 0 || frame.Input[0].Text != texts[index] {
+			t.Errorf("turn %d did not preserve native text %q: %s (%v)", index+1, texts[index], raw, err)
+		}
 	}
 }
 
@@ -619,7 +668,9 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	}
 	first := firstFiles.instructions
 	firstFiles.rollback()
-	if len(first) != 3 || first[1] != (agent.Instruction{Name: "AGENTS.md", Content: "# Test\n\n# Test\n\n# Test"}) || !hasInstructionContent(first, "项目约束") {
+	profile := agent.Instruction{Name: "AGENTS.md", Content: "# Test\n\n# Test\n\n# Test"}
+	contextGuide := agent.Instruction{Name: "Current input context", Content: agent.TurnContextInstructions}
+	if !slices.Contains(first, profile) || !slices.Contains(first, contextGuide) || !hasInstructionContent(first, "项目约束") {
 		t.Fatalf("initial profile and project instructions = %+v", first)
 	}
 	// 反复经过真实档案读取和工作区准备，覆盖 map 遍历顺序变化造成的静态配置抖动。
@@ -1153,7 +1204,12 @@ func (r recordedRun) thread() agent.ThreadRequest {
 	return thread
 }
 func (r recordedRun) prompt() string {
-	return nativeTurnPrompt(r.Message, r.ContextInstructions, r.SelectedSkills, r.SelectedConnectors)
+	facts := nativeTurnFacts(r.Message, r.ContextInstructions, r.SelectedSkills, r.SelectedConnectors)
+	if len(facts) == 0 {
+		return r.Message.Text
+	}
+	encoded, _ := json.Marshal(facts)
+	return r.Message.Text + "\n" + string(encoded)
 }
 func (r recordedRun) turnRequest(id string, detection agent.DetectionResult) (agent.TurnRequest, error) {
 	return nativeTurnInput(id, r.Message, r.ContextInstructions, r.SelectedSkills, r.SelectedConnectors, detection)
@@ -1165,7 +1221,8 @@ func (r *recordedRun) prepare(m *service, chat models.Chat, id string, capabilit
 	return grant.activate, grant.finish, err
 }
 func recordBusinessInputs(m *service, state messageChat, request pendingMessage, files *preparedMessageFiles, skills []models.SkillWithState, connectors []models.MCPConnector, environment models.RuntimeEnvironment) recordedRun {
-	r := recordedRun{Runtime: request.runtime, Detection: environment.Detection, Workspace: nativeWorkspace(state, request, files), Instructions: nativeInstructions(request, files), Skills: m.nativeSkills(skills), Connectors: runtimeConnectorDeclarations(connectors), Message: nativeMessage(request, files), ContextInstructions: nativeContextInstructions(request, files), SelectedSkills: selectedSkillNames(request, skills), SelectedConnectors: request.message.ConnectorIDs}
+	instructions, contextInstructions := nativeInstructionInputs(request, files)
+	r := recordedRun{Runtime: request.runtime, Detection: environment.Detection, Workspace: nativeWorkspace(state, request, files), Instructions: instructions, Skills: m.nativeSkills(skills), Connectors: runtimeConnectorDeclarations(connectors), Message: nativeMessage(request, files), ContextInstructions: contextInstructions, SelectedSkills: selectedSkillNames(request, skills), SelectedConnectors: request.message.ConnectorIDs}
 	return r
 }
 

@@ -2,9 +2,9 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -81,7 +81,7 @@ func (l *ThreadLifecycle) GenerateText(ctx context.Context, request TextRequest)
 	if request.Temperature != 0 {
 		result.Limitations = append(result.Limitations, "temperature_unsupported")
 	}
-	instructions, text, err := generationInput(request.Messages)
+	instructions, input, err := generationInput(request.Messages)
 	if err != nil {
 		return result, err
 	}
@@ -92,11 +92,12 @@ func (l *ThreadLifecycle) GenerateText(ctx context.Context, request TextRequest)
 	if source == "" {
 		source = "generate_text"
 	}
+	input.UsageSource = source
 	request.Connection.Launch.RequireNoTools = true
 	turn, err := l.prepareDetached(ctx, ThreadRequest{
 		Connection: request.Connection, Settings: request.Settings, Selection: request.Selection,
 		Session: AgentSessionOptions{DeveloperInstructions: instructions},
-	}, TurnRequest{Text: text, UsageSource: source}, TurnPorts{}, request.ResolveAccount)
+	}, input, TurnPorts{}, request.ResolveAccount)
 	if err != nil {
 		return result, err
 	}
@@ -184,32 +185,30 @@ func turnExecutionError(r TurnResult) error {
 	return errors.Join(r.OperationError, nativeError, r.DeliveryError, r.StorageError, r.CleanupError)
 }
 
-func generationInput(messages []TextMessage) (*string, string, error) {
+func generationInput(messages []TextMessage) (*string, TurnRequest, error) {
 	var system []string
 	i := 0
 	for ; i < len(messages) && messages[i].Role == "system"; i++ {
 		system = append(system, messages[i].Content)
+	}
+	remaining := messages[i:]
+	if len(remaining) == 0 || remaining[len(remaining)-1].Role != "user" || strings.TrimSpace(remaining[len(remaining)-1].Content) == "" {
+		return nil, TurnRequest{}, status_error.AgentInputInvalid
+	}
+	for _, message := range remaining {
+		if message.Role != "user" && message.Role != "assistant" {
+			return nil, TurnRequest{}, status_error.AgentInputInvalid
+		}
+	}
+	input := TurnRequest{Text: remaining[len(remaining)-1].Content}
+	if len(remaining) > 1 {
+		system = append(system, TurnContextInstructions)
+		input.Context = []TurnFact{{Name: "Recent conversation history", Value: slices.Clone(remaining[:len(remaining)-1])}}
 	}
 	var instructions *string
 	if len(system) > 0 {
 		value := strings.Join(system, "\n\n")
 		instructions = &value
 	}
-	remaining := messages[i:]
-	if len(remaining) == 0 || remaining[len(remaining)-1].Role != "user" || strings.TrimSpace(remaining[len(remaining)-1].Content) == "" {
-		return nil, "", status_error.AgentInputInvalid
-	}
-	for _, message := range remaining {
-		if message.Role != "user" && message.Role != "assistant" {
-			return nil, "", status_error.AgentInputInvalid
-		}
-	}
-	if len(remaining) == 1 {
-		return instructions, remaining[0].Content, nil
-	}
-	content, err := json.Marshal(remaining)
-	if err != nil {
-		return nil, "", status_error.RuntimeEventEncodingFailed
-	}
-	return instructions, "Conversation messages in chronological order:\n" + string(content), nil
+	return instructions, input, nil
 }

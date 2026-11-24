@@ -9,6 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
@@ -110,11 +111,7 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	resultInstruction := ""
 	if len(schema) > 0 {
 		encoded, _ := json.Marshal(schema)
-		resultInstruction = "Read the Worker Results guide linked from the host-provided bot skill; resolve its relative link from the supplied SKILL.md directory. " +
-			"Complete the actual work, read workflow.results.schema for this attempt, then invoke workflow.results.submit with a stable requestId through the host-selected capability transport. " +
-			"When bot_capabilities MCP is injected, use workflow_results_schema and workflow_results_submit with their advertised input schemas. Otherwise follow the host-provided CLI transport and current execution context. Do not switch transports to bypass an error. " +
-			"Submit data as the actual JSON value matching this schema, without an invented wrapper or extra JSON encoding: " + string(encoded) +
-			". Final chat text is not a result submission. An accepted candidate cannot be replaced by different content; after submission succeeds, finish this execution so the host can confirm node success separately."
+		resultInstruction = agent.WorkflowResultInstructions + string(encoded) + agent.WorkflowResultCompletion
 	}
 	tools := []execution.ToolCapability{}
 	if len(schema) > 0 {
@@ -136,7 +133,7 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 		}
 	}
 	create.AdditionalWorkingDirectories = append([]string{internalWorkspace.RootDirectory}, input.Run.AdditionalWorkingDirectories...)
-	contextInstructions := []workinput.Instruction{{Name: constants.WorkflowWorkspaceInstructionFileName, Content: "Workflow run workspace: " + string(encoded) + "\nThe chat working directory is for this execution. Keep scripts in scriptsDirectory, persistent state in stateDirectory, caches in cacheDirectory, temporary files in temporaryDirectory, and run deliverables in runDirectory by default. Keep scripts and support files inside rootDirectory. Do not create external support directories such as /tmp or paths under the home directory. Write deliverables to an external directory only if the user specifies it explicitly. Keep scripts, caches, state, and temporary files out of external business directories."}}
+	contextInstructions := []workinput.Instruction{{Name: constants.WorkflowWorkspaceInstructionFileName, Content: agent.WorkflowRunWorkspacePrefix + string(encoded) + "\n" + agent.WorkflowRunWorkspaceInstructions}}
 	// 宿主结果协议只进入智能体上下文，聊天正文保留节点的业务要求。
 	if resultInstruction != "" {
 		contextInstructions = append(contextInstructions, workinput.Instruction{Name: constants.WorkflowResultsInstructionFileName, Content: resultInstruction})

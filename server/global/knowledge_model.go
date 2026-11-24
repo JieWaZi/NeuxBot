@@ -136,5 +136,5 @@ func runKnowledgeMaintenance(ctx context.Context, selection models.LibraryExecut
 		Binary: agentBinaryPath(), Endpoint: "http://127.0.0.1:" + strconv.Itoa(Config.Server.Port) + constants.AgentCLIPath,
 		Connection: detachedConnection(selected, environment), ResolveAccount: AIAccountService.ResolveAccount, Reasoning: selected.Reasoning,
 	})
-	return runner.Run(ctx, knowledgemodel.MaintenanceRequest{JobID: input.JobID, Bindings: input.Bindings, Instructions: input.Instructions, Message: input.Message, Validate: input.Validate})
+	return runner.Run(ctx, knowledgemodel.MaintenanceRequest{JobID: input.JobID, Bindings: input.Bindings, Instructions: input.Instructions, Message: input.Message, Context: input.Context, Validate: input.Validate})
 }
