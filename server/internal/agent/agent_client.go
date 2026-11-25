@@ -878,18 +878,9 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		if botCLIDirectory == "" && resourcePath == "" {
 			return
 		}
-		directories := append([]string{botCLIDirectory}, filepath.SplitList(resourcePath)...)
-		directories = append(directories, filepath.SplitList(environment["PATH"])...)
-		seen := map[string]bool{}
-		paths := []string{}
-		for _, directory := range directories {
-			key := normalizedPathForComparison(directory)
-			if directory != "" && !seen[key] {
-				seen[key] = true
-				paths = append(paths, directory)
-			}
-		}
-		environment["PATH"] = strings.Join(paths, string(filepath.ListSeparator))
+		environment["PATH"] = mergeExecutableDirectories(
+			[]string{botCLIDirectory}, filepath.SplitList(resourcePath), filepath.SplitList(environment["PATH"]),
+		)
 	}
 
 	finalize := func() []string {
@@ -904,17 +895,23 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		return result
 	}
 
-	if err := merge(launch.BaseEnvironment, false); err != nil {
-		return nil, err
-	}
-	base := make([]string, 0, len(environment))
-	for key, value := range environment {
+	base := make([]string, 0, len(launch.BaseEnvironment))
+	for key, value := range launch.BaseEnvironment {
+		if strings.HasPrefix(strings.ToUpper(key), "BOTCLI_") || (runtime.GOOS == "windows" && key == "") {
+			continue
+		}
+		if err := validateEnvironmentEntry(key, value); err != nil {
+			return nil, status_error.RuntimeConfigurationInvalid
+		}
 		base = append(base, key+"="+value)
 	}
-	clear(environment)
-	for _, entry := range accountconfig.Environment(base) {
+	prepared, err := PrepareNativeHostEnvironment(base)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range prepared {
 		key, value, _ := strings.Cut(entry, "=")
-		environment[key] = value
+		environment[normalizeEnvironmentKey(key)] = value
 	}
 	if err := merge(launch.Environment, false); err != nil {
 		return nil, err

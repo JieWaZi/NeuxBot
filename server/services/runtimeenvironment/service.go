@@ -131,6 +131,8 @@ type service struct {
 	accountWorkspaceDirectory string
 	// runtimeCatalog 提供 Runtime 摘要和本机安装位置。
 	runtimeCatalog runtimeCatalog
+	// refreshExecutablePath 更新运行时发现与原生启动共用的宿主路径。
+	refreshExecutablePath func(context.Context)
 	// probeProvider 读取已选账号的原生安装状态与目录。
 	probeProvider func(context.Context, agent.RuntimeSummary, models.RuntimeEnvironment, agent.DetectRequest) agent.DetectionResult
 	// environments 持久化条目与探测快照。
@@ -189,6 +191,7 @@ func New(config Config) (Service, error) {
 		return nil, err
 	}
 	concrete := created.(*service)
+	concrete.refreshExecutablePath = config.RuntimeCatalog.RefreshHostExecutablePath
 	concrete.restartProvider = config.RestartProvider
 	concrete.beforeRuntimeMaintenance = config.BeforeRuntimeMaintenance
 	concrete.authentication = newRuntimeAuthenticationManager(concrete, config.BeforeRuntimeAuthentication)
@@ -324,11 +327,21 @@ func (s *service) RefreshAll(ctx context.Context) (err error) {
 			s.eventPublisher.Publish(events.Event{Topic: "runtimes", Type: "runtimecontract.changed", Resource: events.Resource{Kind: "global"}})
 		}
 	}()
+	if refresh := s.refreshExecutablePath; refresh != nil {
+		refresh(ctx)
+	}
 	return s.refreshAllLocked(ctx)
 }
 
 // RefreshOne 重新探测指定 Runtime。
 func (s *service) RefreshOne(ctx context.Context, runtimeID string) error {
+	if refresh := s.refreshExecutablePath; refresh != nil {
+		refresh(ctx)
+	}
+	return s.refreshOne(ctx, runtimeID)
+}
+
+func (s *service) refreshOne(ctx context.Context, runtimeID string) error {
 	runtimeID = strings.TrimSpace(runtimeID)
 	lock := s.runtimeRefreshLock(runtimeID)
 	lock.Lock()
@@ -383,7 +396,7 @@ func (s *service) refreshAllLocked(ctx context.Context) error {
 	results := make(chan error, len(summaries))
 	for _, summary := range summaries {
 		go func() {
-			results <- s.RefreshOne(ctx, summary.ID)
+			results <- s.refreshOne(ctx, summary.ID)
 		}()
 	}
 	// 接收全部 worker 的唯一结果后再返回，既及时发布完成项，也保证生命周期等待完整。

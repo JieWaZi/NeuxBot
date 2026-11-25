@@ -31,6 +31,10 @@ func buildEnvironment(
 	}
 	seenBaseNames := make(map[string]string, len(base))
 	for _, item := range base {
+		// Windows may include per-drive working directories (for example =C:=...).
+		if runtime.GOOS == "windows" && strings.HasPrefix(item, "=") {
+			continue
+		}
 		key, value, ok := strings.Cut(item, "=")
 		if !ok {
 			return environmentSnapshot{}, status_error.RuntimeConfigurationInvalid
@@ -84,27 +88,10 @@ func supplementExecutablePath(
 	if homeDirectory != "" && !filepath.IsAbs(homeDirectory) {
 		return status_error.BadRequest
 	}
-	additions := commonExecutableDirectories(runtime.GOOS, homeDirectory, *snapshot)
 	pathKey := normalizeEnvironmentKey("PATH")
-	existing := filepath.SplitList(snapshot.values[pathKey])
-	seen := make(map[string]struct{}, len(existing)+len(additions))
-	for _, directory := range existing {
-		if directory != "" {
-			seen[normalizedPathForComparison(directory)] = struct{}{}
-		}
-	}
-	for _, directory := range additions {
-		if directory == "" {
-			continue
-		}
-		comparison := normalizedPathForComparison(directory)
-		if _, exists := seen[comparison]; exists {
-			continue
-		}
-		existing = append(existing, directory)
-		seen[comparison] = struct{}{}
-	}
-	snapshot.values[pathKey] = strings.Join(existing, string(filepath.ListSeparator))
+	groups := hostPathGroups(homeDirectory, snapshot.values[pathKey])
+	groups = append(groups, absolutePathEntries(commonExecutableDirectories(runtime.GOOS, homeDirectory, *snapshot)))
+	snapshot.values[pathKey] = mergeExecutableDirectories(groups...)
 	if snapshot.names[pathKey] == "" {
 		snapshot.names[pathKey] = "PATH"
 	}
@@ -535,11 +522,11 @@ func (sdk *Catalog) ProbeInstallationVersion(ctx context.Context, request Detect
 	if !exists {
 		return CLIInstallation{}, status_error.RuntimeNotRegistered
 	}
-	path, err := sdk.ResolveExecutable(request)
+	environment, err := buildPreparedEnvironment(request.BaseEnvironment, definition.environment, request.HomeDirectory)
 	if err != nil {
 		return CLIInstallation{}, err
 	}
-	environment, err := buildPreparedEnvironment(request.BaseEnvironment, definition.environment, request.HomeDirectory)
+	path, err := resolveExecutable(definitionExecutableCandidates(definition, request.HomeDirectory), environment)
 	if err != nil {
 		return CLIInstallation{}, err
 	}

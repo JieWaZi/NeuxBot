@@ -55,6 +55,8 @@ Qoder 统一发现 `qoder`、`qodercli` 和 `qoderclicn`，不注册独立 CN �
 
 设置里的安装和更新由 Core 的运行时服务管理，每个基础 CLI 只有一个任务，Profile 共用程序、分别保留账号和执行身份。任务独立于 HTTP 请求和页面；显式取消与 Core 关闭会回收下载／验证进程，发布前核验官方制品和实际版本。程序以完整、不可变版本保存在 `runtime-installations/<base>/version-...`；失败与取消不删除旧可用版本。当前任务在 Core 内存中保存，重启后只读恢复完整已发布记录，不把暂存目录视为已安装，也不在 GET 请求中检查网络更新。
 
+CLI 发现、版本探测、账号管理和实际原生进程共用宿主 `PATH` 基线。Core 在后台启动探测及运行时刷新时更新路径快照，首次读取完成前可使用继承路径和常见安装目录。macOS 和 Linux 优先使用限时读取的登录 shell 路径，再补进程路径和常见安装目录。Windows 保留进程路径的优先级，从系统新建的用户环境块追加 `Path`，再补常见安装目录。没有提供宿主用户目录的独立进程环境保留自己的路径。单次启动按所选账号和资源合并环境，聊天执行只读取已准备的路径。 [上游实现对照](../discussions/cli-launch-environment-comparison-cn.md)
+
 安装器提供 Codex、Claude、Cursor、Kimi、Gemini、OpenCode、Pi、Grok、Qoder 与 WorkBuddy 的官方来源。支持 macOS arm64／amd64、Linux glibc arm64／amd64 和 Windows amd64；Linux musl 仅使用已明确发布的 Codex 静态制品。Gemini 需要 Node.js 20+ 和 npm，依赖安装限于受管目录并禁用生命周期脚本。具备发布方摘要的制品按其摘要验证；Cursor、Grok 上游未提供相同摘要时使用官方 TLS 来源与实际程序版本验证，不伪造发布方校验。实际平台验收与合成 HTTP／运行器测试分别记录。
 
 下载进度使用 `runtime.installation.changed` 只唤醒对应安装快照；终态另发 `runtimecontract.changed`。智能体列表和模型目录不因每段下载进度重新探测。

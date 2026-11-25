@@ -181,7 +181,11 @@ func accountSubject(namespace string, components ...string) string {
 }
 
 func nativeAccountEnvironment(overrides map[string]string) []string {
-	base := accountconfig.Environment(os.Environ())
+	inherited := os.Environ()
+	base, err := agent.PrepareNativeHostEnvironment(inherited)
+	if err != nil {
+		base = accountconfig.Environment(inherited)
+	}
 	env := base[:0]
 	for _, entry := range base {
 		key, _, _ := strings.Cut(entry, "=")
