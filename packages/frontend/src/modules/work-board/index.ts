@@ -1,4 +1,5 @@
 export { WorkBoardPage } from "./pages/work-board-page";
+export { prepareWorkBoardAvatarPhysics } from "./components/work-board-avatars";
 export {
   WorkExecutorAvatar,
   automaticTaskExecutorRef,

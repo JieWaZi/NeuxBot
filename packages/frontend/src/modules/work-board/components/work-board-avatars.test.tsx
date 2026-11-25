@@ -1,7 +1,10 @@
 import { act, render } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { CompanionAvatar } from "@/shared/companion/companion-avatar";
-import { WorkBoardAvatars } from "./work-board-avatars";
+import {
+  prepareWorkBoardAvatarPhysics,
+  WorkBoardAvatars,
+} from "./work-board-avatars";
 
 vi.mock("@/shared/companion/companion-avatar", () => ({
   CompanionAvatar: vi.fn(
@@ -115,6 +118,42 @@ it("窄栏不挂载头像，宽度恢复时显示并在收窄后释放", () => {
   width = 0;
   act(() => observers.forEach((update) => update()));
   expect(avatars()).toHaveLength(0);
+});
+
+it("提前准备物理模块后，舞台进入视区时头像即可下落", async () => {
+  await prepareWorkBoardAvatarPhysics();
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(420);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(176);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(48);
+  vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  const observations = new Map<Element, (visible: boolean) => void>();
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        observations.set(target, (isIntersecting) =>
+          this.callback(
+            [{ isIntersecting } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+          ),
+        );
+      }
+      disconnect() {}
+    },
+  );
+  const { container } = render(<WorkBoardAvatars active />);
+  const avatar = container.querySelector("[data-pile-avatar]");
+  const stage = avatar?.parentElement;
+  if (!stage) throw new Error("缺少头像舞台");
+  expect(avatar).not.toHaveAttribute("data-falling");
+  act(() => observations.get(stage)?.(true));
+  expect(avatar).toHaveAttribute("data-falling");
 });
 
 it("装饰构图包含十二个头像及三种材质", () => {

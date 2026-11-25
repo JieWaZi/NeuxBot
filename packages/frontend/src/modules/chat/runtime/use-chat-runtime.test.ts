@@ -244,6 +244,9 @@ describe("useChatRuntime queue", () => {
         });
         await submission;
       });
+      expect(
+        result.current.messages.find((message) => message.role === "assistant"),
+      ).toMatchObject({ status: "running", preparingSession: false });
     },
   );
 

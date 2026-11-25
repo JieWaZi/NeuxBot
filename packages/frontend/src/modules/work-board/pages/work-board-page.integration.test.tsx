@@ -1567,7 +1567,7 @@ it("看板发送伙伴首条消息失败后保留草稿，以同一请求重试�
   expect(form.getByRole("button", { name: "发送消息" })).toBeDisabled();
   const picker = form.getByRole("button", { name: "选择伙伴" });
   const cliPicker = form.getByTestId("composer-model-control");
-  expect(picker.parentElement).toBe(cliPicker.parentElement);
+  expect(cliPicker.parentElement).toContainElement(picker);
   expect(picker.compareDocumentPosition(cliPicker)).toBe(
     Node.DOCUMENT_POSITION_FOLLOWING,
   );

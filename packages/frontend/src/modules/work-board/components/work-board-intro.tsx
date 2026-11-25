@@ -19,7 +19,6 @@ import { Button } from "@/shared/ui/button";
 import { WorkBoardAvatars } from "./work-board-avatars";
 import {
   WorkBoardPartnerPicker,
-  WorkBoardPartnersLoading,
   workBoardPartnerPageOptions,
 } from "./work-board-partner-picker";
 
@@ -111,7 +110,8 @@ export function WorkBoardIntro({ active }: { active: boolean }) {
     }
     setSelectedId(partner.id);
   };
-  const pending = wakers.isPending || Boolean(selectedId && detail.isPending);
+  const pending =
+    active && (wakers.isPending || Boolean(selectedId && detail.isPending));
   const partnerError =
     !removed && detail.isError ? detail : wakers.isError ? wakers : undefined;
 
@@ -136,10 +136,10 @@ export function WorkBoardIntro({ active }: { active: boolean }) {
             <WorkBoardPartnerPicker
               selected={selected}
               onSelect={choosePartner}
+              pending={pending}
               disabled={
                 !active ||
                 sending ||
-                wakers.isPending ||
                 (!partners.length && !wakers.isError && !selectedId)
               }
             />
@@ -164,8 +164,6 @@ export function WorkBoardIntro({ active }: { active: boolean }) {
               {t("retry")}
             </Button>
           </div>
-        ) : pending ? (
-          <WorkBoardPartnersLoading />
         ) : wakers.isSuccess && !partners.length ? (
           <p className="text-content-secondary type-ui">{t("noPartners")}</p>
         ) : null}

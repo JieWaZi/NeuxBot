@@ -422,7 +422,7 @@ export function PartnerReviewSettingsDetail({
 
   return (
     <>
-      {showSceneChrome ? (
+      {showSceneChrome && (
         <SceneBreadcrumbs
           ariaLabel={t("aiAccounts:agents.title")}
           items={[
@@ -430,17 +430,14 @@ export function PartnerReviewSettingsDetail({
             { label: title },
           ]}
         />
-      ) : (
+      )}
+      <SettingsContentShell showHeader={false}>
         <PageHeader
+          appearance="compact"
           layout="detail"
           title={title}
           backAction={{ label: t("aiAccounts:agents.back"), onClick: back }}
         />
-      )}
-      <SettingsContentShell
-        title={showSceneChrome ? title : undefined}
-        showHeader={false}
-      >
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
           <SegmentedControl
             appearance="shell"

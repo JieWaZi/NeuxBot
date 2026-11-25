@@ -175,6 +175,7 @@ const {
   wakerConnectorsError,
   createChatDelay,
   chatMessageDelay,
+  chatMessageGate,
   chatMessageReads,
   chatDetailReads,
   chatReadingWrites,
@@ -358,6 +359,7 @@ const {
   wakerConnectorsError: { current: false },
   createChatDelay: { current: 0 },
   chatMessageDelay: { current: 50 },
+  chatMessageGate: { current: undefined as Promise<void> | undefined },
   chatMessageReads: { current: {} as Record<string, number> },
   chatDetailReads: { current: {} as Record<string, number> },
   chatReadingWrites: vi.fn(),
@@ -486,6 +488,7 @@ vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
     await new Promise((resolve) =>
       window.setTimeout(resolve, chatMessageDelay.current),
     );
+    if (chatMessageGate.current) await chatMessageGate.current;
     return {
       data: {
         resources:
@@ -937,6 +940,7 @@ beforeEach(() => {
   wakerConnectorsError.current = false;
   createChatDelay.current = 0;
   chatMessageDelay.current = 50;
+  chatMessageGate.current = undefined;
   chatMessageReads.current = {};
   chatDetailReads.current = {};
   chatDetailGate.current = undefined;
@@ -4353,6 +4357,7 @@ describe("ChatPage", () => {
     async (entry) => {
       const commits: Array<{
         message: boolean;
+        establishing: boolean;
         loading: boolean;
         avatar: Element | null;
       }> = [];
@@ -4405,6 +4410,10 @@ describe("ChatPage", () => {
                 root.current
                   .querySelector("[data-chat-scroll-viewport]")
                   ?.textContent?.includes("修复首条消息闪屏") ?? false,
+              establishing:
+                root.current
+                  .querySelector("[data-chat-scroll-viewport]")
+                  ?.textContent?.includes("正在建立会话") ?? false,
               loading: Boolean(
                 root.current.querySelector('[role="status"][aria-busy="true"]'),
               ),
@@ -4486,6 +4495,9 @@ describe("ChatPage", () => {
       await waitFor(() =>
         expect(queryClient.getQueryData(["chat", "chat-1"])).toBeTruthy(),
       );
+      await waitFor(() =>
+        expect(screen.queryByText("正在建立会话")).not.toBeInTheDocument(),
+      );
       const compactPermission = screen.getByTestId(
         "composer-permission-control",
       );
@@ -4531,6 +4543,7 @@ describe("ChatPage", () => {
       ).toEqual([]);
       const firstVisibleCommit = commits.findIndex((state) => state.message);
       expect(firstVisibleCommit).toBeGreaterThanOrEqual(0);
+      expect(commits[firstVisibleCommit]?.establishing).toBe(true);
       expect(
         commits
           .slice(firstVisibleCommit)
@@ -4709,6 +4722,7 @@ describe("ChatPage", () => {
   it.each([false, true])(
     "切换普通 Chat 的提交帧不展示上一 Chat 的消息（目标已缓存：%s）",
     async (cached) => {
+      chatMessageDelay.current = 5;
       const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false, staleTime: Infinity } },
       });
@@ -4739,13 +4753,21 @@ describe("ChatPage", () => {
       }
       const root: { current?: HTMLElement } = {};
       let switched = false;
-      const commits: Array<{ text: string; loading: boolean }> = [];
+      const commits: Array<{
+        viewport: Element | null;
+        text: string;
+        loading: boolean;
+        skeleton: boolean;
+      }> = [];
       function Harness() {
         const [id, setID] = useState("chat-1");
         return (
           <div data-target-chat={id}>
             <button onClick={() => setID("chat-2")}>切换到第二会话</button>
-            <ChatPageContent chatId={id} presentationScopeKey={`chat:${id}`} />
+            <ChatPageContent
+              chatId={id}
+              presentationScopeKey="chat-switch:test"
+            />
           </div>
         );
       }
@@ -4759,13 +4781,17 @@ describe("ChatPage", () => {
               !root.current.querySelector('[data-target-chat="chat-2"]')
             )
               return;
+            const viewport = root.current.querySelector(
+              "[data-chat-scroll-viewport]",
+            );
+            const loading = viewport?.querySelector(
+              '[role="status"][aria-busy="true"]',
+            );
             commits.push({
-              text:
-                root.current.querySelector("[data-chat-scroll-viewport]")
-                  ?.textContent ?? "",
-              loading: Boolean(
-                root.current.querySelector('[role="status"][aria-busy="true"]'),
-              ),
+              viewport,
+              text: viewport?.textContent ?? "",
+              loading: Boolean(loading),
+              skeleton: Boolean(loading?.querySelector(".animate-pulse")),
             });
           }}
         >
@@ -4782,15 +4808,63 @@ describe("ChatPage", () => {
       );
       root.current = view.container;
       await screen.findByText("第一会话的私有消息");
+      const viewport = view.container.querySelector(
+        "[data-chat-scroll-viewport]",
+      );
+      expect(viewport).toBeInTheDocument();
       switched = true;
       fireEvent.click(screen.getByRole("button", { name: "切换到第二会话" }));
       await screen.findByText(cached ? "第二会话的消息" : "历史消息：chat-2");
-      if (!cached) expect(commits.some((state) => state.loading)).toBe(true);
+      expect(commits.length).toBeGreaterThan(0);
+      expect(commits.some((state) => state.loading)).toBe(!cached);
+      expect(commits.every((state) => state.viewport === viewport)).toBe(true);
+      expect(commits.some((state) => state.skeleton)).toBe(false);
       expect(
         commits.filter((state) => state.text.includes("第一会话的私有消息")),
       ).toEqual([]);
     },
   );
+
+  it("目标会话的提问可以在历史加载期间显示", async () => {
+    chatMessageDelay.current = 500;
+    workspaceWorkflow.pendingElicitations = [
+      {
+        elicitationId: "question-before-history",
+        message: "要读取哪个目录？",
+        mode: "form",
+        requestedSchema: {
+          type: "object",
+          properties: { directory: { type: "string", title: "目录" } },
+        },
+      },
+    ];
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter initialEntries={["/chats/chat-1"]}>
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chats/:chatId" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+    const question = await screen.findByText("要读取哪个目录？");
+    expect(question).toBeVisible();
+    expect(
+      container.querySelector('[role="status"][aria-busy="true"]'),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        container.querySelector('[role="status"][aria-busy="true"]'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("要读取哪个目录？")).toBe(question);
+  });
 
   it("路由过渡期间不展示 deferred Chat 的旧消息", async () => {
     const queryClient = new QueryClient({
@@ -7017,7 +7091,10 @@ describe("ChatPage", () => {
     ).toBeInTheDocument();
     const input = screen.getByRole("textbox", { name: "输入消息" });
     await user.type(input, "尚未发送的草稿");
-    chatMessageDelay.current = 250;
+    let releaseMessages!: () => void;
+    chatMessageGate.current = new Promise<void>((resolve) => {
+      releaseMessages = resolve;
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "切换到第二个会话" }));
 
@@ -7025,19 +7102,23 @@ describe("ChatPage", () => {
       screen.queryByText("直接进入也应显示的历史消息"),
     ).not.toBeInTheDocument();
     const loading = screen.getByRole("status", { name: "正在加载对话消息" });
+    const viewport = loading.closest("[data-chat-scroll-viewport]");
+    expect(viewport).toBeInTheDocument();
     expect(loading).toBeVisible();
     expect(loading).toHaveAttribute("aria-busy", "true");
-    expect(loading.querySelector(".agent-grid-spinner")).toBeNull();
-    expect(
-      loading.querySelectorAll('div[aria-hidden="true"]').length,
-    ).toBeGreaterThan(1);
+    expect(loading.querySelector(".animate-pulse")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "输入消息" })).toBeVisible();
     const permission = screen.getByTestId("composer-permission-control");
     expect(permission).toBeEnabled();
     expect(permission.nextElementSibling).toBe(
       screen.getByTestId("composer-model-control"),
     );
-    expect(await screen.findByText("历史消息：chat-2")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(loading.querySelector(".animate-pulse")).toBeVisible(),
+    );
+    await act(async () => releaseMessages());
+    const targetMessage = await screen.findByText("历史消息：chat-2");
+    expect(targetMessage.closest("[data-chat-scroll-viewport]")).toBe(viewport);
     expect(loading).not.toBeInTheDocument();
     expect(screen.getByTestId("composer-permission-control")).toBe(permission);
     const targetInput = screen.getByRole("textbox", { name: "输入消息" });

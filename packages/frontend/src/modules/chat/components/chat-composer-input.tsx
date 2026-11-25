@@ -1073,16 +1073,14 @@ export function ChatComposerInput({
         Boolean(event.target.closest(pluginMentionSelector)),
       handleKeyDown: (view, event) => {
         if (disabledRef.current) return true;
+        if (event.key !== "Enter") return false;
         if (
-          event.key !== "Enter" ||
           event.isComposing ||
-          isComposingRef.current
+          isComposingRef.current ||
+          compositionGuardRef.current
         ) {
-          return false;
-        }
-        if (compositionGuardRef.current) {
-          event.preventDefault();
-          return false;
+          // 已由输入法处理的 Enter 不再交给编辑器的换行快捷键。
+          return true;
         }
         const pluginLink =
           event.target instanceof Element

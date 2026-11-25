@@ -23,6 +23,20 @@ const sizes = {
   small: "[--pile-size:clamp(1.5rem,12cqi,3.5rem)]",
 } as const;
 
+let attachPhysics: typeof dropWorkBoardAvatars | undefined;
+let physicsPreparation: Promise<void> | undefined;
+
+export function prepareWorkBoardAvatarPhysics(): Promise<void> {
+  return (physicsPreparation ??= import("./work-board-avatar-physics").then(
+    ({ dropWorkBoardAvatars }) => {
+      attachPhysics = dropWorkBoardAvatars;
+    },
+    () => {
+      physicsPreparation = undefined;
+    },
+  ));
+}
+
 // 静态落点用于减少动态效果偏好与加载失败时的完整构图。
 const slots = [
   { size: "hero", x: 36, lift: 0, angle: -5 },
@@ -97,7 +111,7 @@ export function WorkBoardAvatars({ active }: { active: boolean }) {
   const slot = useRef<HTMLDivElement>(null);
   const [hasRoom, setHasRoom] = useState(false);
   if (!active && hasRoom) setHasRoom(false);
-  // 容器查询决定何时显示；实际可用尺寸决定何时创建头像与动画资源。
+  // 容器查询决定何时显示；实际可用尺寸决定何时创建头像。
   useLayoutEffect(() => {
     const element = slot.current;
     if (!element || !active) return;
@@ -135,8 +149,7 @@ function WorkBoardAvatarPile() {
     );
     let disposed = false;
     let visible = !("IntersectionObserver" in window);
-    let loading = false;
-    let attach: typeof dropWorkBoardAvatars | undefined;
+    let preparing = false;
     let played = false;
     let stop: (() => void) | undefined;
     let width = element.clientWidth;
@@ -149,24 +162,25 @@ function WorkBoardAvatarPile() {
         stop = undefined;
         return;
       }
-      if (stop || loading || !element.clientWidth) return;
-      if (attach) {
-        stop = attach(element, !played);
-        played = true;
+      if (stop || preparing || !element.clientWidth) return;
+      if (attachPhysics) {
+        stop = attachPhysics(element, !played);
+        if (stop) {
+          played = true;
+          delete element.dataset.pileStatic;
+        }
         return;
       }
-      loading = true;
-      void import("./work-board-avatar-physics")
-        .then(({ dropWorkBoardAvatars }) => {
-          loading = false;
-          attach = dropWorkBoardAvatars;
-          sync();
-        })
-        .catch(() => {
-          // 动态资源加载失败时恢复静态构图。
-          if (!disposed) element.dataset.pileStatic = "";
-        });
+      preparing = true;
+      void prepareWorkBoardAvatarPhysics().then(() => {
+        preparing = false;
+        if (disposed) return;
+        if (attachPhysics) sync();
+        else element.dataset.pileStatic = "";
+      });
     }
+    // 直接打开看板时，在等待视区观察结果的同时准备物理模块。
+    if (!reducedMotion?.matches) void prepareWorkBoardAvatarPhysics();
     const observer =
       "IntersectionObserver" in window
         ? new IntersectionObserver(([entry]) => {

@@ -48,7 +48,6 @@ import {
   resolveElicitationMutation,
   sendMessageMutation,
 } from "../api/chat-queries";
-import { ChatHistoryLoadingState } from "../components/chat-history-loading-state";
 import { TeamWorkStatus } from "../components/team-work-status";
 import { TeamDelegationMarker } from "../components/team-delegation-marker";
 import {
@@ -1142,14 +1141,12 @@ function TeamChatView({
   const teamShellLoading =
     Boolean(teamThreadHydrating || teamContext.timelineLoading) &&
     !teamContext.loadError;
-  const historyIsLoading = isTeamMainChat
-    ? teamShellLoading && !chatRuntime.hasVisibleMessages
-    : Boolean(
-        routeTransitioning ||
-        (activeChatId &&
-          !messagesQuery.isSuccess &&
-          !chatRuntime.hasVisibleMessages),
-      );
+  const historyIsLoading =
+    routeTransitioning ||
+    (!chatRuntime.hasVisibleMessages &&
+      (isTeamMainChat
+        ? teamShellLoading
+        : Boolean(activeChatId && !messagesQuery.isSuccess)));
 
   const pickDirectory = async () => {
     const selected = await selectDirectory();
@@ -1193,11 +1190,6 @@ function TeamChatView({
       : defaultPermissionWasDowngraded
         ? t("permissionDowngraded")
         : "";
-  const historyLoadingState = <ChatHistoryLoadingState />;
-  const resolvedMessageEmptyState = historyIsLoading
-    ? historyLoadingState
-    : null;
-  const messageEmptyState = resolvedMessageEmptyState;
   const pinTeamEmptyState = Boolean(
     teamMainChat && !chatRuntime.hasVisibleMessages && !historyIsLoading,
   );
@@ -1441,7 +1433,7 @@ function TeamChatView({
       isWorkRunning: Boolean(teamMainChat && teamWorkState === "running"),
       isWorkStopping: teamContext.isStopping,
       onStopWork: stopTeamWork,
-      emptyState: messageEmptyState,
+      emptyState: null,
       pinEmptyState: pinTeamEmptyState,
       hasExistingConversation: teamMainChat && Boolean(teamContext.threadId),
       isHistoryLoading: historyIsLoading,
@@ -1547,7 +1539,9 @@ function TeamChatView({
       approvalSubmissionState,
       onResolveApproval: (approvalId, optionId) =>
         void resolveApprovalChoice(approvalId, optionId),
-      pendingElicitations: chatRuntime.pendingElicitations,
+      pendingElicitations: routeTransitioning
+        ? []
+        : chatRuntime.pendingElicitations,
       elicitationSubmissionState,
       onResolveElicitation: (elicitationId, content, declined) =>
         void resolveElicitationChoice(elicitationId, content, declined),

@@ -20,22 +20,31 @@ vi.mock("@/shared/api/use-query-events", () => ({ useQueryEvents: vi.fn() }));
 vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
 }));
-vi.mock("@/shared/api/runtime-queries", () => ({
-  listRuntimesOptions: () => ({ queryKey: ["runtimes"], staleTime: Infinity }),
-  runtimeInstallationOptions: (id: string) => ({
-    queryKey: ["installation", id],
-    staleTime: Infinity,
-  }),
-}));
+vi.mock("@/shared/api/runtime-queries", async () => {
+  const { skipToken } = await import("@tanstack/react-query");
+  return {
+    listRuntimesOptions: () => ({ queryKey: ["runtimes"], queryFn: skipToken }),
+    runtimeInstallationOptions: (id: string) => ({
+      queryKey: ["installation", id],
+      queryFn: skipToken,
+    }),
+  };
+});
 
-afterEach(() => act(() => toast.dismiss()));
+afterEach(() => {
+  act(() => toast.dismiss());
+  window.localStorage.clear();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 function Location() {
   const { pathname, search } = useLocation();
   return <output>{pathname + search}</output>;
 }
 
-it("仅读取已安装 CLI 的可用更新，关闭后同版本不重弹，新版本仍可查看", async () => {
+it("仅读取已安装 CLI 的可用更新，关闭后当天不重弹，次日仍可查看", async () => {
+  vi.setSystemTime(new Date(2026, 10, 25, 12));
   const client = new QueryClient();
   client.setQueryData(["runtimes"], {
     resources: [
@@ -87,6 +96,7 @@ it("仅读取已安装 CLI 的可用更新，关闭后同版本不重弹，新�
   await waitFor(() =>
     expect(screen.queryByText("Codex CLI 有可用更新")).not.toBeInTheDocument(),
   );
+  vi.setSystemTime(new Date(2026, 10, 26, 12));
   act(() =>
     client.setQueryData(["installation", "codex"], {
       ...receipt,
@@ -101,4 +111,53 @@ it("仅读取已安装 CLI 的可用更新，关闭后同版本不重弹，新�
     expect(screen.queryByText("Codex CLI 有可用更新")).not.toBeInTheDocument(),
   );
   client.clear();
+});
+
+it("同一天重开时不再展示已提示的 CLI，次日同版本仍可提示", () => {
+  const offer = vi.spyOn(toast, "manual");
+  const resources = [
+    { id: "codex", baseRuntimeId: "codex", name: "Codex CLI", installed: true },
+    { id: "cursor", baseRuntimeId: "cursor", name: "Cursor", installed: true },
+  ];
+  const receipt = {
+    checkState: "checked",
+    updateAvailable: true,
+    version: "v1.0.0",
+    latestVersion: "v2.0.0",
+  };
+  function open(latestVersion: string) {
+    const client = new QueryClient();
+    client.setQueryData(["runtimes"], { resources });
+    client.setQueryData(["installation", "codex"], {
+      ...receipt,
+      latestVersion,
+    });
+    client.setQueryData(["installation", "cursor"], receipt);
+    const view = render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <RuntimeUpdateNotifications />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    view.unmount();
+    client.clear();
+    act(() => toast.dismiss());
+  }
+
+  vi.setSystemTime(new Date(2026, 10, 25, 23, 58));
+  open("v2.0.0");
+  expect(offer.mock.calls.map(([title]) => title)).toEqual([
+    "Codex CLI 有可用更新",
+    "Cursor 有可用更新",
+  ]);
+
+  vi.setSystemTime(new Date(2026, 10, 25, 23, 59));
+  open("v2.0.0");
+  open("v3.0.0");
+  expect(offer).toHaveBeenCalledTimes(2);
+
+  vi.setSystemTime(new Date(2026, 10, 26, 0, 0));
+  open("v2.0.0");
+  expect(offer).toHaveBeenCalledTimes(4);
 });

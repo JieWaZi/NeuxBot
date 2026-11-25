@@ -72,7 +72,6 @@ function RoutedSettings() {
         partnerReviewDetail={isPartnerReviewDetail(params)}
         onOpenRuntime={() => undefined}
         onBack={() => undefined}
-        showSceneChrome={false}
       />
       <output aria-label="当前设置地址">
         {location.pathname}
@@ -211,6 +210,12 @@ it("locates a linked partner outside the first page and retries only that partne
   const user = show(
     "/settings/agents?detail=partner-review&tab=skill&wakerId=waker-120",
   );
+  const title = screen.getByRole("heading", { level: 1, name: "配置伙伴" });
+  const header = title.closest("header");
+  expect(header).toBeInTheDocument();
+  const back = screen.getByRole("button", { name: "返回智能体" });
+  expect(header).toContainElement(back);
+  expect(back.closest('[data-slot="page-header-back"]')).toBeInTheDocument();
   expect(
     await screen.findByRole("switch", { name: "第 120 位的技能学习" }),
   ).toBeChecked();
@@ -221,6 +226,12 @@ it("locates a linked partner outside the first page and retries only that partne
   expect(notice).toHaveTextContent("有对话处理失败，可以重试。");
   await user.click(screen.getByRole("button", { name: "重试复盘" }));
   await waitFor(() => expect(notice).not.toBeInTheDocument());
+  back.focus();
+  expect(back).toHaveFocus();
+  await user.keyboard("{Enter}");
+  expect(screen.getByLabelText("当前设置地址")).toHaveTextContent(
+    /^\/settings\/agents$/,
+  );
 });
 
 it("loads and filters server pages without per-row diagnostic requests", async () => {

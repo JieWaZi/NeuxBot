@@ -1509,7 +1509,8 @@ export const workspaceResources = {
       collapseReasoning: "收起",
       reasoningActivity: "思考过程",
       agentRunning: "飞速运转",
-      preparingSession: "正在准备会话",
+      preparingSession: "正在建立会话",
+      awaitingReply: "正在等待回复",
       runMetrics: {
         details: "查看执行耗时与 Token 用量",
         duration: "耗时",

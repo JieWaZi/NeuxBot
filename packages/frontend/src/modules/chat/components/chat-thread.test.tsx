@@ -1414,7 +1414,7 @@ describe("assistant message shell", () => {
     expect(screen.queryByText("插件已就绪")).toBeNull();
     expect(screen.getByText("可以直接使用")).toBeVisible();
   });
-  it("准备和接纳阶段只由头像反馈状态，不显示空消息卡", () => {
+  it("首发立即显示建立会话文案，接纳后原位收起文字并保留头像和三点", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-11-06T03:00:00Z"));
     const pending: BotChatMessage & { preparingSession: boolean } = {
@@ -1431,31 +1431,55 @@ describe("assistant message shell", () => {
     const view = render(
       <PureAssistantMessage view={preparing} latest name="nova" />,
     );
-    expect(screen.queryByText("正在准备会话")).not.toBeInTheDocument();
-    expect(view.container.querySelector("[data-activity]")).toHaveAttribute(
-      "data-activity",
-      "thinking",
-    );
-    expect(screen.queryByRole("status")).toBeNull();
+    const avatar = view.container.querySelector("[data-companion-avatar]");
+    expect(avatar).toHaveAttribute("data-animation", "working");
+    expect(avatar?.querySelector("[data-body]")).toBeInTheDocument();
+    const establishing = screen.getByText("正在建立会话");
+    expect(establishing).toBeVisible();
+    expect(establishing).toHaveAttribute("data-running-shimmer", "true");
     act(() => {
       vi.advanceTimersByTime(5_000);
     });
-    expect(screen.queryByText("5.0s")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("正在建立会话");
+    const dots = avatar?.querySelectorAll(
+      '[data-native-attention="working"] > circle',
+    );
+    expect(dots).toHaveLength(3);
+    expect(
+      view.container.querySelector("[data-chat-message-card]"),
+    ).not.toBeInTheDocument();
     const running = projection.update([
-      { ...pending, status: "running", optimistic: false },
+      {
+        ...pending,
+        status: "running",
+        optimistic: false,
+        preparingSession: false,
+      },
     ])[0];
     if (!running) throw new Error("missing running message");
     view.rerender(<PureAssistantMessage view={running} latest name="nova" />);
-    expect(screen.queryByText("正在准备会话")).not.toBeInTheDocument();
-    expect(screen.queryByText("飞速运转")).not.toBeInTheDocument();
-    expect(view.container.querySelector("[data-activity]")).toHaveAttribute(
-      "data-activity",
-      "thinking",
+    expect(establishing.closest('[aria-hidden="true"][inert]')).toHaveAttribute(
+      "data-state",
+      "closed",
     );
+    expect(screen.getByRole("status")).toHaveTextContent("正在等待回复");
+    expect(view.container.querySelector("[data-companion-avatar]")).toBe(
+      avatar,
+    );
+    const acceptedDots = avatar?.querySelectorAll(
+      '[data-native-attention="working"] > circle',
+    );
+    dots?.forEach((dot, index) => expect(acceptedDots?.[index]).toBe(dot));
+    act(() => {
+      vi.advanceTimersByTime(140);
+    });
+    expect(screen.queryByText("正在建立会话")).not.toBeInTheDocument();
+    expect(view.container.querySelector("[data-running-shimmer]")).toBeNull();
+    expect(avatar).toHaveAttribute("data-animation", "working");
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
-  it("已有会话续发尚未接纳时只保留头像", () => {
+  it("续发等待使用头像和三点，出现正文后三点收起", () => {
     const projection = new ChatMessageProjection();
     const pending = projection.update([
       {
@@ -1466,16 +1490,29 @@ describe("assistant message shell", () => {
       },
     ])[0];
     if (!pending) throw new Error("missing follow-up message");
-    const { container } = render(
+    const { container, rerender } = render(
       <PureAssistantMessage view={pending} latest name="nova" />,
     );
-    expect(screen.queryByText("正在准备会话")).not.toBeInTheDocument();
-    expect(screen.queryByText("飞速运转")).not.toBeInTheDocument();
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(container.querySelector("[data-activity]")).toHaveAttribute(
-      "data-activity",
-      "thinking",
+    expect(screen.queryByText("正在建立会话")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-companion-avatar]")).toHaveAttribute(
+      "data-animation",
+      "working",
     );
+
+    const responding = projection.update([
+      {
+        ...pending.message,
+        status: "running",
+        displayParts: [{ id: "reply", type: "text", text: "第一段回复" }],
+      },
+    ])[0];
+    if (!responding) throw new Error("missing reply");
+    rerender(<PureAssistantMessage view={responding} latest name="nova" />);
+    expect(screen.getByText("第一段回复")).toBeVisible();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(
+      container.querySelector('[data-native-attention="working"]'),
+    ).not.toBeInTheDocument();
   });
   it("最新助手消息变成历史消息后移除头像，名称不重复展示且时间位于底部", () => {
     messageState.current = {
@@ -1488,10 +1525,12 @@ describe("assistant message shell", () => {
       content: [toolPart("file_read", "running")],
     };
     const view = render(<AssistantMessage name="测试伙伴" />);
-    expect(view.container.querySelector("[data-activity]")).toHaveAttribute(
-      "data-activity",
-      "working",
-    );
+    expect(
+      view.container.querySelector("[data-companion-avatar]"),
+    ).toHaveAttribute("data-animation", "idle");
+    expect(
+      view.container.querySelector('[data-native-attention="working"]'),
+    ).not.toBeInTheDocument();
     messageState.current = { ...messageState.current, isLast: false };
     messageState.messages = [
       { id: messageState.current.id, role: "assistant" },
@@ -1545,7 +1584,7 @@ describe("assistant message shell", () => {
     expect(container.querySelector("footer")).toBeNull();
     expect(container.querySelector("[data-activity]")).not.toBeNull();
     expect(screen.queryByText("飞速运转")).not.toBeInTheDocument();
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("正在等待回复");
     expect(container.querySelector("[data-chat-message-card]")).toBeNull();
   });
 });

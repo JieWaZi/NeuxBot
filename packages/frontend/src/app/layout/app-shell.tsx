@@ -91,6 +91,7 @@ import {
   conversationAttentionMark,
 } from "@/shared/ui/conversation-attention";
 import {
+  prepareWorkBoardAvatarPhysics,
   workAttentionHref,
   waitingConversations,
   WorkRequestChooser,
@@ -696,6 +697,14 @@ function AppShellContent({
     }),
     [t],
   );
+  useEffect(() => {
+    const idle = window.requestIdleCallback?.(() => {
+      if (!window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+        void prepareWorkBoardAvatarPhysics();
+      }
+    });
+    if (idle !== undefined) return () => window.cancelIdleCallback(idle);
+  }, []);
   const openWorkBoard = useCallback(
     () =>
       guardSettingsNavigation(() => {

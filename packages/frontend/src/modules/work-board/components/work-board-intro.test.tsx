@@ -176,10 +176,11 @@ it("读取伙伴时草稿可输入且装饰头像已挂载，空列表返回后�
   );
   mount();
   expect(screen.getByRole("textbox", { name: "消息" })).toBeEnabled();
-  expect(screen.getByRole("status", { name: "正在读取伙伴" })).toHaveAttribute(
-    "aria-busy",
-    "true",
-  );
+  const loading = screen.getByRole("status", { name: "正在读取伙伴" });
+  expect(loading).toHaveAttribute("aria-busy", "true");
+  expect(loading.querySelector("[aria-hidden=true]")).not.toBeVisible();
+  const picker = screen.getByRole("button", { name: "选择伙伴" });
+  expect(picker.parentElement).toContainElement(loading);
   const avatars = () => [
     ...document.querySelectorAll(
       "[data-work-board-avatars] [data-pile-avatar]",
@@ -188,5 +189,32 @@ it("读取伙伴时草稿可输入且装饰头像已挂载，空列表返回后�
   const initialAvatars = avatars();
   expect(initialAvatars).toHaveLength(12);
   expect(await screen.findByText("暂无可选伙伴")).toBeInTheDocument();
+  expect(loading).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "选择伙伴" })).toBe(picker);
   expect(avatars()).toEqual(initialAvatars);
+});
+
+it("伙伴读取较慢时在选择器原位显示骨架", async () => {
+  let release = () => {};
+  const response = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.get(`${origin}/api/v1/wakers`, async () => {
+      await response;
+      return partnerPage([]);
+    }),
+  );
+  mount();
+  const loading = screen.getByRole("status", { name: "正在读取伙伴" });
+  try {
+    await waitFor(() =>
+      expect(loading.querySelector("[aria-hidden=true]")).toBeVisible(),
+    );
+    expect(screen.getByRole("button", { name: "选择伙伴" })).toBeDisabled();
+  } finally {
+    release();
+  }
+  expect(await screen.findByText("暂无可选伙伴")).toBeInTheDocument();
+  expect(loading).not.toBeInTheDocument();
 });

@@ -7,6 +7,7 @@ import {
   localApiErrorMessage,
   withLocalErrorSurface,
 } from "@/shared/api/local-error-surface";
+import { cn } from "@/shared/lib/cn";
 import { StaticAvatar } from "@/shared/ui/avatar";
 import { Button } from "@/shared/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
@@ -25,11 +26,32 @@ export function workBoardPartnerPageOptions(pageNum: number, query?: string) {
   );
 }
 
-export function WorkBoardPartnersLoading() {
+function WorkBoardPartnersLoading({
+  inTrigger = false,
+}: {
+  inTrigger?: boolean;
+}) {
   const { t } = useTranslation("workBoard");
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    if (!inTrigger) return;
+    const timer = window.setTimeout(() => setRevealed(true), 140);
+    return () => window.clearTimeout(timer);
+  }, [inTrigger]);
   return (
-    <div role="status" aria-busy="true" aria-label={t("loadingPartners")}>
-      <Skeleton className="h-4 w-28" />
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label={t("loadingPartners")}
+      className={
+        inTrigger
+          ? "pointer-events-none absolute inset-0 grid place-items-center"
+          : undefined
+      }
+    >
+      <div hidden={inTrigger && !revealed}>
+        <Skeleton className={inTrigger ? "h-3 w-12" : "h-4 w-28"} />
+      </div>
     </div>
   );
 }
@@ -38,67 +60,73 @@ export function WorkBoardPartnerPicker({
   selected,
   onSelect,
   disabled,
+  pending,
 }: {
   selected?: Waker;
   onSelect: (partner: Partner) => void;
   disabled: boolean;
+  pending: boolean;
 }) {
   const { t } = useTranslation("workBoard");
   const selectedLabel = useId();
   const [open, setOpen] = useState(false);
-  const visible = open && !disabled;
-  if (open && disabled) setOpen(false);
+  const unavailable = disabled || pending;
+  const visible = open && !unavailable;
+  if (open && unavailable) setOpen(false);
   const selectedName = selected ? selected.name || t("waker") : undefined;
   return (
-    <Popover open={visible} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          shape="capsule"
-          disabled={disabled}
-          className="max-w-36"
+    <div className="relative flex min-w-0">
+      <Popover open={visible} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            shape="capsule"
+            disabled={unavailable}
+            className={cn("max-w-36", pending && "[&>*]:invisible")}
+            aria-label={t("choosePartner")}
+            aria-describedby={selected ? selectedLabel : undefined}
+            title={selectedName}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown" && !visible) {
+                event.preventDefault();
+                setOpen(true);
+              }
+            }}
+          >
+            {selected ? (
+              <StaticAvatar
+                name={selectedName ?? ""}
+                src={selected.avatar}
+                size="xs"
+              />
+            ) : null}
+            <span id={selectedLabel} className="min-w-0 truncate">
+              {selectedName ?? t("choosePartner")}
+            </span>
+            <ChevronDown className="text-content-secondary shrink-0" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="end"
+          width="compact"
           aria-label={t("choosePartner")}
-          aria-describedby={selected ? selectedLabel : undefined}
-          title={selectedName}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown" && !visible) {
-              event.preventDefault();
-              setOpen(true);
-            }
-          }}
         >
-          {selected ? (
-            <StaticAvatar
-              name={selectedName ?? ""}
-              src={selected.avatar}
-              size="xs"
+          {visible ? (
+            <PartnerResults
+              selectedId={selected?.id}
+              onSelect={(partner) => {
+                onSelect(partner);
+                setOpen(false);
+              }}
             />
           ) : null}
-          <span id={selectedLabel} className="min-w-0 truncate">
-            {selectedName ?? t("choosePartner")}
-          </span>
-          <ChevronDown className="text-content-secondary shrink-0" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="end"
-        width="compact"
-        aria-label={t("choosePartner")}
-      >
-        {visible ? (
-          <PartnerResults
-            selectedId={selected?.id}
-            onSelect={(partner) => {
-              onSelect(partner);
-              setOpen(false);
-            }}
-          />
-        ) : null}
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+      {pending ? <WorkBoardPartnersLoading inTrigger /> : null}
+    </div>
   );
 }
 

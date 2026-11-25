@@ -59,7 +59,6 @@ import {
 } from "../api/chat-queries";
 import { listAiAccountsOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useQueryEvents } from "@/shared/api/use-query-events";
-import { ChatHistoryLoadingState } from "../components/chat-history-loading-state";
 import {
   ChatWorkspaceSurface,
   type ChatWorkspaceAdapter,
@@ -1362,14 +1361,11 @@ function ChatView({
           isRunning: chatRuntime.isRunning,
         })
       : entry?.emptyState;
-  const historyLoadingState = <ChatHistoryLoadingState />;
-  const messageEmptyState = historyIsLoading
-    ? historyLoadingState
-    : chatRuntime.hasVisibleMessages
-      ? null
-      : entry?.emptyState !== undefined
-        ? contributedEmptyState
-        : emptyState;
+  const messageEmptyState = chatRuntime.hasVisibleMessages
+    ? null
+    : entry?.emptyState !== undefined
+      ? contributedEmptyState
+      : emptyState;
 
   const retryFirstSubmission = chatRuntime.retryFirstSubmission;
   const boardInputLocked = Boolean(boardDraft && retryFirstSubmission);
@@ -1652,7 +1648,10 @@ function ChatView({
       approvalSubmissionState,
       onResolveApproval: (approvalId, optionId) =>
         void resolveApprovalChoice(approvalId, optionId),
-      pendingElicitations: sceneActive ? chatRuntime.pendingElicitations : [],
+      pendingElicitations:
+        sceneActive && !routeTransitioning
+          ? chatRuntime.pendingElicitations
+          : [],
       elicitationSubmissionState,
       onResolveElicitation: (elicitationId, content, declined) =>
         void resolveElicitationChoice(elicitationId, content, declined),

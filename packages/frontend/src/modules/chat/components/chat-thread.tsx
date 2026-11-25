@@ -16,6 +16,7 @@ import {
   type ChatPluginOption,
 } from "./chat-plugin-reference";
 import { useChatHistoryScroll } from "./use-chat-history-scroll";
+import { ChatHistoryLoadingState } from "./chat-history-loading-state";
 import { useChatMessageLocator } from "./chat-message-locator";
 import {
   useChatReading,
@@ -104,6 +105,7 @@ import { readLayoutMotionTokens } from "@/shared/lib/ui-motion-tokens";
 import { Avatar } from "@/shared/ui/avatar";
 import { Collapsible, CollapsibleContent } from "@/shared/ui/collapsible";
 import { Button } from "@/shared/ui/button";
+import { RetainedPresence } from "@/shared/ui/retained-presence";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1366,12 +1368,14 @@ function ChatReplyMessage({
   message,
   identity,
   name,
+  status,
   children,
   footer,
 }: {
   message: BotChatMessage;
   identity: ReactNode;
   name?: string;
+  status?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
 }) {
@@ -1393,6 +1397,7 @@ function ChatReplyMessage({
       {identity}
       <div className="group/reply w-fit max-w-full min-w-0">
         {name ? <div className="type-body mb-2 font-medium">{name}</div> : null}
+        {status}
         {children ? (
           <div
             data-chat-message-card
@@ -1412,6 +1417,30 @@ function ChatReplyMessage({
           </footer>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function AssistantReplyWaitStatus({
+  establishingSession,
+}: {
+  establishingSession?: boolean;
+}) {
+  const { t } = useTranslation("chat");
+  return (
+    <div role="status">
+      {!establishingSession && (
+        <span className="sr-only">{t("awaitingReply")}</span>
+      )}
+      <RetainedPresence
+        present={Boolean(establishingSession)}
+        data-motion={establishingSession ? "none" : "presence"}
+        className="text-content-secondary type-ui min-h-avatar-sm flex items-center"
+      >
+        <span className="relative overflow-hidden" data-running-shimmer="true">
+          {t("preparingSession")}
+        </span>
+      </RetainedPresence>
     </div>
   );
 }
@@ -1479,12 +1508,24 @@ export function AssistantMessage({
     (hasContent || isTerminalMessage(message)) && !continuation?.continued;
   const isLatestAssistant = latest;
   const interaction = useContext(CompanionInteraction);
+  const activityMessage = continuation?.activityMessage ?? message;
   const companionActivity = continuation?.activityMessage
     ? messageCompanionActivity(
-        { ...continuation.activityMessage, isLast: isLatestAssistant },
+        { ...activityMessage, isLast: isLatestAssistant },
         interaction,
       )
     : viewCompanionActivity(view, isLatestAssistant, interaction);
+  const waitingForReply =
+    isLatestAssistant &&
+    !interaction &&
+    !hasContent &&
+    (activityMessage.status === "pending" ||
+      activityMessage.status === "running");
+  const avatarActivity =
+    hasContent &&
+    (companionActivity === "thinking" || companionActivity === "working")
+      ? "idle"
+      : companionActivity;
   const author = messageAuthors?.[messageID];
   const displayName = author?.name ?? name;
   const displayAvatar = author?.avatar ?? avatar;
@@ -1498,13 +1539,21 @@ export function AssistantMessage({
     <ChatReplyMessage
       message={message}
       name={showIdentity ? displayName : undefined}
+      status={
+        waitingForReply && (
+          <AssistantReplyWaitStatus
+            establishingSession={activityMessage.preparingSession}
+          />
+        )
+      }
       identity={
         isLatestAssistant || showIdentity ? (
           <Avatar
             name={displayName}
             src={displayAvatar}
             size="sm"
-            activity={companionActivity}
+            activity={avatarActivity}
+            attention={waitingForReply ? { kind: "working" } : undefined}
             animated={isLatestAssistant || showIdentity}
             interactive={isLatestAssistant || showIdentity}
             terminalHover={showIdentity}
@@ -2022,7 +2071,7 @@ export function ComposerContextUsage({
   return visible ? <ChatContextUsage metrics={metrics} /> : null;
 }
 
-export function ChatMessageColumn({ children }: { children: ReactNode }) {
+function ChatMessageColumn({ children }: { children: ReactNode }) {
   return (
     <div
       data-chat-message-column
@@ -2697,10 +2746,14 @@ function ChatThreadContent({
   const centerEmptyState =
     emptyStatePosition === "center" && !isHistoryLoading && emptyThread;
   const showDirectEmptyState =
+    !isHistoryLoading &&
     liveQuestions.length === 0 &&
-    (isHistoryLoading || pinEmptyState || centerEmptyState);
+    (pinEmptyState || centerEmptyState);
   const threadVisible =
-    active && presentation === "thread" && !showDirectEmptyState;
+    active &&
+    presentation === "thread" &&
+    !showDirectEmptyState &&
+    (!isHistoryLoading || liveQuestions.length > 0);
   const { positioning, feedback: locationFeedback } = useChatMessageLocator({
     viewport: viewportRef,
     active: threadVisible && (!messageId || !isHistoryLoading),
@@ -2788,106 +2841,120 @@ function ChatThreadContent({
                   centerEmptyState ? "shrink-0" : "flex-1",
                 )}
               >
-                {showDirectEmptyState ? (
-                  <div
-                    role={isHistoryLoading ? "status" : undefined}
-                    aria-busy={isHistoryLoading ? true : undefined}
-                    className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-                  >
+                <div
+                  ref={viewportRef}
+                  data-chat-scroll-viewport
+                  onScroll={threadVisible ? historyScroll.onScroll : undefined}
+                  className="scrollbar-hidden relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [overflow-anchor:none]"
+                >
+                  {showDirectEmptyState ? (
                     <div className="min-h-0 flex-1">{emptyState}</div>
-                  </div>
-                ) : (
-                  <>
-                    <div
-                      ref={viewportRef}
-                      data-chat-scroll-viewport
-                      onScroll={historyScroll.onScroll}
-                      className="scrollbar-hidden relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [overflow-anchor:none]"
-                    >
-                      {emptyThread ? emptyState : null}
+                  ) : (
+                    <>
+                      {emptyThread && !isHistoryLoading ? emptyState : null}
                       <ChatMessageColumn>
-                        {historyError && errorScopes.length === 0 ? (
-                          <ChatErrorCard
-                            id={`history:${errorScopes.join(":")}`}
-                            message={historyError.message}
-                            onRetry={historyError.onRetry}
-                          />
-                        ) : null}
-                        {hasEarlierMessages && (
-                          <div className="flex flex-col items-center gap-1 px-6 pb-2">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              disabled={isLoadingEarlier}
-                              onClick={() => void loadEarlier()}
-                            >
-                              {isLoadingEarlier && (
-                                <LoaderCircle className="animate-spin" />
-                              )}
-                              {t("loadEarlierMessages")}
-                            </Button>
-                            {loadEarlierError &&
-                            !positioning &&
-                            errorScopes.length === 0 ? (
+                        {isHistoryLoading ? (
+                          active && (
+                            <ChatHistoryLoadingState
+                              key={JSON.stringify([
+                                presentationScope,
+                                fileScopeChatId,
+                                routeKey,
+                              ])}
+                            />
+                          )
+                        ) : (
+                          <>
+                            {historyError && errorScopes.length === 0 ? (
                               <ChatErrorCard
-                                id={`earlier:${errorScopes.join(":")}`}
-                                message={loadEarlierError}
-                                onRetry={async () => {
-                                  await loadEarlier();
-                                }}
-                                onDismiss={historyScroll.clearError}
+                                id={`history:${errorScopes.join(":")}`}
+                                message={historyError.message}
+                                onRetry={historyError.onRetry}
                               />
                             ) : null}
-                          </div>
-                        )}
-                        {wrapChatReading(
-                          readingChatId,
-                          active,
-                          positioning,
-                          readingRootRef,
-                          <MarkdownVisibility value={active}>
-                            <ProcessExpansion value={readingState.groups}>
-                              <CompanionInteraction
-                                value={companionInteraction}
-                              >
-                                <ChatMessageList
-                                  views={views}
-                                  requestedMessageId={
-                                    active ? messageId : undefined
-                                  }
-                                  requestedMessageKey={routeKey}
-                                  timelineEvents={visibleTimelineEvents}
-                                  forkBoundaryMessageId={forkBoundaryMessageId}
-                                  forkSourceChatId={forkSourceChatId}
-                                  onOpenForkSource={onOpenForkSource}
-                                  name={wakerName}
-                                  avatar={wakerAvatar}
-                                  availableSkillIds={availableSkillIds}
-                                  availableConnectorIds={availableConnectorIds}
-                                  pluginIcons={pluginIcons}
-                                  wakerId={wakerId}
-                                  messageAuthors={messageAuthors}
-                                  showUsageMetrics={showUsageMetrics}
-                                  showFileChanges={showFileChanges}
-                                  onOpenCodeReference={onOpenCodeReference}
-                                  onOpenFile={onOpenFile}
-                                  onOpenFileChange={onOpenFileChange}
-                                />
-                              </CompanionInteraction>
-                            </ProcessExpansion>
-                          </MarkdownVisibility>,
+                            {hasEarlierMessages && (
+                              <div className="flex flex-col items-center gap-1 px-6 pb-2">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={isLoadingEarlier}
+                                  onClick={() => void loadEarlier()}
+                                >
+                                  {isLoadingEarlier && (
+                                    <LoaderCircle className="animate-spin" />
+                                  )}
+                                  {t("loadEarlierMessages")}
+                                </Button>
+                                {loadEarlierError &&
+                                !positioning &&
+                                errorScopes.length === 0 ? (
+                                  <ChatErrorCard
+                                    id={`earlier:${errorScopes.join(":")}`}
+                                    message={loadEarlierError}
+                                    onRetry={async () => {
+                                      await loadEarlier();
+                                    }}
+                                    onDismiss={historyScroll.clearError}
+                                  />
+                                ) : null}
+                              </div>
+                            )}
+                            {wrapChatReading(
+                              readingChatId,
+                              active,
+                              positioning,
+                              readingRootRef,
+                              <MarkdownVisibility value={active}>
+                                <ProcessExpansion value={readingState.groups}>
+                                  <CompanionInteraction
+                                    value={companionInteraction}
+                                  >
+                                    <ChatMessageList
+                                      views={views}
+                                      requestedMessageId={
+                                        active ? messageId : undefined
+                                      }
+                                      requestedMessageKey={routeKey}
+                                      timelineEvents={visibleTimelineEvents}
+                                      forkBoundaryMessageId={
+                                        forkBoundaryMessageId
+                                      }
+                                      forkSourceChatId={forkSourceChatId}
+                                      onOpenForkSource={onOpenForkSource}
+                                      name={wakerName}
+                                      avatar={wakerAvatar}
+                                      availableSkillIds={availableSkillIds}
+                                      availableConnectorIds={
+                                        availableConnectorIds
+                                      }
+                                      pluginIcons={pluginIcons}
+                                      wakerId={wakerId}
+                                      messageAuthors={messageAuthors}
+                                      showUsageMetrics={showUsageMetrics}
+                                      showFileChanges={showFileChanges}
+                                      onOpenCodeReference={onOpenCodeReference}
+                                      onOpenFile={onOpenFile}
+                                      onOpenFileChange={onOpenFileChange}
+                                    />
+                                  </CompanionInteraction>
+                                </ProcessExpansion>
+                              </MarkdownVisibility>,
+                            )}
+                          </>
                         )}
                         {liveQuestions}
-                        {afterMessages}
+                        {!isHistoryLoading && afterMessages}
                       </ChatMessageColumn>
-                    </div>
-                    <ChatTurnNavigator
-                      viewportRef={viewportRef}
-                      messages={messages}
-                      active={active}
-                    />
-                  </>
+                    </>
+                  )}
+                </div>
+                {!showDirectEmptyState && !isHistoryLoading && (
+                  <ChatTurnNavigator
+                    viewportRef={viewportRef}
+                    messages={messages}
+                    active={active}
+                  />
                 )}
               </div>
             ) : liveQuestions.length > 0 ? (

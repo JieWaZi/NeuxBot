@@ -517,7 +517,9 @@ it("工作流冷加载保留输入框，消息区显示骨架，画布独立加�
     name: "正在加载对话消息",
   });
   const canvasLoading = screen.getByRole("status", { name: "正在读取工作流…" });
-  expect(messagesLoading.querySelector(".animate-pulse")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(messagesLoading.querySelector(".animate-pulse")).toBeVisible(),
+  );
   expect(
     canvasLoading.querySelector(".agent-grid-spinner"),
   ).toBeInTheDocument();

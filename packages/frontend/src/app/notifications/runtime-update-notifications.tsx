@@ -10,6 +10,7 @@ import {
   runtimeInstallationOptions,
 } from "@/shared/api/runtime-queries";
 import { useQueryEvents } from "@/shared/api/use-query-events";
+import { localDateToInput } from "@/shared/lib/local-date";
 import { runtimeDisplayVersion } from "@/shared/lib/runtime-display-name";
 import { RuntimeCliIcon } from "@/shared/ui/runtime-cli-icon";
 import { toast } from "@/shared/ui/sonner";
@@ -30,10 +31,10 @@ function installedRuntimes(snapshot: ListRuntimesResponse) {
 
 function RuntimeUpdateNotification({
   runtime,
-  offered,
+  shownDates,
 }: {
   runtime: InstalledRuntime;
-  offered: Set<string>;
+  shownDates: Map<string, string>;
 }) {
   const { id, base, name } = runtime;
   const { t } = useTranslation("notification");
@@ -68,9 +69,18 @@ function RuntimeUpdateNotification({
       return;
     const current = runtimeDisplayVersion(data.version).replace(/^v/i, "");
     const latest = runtimeDisplayVersion(data.latestVersion).replace(/^v/i, "");
-    const offer = `${base}:${latest}`;
-    if (!current || !latest || offered.has(offer)) return;
-    offered.add(offer);
+    if (!current || !latest) return;
+
+    const today = localDateToInput(new Date());
+    if (shownDates.get(base) === today) return;
+    const storageKey = `bot:runtime-update-shown:${base}`;
+    try {
+      if (window.localStorage.getItem(storageKey) === today) return;
+      window.localStorage.setItem(storageKey, today);
+    } catch {
+      // 本地存储不可用时，仍在当前工作台内按天去重。
+    }
+    shownDates.set(base, today);
     const noticeId = `runtime-update:${base}`;
     toast.manual(t("inApp.runtimeUpdate", { name }), {
       id: noticeId,
@@ -86,7 +96,7 @@ function RuntimeUpdateNotification({
         },
       },
     });
-  }, [base, data, id, name, navigate, offered, t]);
+  }, [base, data, id, name, navigate, shownDates, t]);
   return null;
 }
 
@@ -96,12 +106,12 @@ export function RuntimeUpdateNotifications() {
     ...listRuntimesOptions(),
     select: installedRuntimes,
   });
-  const [offered] = useState(() => new Set<string>());
+  const [shownDates] = useState(() => new Map<string, string>());
   return data?.map((runtime) => (
     <RuntimeUpdateNotification
       key={runtime.id}
       runtime={runtime}
-      offered={offered}
+      shownDates={shownDates}
     />
   ));
 }

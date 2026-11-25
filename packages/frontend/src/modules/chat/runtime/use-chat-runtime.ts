@@ -651,32 +651,33 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         }
         const execution = result.execution;
         const resultChatID = result.chat?.id ?? snapshot.chatId;
-        const committedMessages: BotChatMessage[] = execution
-          ? optimisticMessages.map((item) => {
-              if (item.id === userID) {
-                return {
-                  ...item,
-                  id: execution.userMessageId ?? item.id,
-                  executionId: execution.id,
-                  optimistic: false,
-                };
-              }
-              if (item.id === assistantID) {
-                return {
-                  ...item,
-                  id: execution.id ?? item.id,
-                  executionId: execution.id,
-                  status: execution.status ?? "pending",
-                  optimistic: false,
-                };
-              }
-              return item;
-            })
-          : snapshot.chatId
+        const committedMessages: BotChatMessage[] =
+          !execution && snapshot.chatId
             ? optimisticMessages.filter(
                 (item) => item.id !== userID && item.id !== assistantID,
               )
-            : optimisticMessages;
+            : optimisticMessages.map((item) => {
+                if (item.id === userID && execution) {
+                  return {
+                    ...item,
+                    id: execution.userMessageId ?? item.id,
+                    executionId: execution.id,
+                    optimistic: false,
+                  };
+                }
+                if (item.id === assistantID) {
+                  if (!execution) return { ...item, preparingSession: false };
+                  return {
+                    ...item,
+                    id: execution.id ?? item.id,
+                    executionId: execution.id,
+                    status: execution.status ?? "pending",
+                    optimistic: false,
+                    preparingSession: false,
+                  };
+                }
+                return item;
+              });
         const committedOverlay = {
           chatId: resultChatID,
           messages: committedMessages,
