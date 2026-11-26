@@ -325,7 +325,7 @@ func (w *Worker) deferReview(ctx context.Context, p Progress, cause error) error
 		}
 	}
 	next.DueAt = time.Now().Add(delay).UnixMilli()
-	if err := w.Store.UpdateProgress(ctx, p, next); err != nil {
+	if err := w.Store.updateProgress(ctx, p, next, true); err != nil {
 		return err
 	}
 	w.changed(eventReview, p.WakerID, p.ChatID)
@@ -374,7 +374,9 @@ func (w *Worker) UpdateSettings(ctx context.Context, v Settings) error {
 	if v == current {
 		return nil
 	}
-	if err = w.Store.SetSettings(ctx, v, v.EveryTurns < current.EveryTurns); err != nil {
+	selectionChanged := v.Source != current.Source || v.RuntimeID != current.RuntimeID ||
+		v.AccountID != current.AccountID || v.Model != current.Model
+	if err = w.Store.SetSettings(ctx, v, v.EveryTurns < current.EveryTurns, selectionChanged); err != nil {
 		return err
 	}
 	w.changed(eventSettings, "", "")

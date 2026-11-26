@@ -80,6 +80,8 @@ type Progress struct {
 	DueAt int64
 	// Failures 是当前批次连续失败次数。
 	Failures int
+	// selectionRevision 是领取时的全局模型选择代次，只用于拒绝旧配置的失败退避。
+	selectionRevision int64
 }
 
 // Suggestion 保存短建议及第二阶段执行状态。
@@ -172,8 +174,8 @@ func (s *Store) Settings(ctx context.Context) (Settings, error) {
 	return v, nil
 }
 
-// SetSettings 保存配置，降低整理轮次门槛时重新检查等待的批次。
-func (s *Store) SetSettings(ctx context.Context, v Settings, checkWaiting bool) error {
+// SetSettings 原子保存配置，并让受此次变更影响的等待批次重新到期。
+func (s *Store) SetSettings(ctx context.Context, v Settings, checkWaiting, selectionChanged bool) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return mapDB(err)
@@ -183,9 +185,14 @@ func (s *Store) SetSettings(ctx context.Context, v Settings, checkWaiting bool) 
 		return mapDB(err)
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO review_config(id,body,revision) VALUES('settings',?,1)
-		ON CONFLICT(id) DO UPDATE SET body=excluded.body`, data); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO review_config(id,body,revision) VALUES('settings',?,CASE WHEN ? THEN 1 ELSE 0 END)
+		ON CONFLICT(id) DO UPDATE SET body=excluded.body,revision=review_config.revision+excluded.revision`, data, selectionChanged); err != nil {
 		return mapDB(err)
+	}
+	if selectionChanged {
+		if _, err = tx.ExecContext(ctx, retryFailedReviews); err != nil {
+			return mapDB(err)
+		}
 	}
 	if checkWaiting {
 		if _, err = tx.ExecContext(ctx, `UPDATE review_chats SET due_at=0
@@ -298,10 +305,14 @@ func (s *Store) Observe(ctx context.Context, chat, waker string) error {
 	return mapDB(err)
 }
 
-// Ready 返回最先到期的批次。
+const currentSelectionRevision = `COALESCE((SELECT revision FROM review_config WHERE id='settings'),0)`
+
+// Ready 返回最先到期的批次及领取时的全局模型选择代次。
 func (s *Store) Ready(ctx context.Context, now time.Time) (Progress, bool, error) {
 	var p Progress
-	err := s.db.QueryRowContext(ctx, "SELECT chat_id,waker_id,cursor,through_seq,due_at,failures FROM review_chats WHERE due_at<=? ORDER BY due_at,chat_id LIMIT 1", now.UnixMilli()).Scan(&p.ChatID, &p.WakerID, &p.Cursor, &p.Through, &p.DueAt, &p.Failures)
+	err := s.db.QueryRowContext(ctx, `SELECT chat_id,waker_id,cursor,through_seq,due_at,failures,`+currentSelectionRevision+`
+		FROM review_chats WHERE due_at<=? ORDER BY due_at,chat_id LIMIT 1`, now.UnixMilli()).
+		Scan(&p.ChatID, &p.WakerID, &p.Cursor, &p.Through, &p.DueAt, &p.Failures, &p.selectionRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, false, nil
 	}
@@ -310,10 +321,21 @@ func (s *Store) Ready(ctx context.Context, now time.Time) (Progress, bool, error
 
 // UpdateProgress 根据读取时的状态保存批次边界、跳过结果或重试计划。
 func (s *Store) UpdateProgress(ctx context.Context, before, after Progress) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE review_chats SET cursor=?,through_seq=?,due_at=?,failures=?
-		WHERE chat_id=? AND cursor=? AND through_seq=? AND due_at=? AND failures=?`,
+	return s.updateProgress(ctx, before, after, false)
+}
+
+func (s *Store) updateProgress(ctx context.Context, before, after Progress, requireSelectionMatch bool) error {
+	query := `UPDATE review_chats SET cursor=?,through_seq=?,due_at=?,failures=?
+		WHERE chat_id=? AND cursor=? AND through_seq=? AND due_at=? AND failures=?`
+	args := []any{
 		after.Cursor, after.Through, after.DueAt, after.Failures,
-		before.ChatID, before.Cursor, before.Through, before.DueAt, before.Failures)
+		before.ChatID, before.Cursor, before.Through, before.DueAt, before.Failures,
+	}
+	if requireSelectionMatch {
+		query += ` AND ` + currentSelectionRevision + `=?`
+		args = append(args, before.selectionRevision)
+	}
+	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return mapDB(err)
 	}

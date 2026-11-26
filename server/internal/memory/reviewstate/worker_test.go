@@ -3,6 +3,7 @@ package reviewstate
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -407,5 +408,53 @@ func TestRepeatedReviewFailureBacksOffAndCanBeRetried(t *testing.T) {
 	next, found, err := store.Ready(ctx, time.Now())
 	if err != nil || !found || next.Cursor != p.Cursor || next.Through != p.Through || next.Failures != 0 {
 		t.Fatalf("manual retry did not preserve the batch: %+v, %t, %v", next, found, err)
+	}
+}
+
+func TestReviewSelectionChangeReleasesBackoff(t *testing.T) {
+	ctx := t.Context()
+	store := openReviewTestStore(t)
+	worker := New(store, Ports{})
+	settings := Settings{Source: SourceGlobal, RuntimeID: "codex", AccountID: "account", Model: "original"}
+	if err := worker.UpdateSettings(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+	const chatID = "backed-off-chat"
+	if err := store.Observe(ctx, chatID, "partner"); err != nil {
+		t.Fatal(err)
+	}
+	current, found, err := store.Ready(ctx, time.Now())
+	if err != nil || !found {
+		t.Fatalf("initial review progress = %+v, %t, %v", current, found, err)
+	}
+	failed := current
+	failed.Cursor, failed.Through, failed.Failures = 8, 12, 4
+	failed.DueAt = time.Now().Add(24 * time.Hour).UnixMilli()
+	if err := store.UpdateProgress(ctx, current, failed); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.UpdateSettings(ctx, Settings{EveryTurns: 5}); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.Ready(ctx, time.Now()); err != nil || found {
+		t.Fatalf("changing frequency revived failed selection = %t, %v", found, err)
+	}
+	settings.Model = "corrected"
+	if err := worker.UpdateSettings(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+	next, found, err := store.Ready(ctx, time.Now())
+	if err != nil || !found || next.ChatID != chatID || next.Cursor != 8 || next.Through != 12 || next.Failures != 0 {
+		t.Fatalf("corrected selection should resume the same batch: %+v, %t, %v", next, found, err)
+	}
+	settings.AccountID = "new-account"
+	if err := worker.UpdateSettings(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.deferReview(ctx, next, status_error.RuntimeUnavailable); !errors.Is(err, status_error.Conflict) {
+		t.Fatalf("retired configuration restored its backoff: %v", err)
+	}
+	if _, found, err := store.Ready(ctx, time.Now()); err != nil || !found {
+		t.Fatalf("retired attempt changed batch readiness: %t, %v", found, err)
 	}
 }
