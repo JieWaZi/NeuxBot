@@ -1,6 +1,6 @@
 # botcli 系统能力
 
-`botcli` 是 NeuxBot 随应用交付的能力命令入口，供智能体在当前执行的授权范围内调用知识库、IM、工作流、团队、记忆和结构化问答。本文列出当前实现的完整操作；某次聊天实际能调用哪些操作，以该执行的 `capabilities` 返回为准。
+`botcli` 是 NeuxBot 随应用交付的能力命令入口，供智能体在当前执行的授权范围内调用知识库、IM、工作流、团队、记忆、自动任务和结构化问答。本文列出当前实现的完整操作；某次聊天实际能调用哪些操作，以该执行的 `capabilities` 返回为准。
 
 命令与参数的权威定义是 [contract](../../internal/agent/capability/catalog.go)，命令树直接由该目录建立。本文说明用途和完成语义，完整参数、枚举、限制与输出结构通过 `describe` 获取，避免维护第二套参数表。目录测试检查下列能力是否遗漏、重复，以及影响和完成语义是否与代码一致。
 
@@ -58,6 +58,16 @@ botcli knowledge pages search --library-id library-example --query "部署流程
 以下是静态实现目录；每组说明其适用场景。完整参数请调用 `describe <operation-id>`，对象身份应来自实际发现结果。
 
 <!-- botcli-operations:start -->
+
+### 自动任务
+
+普通伙伴对话可以创建并启用一次性或重复的定时任务，并编辑当前对话创建的任务。每次运行创建独立对话。
+
+| 操作标识                 | 用途                                                   | 影响       | 完成语义    |
+| ------------------------ | ------------------------------------------------------ | ---------- | ----------- |
+| `automatic.tasks.create` | 保存并启用当前伙伴的新定时任务。                       | `mutation` | `immediate` |
+| `automatic.tasks.list`   | 查找当前对话创建的定时任务，按 ID 读取完整指令和版本。 | `read`     | `immediate` |
+| `automatic.tasks.update` | 按配置版本更新原任务的名称、执行指令或定时规则。       | `mutation` | `immediate` |
 
 ### 知识库
 

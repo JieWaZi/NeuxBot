@@ -28,7 +28,7 @@ func ReadingKind(message Message) string {
 			return "answer"
 		}
 	}
-	if len(message.DisplayParts) == 0 && strings.TrimSpace(message.Content) != "" {
+	if len(message.AutomaticTaskCreations) != 0 || (len(message.DisplayParts) == 0 && strings.TrimSpace(message.Content) != "") {
 		return "answer"
 	}
 	return ""

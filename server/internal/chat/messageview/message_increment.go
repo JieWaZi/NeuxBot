@@ -75,6 +75,10 @@ func (p *MessageViewBuilder) incrementTool(part MessageDisplayPart) {
 		summary.Files = append([]ToolFileChangeSummary(nil), part.ToolSafeSummary.Files...)
 		clone.ToolSafeSummary = &summary
 	}
+	if part.Excalidraw != nil {
+		scene := *part.Excalidraw
+		clone.Excalidraw = &scene
+	}
 	if part.ToolApprovalResult != nil {
 		result := *part.ToolApprovalResult
 		clone.ToolApprovalResult = &result

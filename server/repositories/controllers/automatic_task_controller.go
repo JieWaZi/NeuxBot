@@ -59,6 +59,8 @@ type AutomaticTaskController interface {
 	Get(context.Context, string) (models.AutomaticTask, error)
 	// List 按可选伙伴、执行者类型、名称、触发和启停条件分页枚举任务。
 	List(context.Context, AutomaticTaskFilter) ([]models.AutomaticTask, int64, error)
+	// ListChatSchedules 只读取有该聊天创建回执且仍归同一伙伴的独立定时任务。
+	ListChatSchedules(ctx context.Context, chatID, wakerID, taskID string, limit, offset int) ([]models.AutomaticTask, error)
 	// Counts 获取全部任务或指定伙伴的统计。
 	Counts(context.Context, string) (AutomaticTaskCounts, error)
 	// UpdateConfiguration 按乐观版本替换允许编辑的完整任务配置。
@@ -177,6 +179,25 @@ func (c *automaticTaskController) List(ctx context.Context, filter AutomaticTask
 		return nil, 0, databaseError("list_automatic_tasks", "waker_id="+filter.WakerID, err)
 	}
 	return tasks, count, nil
+}
+
+func (c *automaticTaskController) ListChatSchedules(ctx context.Context, chatID, wakerID, taskID string, limit, offset int) ([]models.AutomaticTask, error) {
+	db := controllerDB(ctx, c.db)
+	// 用原子创建回执确定来源，包含尚未投影成聊天卡片的任务。
+	origin := db.Model(&models.AgentCommandReceipt{}).Select("json_extract(data, '$.taskId')").
+		Where("managed_chat_id <> '' AND managed_chat_id = ? AND managed_waker_id = ? AND managed_operation = ?", chatID, wakerID, constants.AutomaticTaskCreateOperation)
+	query := automaticTaskQuery(db, AutomaticTaskFilter{WakerID: wakerID, ExecutorKind: "waker", Trigger: constants.AutomaticTaskTriggerSchedule}).
+		Where("deleting = ? AND id IN (?)", false, origin)
+	if taskID != "" {
+		query = query.Where("id = ?", taskID)
+	} else {
+		query = query.Select("id", "name", "schedule", "configuration_version", "next_run_at")
+	}
+	var tasks []models.AutomaticTask
+	if err := query.Order("created_at DESC, id ASC").Limit(limit).Offset(offset).Find(&tasks).Error; err != nil {
+		return nil, databaseError("list_chat_schedules", "chat_id="+chatID, err)
+	}
+	return tasks, nil
 }
 
 // Counts 获取全部任务或指定伙伴的统计。

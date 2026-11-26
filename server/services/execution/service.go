@@ -122,6 +122,8 @@ type service struct {
 	systemSkillDirectory string
 	// agentBindings 提供伙伴当前普通业务能力的领域绑定。
 	agentBindings func(models.Chat, string, []string, string, string) []capability.Binding
+	// automaticTaskBindings 为用户发起的伙伴聊天签发当前伙伴的自动任务创建能力。
+	automaticTaskBindings func(models.Chat, string, ExecutionConfiguration) []capability.Binding
 	// resourceManagementBindings 为已核验的本地聊天签发资源管理能力。
 	resourceManagementBindings func(models.Chat, string, func(context.Context, string) error) []capability.Binding
 	// validateIntent 在首发和续发接纳前校验领域持久约束。
@@ -210,6 +212,8 @@ type Config struct {
 	AgentBinary string
 	// AgentBindings 按伙伴、目录与受信工作来源签发普通能力。
 	AgentBindings func(models.Chat, string, []string, string, string) []capability.Binding
+	// AutomaticTaskBindings 接收已核验的伙伴对话及本轮所用配置。
+	AutomaticTaskBindings func(models.Chat, string, ExecutionConfiguration) []capability.Binding
 	// ResourceManagementBindings 根据当前伙伴签发技能和 MCP 管理能力，确认由宿主处理。
 	ResourceManagementBindings func(models.Chat, string, func(context.Context, string) error) []capability.Binding
 	// ValidateIntent 校验入口无关的领域接纳约束；为空时不增加额外限制。
@@ -338,6 +342,7 @@ func New(config Config) (Core, error) {
 		agentEndpoint:              config.AgentEndpoint,
 		systemSkillDirectory:       systemSkillDirectory,
 		agentBindings:              config.AgentBindings,
+		automaticTaskBindings:      config.AutomaticTaskBindings,
 		resourceManagementBindings: config.ResourceManagementBindings,
 		coreMemory:                 config.CoreMemory,
 		validateIntent:             config.ValidateIntent,

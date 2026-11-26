@@ -108,6 +108,8 @@ import { motion, useReducedMotion } from "motion/react";
 
 import type { ResolvedFileReference } from "@/shared/workspace/file-reference";
 import { cn } from "@/shared/lib/cn";
+import { useContentVisibility } from "@/shared/lib/content-presentation";
+import { ContentVisibility } from "@/shared/lib/content-visibility";
 import { readLayoutMotionTokens } from "@/shared/lib/ui-motion-tokens";
 import { Avatar } from "@/shared/ui/avatar";
 import { Collapsible, CollapsibleContent } from "@/shared/ui/collapsible";
@@ -186,9 +188,11 @@ import {
 } from "./chat-reference-menus";
 import { AssistantMarkdown, UserMarkdown } from "./chat-message-content";
 import { ChatTurnNavigator } from "./chat-turn-navigator";
+import { ChatExcalidraw } from "./chat-excalidraw";
 
 import { Fragment } from "react";
 import { ExecutionFileChangesAction } from "./execution-file-changes-card";
+import { AutomaticTaskCreationCard } from "./automatic-task-creation-card";
 import {
   ChatMessageProjection,
   timelineEventsInMessageWindow,
@@ -199,7 +203,6 @@ import {
   type ChatToolGroup,
   type ChatProcessGroup,
 } from "./chat-message-nodes";
-import { MarkdownVisibility } from "@/shared/markdown/visibility";
 import { useChatViewportScroll } from "./use-chat-viewport-scroll";
 type DisplayPart = NonNullable<BotChatMessage["displayParts"]>[number];
 
@@ -471,17 +474,34 @@ function statusFromTool(
   return terminal && status === "running" ? "interrupted" : status;
 }
 
-export function ReasoningPart({ text }: { text: string }) {
+export function ReasoningPart({
+  text,
+  running = false,
+}: {
+  text: string;
+  running?: boolean;
+}) {
   const { t } = useTranslation("chat");
   const [expanded, setExpanded] = useState(false);
+  const titleRef = useRef<HTMLDivElement>(null);
+  const sceneVisible = useContext(ContentVisibility);
   const displayText = text.replace(/^[\r\n]+/, "");
   const canToggle = displayText.length > 120;
+  const shimmer = useContentVisibility(
+    titleRef,
+    sceneVisible && running && !expanded && Boolean(displayText),
+  );
   if (!displayText) return null;
   return (
     <div className="space-y-1.5">
-      <div className="text-muted-foreground type-label flex items-center gap-2">
-        <Brain className="size-icon-sm" />
-        <span>{t("reasoningActivity")}</span>
+      <div
+        ref={titleRef}
+        className="text-muted-foreground type-label relative flex w-fit max-w-full items-center gap-2 overflow-hidden rounded-md"
+        data-running-shimmer={shimmer ? "true" : undefined}
+        aria-busy={running}
+      >
+        <Brain className="size-icon-sm" aria-hidden="true" />
+        <span>{t(running ? "thinking" : "reasoningActivity")}</span>
       </div>
       <div className="border-border-subtle bg-surface-tertiary rounded-lg border border-dashed px-4 py-3">
         <p
@@ -495,6 +515,7 @@ export function ReasoningPart({ text }: { text: string }) {
         {canToggle && (
           <button
             type="button"
+            aria-expanded={expanded}
             className="text-muted-foreground hover:text-foreground type-ui mt-2 inline-flex items-center gap-1 transition-colors"
             onClick={() => setExpanded((current) => !current)}
           >
@@ -791,6 +812,7 @@ export const WorkProcess = memo(function WorkProcess({
 const MessageWorkProcess = memo(function MessageWorkProcess({
   group,
   currentKey,
+  reasoningRunning,
   completed,
   terminal,
   metrics,
@@ -799,6 +821,7 @@ const MessageWorkProcess = memo(function MessageWorkProcess({
 }: {
   group: ChatProcessGroup;
   currentKey?: string;
+  reasoningRunning: boolean;
   completed: boolean;
   terminal: boolean;
   metrics?: ChatRunMetrics;
@@ -891,7 +914,12 @@ const MessageWorkProcess = memo(function MessageWorkProcess({
                 terminal={terminal}
               />
             ) : (
-              <ChatPart key={node.key} node={node} terminal={terminal} />
+              <ChatPart
+                key={node.key}
+                node={node}
+                terminal={terminal}
+                reasoningRunning={reasoningRunning && node.key === currentKey}
+              />
             ),
           )}
         </div>
@@ -904,9 +932,11 @@ const MessageWorkProcess = memo(function MessageWorkProcess({
 const ChatPart = memo(function ChatPart({
   node,
   terminal,
+  reasoningRunning,
 }: {
   node: ChatPartNode;
   terminal: boolean;
+  reasoningRunning?: boolean;
 }) {
   const { part } = node;
   return (
@@ -914,7 +944,7 @@ const ChatPart = memo(function ChatPart({
       {part.type === "text" ? (
         <AssistantMarkdown text={part.text ?? ""} isTerminal={terminal} />
       ) : part.type === "reasoning" ? (
-        <ReasoningPart text={part.text ?? ""} />
+        <ReasoningPart text={part.text ?? ""} running={reasoningRunning} />
       ) : part.type === "process_commentary" ? (
         <p className="type-chat text-foreground max-w-4xl whitespace-pre-wrap">
           {part.text}
@@ -928,10 +958,12 @@ const ChatPart = memo(function ChatPart({
 function ChatMessageParts({
   view,
   metrics = view.message.runMetrics,
+  reasoningRunning,
   showUsageMetrics,
 }: {
   view: ChatMessageView;
   metrics?: ChatRunMetrics;
+  reasoningRunning: boolean;
   showUsageMetrics: boolean;
 }) {
   const terminal = isTerminalMessage(view.message);
@@ -953,6 +985,7 @@ function ChatMessageParts({
             key={segment.key}
             group={segment}
             currentKey={currentKey}
+            reasoningRunning={reasoningRunning}
             completed={view.message.status === "completed"}
             terminal={terminal}
             metrics={metrics}
@@ -1407,6 +1440,7 @@ function ChatReplyMessage({
   status,
   children,
   footer,
+  fillWidth = false,
 }: {
   message: BotChatMessage;
   identity: ReactNode;
@@ -1414,6 +1448,7 @@ function ChatReplyMessage({
   status?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
+  fillWidth?: boolean;
 }) {
   return (
     <div
@@ -1431,7 +1466,12 @@ function ChatReplyMessage({
       )}
     >
       {identity}
-      <div className="group/reply w-fit max-w-full min-w-0">
+      <div
+        className={cn(
+          "group/reply max-w-full min-w-0",
+          fillWidth ? "w-full" : "w-fit",
+        )}
+      >
         {name ? <div className="type-body mb-2 font-medium">{name}</div> : null}
         {status}
         {children ? (
@@ -1440,7 +1480,8 @@ function ChatReplyMessage({
             data-chat-message-bubble
             tabIndex={-1}
             className={cn(
-              "bg-message-card-background w-fit max-w-full min-w-0 rounded-xl px-4 py-1.5 data-[chat-message-located]:bg-[color-mix(in_srgb,var(--message-card-background),var(--accent-default)_12%)]",
+              "bg-message-card-background max-w-full min-w-0 rounded-xl px-4 py-1.5 data-[chat-message-located]:bg-[color-mix(in_srgb,var(--message-card-background),var(--accent-default)_12%)]",
+              fillWidth ? "w-full" : "w-fit",
               messageLocationClassName,
             )}
           >
@@ -1541,13 +1582,19 @@ export function AssistantMessage({
     isTerminalMessage(message) &&
     message.fileChangeRecord?.state !== "pending" &&
     (message.fileChangeRecord?.totalFiles ?? 0) > 0;
+  const drawings = isTerminalMessage(message)
+    ? message.displayParts?.filter((part) => part.excalidraw)
+    : undefined;
   const hasContent =
     view.segments.length > 0 ||
+    Boolean(drawings?.length) ||
     Boolean(message.attachments?.length) ||
     (message.status === "canceled" && !continuation?.continued) ||
     (message.status === "failed" && !last);
+  const hasVisibleReply =
+    hasContent || Boolean(message.automaticTaskCreations?.length);
   const showFooterActions =
-    (hasContent || isTerminalMessage(message)) && !continuation?.continued;
+    (hasVisibleReply || isTerminalMessage(message)) && !continuation?.continued;
   const isLatestAssistant = latest;
   const interaction = useContext(CompanionInteraction);
   const activityMessage = continuation?.activityMessage ?? message;
@@ -1560,11 +1607,11 @@ export function AssistantMessage({
   const waitingForReply =
     isLatestAssistant &&
     !interaction &&
-    !hasContent &&
+    !hasVisibleReply &&
     (activityMessage.status === "pending" ||
       activityMessage.status === "running");
   const avatarActivity =
-    hasContent &&
+    hasVisibleReply &&
     (companionActivity === "thinking" || companionActivity === "working")
       ? "idle"
       : companionActivity;
@@ -1580,6 +1627,7 @@ export function AssistantMessage({
   return (
     <ChatReplyMessage
       message={message}
+      fillWidth={drawings?.some((part) => Boolean(part.excalidraw?.elements))}
       name={showIdentity ? displayName : undefined}
       status={
         waitingForReply && (
@@ -1657,8 +1705,15 @@ export function AssistantMessage({
             <ChatMessageParts
               view={view}
               metrics={continuation?.footerMessage.runMetrics}
+              reasoningRunning={message.status === "running" && !interaction}
               showUsageMetrics={showUsageMetrics}
             />
+            {drawings?.map((part) => (
+              <ChatExcalidraw
+                key={part.id}
+                elements={part.excalidraw?.elements}
+              />
+            ))}
             {message.attachments?.length ? (
               <div className="flex flex-wrap items-start gap-1 py-1">
                 <ChatMessageAttachments
@@ -1760,10 +1815,7 @@ const ChatMessage = memo(function ChatMessage({
         message={message}
         replyQuote={
           replyTo ? (
-            <MessageReplyQuote
-              replyTo={replyTo}
-              authorName={quotedWakerName}
-            />
+            <MessageReplyQuote replyTo={replyTo} authorName={quotedWakerName} />
           ) : undefined
         }
         availableSkillIds={availableSkillIds}
@@ -1776,19 +1828,37 @@ const ChatMessage = memo(function ChatMessage({
     );
   }
   return message.role === "assistant" ? (
-    <AssistantMessage
-      view={view}
-      continuation={continuation}
-      latest={latest}
-      last={last}
-      name={name}
-      avatar={avatar}
-      messageAuthors={messageAuthors}
-      onOpenFile={onOpenFile}
-      onOpenFileChange={onOpenFileChange}
-      showUsageMetrics={showUsageMetrics}
-      showFileChanges={showFileChanges}
-    />
+    <>
+      {message.automaticTaskCreations?.length ? (
+        <div className={cn("py-2", assistantMessageRowClassName)}>
+          {message.automaticTaskCreations.map((task) => (
+            <AutomaticTaskCreationCard
+              key={task.taskId}
+              task={task}
+              readingMessageId={message.id}
+              readingSequence={
+                message.readable && !message.optimistic
+                  ? message.createdSequence
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+      ) : null}
+      <AssistantMessage
+        view={view}
+        continuation={continuation}
+        latest={latest}
+        last={last}
+        name={name}
+        avatar={avatar}
+        messageAuthors={messageAuthors}
+        onOpenFile={onOpenFile}
+        onOpenFileChange={onOpenFileChange}
+        showUsageMetrics={showUsageMetrics}
+        showFileChanges={showFileChanges}
+      />
+    </>
   ) : null;
 });
 
@@ -3073,7 +3143,7 @@ function ChatThreadContent({
                               positioning={positioning}
                               viewport={readingRootRef}
                             >
-                              <MarkdownVisibility value={active}>
+                              <ContentVisibility value={active}>
                                 <ProcessExpansion value={readingState.groups}>
                                   <CompanionInteraction
                                     value={companionInteraction}
@@ -3116,7 +3186,7 @@ function ChatThreadContent({
                                     </ChatMessageReplyActions>
                                   </CompanionInteraction>
                                 </ProcessExpansion>
-                              </MarkdownVisibility>
+                              </ContentVisibility>
                             </ChatMessageReading>
                           </>
                         )}

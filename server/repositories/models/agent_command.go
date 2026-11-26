@@ -15,13 +15,13 @@ type AgentCommandReceipt struct {
 	// CreatedAt 是与领域变更一起提交的 Unix 毫秒。
 	CreatedAt int64 `gorm:"autoCreateTime:milli"`
 	// ManagedChatID 标识接收已提交资源变更的来源聊天。
-	ManagedChatID string `gorm:"not null;default:'';index:idx_agent_command_pending,priority:1,where:managed_chat_id <> '' AND managed_projected = 0"`
+	ManagedChatID string `gorm:"not null;default:'';index:idx_agent_command_pending,priority:1,where:managed_chat_id <> '' AND managed_projected = 0;index:idx_agent_command_chat_operation,priority:1,where:managed_chat_id <> ''"`
 	// ManagedExecutionID 标识发起资源变更的原执行。
 	ManagedExecutionID string `gorm:"not null;default:''"`
 	// ManagedWakerID 标识发起资源变更的原伙伴。
 	ManagedWakerID string `gorm:"not null;default:''"`
 	// ManagedOperation 保存已授权的资源操作。
-	ManagedOperation string `gorm:"not null;default:''"`
+	ManagedOperation string `gorm:"not null;default:'';index:idx_agent_command_chat_operation,priority:2"`
 	// ManagedProjected 表示资源变更已在 Chat 日志中结算。
 	ManagedProjected bool `gorm:"not null;default:false"`
 }

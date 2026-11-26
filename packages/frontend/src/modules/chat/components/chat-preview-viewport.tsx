@@ -80,20 +80,28 @@ export function useChatPreviewFit(
 }
 
 const minimumZoom = 0.5;
-const maximumZoom = 4;
+const defaultMaximumZoom = 4;
 const zoomStep = 0.25;
 
 export function ChatPreviewViewport({
   children,
   fittedSize,
   viewportRef,
+  naturalWidth,
 }: {
   children: (zoom: number) => ReactNode;
   fittedSize?: PreviewSize;
   viewportRef: RefObject<HTMLDivElement | null>;
+  naturalWidth?: number;
 }) {
   const { t } = useTranslation("chat");
-  const [zoom, setZoom] = useState(1);
+  const [requestedZoom, setZoom] = useState(1);
+  const maximumZoom = Math.max(
+    defaultMaximumZoom,
+    naturalWidth && fittedSize ? naturalWidth / fittedSize.width : 1,
+  );
+  const zoom = Math.min(requestedZoom, maximumZoom);
+  const step = Math.max(zoomStep, zoom > defaultMaximumZoom ? zoom / 4 : 0);
 
   return (
     <div className="relative min-w-0">
@@ -108,9 +116,7 @@ export function ChatPreviewViewport({
           title={t("previewZoomIn")}
           aria-label={t("previewZoomIn")}
           disabled={zoom >= maximumZoom}
-          onClick={() =>
-            setZoom((current) => Math.min(maximumZoom, current + zoomStep))
-          }
+          onClick={() => setZoom(Math.min(maximumZoom, zoom + step))}
         >
           <ZoomIn />
         </Button>
@@ -121,9 +127,7 @@ export function ChatPreviewViewport({
           title={t("previewZoomOut")}
           aria-label={t("previewZoomOut")}
           disabled={zoom <= minimumZoom}
-          onClick={() =>
-            setZoom((current) => Math.max(minimumZoom, current - zoomStep))
-          }
+          onClick={() => setZoom(Math.max(minimumZoom, zoom - step))}
         >
           <ZoomOut />
         </Button>

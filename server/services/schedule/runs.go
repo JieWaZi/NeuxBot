@@ -217,7 +217,7 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 	if configurationError != nil {
 		return RunView{}, s.failAdmission(ctx, &run, configurationError)
 	}
-	if err := s.validateConfiguration(ctx, run.WakerID, &run.Configuration, true); err != nil {
+	if err := s.validateConfiguration(ctx, run.WakerID, &run.Configuration, true, false); err != nil {
 		return RunView{}, s.failAdmission(ctx, &run, err)
 	}
 	if run.Configuration.WorkflowID != "" {

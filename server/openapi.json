@@ -82054,6 +82054,51 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog.AttachmentReference"
       },
+      "GithubComJieWaZiNeuxBotServerInternalChatEventlogAutomaticTaskCreation": {
+        "type": "object",
+        "properties": {
+          "firstRunAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "首次运行时间",
+            "x-go-field-name": "FirstRunAt"
+          },
+          "instructionPreview": {
+            "type": "string",
+            "description": "指令预览",
+            "x-go-field-name": "InstructionPreview"
+          },
+          "name": {
+            "type": "string",
+            "description": "任务名称",
+            "x-go-field-name": "Name"
+          },
+          "schedule": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskSchedule"
+              },
+              {
+                "description": "定时计划",
+                "x-go-field-name": "Schedule"
+              }
+            ]
+          },
+          "taskId": {
+            "type": "string",
+            "description": "任务标识",
+            "x-go-field-name": "TaskID"
+          },
+          "wakerName": {
+            "type": "string",
+            "description": "执行伙伴",
+            "x-go-field-name": "WakerName"
+          }
+        },
+        "description": "AutomaticTaskCreation 自动任务创建回执。",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalChatEventlogAutomaticTaskCreation",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog.AutomaticTaskCreation"
+      },
       "GithubComJieWaZiNeuxBotServerInternalChatEventlogCodeReference": {
         "type": "object",
         "properties": {
@@ -82311,6 +82356,15 @@
             "description": "Attachments 是用户消息携带的有序附件引用。",
             "x-go-field-name": "Attachments",
             "x-tag-json": "attachments,omitempty"
+          },
+          "automaticTaskCreations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalChatEventlogAutomaticTaskCreation"
+            },
+            "description": "自动任务回执",
+            "x-go-field-name": "AutomaticTaskCreations",
+            "x-tag-json": "automaticTaskCreations,omitempty"
           },
           "codeReferenceOnly": {
             "type": "boolean",
@@ -82593,6 +82647,19 @@
       "GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart": {
         "type": "object",
         "properties": {
+          "excalidraw": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageExcalidraw"
+              },
+              {
+                "description": "绘图成果",
+                "x-go-field-name": "Excalidraw",
+                "x-go-star-level": 1,
+                "x-tag-json": "excalidraw,omitempty"
+              }
+            ]
+          },
           "id": {
             "type": "string",
             "description": "展示片段标识",
@@ -82699,6 +82766,20 @@
         "description": "MessageDisplayPart 是聊天接口返回的最小跨 Runtime 展示部件。\n工具展示身份包含 Runtime 调用作用域；原生工具标识用于审批与原生定位。",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/chat/messageview.MessageDisplayPart"
+      },
+      "GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageExcalidraw": {
+        "type": "object",
+        "properties": {
+          "elements": {
+            "type": "string",
+            "description": "图元数据",
+            "x-go-field-name": "Elements",
+            "x-tag-json": "elements,omitempty"
+          }
+        },
+        "description": "MessageExcalidraw 是插件绘图成果。",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageExcalidraw",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/chat/messageview.MessageExcalidraw"
       },
       "GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFileChangeDiff": {
         "type": "object",

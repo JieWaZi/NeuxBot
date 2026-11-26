@@ -2,13 +2,14 @@ package schedule
 
 import (
 	"context"
-	"reflect"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
 	"github.com/JieWaZi/NeuxBot/server/internal/schedulecalc"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -115,7 +116,7 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 	config.WorkingDirectory = strings.TrimSpace(config.WorkingDirectory)
 	config.Schedule.Timezone = strings.TrimSpace(config.Schedule.Timezone)
 	config.Schedule.Cron = strings.TrimSpace(config.Schedule.Cron)
-	if !utf8.ValidString(config.Name) || !utf8.ValidString(config.Instruction) || config.Name == "" || utf8.RuneCountInString(config.Name) > 120 || (kind != constants.AutomaticTaskTargetKindWorkflow && config.Instruction == "") || utf8.RuneCountInString(config.Instruction) > constants.AutomaticTaskInstructionMaximumRunes {
+	if !utf8.ValidString(config.Name) || !utf8.ValidString(config.Instruction) || config.Name == "" || utf8.RuneCountInString(config.Name) > constants.AutomaticTaskNameMaximumRunes || (kind != constants.AutomaticTaskTargetKindWorkflow && config.Instruction == "") || utf8.RuneCountInString(config.Instruction) > constants.AutomaticTaskInstructionMaximumRunes {
 		return SavedTask{}, status_error.BadRequest
 	}
 	var task models.AutomaticTask
@@ -131,15 +132,21 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 	} else {
 		task = models.AutomaticTask{ID: util.New(), WakerID: wakerID}
 	}
-	if config.WorkingDirectory != "" && (id == "" || config.WorkingDirectory != task.WorkingDirectory) {
+	// 新建或更换工作范围时核对本轮授权。已保存的项目按当前配置校验。
+	requireGrantedRoots := capability.Active(ctx) && (id == "" || wakerID != task.WakerID ||
+		config.ProjectID != task.ProjectID || config.WorkingDirectory != task.WorkingDirectory)
+	if config.WorkingDirectory != "" && (config.WorkingDirectory != task.WorkingDirectory || requireGrantedRoots) {
 		source, err := projectsource.Resolve(config.WorkingDirectory)
 		if err != nil {
+			return SavedTask{}, status_error.AutomaticTaskWorkspaceInvalid
+		}
+		if requireGrantedRoots && (source.Path != config.WorkingDirectory || !slices.Contains(capability.FileRoots(ctx), source.Path)) {
 			return SavedTask{}, status_error.AutomaticTaskWorkspaceInvalid
 		}
 		config.WorkingDirectory = source.Path
 	}
 	if validate {
-		if err := s.validateConfiguration(ctx, wakerID, &config, false); err != nil {
+		if err := s.validateConfiguration(ctx, wakerID, &config, false, requireGrantedRoots); err != nil {
 			return SavedTask{}, err
 		}
 	}
@@ -151,11 +158,16 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 			return SavedTask{}, err
 		}
 		future := rule.Next(now)
-		if future.IsZero() && (id == "" || !reflect.DeepEqual(task.Schedule, config.Schedule)) {
+		sameSchedule := id != "" && task.Schedule == config.Schedule
+		if future.IsZero() && !sameSchedule {
 			return SavedTask{}, status_error.AutomaticScheduleInvalid
 		}
 		if config.Enabled {
 			next = timePointer(future)
+			if sameSchedule && task.Enabled && capability.Active(ctx) {
+				// 只改名称或指令时沿用游标，调度器仍能接纳已经到期的机会。
+				next = task.NextRunAt
+			}
 		}
 	} else if config.Trigger == constants.AutomaticTaskTriggerAPI {
 		config.Schedule = models.AutomaticTaskSchedule{}
@@ -182,9 +194,23 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 	task.UpdatedAt = now.UnixMilli()
 	if id == "" {
 		task.CreatedAt = task.UpdatedAt
-		err = s.config.Tasks.Create(ctx, task)
+		if capability.Active(ctx) {
+			err = s.commitPartnerCreation(ctx, task)
+		} else {
+			err = s.config.Tasks.Create(ctx, task)
+		}
 	} else {
-		err = s.WithAuthorizationWrite(ctx, func(ctx context.Context) error { return s.config.Tasks.UpdateConfiguration(ctx, task, storedRevision) })
+		err = s.WithAuthorizationWrite(ctx, func(ctx context.Context) error {
+			if !capability.Active(ctx) {
+				return s.config.Tasks.UpdateConfiguration(ctx, task, storedRevision)
+			}
+			return s.config.Transactions.Transaction(ctx, func(ctx context.Context) error {
+				if err := s.config.Tasks.UpdateConfiguration(ctx, task, storedRevision); err != nil {
+					return err
+				}
+				return capability.Commit(ctx, partnerTaskEditReceipt(task))
+			})
+		})
 	}
 	if err != nil {
 		return SavedTask{}, err
@@ -192,7 +218,7 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 	return SavedTask{TaskID: task.ID, Token: token}, nil
 }
 
-func (s *Service) validateConfiguration(ctx context.Context, wakerID string, config *models.AutomaticTaskConfiguration, resolved bool) error {
+func (s *Service) validateConfiguration(ctx context.Context, wakerID string, config *models.AutomaticTaskConfiguration, resolved, requireGrantedRoots bool) error {
 	if config.WorkflowID != "" {
 		return s.validateWorkflowConfiguration(ctx, wakerID, config)
 	}
@@ -228,8 +254,12 @@ func (s *Service) validateConfiguration(ctx context.Context, wakerID string, con
 		if len(directories) == 0 {
 			return status_error.AutomaticTaskWorkspaceInvalid
 		}
+		var grantedRoots []string
+		if requireGrantedRoots {
+			grantedRoots = capability.FileRoots(ctx)
+		}
 		for _, directory := range directories {
-			if !projectsource.Available(directory.Source) {
+			if !projectsource.Available(directory.Source) || (requireGrantedRoots && !slices.Contains(grantedRoots, directory.Source.Path)) {
 				return status_error.AutomaticTaskWorkspaceInvalid
 			}
 		}

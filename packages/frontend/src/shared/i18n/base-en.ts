@@ -2452,6 +2452,13 @@ export const baseEn = {
     fileCopyPath: "Copy full path",
     filePathCopied: "Path copied",
     filePathCopyFailed: "Could not copy path. Please retry.",
+    excalidrawDiagram: "Excalidraw diagram",
+    excalidrawOpen: "Open Excalidraw diagram",
+    excalidrawDownload: "Download Excalidraw diagram",
+    excalidrawSource: "Excalidraw source",
+    excalidrawUnavailable:
+      "This tool call did not provide a previewable Excalidraw diagram.",
+    excalidrawRenderError: "Could not render the Excalidraw diagram.",
     mermaidView: "Mermaid display mode",
     mermaidDiagram: "Diagram",
     mermaidSource: "Source",

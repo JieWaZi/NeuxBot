@@ -601,16 +601,39 @@ func TestResourceManagementInstructionsFollowTrustedChatGrants(t *testing.T) {
 		}
 		return []capability.Binding{agentPreparationBinding(t, "skills.packages.revise"), agentPreparationBinding(t, "mcp.connectors.update")}
 	}
+	manager.automaticTaskBindings = func(given models.Chat, executionID string, config ExecutionConfiguration) []capability.Binding {
+		if given.WakerID != "partner" || executionID != "turn" || config.AccountID != "system" {
+			t.Fatal("automatic task grant lost its current partner or execution configuration")
+		}
+		return []capability.Binding{
+			agentPreparationBinding(t, constants.AutomaticTaskCreateOperation),
+			agentPreparationBinding(t, constants.AutomaticTaskListOperation),
+			agentPreparationBinding(t, constants.AutomaticTaskUpdateOperation),
+		}
+	}
 	for _, tc := range []struct {
-		name, actor string
-		automatic   string
-		hidden      bool
-		domains     *[]string
-		wantSkill   bool
-		wantMCP     bool
+		// name 区分入口测试场景。
+		name string
+		// actor 是本轮消息参与者。
+		actor string
+		// automatic 标识自动任务来源，普通对话为空。
+		automatic string
+		// hidden 表示对话由其他产品入口持有。
+		hidden bool
+		// domains 是入口规定的能力领域白名单。
+		domains *[]string
+		// wantSkill 表示该入口应收到技能管理规则。
+		wantSkill bool
+		// wantMCP 表示该入口应收到连接器管理规则。
+		wantMCP bool
+		// readOnly 表示工作区明确只读。
+		readOnly bool
+		// wantSchedule 表示该入口应收到自动任务创建和编辑规则。
+		wantSchedule bool
 	}{
-		{name: "interactive partner", actor: "user", wantSkill: true, wantMCP: true},
+		{name: "interactive partner", actor: "user", wantSkill: true, wantMCP: true, wantSchedule: true},
 		{name: "interactive scoped", actor: "user", domains: &[]string{"skills"}, wantSkill: true},
+		{name: "read only", actor: "user", readOnly: true, wantSkill: true, wantMCP: true},
 		{name: "workflow", actor: "workflow"},
 		{name: "automatic", actor: "user", automatic: "scheduled-run"},
 		{name: "hidden conversation", actor: "user", hidden: true},
@@ -619,7 +642,7 @@ func TestResourceManagementInstructionsFollowTrustedChatGrants(t *testing.T) {
 			current := chat
 			current.HiddenFromWakerHistory = tc.hidden
 			request := pendingMessage{entryPoint: WorkbenchEntryPoint, message: userMessage{Actor: tc.actor}, automaticRunID: tc.automatic,
-				runtime: runtimeSelection{RuntimeID: "unsupported"}, allowedAgentDomains: tc.domains}
+				runtime: runtimeSelection{RuntimeID: "unsupported", AccountID: "system", WorkspaceReadOnly: tc.readOnly}, allowedAgentDomains: tc.domains}
 			request.entryPoint = trustedWorkbenchEntryPoint(request, messageChat{chat: current})
 			var skills []agentapi.Skill
 			var instructions, contextInstructions []agentapi.Instruction
@@ -634,6 +657,10 @@ func TestResourceManagementInstructionsFollowTrustedChatGrants(t *testing.T) {
 			prompt := agentapi.DeveloperInstructions(instructions)
 			if strings.Contains(prompt, "skills.packages operations") != tc.wantSkill || strings.Contains(prompt, "mcp.connectors operations") != tc.wantMCP {
 				t.Fatalf("management guidance does not match the grant: %s", prompt)
+			}
+			if strings.Contains(prompt, constants.AutomaticTaskCreateOperation) != tc.wantSchedule ||
+				strings.Contains(prompt, constants.AutomaticTaskUpdateOperation) != tc.wantSchedule {
+				t.Fatalf("automatic task guidance does not match the grant: %s", prompt)
 			}
 			if len(contextInstructions) != 0 {
 				t.Fatalf("stable management guidance was repeated in dynamic turn context: %#v", contextInstructions)

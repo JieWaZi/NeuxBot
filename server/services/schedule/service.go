@@ -13,6 +13,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	integrationapi "github.com/JieWaZi/NeuxBot/server/internal/integration"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/schedulecalc"
@@ -94,6 +95,8 @@ type Config struct {
 	TeamTasks controllers.ChannelTaskController
 	// Tasks 持久保存配置、运行槽和唯一机会。
 	Tasks controllers.AutomaticTaskController
+	// Commands 保存对话创建任务的原子回执。
+	Commands capability.Store
 	// Transactions 提供机会领取及聚合删除的事务边界。
 	Transactions controllers.TransactionController
 	// Wakers 验证任务归属仍存在。

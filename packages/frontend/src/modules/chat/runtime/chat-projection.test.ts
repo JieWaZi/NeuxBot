@@ -1042,3 +1042,35 @@ it("历史插件引用保留原始版本和修订，不从当前资源覆盖", (
   });
   expect(projected.metadata?.custom?.plugins).toEqual([frozen]);
 });
+
+it("shows a created task immediately without discarding newer live reply content", () => {
+  const running: BotChatMessage = {
+    id: "reply",
+    role: "assistant",
+    status: "running",
+    revision: 10,
+    liveRevision: 10,
+    content: "Live reply",
+  };
+  const task = {
+    taskId: "task-1",
+    name: "Weekly report",
+  };
+  const event: ChatEvent = {
+    type: "execution.delivery",
+    message: {
+      id: "reply",
+      role: "assistant",
+      status: "running",
+      revision: 7,
+      liveRevision: 6,
+      readable: true,
+      automaticTaskCreations: [task],
+    },
+  };
+  const messages = applyChatEvent([running], event);
+  expect(messages).toEqual([
+    { ...running, automaticTaskCreations: [task], readable: true },
+  ]);
+  expect(applyChatEvent(messages, event)).toBe(messages);
+});

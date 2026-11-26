@@ -320,6 +320,13 @@ func testNativeProductHostConnection(t *testing.T, filtered bool) {
 		if filtered {
 			endpoint := httptest.NewServer(registry)
 			manager.agentEndpoint = endpoint.URL + constants.AgentCLIPath
+			manager.automaticTaskBindings = func(models.Chat, string, ExecutionConfiguration) []capability.Binding {
+				return []capability.Binding{
+					agentPreparationBinding(t, constants.AutomaticTaskCreateOperation),
+					agentPreparationBinding(t, constants.AutomaticTaskListOperation),
+					agentPreparationBinding(t, constants.AutomaticTaskUpdateOperation),
+				}
+			}
 			closeEndpoint = endpoint.Close
 		}
 		return core, store, func() {
@@ -331,6 +338,9 @@ func testNativeProductHostConnection(t *testing.T, filtered bool) {
 	core, store, closeRuntime := open()
 	defer func() { closeRuntime() }()
 	options := WorkOptions{RuntimeID: "codex", Model: "fixture-model", PermissionLevel: constants.PermissionLevelAuto}
+	if filtered {
+		options.EntryPoint = WorkbenchEntryPoint
+	}
 	intent := WorkIntent{ClientRequestID: "host-grant", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}}, Input: WorkInput{Actor: "user", Content: "first clean input"}, Options: options}
 	run := func(message string) agent.NativeSessionKey {
 		t.Helper()
@@ -397,6 +407,56 @@ func testNativeProductHostConnection(t *testing.T, filtered bool) {
 	}
 	if filtered && os.Getenv("PATH") != inheritedPath {
 		t.Fatal("原生执行修改了宿主进程的 PATH")
+	}
+	if filtered {
+		assertNativeAutomaticTaskInstructions(t, trace)
+	}
+}
+
+func assertNativeAutomaticTaskInstructions(t *testing.T, trace []byte) {
+	t.Helper()
+	var methods, prompts []string
+	for _, line := range strings.Split(string(trace), "\n") {
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var frame struct {
+			// Method 是 Codex 原生协议的方法名。
+			Method string `json:"method"`
+			// Params 是原生线程或回合的请求参数。
+			Params struct {
+				// DeveloperInstructions 是线程级开发者指令。
+				DeveloperInstructions string `json:"developerInstructions"`
+				// Input 是本轮发送的输入块。
+				Input []struct {
+					// Text 是输入块的正文。
+					Text string `json:"text"`
+				} `json:"input"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal([]byte(line), &frame); err != nil {
+			t.Fatal(err)
+		}
+		switch frame.Method {
+		case "thread/start", "thread/resume":
+			methods = append(methods, frame.Method)
+			if strings.Count(frame.Params.DeveloperInstructions, agent.AutomaticTaskCreationInstructions) != 1 ||
+				strings.Count(frame.Params.DeveloperInstructions, agent.AutomaticTaskEditingInstructions) != 1 {
+				t.Errorf("%s must carry the automatic task instructions exactly once", frame.Method)
+			}
+		case "turn/start":
+			methods = append(methods, frame.Method)
+			if len(frame.Params.Input) != 1 {
+				t.Fatalf("expected only the current user input: %+v", frame.Params.Input)
+			}
+			prompts = append(prompts, frame.Params.Input[0].Text)
+		}
+	}
+	if want := []string{"thread/start", "turn/start", "turn/start", "thread/resume", "turn/start"}; !slices.Equal(methods, want) {
+		t.Errorf("automatic task capability changed the native session lifecycle: got %v, want %v", methods, want)
+	}
+	if want := []string{"first clean input", "second clean input", "continued after Core restart"}; !slices.Equal(prompts, want) {
+		t.Errorf("automatic task capability changed user text: got %q, want %q", prompts, want)
 	}
 }
 

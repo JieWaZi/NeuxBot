@@ -327,6 +327,7 @@ func ClonePublicEvent(event PublicEvent) PublicEvent {
 			message.Question = &question
 		}
 		message.Attachments = append([]eventlog.AttachmentReference(nil), event.Message.Attachments...)
+		message.AutomaticTaskCreations = append([]eventlog.AutomaticTaskCreation(nil), event.Message.AutomaticTaskCreations...)
 		message.Skills = append([]eventlog.MessageSkillReference(nil), event.Message.Skills...)
 		message.Connectors = append([]eventlog.MessageConnectorReference(nil), event.Message.Connectors...)
 		message.CodeReferences = append([]eventlog.CodeReference(nil), event.Message.CodeReferences...)

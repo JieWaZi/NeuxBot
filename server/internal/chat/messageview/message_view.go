@@ -317,6 +317,13 @@ func (p *MessageViewBuilder) applyExecutionDelivery(record eventlog.Record) (str
 	if data.Summary != "" {
 		p.deliverySummaries[message.ID] = data.Summary
 	}
+	if task := data.AutomaticTaskCreation; task != nil {
+		if !slices.ContainsFunc(message.AutomaticTaskCreations, func(current eventlog.AutomaticTaskCreation) bool {
+			return current.TaskID == task.TaskID
+		}) {
+			message.AutomaticTaskCreations = append(message.AutomaticTaskCreations, *task)
+		}
+	}
 	message.Revision = max(message.Revision+1, record.Sequence)
 	message.UpdatedAt = record.RecordedAt
 	return message.ID, nil
@@ -738,6 +745,13 @@ func (p *MessageViewBuilder) applyToolResult(message *Message, event MessageRunt
 	p.projectToolPart(message.ExecutionID, part, state)
 	wasRunning := part.ToolStatus == constants.MessageToolStatusRunning
 	part.ToolStatus = displayToolResultStatus(data)
+	part.Excalidraw = nil
+	if part.ToolStatus == constants.MessageToolStatusCompleted && state.excalidraw != nil {
+		part.Excalidraw = &MessageExcalidraw{}
+		if excalidrawSucceeded(data) {
+			*part.Excalidraw = *state.excalidraw
+		}
+	}
 	if wasRunning && part.ToolStatus != constants.MessageToolStatusRunning {
 		p.runningTools[message.ID]--
 	}
@@ -911,6 +925,7 @@ func cloneMessage(message Message, public bool) Message {
 		clone.FileChangeRecord = &record
 	}
 	clone.Attachments = append([]eventlog.AttachmentReference(nil), message.Attachments...)
+	clone.AutomaticTaskCreations = slices.Clone(message.AutomaticTaskCreations)
 	clone.Skills = append([]eventlog.MessageSkillReference(nil), message.Skills...)
 	clone.Connectors = append([]eventlog.MessageConnectorReference(nil), message.Connectors...)
 	clone.CodeReferences = append([]eventlog.CodeReference(nil), message.CodeReferences...)
@@ -920,6 +935,10 @@ func cloneMessage(message Message, public bool) Message {
 			summary := *part.ToolSafeSummary
 			summary.Files = append([]ToolFileChangeSummary(nil), part.ToolSafeSummary.Files...)
 			clone.DisplayParts[index].ToolSafeSummary = &summary
+		}
+		if part.Excalidraw != nil {
+			scene := *part.Excalidraw
+			clone.DisplayParts[index].Excalidraw = &scene
 		}
 		if part.ToolApprovalResult != nil {
 			result := *part.ToolApprovalResult

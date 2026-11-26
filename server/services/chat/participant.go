@@ -93,7 +93,7 @@ func (m *service) AppendParticipantMessages(
 	if err != nil {
 		return err
 	}
-	m.queryIndexes.indexChatCursor(chatID, committed)
+	m.queryIndexes.indexChatCursor(context.Background(), chatID, committed)
 	m.eventCommitter.publishCommitted(committed)
 	return nil
 }

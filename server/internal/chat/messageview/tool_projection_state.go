@@ -7,7 +7,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
-// toolProjectionState 只保留当前输入的安全展示事实，不驻留参数正文、工具输出或 Diff 原文。
+// toolProjectionState 保留经裁剪的工具展示事实。
 type toolProjectionState struct {
 	// fields 保留当前展示字段；字段省略表示沿用，显式 nil 或空值表示替换和清除。
 	fields map[string]interface{}
@@ -15,6 +15,8 @@ type toolProjectionState struct {
 	contentSummary *ToolSafeSummary
 	// commandID 引用已匹配的同执行 Core 命令事实，后续原生元数据不得覆盖其业务短语。
 	commandID string
+	// excalidraw 是绘图调用的有界场景，完成前不对外发布。
+	excalidraw *MessageExcalidraw
 }
 
 // toolProjectionKey 为一个 Runtime 调用内的工具建立无歧义的稳定展示身份。
@@ -35,6 +37,7 @@ func (s *toolProjectionState) apply(data map[string]interface{}, scope workspace
 	for key, value := range projectToolFacts(data, 0, allowFallback) {
 		s.fields[key] = value
 	}
+	s.projectExcalidrawInput(data)
 	if _, present := data["content"]; present {
 		s.contentSummary = buildToolSafeSummary(map[string]interface{}{"content": data["content"]}, scope)
 	}

@@ -20,6 +20,7 @@ import { toast } from "@/shared/ui/sonner";
 
 import { copyPlainText, downloadTextFile } from "./chat-markdown-export";
 import { createMermaidPNG, readMermaidSize } from "./chat-mermaid-export";
+import { ChatDiagramFrame } from "./chat-diagram-frame";
 import { ChatPreviewDialog } from "./chat-preview-dialog";
 import {
   ChatPreviewViewport,
@@ -174,11 +175,9 @@ export function ChatMermaid({ code }: { code: string }) {
   ];
 
   return (
-    <section
-      className="bg-muted my-3 min-w-0 rounded-lg p-3"
-      data-streamdown="mermaid-block"
-    >
-      <header className="mb-3 flex items-center justify-between gap-3">
+    <ChatDiagramFrame
+      kind="mermaid"
+      leading={
         <SegmentedControl
           ariaLabel={t("mermaidView")}
           options={viewOptions}
@@ -186,7 +185,9 @@ export function ChatMermaid({ code }: { code: string }) {
           value={view}
           onValueChange={setView}
         />
-        <div className="flex items-center gap-1">
+      }
+      actions={
+        <>
           <Button
             type="button"
             size="icon-sm"
@@ -233,9 +234,9 @@ export function ChatMermaid({ code }: { code: string }) {
               <Maximize2 />
             </Button>
           )}
-        </div>
-      </header>
-
+        </>
+      }
+    >
       {view === "source" ? (
         <pre className="bg-muted type-body max-h-[520px] overflow-auto rounded-lg p-4 font-mono whitespace-pre">
           <code>{code}</code>
@@ -263,6 +264,6 @@ export function ChatMermaid({ code }: { code: string }) {
         {/* Radix 会保留关闭动画中的 Content；图形随实际卸载一起释放。 */}
         {svg ? <Diagram key={svg} fullscreen svg={svg} /> : null}
       </ChatPreviewDialog>
-    </section>
+    </ChatDiagramFrame>
   );
 }

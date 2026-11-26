@@ -12,8 +12,8 @@ import (
 // AgentCommandController 管理原子领域回执及其聊天投影确认。
 type AgentCommandController interface {
 	capability.Store
-	// ListPendingManagedChanges 分页读取全局或指定聊天的未确认资源变更。
-	ListPendingManagedChanges(ctx context.Context, chatID string, after capability.Receipt, limit int) ([]capability.Receipt, error)
+	// ListPendingManagedChanges 分页读取未确认的资源变更，可限定聊天和操作。
+	ListPendingManagedChanges(ctx context.Context, chatID, operation string, after capability.Receipt, limit int) ([]capability.Receipt, error)
 	// MarkManagedChangeProjected 确认指定回执的日志投影已完成。
 	MarkManagedChangeProjected(ctx context.Context, id string) error
 }
@@ -52,11 +52,14 @@ func (c *agentCommandController) Create(ctx context.Context, value capability.Re
 	return nil
 }
 
-func (c *agentCommandController) ListPendingManagedChanges(ctx context.Context, chatID string, after capability.Receipt, limit int) ([]capability.Receipt, error) {
+func (c *agentCommandController) ListPendingManagedChanges(ctx context.Context, chatID, operation string, after capability.Receipt, limit int) ([]capability.Receipt, error) {
 	query := controllerDB(ctx, c.db).Where("managed_chat_id <> '' AND managed_projected = 0").
 		Where("(managed_chat_id, id) > (?, ?)", after.Origin.ChatID, after.ID)
 	if chatID != "" {
 		query = query.Where("managed_chat_id = ?", chatID)
+	}
+	if operation != "" {
+		query = query.Where("managed_operation = ?", operation)
 	}
 	var rows []models.AgentCommandReceipt
 	if err := query.Order("managed_chat_id, id").Limit(limit).Find(&rows).Error; err != nil {

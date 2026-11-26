@@ -69,6 +69,12 @@ func operation(id, summary, effect, completion, guide string, fields ...Field) O
 		},
 	}
 	switch id {
+	case constants.AutomaticTaskUpdateOperation:
+		op.InputSchema["anyOf"] = []any{
+			map[string]any{"required": []string{"name"}},
+			map[string]any{"required": []string{"instruction"}},
+			map[string]any{"required": []string{"schedule"}},
+		}
 	case constants.WakerProfileOptimizeOperation:
 		op.InputSchema["anyOf"] = []any{
 			map[string]any{"required": []string{"content"}},
@@ -146,7 +152,23 @@ func catalog() []Operation {
 		{Name: "revision", Required: true, Schema: map[string]any{"type": "string", "pattern": "^[0-9a-f]{64}$"}},
 		{Name: "content", Schema: map[string]any{"type": "string", "maxLength": constants.WakerProfileContentMaximumBytes, "description": "Updated AGENTS.md, at most 1,300 tokens using cl100k_base."}},
 	}, profileOverview...)
+	taskFields := func(required bool) []Field {
+		return []Field{
+			{Name: "name", Required: required, Schema: map[string]any{"type": "string", "minLength": 1, "maxLength": constants.AutomaticTaskNameMaximumRunes}},
+			{Name: "instruction", Required: required, Schema: map[string]any{"type": "string", "minLength": 1, "maxLength": constants.AutomaticTaskInstructionMaximumRunes}},
+			{Name: "schedule", Required: required, Schema: automaticTaskScheduleSchema()},
+		}
+	}
+	taskID := map[string]any{"type": "string", "minLength": 1, "maxLength": 32}
 	result := []Operation{
+		operation(constants.AutomaticTaskCreateOperation, "Create and enable a new scheduled task for the current partner. Use automatic.tasks.update to edit an existing task. Supply a self-contained instruction and a schedule with an IANA time zone.", mutation, immediate, "automatic.tasks", taskFields(true)...),
+		operation(constants.AutomaticTaskListOperation, "Find scheduled tasks created in this chat. Provide taskId to read one task's full saved instruction, schedule and current revision. Without taskId, return summaries; use nextOffset to continue.", read, immediate, "automatic.tasks",
+			Field{Name: "taskId", Schema: taskID}, Field{Name: "offset", Schema: map[string]any{"type": "integer", "minimum": 0, "maximum": 2147483647}}),
+		operation(constants.AutomaticTaskUpdateOperation, "Edit a scheduled task created in this chat. Read the current task first. Supply its ID, revision and only the fields the user wants changed. If changing the schedule, use a complete rule with only the fields for its kind.", mutation, immediate, "automatic.tasks",
+			append([]Field{
+				{Name: "taskId", Required: true, Schema: taskID},
+				{Name: "revision", Required: true, Schema: map[string]any{"type": "integer", "minimum": 1, "maximum": 9007199254740991}},
+			}, taskFields(false)...)...),
 		operation("knowledge.jobs.start", "Start document ingestion requested in chat: persist selected current-message attachments as originals, then generate summaries and knowledge according to library indexing settings. Message adds extraction requirements; the host preserves the original request and inherits this execution's model configuration. For existing-Wiki maintenance use knowledge.wiki.maintain. Preauthorized ingestion may omit selection fields.", mutation, accepted, "knowledge", text("libraryId", false), text("backend", false), text("connectionId", false), Field{Name: "attachmentIndexes", Schema: map[string]any{"type": "array", "items": map[string]any{"type": "integer", "minimum": 0}, "uniqueItems": true, "maxItems": 100}}, list("sourceVersionIds"), text("message", false)),
 
 		operation("knowledge.libraries.list", "List knowledge resources frozen for this execution.", read, immediate, "knowledge"),
@@ -378,6 +400,39 @@ func wakerInterviewSchema() map[string]any {
 	return map[string]any{"type": "array", "minItems": 2, "maxItems": 3, "items": question}
 }
 
+func automaticTaskScheduleSchema() map[string]any {
+	integer := func(minimum, maximum int) map[string]any {
+		return map[string]any{"type": "integer", "minimum": minimum, "maximum": maximum}
+	}
+	fields := map[string]map[string]any{
+		"onceAt":     {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}$", "description": "Local time in YYYY-MM-DDTHH:mm."},
+		"minute":     integer(0, 59),
+		"hour":       integer(0, 23),
+		"weekday":    integer(0, 6),
+		"dayOfMonth": integer(1, 31),
+		"cron":       {"type": "string", "minLength": 1, "maxLength": 120, "description": "Five-field cron expression without a timezone prefix."},
+	}
+	shape := func(kind constants.AutomaticScheduleKind, names ...string) map[string]any {
+		properties := map[string]any{
+			"kind":     map[string]any{"type": "string", "const": string(kind)},
+			"timezone": map[string]any{"type": "string", "minLength": 1, "maxLength": 120, "description": "IANA time zone such as Asia/Shanghai."},
+		}
+		for _, name := range names {
+			properties[name] = fields[name]
+		}
+		return map[string]any{"type": "object", "additionalProperties": false,
+			"required": append([]string{"kind", "timezone"}, names...), "properties": properties}
+	}
+	return map[string]any{"type": "object", "oneOf": []any{
+		shape(constants.AutomaticScheduleKindOnce, "onceAt"),
+		shape(constants.AutomaticScheduleKindHourly, "minute"),
+		shape(constants.AutomaticScheduleKindDaily, "hour", "minute"),
+		shape(constants.AutomaticScheduleKindWeekly, "weekday", "hour", "minute"),
+		shape(constants.AutomaticScheduleKindMonthly, "dayOfMonth", "hour", "minute"),
+		shape(constants.AutomaticScheduleKindCron, "cron"),
+	}}
+}
+
 // outputSchema maintains only CLI result boundaries without duplicating source manifests, execution evidence, or dynamic user schemas.
 func outputSchema(id string) map[string]any {
 	object := func(names ...string) map[string]any {
@@ -391,6 +446,12 @@ func outputSchema(id string) map[string]any {
 		return object("completed", "resource")
 	}
 	switch id {
+	case constants.AutomaticTaskCreateOperation:
+		return object("taskId", "name", "wakerName", "instructionPreview", "schedule", "firstRunAt")
+	case constants.AutomaticTaskListOperation:
+		return object("items", "nextOffset")
+	case constants.AutomaticTaskUpdateOperation:
+		return object("taskId", "name", "schedule", "revision", "nextRunAt")
 	case "workflow.authoring.prepare":
 		schema := object("workflow", "annotations", "topics", "guideIds", "content", "resources", "operations", "execution")
 		schema["properties"].(map[string]any)["workflow"] = outputSchema("workflow.source.get")
@@ -521,8 +582,11 @@ func outputSchema(id string) map[string]any {
 // DisplayLabel returns a fixed product action without model data; text does not determine completion semantics.
 func (o Operation) DisplayLabel() string {
 	labels := map[string]string{
-		"knowledge.pages.purge":   "删除已归并的重复页面",
-		"knowledge.libraries.get": "读取知识库设置", "knowledge.sources.list": "查看知识来源", "knowledge.sources.read": "核查原文证据", "knowledge.pages.list": "查看知识页面", "knowledge.themes.list": "查看知识目录", "knowledge.index.get": "读取知识索引", "knowledge.revisions.list": "查看知识历史", "knowledge.revisions.get": "读取历史版本", "knowledge.jobs.list": "查看整理任务", "knowledge.jobs.get": "查看整理结果", "knowledge.audit.get": "核查知识质量", "knowledge.activity.list": "查看知识活动", "knowledge.export.get": "导出知识正文",
+		constants.AutomaticTaskCreateOperation: "创建自动任务",
+		constants.AutomaticTaskListOperation:   "查看对话创建的任务",
+		constants.AutomaticTaskUpdateOperation: "编辑自动任务",
+		"knowledge.pages.purge":                "删除已归并的重复页面",
+		"knowledge.libraries.get":              "读取知识库设置", "knowledge.sources.list": "查看知识来源", "knowledge.sources.read": "核查原文证据", "knowledge.pages.list": "查看知识页面", "knowledge.themes.list": "查看知识目录", "knowledge.index.get": "读取知识索引", "knowledge.revisions.list": "查看知识历史", "knowledge.revisions.get": "读取历史版本", "knowledge.jobs.list": "查看整理任务", "knowledge.jobs.get": "查看整理结果", "knowledge.audit.get": "核查知识质量", "knowledge.activity.list": "查看知识活动", "knowledge.export.get": "导出知识正文",
 		"knowledge.pages.write": "修订知识页面", "knowledge.pages.replace": "精确修订知识", "knowledge.pages.rename": "重命名知识页面", "knowledge.pages.delete": "归档知识页面", "knowledge.revisions.restore": "恢复知识版本", "knowledge.themes.write": "调整知识目录", "knowledge.sources.import": "导入知识来源", "knowledge.jobs.retry": "重试知识整理",
 		"knowledge.jobs.start":     "接纳授权知识整理",
 		"knowledge.wiki.maintain":  "提交 Wiki 维护",

@@ -140,6 +140,8 @@ type MessageDisplayPart struct {
 	ToolSafeSummary *ToolSafeSummary `json:"toolSafeSummary,omitempty"`
 	// 工具审批结果
 	ToolApprovalResult *ToolApprovalResult `json:"toolApprovalResult,omitempty"`
+	// 绘图成果
+	Excalidraw *MessageExcalidraw `json:"excalidraw,omitempty"`
 }
 
 // MessageFork 是消息操作可使用的安全分叉能力。
@@ -205,6 +207,8 @@ type Message struct {
 	ReplyTo *eventlog.MessageReply `json:"replyTo,omitempty"`
 	// 问题卡
 	Question *MessageQuestion `json:"question,omitempty"`
+	// 自动任务回执
+	AutomaticTaskCreations []eventlog.AutomaticTaskCreation `json:"automaticTaskCreations,omitempty"`
 	// Attachments 是用户消息携带的有序附件引用。
 	Attachments []eventlog.AttachmentReference `json:"attachments,omitempty"`
 	// Skills 是用户发送消息时明确选择的技能快照。

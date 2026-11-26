@@ -77,6 +77,8 @@ type Service interface {
 	ReadMessageHistory(ctx context.Context, chatID string, beforeSequence int64, limit int) (MessageHistoryPage, error)
 	// ReadMessageTimeline 读取界面消息及问答项，团队页可提供冻结日志上界。
 	ReadMessageTimeline(ctx context.Context, chatID string, beforeSequence, throughSequence int64, limit int) (MessageHistoryPage, error)
+	// RestoreAutomaticTaskCreationCards 有界补齐普通消息首屏上的自动任务创建卡片。
+	RestoreAutomaticTaskCreationCards(ctx context.Context, chatID string)
 	// ReadTeamReplyTarget 按同一团队主会话中的已公开消息身份读取引用。
 	ReadTeamReplyTarget(ctx context.Context, threadID, leadChatID, messageID string) (ReplyTarget, error)
 	// ReadManagedResourceChanges 只读取已提交的资源变更及其原时间线位置。

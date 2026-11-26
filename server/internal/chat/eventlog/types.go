@@ -7,6 +7,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // Record 是从聊天权威日志投影出的已提交事件信封。
@@ -231,6 +232,22 @@ type MessageCreatedData struct {
 	Workflow *workinput.WorkflowReference `json:"workflow,omitempty"`
 }
 
+// AutomaticTaskCreation 自动任务创建回执。
+type AutomaticTaskCreation struct {
+	// 任务标识
+	TaskID string `json:"taskId"`
+	// 任务名称
+	Name string `json:"name"`
+	// 执行伙伴
+	WakerName string `json:"wakerName"`
+	// 指令预览
+	InstructionPreview string `json:"instructionPreview"`
+	// 定时计划
+	Schedule models.AutomaticTaskSchedule `json:"schedule"`
+	// 首次运行时间
+	FirstRunAt int64 `json:"firstRunAt"`
+}
+
 // ExecutionDeliveryData 对同一答复追加已确认的领域交付。
 type ExecutionDeliveryData struct {
 	// SourceID 是已交付的原领域运行身份。
@@ -239,6 +256,8 @@ type ExecutionDeliveryData struct {
 	Attachments []AttachmentReference `json:"attachments,omitempty"`
 	// Summary 是根据同一次运行结果补写的正文。
 	Summary string `json:"summary,omitempty"`
+	// AutomaticTaskCreation 保存任务刚创建时的公开回执快照。
+	AutomaticTaskCreation *AutomaticTaskCreation `json:"automaticTaskCreation,omitempty"`
 	// SummaryFallback 表示正文是已确认结果的直接呈现，仍允许补写用户语言的总结。
 	SummaryFallback bool `json:"summaryFallback,omitempty"`
 }

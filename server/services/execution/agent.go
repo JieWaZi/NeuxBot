@@ -116,6 +116,14 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 			*instructions = append(*instructions, agentapi.Instruction{Name: "Workflow tools", Content: guidance})
 		}
 	}
+	if request.entryPoint == WorkbenchEntryPoint && !request.runtime.WorkspaceReadOnly &&
+		m.automaticTaskBindings != nil && (request.allowedAgentDomains == nil || slices.Contains(*request.allowedAgentDomains, "automatic")) {
+		config := request.runtime
+		bindings = append(bindings, m.automaticTaskBindings(chat, executionID, ExecutionConfiguration{
+			RuntimeID: config.RuntimeID, AccountID: config.AccountID, Model: config.Model, Reasoning: config.Reasoning,
+			Fast: config.Fast, PermissionLevel: config.PermissionLevel,
+		})...)
+	}
 	if request.entryPoint == WorkbenchEntryPoint && m.resourceManagementBindings != nil {
 		approve := m.resourceApproval(chat.ID, executionID)
 		for _, binding := range m.resourceManagementBindings(chat, executionID, approve) {
@@ -152,6 +160,14 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 			hasWorkflowCapabilities = true
 		}
 		switch binding.Operation {
+		case constants.AutomaticTaskCreateOperation:
+			*instructions = append(*instructions, agentapi.Instruction{
+				Name: "NeuxBot automatic tasks", Content: agentapi.AutomaticTaskCreationInstructions,
+			})
+		case constants.AutomaticTaskUpdateOperation:
+			*instructions = append(*instructions, agentapi.Instruction{
+				Name: "NeuxBot automatic task editing", Content: agentapi.AutomaticTaskEditingInstructions,
+			})
 		case "skills.packages.revise":
 			hasSkillManagement = true
 		case "mcp.connectors.update":

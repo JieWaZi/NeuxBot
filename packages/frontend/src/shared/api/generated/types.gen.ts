@@ -8802,6 +8802,33 @@ export type GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference
 };
 
 /**
+ * AutomaticTaskCreation 自动任务创建回执。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatEventlogAutomaticTaskCreation = {
+    /**
+     * 首次运行时间
+     */
+    firstRunAt?: number;
+    /**
+     * 指令预览
+     */
+    instructionPreview?: string;
+    /**
+     * 任务名称
+     */
+    name?: string;
+    schedule?: GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskSchedule & unknown;
+    /**
+     * 任务标识
+     */
+    taskId?: string;
+    /**
+     * 执行伙伴
+     */
+    wakerName?: string;
+};
+
+/**
  * CodeReference 保存整文件路径引用或连续文本区间快照。
  */
 export type GithubComJieWaZiNeuxBotServerInternalChatEventlogCodeReference = {
@@ -8970,6 +8997,10 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      */
     attachments?: Array<GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference>;
     /**
+     * 自动任务回执
+     */
+    automaticTaskCreations?: Array<GithubComJieWaZiNeuxBotServerInternalChatEventlogAutomaticTaskCreation>;
+    /**
      * 代码引用提示
      */
     codeReferenceOnly?: boolean;
@@ -9083,6 +9114,7 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
  * 工具展示身份包含 Runtime 调用作用域；原生工具标识用于审批与原生定位。
  */
 export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart = {
+    excalidraw?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageExcalidraw & unknown;
     /**
      * 展示片段标识
      */
@@ -9109,6 +9141,16 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPa
     toolSafeSummary?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolSafeSummary & unknown;
     toolStatus?: GithubComJieWaZiNeuxBotServerConstantsMessageToolStatus & unknown;
     type?: GithubComJieWaZiNeuxBotServerConstantsMessageDisplayPartType & unknown;
+};
+
+/**
+ * MessageExcalidraw 是插件绘图成果。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageExcalidraw = {
+    /**
+     * 图元数据
+     */
+    elements?: string;
 };
 
 /**

@@ -739,6 +739,13 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Agent: AgentCapabilities, Events: EventHub,
 		AgentEndpoint: "http://127.0.0.1:" + strconv.Itoa(configuration.Server.Port) + constants.AgentCLIPath,
 		AgentBinary:   agentBinaryPath(),
+		AutomaticTaskBindings: func(chat models.Chat, executionID string, config execution.ExecutionConfiguration) []capability.Binding {
+			if ScheduleService == nil {
+				return nil
+			}
+			creation := chatModule.BindManagedResourceChanges(chat, executionID, ScheduleService.PartnerCreationBindings(chat, executionID, config))
+			return append(creation, ScheduleService.PartnerEditBindings(chat, executionID)...)
+		},
 		ResourceManagementBindings: func(chat models.Chat, executionID string, approve func(context.Context, string) error) []capability.Binding {
 			bindings := skills.ManagementBindings(chat.WakerID, executionID, approve)
 			bindings = append(bindings, connectors.ManagementBindings(chat.WakerID, executionID, approve)...)
@@ -891,7 +898,8 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		WorkflowRuns:  WorkflowRunControllerManager,
 		APIHandler:    handlerFactory,
 		Tasks:         AutomaticTaskControllerManager, Transactions: TransactionControllerManager,
-		Wakers: WakerControllerManager, Projects: ProjectControllerManager,
+		Commands: controllers.NewAgentCommandController(DB),
+		Wakers:   WakerControllerManager, Projects: ProjectControllerManager,
 		Executions: ExecutionService, Chats: chatModule, DataDirectory: configuration.DataDirectory,
 		ManagedFilesDirectory: configuration.ManagedFilesDirectory,
 		Teams:                 ChannelService, Channels: ChannelControllerManager, Threads: ChannelThreadControllerManager, TeamTasks: ChannelTaskControllerManager,

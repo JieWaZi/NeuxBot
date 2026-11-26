@@ -93,7 +93,7 @@ func TestManagedResourceChangesPreserveDurableTimelinePositionOnRetry(t *testing
 	for range 2 {
 		committed("skills.packages.revise", map[string]any{"skillId": "skill", "versionId": "version", "name": "Release notes"}, true)
 	}
-	pending, err := commands.ListPendingManagedChanges(t.Context(), chatID, capability.Receipt{}, 10)
+	pending, err := commands.ListPendingManagedChanges(t.Context(), chatID, "", capability.Receipt{}, 10)
 	if err != nil || len(pending) != 0 {
 		t.Fatalf("live command did not finish projection: %+v %v", pending, err)
 	}
@@ -109,7 +109,7 @@ func TestManagedResourceChangesPreserveDurableTimelinePositionOnRetry(t *testing
 		t.Fatalf("unexpected skill change subscription event: %+v %v", events, err)
 	}
 	committed("mcp.connectors.create", map[string]any{"connectorId": "connector", "scope": "private", "name": "Test MCP"}, false)
-	pending, err = commands.ListPendingManagedChanges(t.Context(), chatID, capability.Receipt{}, 10)
+	pending, err = commands.ListPendingManagedChanges(t.Context(), chatID, "", capability.Receipt{}, 10)
 	if err != nil || len(pending) != 1 {
 		t.Fatalf("the projection gap was not stored on the source command: %+v %v", pending, err)
 	}
@@ -142,7 +142,7 @@ func TestManagedResourceChangesPreserveDurableTimelinePositionOnRetry(t *testing
 	if err := chat.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	pending, err = commands.ListPendingManagedChanges(t.Context(), chatID, capability.Receipt{}, 10)
+	pending, err = commands.ListPendingManagedChanges(t.Context(), chatID, "", capability.Receipt{}, 10)
 	if err != nil || len(pending) != 0 {
 		t.Fatalf("startup did not recover the command receipt: %+v %v", pending, err)
 	}
@@ -168,5 +168,100 @@ func TestReviewToolEvidenceUsesOnlyStructuredDiagnostics(t *testing.T) {
 	body, err := json.Marshal(steps)
 	if err != nil || strings.Contains(string(body), "private") {
 		t.Fatalf("unsafe tool evidence: %s, %v", body, err)
+	}
+}
+
+func TestAutomaticTaskCreationReceiptRestoresOneCard(t *testing.T) {
+	for _, recovery := range []string{"startup", "receipt lookup", "command retry", "timeline refresh"} {
+		t.Run(recovery, func(t *testing.T) { assertAutomaticTaskCreationRecovery(t, recovery) })
+	}
+}
+
+func assertAutomaticTaskCreationRecovery(t *testing.T, recovery string) {
+	ctx := t.Context()
+	database, service := newRecoveryTestService(t, t.TempDir())
+	commands := controllers.NewAgentCommandController(database)
+	service.managedCommands = commands
+	const chatID = "12121212121212121212121212121212"
+	const executionID = "execution"
+	workspace := t.TempDir()
+	if _, err := service.CreateDormantChats(ctx, []DormantChat{{Chat: models.Chat{
+		ID: chatID, WakerID: "partner", WorkspaceDirectory: workspace, AdditionalWorkingDirectories: []string{workspace},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := service.AppendExecutionFacts(ctx, chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "request", Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: "Schedule a report."})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionCreatedData{UserMessageID: "request"})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const operation = "automatic.tasks.create"
+	request := capability.Request{Operation: operation, RequestID: "report"}
+	origin := capability.ReceiptOrigin{ChatID: chatID, ExecutionID: executionID, WakerID: "partner", Operation: operation}
+	binding := capability.Binding{
+		Operation: operation,
+		Call: func(ctx context.Context, request capability.Request) (capability.Result, error) {
+			return capability.Execute(ctx, commands, executionID, request, func(ctx context.Context) error {
+				return capability.Commit(ctx, map[string]any{
+					"taskId": "task", "name": "Weekly report", "wakerName": "Analyst", "instructionPreview": "Summarize release notes",
+					"schedule":   map[string]any{"kind": "weekly", "weekday": 5, "hour": 9, "minute": 0, "timezone": "Asia/Shanghai"},
+					"firstRunAt": int64(1795741200000),
+				})
+			})
+		},
+		Receipt: func(ctx context.Context, id string) (capability.Result, error) {
+			return capability.Lookup(ctx, commands, executionID, operation, id)
+		},
+	}
+	if _, err := binding.Call(capability.WithReceiptOrigin(ctx, origin, nil), request); err != nil {
+		t.Fatal(err)
+	}
+	if recovery == "timeline refresh" {
+		if err := commands.Create(ctx, capability.Receipt{
+			ID: "unrelated-skill", Origin: capability.ReceiptOrigin{ChatID: chatID, ExecutionID: executionID, WakerID: origin.WakerID, Operation: "skills.packages.revise"},
+			Data: map[string]any{"name": "Skill", "skillId": "skill", "versionId": "version"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		page, err := service.ReadMessageTimeline(ctx, chatID, 0, 0, 10)
+		if err != nil || len(page.Resources) != 2 || len(page.Resources[1].AutomaticTaskCreations) != 0 {
+			t.Fatalf("shared timeline read should not restore command receipts: %+v, %v", page, err)
+		}
+	}
+	bound := service.BindManagedResourceChanges(models.Chat{ID: chatID, WakerID: "partner"}, executionID, []capability.Binding{binding})[0]
+	for range 2 {
+		switch recovery {
+		case "startup":
+			service.recoverManagedResourceChanges(ctx, chatID)
+		case "receipt lookup":
+			if _, err := bound.Receipt(ctx, request.RequestID); err != nil {
+				t.Fatal(err)
+			}
+		case "command retry":
+			if _, err := bound.Call(ctx, request); err != nil {
+				t.Fatal(err)
+			}
+		case "timeline refresh":
+			service.RestoreAutomaticTaskCreationCards(ctx, chatID)
+			page, err := service.ReadMessageTimeline(ctx, chatID, 0, 0, 10)
+			if err != nil || len(page.Resources) != 2 || len(page.Resources[1].AutomaticTaskCreations) != 1 {
+				t.Fatalf("refresh should return the recovered creation card: %+v, %v", page, err)
+			}
+		}
+	}
+	events, err := service.ListEvents(ctx, chatID, rows[len(rows)-1].Sequence, 10)
+	if err != nil || len(events) != 1 || events[0].Type != constants.ChatEventTypeExecutionDelivery || events[0].Message == nil {
+		t.Fatalf("expected one committed card event: %+v, %v", events, err)
+	}
+	page, err := service.ReadMessageHistory(ctx, chatID, 0, 10)
+	if err != nil || len(page.Resources) != 2 {
+		t.Fatalf("invalid history: %+v, %v", page, err)
+	}
+	message, err := json.Marshal(page.Resources[1])
+	if err != nil || !strings.Contains(string(message), `"automaticTaskCreations":[{"taskId":"task"`) ||
+		!strings.Contains(string(message), `"instructionPreview":"Summarize release notes"`) {
+		t.Fatalf("creation card absent from history: %s, %v", message, err)
 	}
 }

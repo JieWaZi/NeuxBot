@@ -91,6 +91,7 @@ func SystemDirectory(dataDirectory, binaryPath string) (string, error) {
 func Guide(id string) (string, error) {
 	files := map[string]string{"knowledge.maintenance": "wiki-maintenance.md", "knowledge": "wiki-guide.md", "im.delivery": "im-delivery.md", "workflow.authoring": "workflow-authoring.md", "workflow.execution": "workflow-execution.md", "workflow.results": "workflow-results.md", "workflow.output-delivery": "output-delivery.md", "workflow.api-retrieval": "api-retrieval.md", "team.lead": "team-lead.md", "team.member": "team-member.md", "memory": "memory.md", "interaction.questions": "user-questions.md", constants.WakerProfileOnboardingGuide: "partner-onboarding.md"}
 	files[constants.WakerProfileOptimizationGuide] = "partner-profile-optimization.md"
+	files["automatic.tasks"] = "automatic-tasks.md"
 	files["skills.management"] = "skill-management.md"
 	files["mcp.management"] = "mcp-management.md"
 	name, ok := files[id]

@@ -131,7 +131,7 @@ export function createFrontendViteConfig(options: {
       testTimeout: 15_000,
       server: {
         deps: {
-          inline: [/@lobehub\//],
+          inline: [/@lobehub\//, /@excalidraw\/excalidraw/],
         },
       },
     },

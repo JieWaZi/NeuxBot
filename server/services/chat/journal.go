@@ -370,7 +370,7 @@ func (m *service) AppendExecutionFacts(
 	if err != nil {
 		return nil, err
 	}
-	m.queryIndexes.indexChatCursor(chatID, records)
+	m.queryIndexes.indexChatCursor(context.Background(), chatID, records)
 	m.eventCommitter.publishCommitted(records)
 	return records, nil
 }

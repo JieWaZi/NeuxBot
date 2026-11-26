@@ -126,10 +126,18 @@ const (
 	// AiAccountSystemID 表示使用智能体内置登录的账号身份。
 	AiAccountSystemID = "system"
 
+	// AutomaticTaskCreateOperation 是普通伙伴对话创建自动任务的能力标识。
+	AutomaticTaskCreateOperation = "automatic.tasks.create"
+	// AutomaticTaskListOperation 是读取当前对话所建定时任务的能力标识。
+	AutomaticTaskListOperation = "automatic.tasks.list"
+	// AutomaticTaskUpdateOperation 是编辑当前对话所建定时任务的能力标识。
+	AutomaticTaskUpdateOperation = "automatic.tasks.update"
 	// AutomaticTaskDefaultAPIIP 是独立任务触发入口默认监听的本机地址。
 	AutomaticTaskDefaultAPIIP = "127.0.0.1"
 	// AutomaticTaskDefaultAPIPort 是独立本机任务触发入口的默认端口。
 	AutomaticTaskDefaultAPIPort = 8431
+	// AutomaticTaskNameMaximumRunes 是任务名称的 Unicode 字符上限。
+	AutomaticTaskNameMaximumRunes = 120
 	// AutomaticTaskInstructionMaximumRunes 是任务指令的 Unicode 字符上限。
 	AutomaticTaskInstructionMaximumRunes = 10000
 	// AutomaticTaskInputMaximumRunes 是本次 API 附加输入的 Unicode 字符上限。

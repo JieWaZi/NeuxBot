@@ -36,10 +36,30 @@ func (m *service) BindManagedResourceChanges(chat models.Chat, executionID strin
 			continue
 		}
 		origin := capability.ReceiptOrigin{ChatID: chat.ID, ExecutionID: executionID, WakerID: chat.WakerID, Operation: binding.Operation}
+		project := func(ctx context.Context, receipt capability.Receipt) {
+			m.projectManagedResourceChange(context.WithoutCancel(ctx), receipt)
+		}
+		retryProjection := func(ctx context.Context, result capability.Result, err error) {
+			if err != nil || origin.Operation != constants.AutomaticTaskCreateOperation || !result.Replayed {
+				return
+			}
+			if data, ok := result.Data.(map[string]any); ok {
+				project(ctx, capability.Receipt{ID: result.CommandID, Origin: origin, Data: data})
+			}
+		}
 		bindings[i].Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
-			return binding.Call(capability.WithReceiptOrigin(ctx, origin, func(receipt capability.Receipt) {
-				m.projectManagedResourceChange(context.WithoutCancel(ctx), receipt)
+			result, err := binding.Call(capability.WithReceiptOrigin(ctx, origin, func(receipt capability.Receipt) {
+				project(ctx, receipt)
 			}), request)
+			retryProjection(ctx, result, err)
+			return result, err
+		}
+		if origin.Operation == constants.AutomaticTaskCreateOperation {
+			bindings[i].Receipt = func(ctx context.Context, requestID string) (capability.Result, error) {
+				result, err := binding.Receipt(ctx, requestID)
+				retryProjection(ctx, result, err)
+				return result, err
+			}
 		}
 	}
 	return bindings
@@ -48,9 +68,15 @@ func (m *service) BindManagedResourceChanges(chat models.Chat, executionID strin
 func (m *service) projectManagedResourceChange(ctx context.Context, receipt capability.Receipt) {
 	ctx, cancel := context.WithTimeout(ctx, constants.ChatInteractionProjectionTimeoutMillis*time.Millisecond)
 	defer cancel()
-	kind, data, err := managedResourceChangeOf(receipt)
-	if err == nil {
-		err = m.recordManagedResourceChange(ctx, receipt.Origin.ChatID, receipt.Origin.ExecutionID, kind, "managed-resource-command:"+receipt.ID, data)
+	var err error
+	if receipt.Origin.Operation == constants.AutomaticTaskCreateOperation {
+		err = m.recordAutomaticTaskCreation(ctx, receipt)
+	} else {
+		kind, data, parseErr := managedResourceChangeOf(receipt)
+		err = parseErr
+		if err == nil {
+			err = m.recordManagedResourceChange(ctx, receipt.Origin.ChatID, receipt.Origin.ExecutionID, kind, "managed-resource-command:"+receipt.ID, data)
+		}
 	}
 	if err == nil || hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
 		err = m.managedCommands.MarkManagedChangeProjected(ctx, receipt.ID)
@@ -87,6 +113,27 @@ func managedResourceChangeOf(receipt capability.Receipt) (constants.ChatEventTyp
 	return "", data, status_error.ChatLogRecordInvalid
 }
 
+// RestoreAutomaticTaskCreationCards 只尝试恢复当前聊天少量待投影的任务卡片。
+func (m *service) RestoreAutomaticTaskCreationCards(ctx context.Context, chatID string) {
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" || m.managedCommands == nil {
+		return
+	}
+	// 首屏是补偿入口，超出预算的回执仍由命令重试或后续恢复处理。
+	ctx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer cancel()
+	receipts, err := m.managedCommands.ListPendingManagedChanges(ctx, chatID, constants.AutomaticTaskCreateOperation, capability.Receipt{}, 4)
+	if err != nil && ctx.Err() == nil {
+		logx.Warnf("read pending automatic task creations: chat_id=%s error=%v", chatID, err)
+	}
+	for _, receipt := range receipts {
+		if ctx.Err() != nil {
+			return
+		}
+		m.projectManagedResourceChange(ctx, receipt)
+	}
+}
+
 func (m *service) recoverManagedResourceChanges(ctx context.Context, chatID string) {
 	if m.managedCommands == nil {
 		return
@@ -94,12 +141,17 @@ func (m *service) recoverManagedResourceChanges(ctx context.Context, chatID stri
 	const pageSize = 64
 	var after capability.Receipt
 	for ctx.Err() == nil {
-		receipts, err := m.managedCommands.ListPendingManagedChanges(ctx, chatID, after, pageSize)
+		receipts, err := m.managedCommands.ListPendingManagedChanges(ctx, chatID, "", after, pageSize)
 		if err != nil {
-			logx.Warnf("read pending managed resource commands: chat_id=%s error=%v", chatID, err)
+			if ctx.Err() == nil {
+				logx.Warnf("read pending managed resource commands: chat_id=%s error=%v", chatID, err)
+			}
 			return
 		}
 		for _, receipt := range receipts {
+			if ctx.Err() != nil {
+				return
+			}
 			m.projectManagedResourceChange(ctx, receipt)
 		}
 		if len(receipts) < pageSize {
@@ -109,14 +161,30 @@ func (m *service) recoverManagedResourceChanges(ctx context.Context, chatID stri
 	}
 }
 
+func (m *service) recordAutomaticTaskCreation(ctx context.Context, receipt capability.Receipt) error {
+	var creation eventlog.AutomaticTaskCreation
+	origin := receipt.Origin
+	if err := json.Unmarshal(marshalData(receipt.Data), &creation); err != nil || receipt.ID == "" ||
+		origin.ChatID == "" || origin.ExecutionID == "" || creation.TaskID == "" || creation.Name == "" ||
+		creation.Schedule.Timezone == "" || creation.FirstRunAt <= 0 {
+		return status_error.ChatLogRecordInvalid
+	}
+	return m.recordCommandProjection(ctx, origin.ChatID, "managed-resource-command:"+receipt.ID, eventlog.AppendInput{
+		Type: constants.ChatEventTypeExecutionDelivery, ExecutionID: origin.ExecutionID, MessageID: origin.ExecutionID,
+		Data: marshalData(eventlog.ExecutionDeliveryData{SourceID: creation.TaskID, AutomaticTaskCreation: &creation}),
+	})
+}
+
 func (m *service) recordManagedResourceChange(ctx context.Context, chatID, executionID string, kind constants.ChatEventType, key string, data eventlog.ManagedResourceChangeData) error {
+	return m.recordCommandProjection(ctx, chatID, key, eventlog.AppendInput{Type: kind, ExecutionID: executionID, Data: marshalData(data)})
+}
+
+func (m *service) recordCommandProjection(ctx context.Context, chatID, key string, fact eventlog.AppendInput) error {
 	journal, ok := m.logStore.(*conversationJournal)
 	if !ok {
 		return status_error.ChatLogRecordInvalid
 	}
-	facts := factsToChanges([]eventlog.AppendInput{{
-		Type: kind, ExecutionID: executionID, Data: marshalData(data),
-	}})
+	facts := factsToChanges([]eventlog.AppendInput{fact})
 	batch := agent.ConversationBatch{ChatID: chatID, Key: key, Changes: facts}
 	for {
 		version, err := journal.ReadVersion(ctx, chatID)
@@ -136,7 +204,7 @@ func (m *service) recordManagedResourceChange(ctx context.Context, chatID, execu
 		}
 		if receipt.First > version {
 			record := factRecord(chatID, agent.ConversationRecord{Cursor: receipt.First, RecordedAt: receipt.RecordedAt, Change: facts[0]})
-			m.queryIndexes.indexChatCursor(chatID, []eventlog.Record{record})
+			m.queryIndexes.indexChatCursor(ctx, chatID, []eventlog.Record{record})
 		}
 		m.ObserveCommitted(chatID, receipt)
 		return nil

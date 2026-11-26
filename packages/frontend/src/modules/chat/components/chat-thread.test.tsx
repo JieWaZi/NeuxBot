@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type {
@@ -634,6 +641,97 @@ describe("chat work process", () => {
     fireEvent.click(screen.getByRole("button", { name: "展开思考" }));
     expect(paragraph).not.toHaveClass("line-clamp-4");
     expect(screen.getByRole("button", { name: "收起" })).toBeInTheDocument();
+  });
+
+  it("当前思考在折叠时显示流光，展开或开始回复后停止流光", () => {
+    const focus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const layout = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, 0, 100, 20));
+    onTestFinished(() => {
+      layout.mockRestore();
+      focus.mockRestore();
+    });
+    messageState.current.status = { type: "running" };
+    messageState.current.content = [
+      { type: "reasoning", text: "规划接下来的步骤。".repeat(25) },
+    ];
+    const { rerender } = render(<AssistantMessage name="伙伴" />);
+    const title = screen.getByText("正在思考…").parentElement;
+    expect(title).toHaveAttribute("data-running-shimmer", "true");
+    expect(title).toHaveAttribute("aria-busy", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "展开思考" }));
+    expect(title).not.toHaveAttribute("data-running-shimmer");
+    fireEvent.click(screen.getByRole("button", { name: "收起" }));
+    expect(title).toHaveAttribute("data-running-shimmer", "true");
+
+    messageState.current.content = [
+      ...messageState.current.content,
+      { type: "text", text: "开始回复" },
+    ];
+    rerender(<AssistantMessage name="伙伴" />);
+    expect(screen.getByText("思考过程").parentElement).not.toHaveAttribute(
+      "data-running-shimmer",
+    );
+    expect(screen.getByText("开始回复")).toBeVisible();
+  });
+
+  it("当前思考仅在聊天视区内且页面可见时显示流光", async () => {
+    const focus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+    let titleRect = new DOMRect(20, 390, 100, 20);
+    const layout = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute("aria-busy") === "true"
+          ? titleRect
+          : new DOMRect(0, 200, 300, 160);
+      });
+    onTestFinished(() => {
+      layout.mockRestore();
+      visibility.mockRestore();
+      focus.mockRestore();
+    });
+
+    render(
+      <section aria-label="聊天消息" style={{ overflowY: "auto" }}>
+        <ReasoningPart text="规划接下来的步骤。" running />
+      </section>,
+    );
+    const viewport = screen.getByRole("region", { name: "聊天消息" });
+    const title = screen.getByText("正在思考…").parentElement;
+    expect(title).not.toHaveAttribute("data-running-shimmer");
+    expect(title).toHaveAttribute("aria-busy", "true");
+
+    titleRect = new DOMRect(20, 220, 100, 20);
+    fireEvent.scroll(viewport);
+    await waitFor(() =>
+      expect(title).toHaveAttribute("data-running-shimmer", "true"),
+    );
+
+    titleRect = new DOMRect(20, 390, 100, 20);
+    fireEvent.scroll(viewport);
+    await waitFor(() =>
+      expect(title).not.toHaveAttribute("data-running-shimmer"),
+    );
+
+    titleRect = new DOMRect(20, 220, 100, 20);
+    fireEvent.scroll(viewport);
+    await waitFor(() =>
+      expect(title).toHaveAttribute("data-running-shimmer", "true"),
+    );
+
+    visibility.mockReturnValue("hidden");
+    fireEvent(document, new Event("visibilitychange"));
+    expect(title).not.toHaveAttribute("data-running-shimmer");
+    expect(screen.getByText("正在思考…")).toBeInTheDocument();
+
+    visibility.mockReturnValue("visible");
+    fireEvent(document, new Event("visibilitychange"));
+    expect(title).toHaveAttribute("data-running-shimmer", "true");
   });
 
   it("思考过程只移除开头换行，保留正文中的空行和结尾换行", () => {
@@ -1968,3 +2066,72 @@ describe("团队成员消息折叠", () => {
     expect(screen.getByText("负责人结果 leader")).toBeVisible();
   });
 });
+
+it.each([
+  { timezone: "Asia/Shanghai", reply: "Your report is scheduled." },
+  { timezone: "Factory", reply: undefined },
+])(
+  "shows the committed automatic task above the assistant reply with timezone $timezone",
+  ({ timezone, reply }) => {
+    const message: BotChatMessage = {
+      id: "task-creation-message",
+      role: "assistant",
+      status: "completed",
+      content: reply,
+      displayParts: reply ? [{ id: "reply", type: "text", text: reply }] : [],
+      createdSequence: 7,
+      readable: true,
+      automaticTaskCreations: [
+        {
+          taskId: "task-1",
+          name: "Weekly report",
+          wakerName: "Analyst",
+          instructionPreview: "Summarize release notes.",
+          schedule: {
+            kind: "weekly",
+            weekday: 5,
+            hour: 9,
+            minute: 0,
+            timezone,
+          },
+          firstRunAt: Date.UTC(2026, 10, 27, 1),
+        },
+      ],
+    };
+    const views = new ChatMessageProjection().update([message]);
+    const { container } = render(
+      <MemoryRouter>
+        <ChatMessageList views={views} name="Analyst" />
+      </MemoryRouter>,
+    );
+    const card = screen.getByRole("article");
+    const messageRow = container.querySelector(
+      '[data-message-id="task-creation-message"]',
+    );
+    expect(messageRow?.previousElementSibling).toContainElement(card);
+    expect(card).toHaveClass("bg-message-card-background");
+    if (reply) {
+      expect(messageRow).toContainElement(screen.getByText(reply));
+    } else {
+      expect(
+        messageRow?.querySelector("[data-chat-message-bubble]"),
+      ).toBeNull();
+    }
+    expect(card).toHaveAttribute("data-chat-readable-body");
+    expect(card).toHaveAttribute(
+      "data-chat-reading-message-id",
+      "task-creation-message",
+    );
+    expect(card).toHaveAttribute("data-chat-readable-sequence", "7");
+    expect(screen.getByText("Weekly report")).toBeVisible();
+    expect(screen.getByText("Summarize release notes.")).toBeVisible();
+    const scheduleTimezone = screen.getByText(timezone);
+    expect(scheduleTimezone).toBeVisible();
+    expect(scheduleTimezone.nextElementSibling).toContainElement(
+      screen.getByText(/首次运行|first run/i),
+    );
+    expect(
+      screen.getByRole("link", { name: /查看任务|view task/i }),
+    ).toHaveAttribute("href", "/automatic-tasks/task-1");
+  },
+);

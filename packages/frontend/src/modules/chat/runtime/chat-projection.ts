@@ -329,8 +329,23 @@ function mergeMessageCoverage(
   authoritative: ChatMessage,
   keepLive: boolean,
 ): BotChatMessage {
-  if (keepLive && (authoritative.revision ?? -1) <= (local.revision ?? -1))
-    return local;
+  if (keepLive && (authoritative.revision ?? -1) <= (local.revision ?? -1)) {
+    const delivered = authoritative.automaticTaskCreations?.filter(
+      (card) =>
+        !local.automaticTaskCreations?.some(
+          (existing) => existing.taskId === card.taskId,
+        ),
+    );
+    if (!delivered?.length) return local;
+    return {
+      ...local,
+      readable: local.readable || authoritative.readable,
+      automaticTaskCreations: [
+        ...(local.automaticTaskCreations ?? []),
+        ...delivered,
+      ],
+    };
+  }
   const next = keepLive
     ? {
         ...local,
@@ -410,12 +425,20 @@ export function applyChatEvent(
     event.type === "execution.delivery" &&
     authoritative.role === "assistant" &&
     isTerminalMessageStatus(authoritative.status);
-  if (
-    event.type === "execution.delivery" &&
-    (!currentMessage ||
-      (currentMessage.revision ?? -1) >= (authoritative.revision ?? -1))
-  )
-    return messages;
+  if (event.type === "execution.delivery") {
+    if (!currentMessage) return messages;
+    if ((currentMessage.revision ?? -1) >= (authoritative.revision ?? -1)) {
+      const delivered = mergeMessageCoverage(
+        currentMessage,
+        authoritative,
+        true,
+      );
+      if (delivered === currentMessage) return messages;
+      const next = [...messages];
+      next[index] = delivered;
+      return next;
+    }
+  }
   if (
     currentMessage &&
     ["completed", "failed", "canceled"].includes(currentMessage.status ?? "") &&

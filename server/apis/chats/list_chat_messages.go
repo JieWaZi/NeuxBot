@@ -38,6 +38,9 @@ func (l *ListChatMessages) Validate(*gin.Context) error {
 // [BadRequest][40000000001][请求参数无效]
 // [ChatLogError][50000000004][Chat 权威日志读写失败]
 func (l *ListChatMessages) Output(ctx *gin.Context) (interface{}, error) {
+	if l.BeforeSequence == 0 {
+		global.ChatService.RestoreAutomaticTaskCreationCards(ctx, l.ChatID)
+	}
 	page, err := global.ChatService.ReadMessageTimeline(
 		ctx,
 		l.ChatID,
