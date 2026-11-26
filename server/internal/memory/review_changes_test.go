@@ -1,12 +1,15 @@
 package memory
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 func TestReviewMemoryMutationsRollBackWithCursor(t *testing.T) {
@@ -33,6 +36,31 @@ func TestReviewMemoryMutationsRollBackWithCursor(t *testing.T) {
 	result, err := service.Search(t.Context(), Context{PartnerID: "partner"}, "release notes", 10)
 	if err != nil || len(result.Results) != 0 {
 		t.Fatalf("failed cursor write leaked searchable memory %+v, %v", result, err)
+	}
+}
+
+func TestReviewSavesMemoryWhenEmbeddingChangesDuringBatch(t *testing.T) {
+	ctx := t.Context()
+	service := newTestService(t, semanticConfig, newFakeEmbedder(3))
+	batch := ReviewMemoryBatch{PartnerID: "partner", ChatID: "chat", Through: 12, EvidenceIDs: []string{"user"},
+		Changes: []ReviewMemoryChange{{Action: "add", Content: "Prefer English release notes", EvidenceIDs: []string{"user"}}}}
+	prepared, err := service.PrepareReviewChanges(ctx, batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := semanticConfig
+	config.Model = "new-model"
+	service.configSource = func(context.Context) (EmbeddingConfig, error) { return config, nil }
+	if err := service.CommitReviewChanges(ctx, prepared, nil); err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Search(ctx, Context{PartnerID: "partner"}, "release notes", 10)
+	if err != nil || len(result.Results) != 1 {
+		t.Fatalf("review did not save searchable memory: %+v, %v", result, err)
+	}
+	status, err := service.Status(ctx)
+	if err != nil || status.VectorCount != 0 || status.Mode != constants.MemoryRetrievalModeKeyword {
+		t.Fatalf("review wrote a vector for the previous model: %+v, %v", status, err)
 	}
 }
 

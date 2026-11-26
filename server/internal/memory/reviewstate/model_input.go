@@ -25,21 +25,21 @@ func (r modelReferences) restore(refs []string) []string {
 	return ids
 }
 
-// modelTurn is the outbound projection of local conversation evidence.
+// modelTurn 是会话证据的模型输入投影。
 type modelTurn struct {
-	// UserRef points to the user text for evidence citations.
+	// UserRef 是用户正文的证据引用。
 	UserRef string `json:"userRef,omitempty"`
-	// User is the eligible, redacted user message.
+	// User 是符合资格且已脱敏的用户原文。
 	User string `json:"user,omitempty"`
-	// AssistantRef points to the eligible final answer for skill evidence.
+	// AssistantRef 是用于技能学习的最终答复引用。
 	AssistantRef string `json:"assistantRef,omitempty"`
-	// Assistant is the eligible, redacted final answer.
+	// Assistant 是符合资格且已脱敏的最终答复。
 	Assistant string `json:"assistant,omitempty"`
-	// Steps contains the eligible, bounded tool outcomes.
+	// Steps 保存符合资格的有界工具结果。
 	Steps []ToolStep `json:"steps,omitempty"`
-	// Memory marks a memory-eligible turn in a combined review.
+	// Memory 表示本轮可用于记忆整理。
 	Memory bool `json:"memory,omitempty"`
-	// Skill marks a skill-eligible turn in a combined review.
+	// Skill 表示本轮可用于技能学习。
 	Skill bool `json:"skill,omitempty"`
 }
 

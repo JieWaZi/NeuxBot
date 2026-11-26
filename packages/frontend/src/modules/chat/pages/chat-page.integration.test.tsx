@@ -67,6 +67,7 @@ import {
   AppSceneWorkspaceContextProvider,
 } from "@/shared/workspace/app-scene-workspace";
 import { ChatQueueProvider } from "../runtime/chat-queue-store";
+import { NewChatComposer } from "../components/new-chat-composer";
 import { WorkbenchProvider } from "../workbench/workbench-store";
 import { ChatEntryPage as SceneChatEntryPage } from "./chat-entry-page";
 import {
@@ -1874,6 +1875,247 @@ describe("ChatPage", () => {
     client.clear();
   });
 
+  it.each(["lead", "member", "replay", "network", "restore"] as const)(
+    "团队引用通过原发送入口并保留所属页签，场景=%s",
+    async (mode) => {
+      const leadReport = "成员提交的发布报告";
+      const memberText = "成员对话中的答复";
+      memberHistoryMessages.current = [
+        {
+          id: "member-reply-target",
+          role: "assistant",
+          createdSequence: 3,
+          status: "completed",
+          displayParts: [{ type: "text", text: memberText }],
+        },
+      ];
+      const members: TeamChatFixtureContext["members"] = [
+        {
+          id: "waker-1",
+          name: "团队负责人",
+          chatId: "team-lead-chat",
+          isLead: true,
+          model: "gpt-5",
+          permissionLevel: "auto",
+          reasoning: "",
+          runtimeId: "codex",
+        },
+        {
+          id: "waker-2",
+          name: "执行成员",
+          chatId: "member-chat",
+          isLead: false,
+          model: "gpt-5",
+          permissionLevel: "auto",
+          reasoning: "",
+          runtimeId: "codex",
+        },
+      ];
+      wakerResources.current = members.map(({ id, name }) => ({ id, name }));
+      const onSendMessage = vi.fn<TeamChatFixtureContext["onSendMessage"]>(
+        async () => ({
+          execution: { id: "team-quote-execution", status: "running" },
+        }),
+      );
+      let rejectSend: (error: Error) => void = () => {};
+      const failInOtherTab =
+        mode === "replay" || mode === "network" || mode === "restore";
+      if (failInOtherTab) {
+        onSendMessage.mockImplementationOnce(
+          () =>
+            new Promise((_, reject) => {
+              rejectSend = reject;
+            }),
+        );
+      }
+      const user = userEvent.setup();
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <WorkspaceProvider>
+            <ChatQueueProvider>
+              <TooltipProvider delayDuration={0}>
+                <MemoryRouter initialEntries={["/team"]}>
+                  <Routes>
+                    <Route element={<ChatLayout rightPanel="workspace" />}>
+                      <Route
+                        path="/team"
+                        element={
+                          <>
+                            <TeamMemberTabControls
+                              leadControl
+                              members={[
+                                {
+                                  chatId: "member-chat",
+                                  name: "执行成员",
+                                  wakerId: "waker-2",
+                                },
+                              ]}
+                            />
+                            <TeamChatPageContent
+                              chatId="team-lead-chat"
+                              teamContext={{
+                                channelId: "team-1",
+                                leadProcessing: false,
+                                leadWakerId: "waker-1",
+                                members,
+                                name: "研发团队",
+                                timeline: [
+                                  {
+                                    chatId: "team-lead-chat",
+                                    coordinator: true,
+                                    wakerId: "waker-2",
+                                    message: {
+                                      id: "report-target",
+                                      role: "user",
+                                      actor: "team_member",
+                                      content: leadReport,
+                                      displayParts: [
+                                        {
+                                          id: "report-body",
+                                          type: "text",
+                                          text: leadReport,
+                                        },
+                                      ],
+                                      createdSequence: 5,
+                                      sourceChatId: "member-chat",
+                                      sourceWakerId: "waker-2",
+                                    },
+                                  },
+                                ],
+                                hasEarlierTimelineMessages: false,
+                                isLoadingEarlierTimelineMessages: false,
+                                onLoadEarlierTimelineMessages: vi.fn(),
+                                onCreateThread: vi.fn(),
+                                onSendMessage,
+                                onStopWork: vi.fn(),
+                                onThreadCreated: vi.fn(),
+                                onUpdateMemberConfigs: vi.fn(),
+                                renderTaskBoard: () => null,
+                                threadId: "thread-1",
+                                workState: "idle",
+                                workProgress: {
+                                  phase: "idle",
+                                  review: 0,
+                                  terminal: 0,
+                                  total: 0,
+                                },
+                              }}
+                            />
+                          </>
+                        }
+                      />
+                    </Route>
+                  </Routes>
+                </MemoryRouter>
+              </TooltipProvider>
+            </ChatQueueProvider>
+          </WorkspaceProvider>
+        </QueryClientProvider>,
+      );
+
+      const openMember = () =>
+        user.click(
+          screen.getByRole("button", { name: "测试打开执行成员会话" }),
+        );
+      const openLead = () =>
+        user.click(screen.getByRole("button", { name: "测试打开主聊" }));
+      const input = () => screen.getByRole("textbox", { name: "输入消息" });
+      if (mode === "member") {
+        await openMember();
+        await screen.findByText(memberText);
+      } else {
+        await user.click(
+          await screen.findByRole("button", { name: "展开 执行成员 的消息" }),
+        );
+        await screen.findByText(leadReport);
+        await user.type(input(), "@执行");
+        await user.click(
+          await screen.findByRole("option", { name: /执行成员/ }),
+        );
+        expect(
+          input().querySelector("[data-chat-composer-member]"),
+        ).not.toBeNull();
+      }
+      await user.click(await screen.findByRole("button", { name: "回复" }));
+      expect(screen.getByRole("button", { name: "移除回复" })).toBeVisible();
+      expect(input().querySelector("[data-chat-composer-member]")).toBeNull();
+      await user.type(input(), "引用团队消息");
+      if (mode === "lead") {
+        await openMember();
+        expect(screen.queryByRole("button", { name: "移除回复" })).toBeNull();
+        await openLead();
+        expect(screen.getByRole("button", { name: "移除回复" })).toBeVisible();
+        expect(input()).toHaveValue("引用团队消息");
+      }
+      await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+      if (mode === "member") {
+        await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+        expect(sendMessage.mock.calls[0]?.[0]).toMatchObject({
+          path: { chatId: "member-chat" },
+          body: {
+            replyToMessageId: "member-reply-target",
+            text: "引用团队消息",
+          },
+        });
+        expect(onSendMessage).not.toHaveBeenCalled();
+        return;
+      }
+
+      await waitFor(() => expect(onSendMessage).toHaveBeenCalledOnce());
+      const first = onSendMessage.mock.calls[0]?.[0];
+      expect(first).toMatchObject({
+        replyToMessageId: "report-target",
+        text: "引用团队消息",
+      });
+      expect(first?.mentionWakerId).toBeUndefined();
+      expect(sendMessage).not.toHaveBeenCalled();
+      if (failInOtherTab) {
+        if (mode !== "restore") await user.type(input(), "主聊的新草稿");
+        await openMember();
+        await act(async () =>
+          rejectSend(
+            mode === "network"
+              ? new ApiError("连接中断", "NETWORK")
+              : new ApiError("原消息不可用", "ChatReplyTargetUnavailable", 404),
+          ),
+        );
+        expect(screen.queryByRole("button", { name: "重试" })).toBeNull();
+        await openLead();
+        if (mode === "restore") {
+          expect(
+            screen.getByRole("button", { name: "移除回复" }),
+          ).toBeVisible();
+          await waitFor(() => expect(input()).toHaveValue("引用团队消息"));
+          expect(screen.queryByRole("button", { name: "重试" })).toBeNull();
+          await user.click(
+            screen.getByRole("button", { name: "关闭错误提示" }),
+          );
+          return;
+        }
+        expect(input()).toHaveValue("主聊的新草稿");
+        await user.click(await screen.findByRole("button", { name: "重试" }));
+        await waitFor(() => expect(onSendMessage).toHaveBeenCalledTimes(2));
+        const retried = onSendMessage.mock.calls[1]?.[0];
+        if (mode === "replay") {
+          expect(retried?.submissionId).toEqual(expect.any(String));
+          expect(retried?.submissionId).not.toBe(first?.submissionId);
+          expect(retried).toEqual({
+            ...first,
+            submissionId: retried?.submissionId,
+          });
+        } else expect(retried).toEqual(first);
+        expect(input()).toHaveValue("主聊的新草稿");
+        await waitFor(() =>
+          expect(screen.queryByRole("button", { name: "重试" })).toBeNull(),
+        );
+      }
+    },
+  );
+
   it.each([
     {
       route: "/chat?draftId=bound&wakerId=waker-1",
@@ -2999,6 +3241,7 @@ describe("ChatPage", () => {
                                       },
                                     ],
                                     id: "direct-member-answer",
+                                    createdAt: 1,
                                     role: "user",
                                     sourceChatId: "member-chat",
                                   },
@@ -6386,6 +6629,262 @@ describe("ChatPage", () => {
     scrollIntoView.mockRestore();
   });
 
+  it.each(["empty", "text", "quote", "skill", "attachment"] as const)(
+    "引用回复的拒绝回执恢复原草稿或保留下一份草稿，新草稿类型=%s",
+    async (nextDraft) => {
+      const messageId = "a".repeat(32);
+      historyMessages.current = [
+        {
+          id: messageId,
+          role: "user",
+          content: "需要回复的原消息",
+          createdSequence: 1,
+        },
+        {
+          id: "b".repeat(32),
+          role: "user",
+          content: "下一条引用的原消息",
+          createdSequence: 2,
+        },
+      ];
+      wakerSkills.current = [
+        { enabled: true, skill: { id: "skill-review", name: "代码审查" } },
+      ];
+      let rejectSend: (error: ApiError) => void = () => {};
+      sendMessage
+        .mockImplementationOnce(
+          () =>
+            new Promise((_, reject) => {
+              rejectSend = reject;
+            }),
+        )
+        .mockResolvedValueOnce({
+          chat: { id: "chat-1" },
+          execution: { id: "reply-execution", userMessageId: "sent-reply" },
+        });
+      const user = userEvent.setup();
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ChatQueueProvider>
+            <TooltipProvider delayDuration={0}>
+              <MemoryRouter initialEntries={["/chats/chat-1?wakerId=waker-1"]}>
+                <Routes>
+                  <Route element={<ChatLayout />}>
+                    <Route path="/chats/:chatId" element={<ChatPage />} />
+                  </Route>
+                </Routes>
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </QueryClientProvider>,
+      );
+
+      const input = await screen.findByRole("textbox", { name: "输入消息" });
+      const pasteFile = async (name: string) => {
+        fireEvent.paste(input, {
+          clipboardData: {
+            files: [new File(["image"], name, { type: "image/png" })],
+          },
+        });
+        await waitFor(() => expect(screen.getByText(name)).toBeInTheDocument());
+      };
+      const [originalReply, nextReply] = await screen.findAllByRole("button", {
+        name: "回复",
+      });
+      if (!originalReply || !nextReply) throw new Error("缺少消息回复操作");
+      await user.click(originalReply);
+      await user.type(input, "原回复正文");
+      if (nextDraft === "empty") await pasteFile("原回复附件.png");
+      await user.click(screen.getByRole("button", { name: "发送消息" }));
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+      expect(sendMessage.mock.calls[0]?.[0]).toMatchObject({
+        path: { chatId: "chat-1" },
+        body: { text: "原回复正文", replyToMessageId: messageId },
+      });
+      expect(screen.queryByRole("button", { name: "移除回复" })).toBeNull();
+      if (nextDraft === "text") await user.type(input, "下一条未发送的草稿");
+      if (nextDraft === "quote") await user.click(nextReply);
+      if (nextDraft === "attachment") await pasteFile("下一条未发送的附件.png");
+      if (nextDraft === "skill") {
+        await user.type(input, "/代码");
+        await screen.findByRole("option", { name: /代码审查/ });
+        await user.keyboard("{ArrowDown}{Enter}");
+      }
+      const expectNextDraft = () => {
+        if (nextDraft === "text")
+          expect(input).toHaveValue("下一条未发送的草稿");
+        if (nextDraft === "quote") {
+          expect(
+            screen.getByRole("button", { name: "移除回复" }),
+          ).toBeVisible();
+          expect(screen.getByText("回复：下一条引用的原消息")).toBeVisible();
+        } else {
+          expect(screen.queryByRole("button", { name: "移除回复" })).toBeNull();
+        }
+        if (nextDraft === "skill") {
+          expect(
+            input.querySelector('[data-chat-composer-skill="skill-review"]'),
+          ).toHaveTextContent("代码审查");
+        }
+        if (nextDraft === "attachment") {
+          expect(
+            screen.getByText("下一条未发送的附件.png"),
+          ).toBeInTheDocument();
+        }
+      };
+      expectNextDraft();
+
+      await act(async () => {
+        rejectSend(
+          new ApiError("原消息不可用", "ChatReplyTargetUnavailable", 404),
+        );
+      });
+      if (nextDraft !== "empty") {
+        const retry = await screen.findByRole("button", { name: "重试" });
+        expectNextDraft();
+        await user.click(retry);
+        await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2));
+        expect(sendMessage.mock.calls[1]?.[0]).toEqual(
+          sendMessage.mock.calls[0]?.[0],
+        );
+        expectNextDraft();
+        expect(document.querySelector("[data-chat-queued-message]")).toBeNull();
+      } else {
+        expect(
+          await screen.findByRole("button", { name: "移除回复" }),
+        ).toBeVisible();
+        expect(input).toHaveValue("原回复正文");
+        await waitFor(() =>
+          expect(screen.getByText("原回复附件.png")).toBeInTheDocument(),
+        );
+      }
+    },
+  );
+
+  it.each([
+    { mode: "draft", text: "" },
+    { mode: "existing", text: "" },
+    { mode: "board", text: "" },
+    { mode: "existing", text: "查看这张示意图" },
+  ] as const)(
+    "按实际输入标记纯附件消息，入口=$mode 正文=$text",
+    async ({ mode, text }) => {
+      const paths = {
+        draft: "/chat?wakerId=waker-1",
+        existing: "/chats/chat-1?wakerId=waker-1",
+        board: "/board-test",
+      };
+      const user = userEvent.setup();
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ChatQueueProvider>
+            <TooltipProvider delayDuration={0}>
+              <MemoryRouter initialEntries={[paths[mode]]}>
+                <Routes>
+                  <Route element={<ChatLayout />}>
+                    <Route path="/chat" element={<ChatPage />} />
+                    <Route path="/chats/:chatId" element={<ChatPage />} />
+                    <Route
+                      path="/board-test"
+                      element={
+                        <NewChatComposer
+                          scopeKey="board:test-attachment"
+                          partner={{ id: "waker-1", name: "测试伙伴" }}
+                          active
+                          renderPartnerPicker={() => null}
+                        />
+                      }
+                    />
+                  </Route>
+                </Routes>
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </QueryClientProvider>,
+      );
+
+      const input = await screen.findByRole("textbox", { name: "输入消息" });
+      fireEvent.paste(input, {
+        clipboardData: {
+          files: [new File(["image"], "示意图.png", { type: "image/png" })],
+        },
+      });
+      await waitFor(() =>
+        expect(screen.getByText("示意图.png")).toBeInTheDocument(),
+      );
+      if (text) await user.type(input, text);
+      const sendButton = screen.getByRole("button", { name: "发送消息" });
+      await waitFor(() => expect(sendButton).toBeEnabled());
+      await user.click(sendButton);
+
+      const send = mode === "existing" ? sendMessage : createChat;
+      await waitFor(() => expect(send).toHaveBeenCalledOnce());
+      const body = send.mock.calls[0]?.[0].body;
+      expect(body).toMatchObject({
+        text: text || "请查看附件。",
+        attachments: [{ sourcePath: "/tmp/uploads/staged-示意图.png" }],
+      });
+      if (text) expect(body).not.toHaveProperty("attachmentOnly");
+      else expect(body).toHaveProperty("attachmentOnly", true);
+    },
+  );
+
+  it.each([true, false])(
+    "普通 Chat 的回复入口遵守当前建档身份：%s",
+    async (onboarding) => {
+      wakerResources.current = onboarding
+        ? [
+            {
+              id: "waker-1",
+              onboardingStatus: "pending",
+              onboardingChatId: "chat-1",
+            },
+          ]
+        : [{ id: "another-waker", name: "列表中的其他伙伴" }];
+      historyMessages.current = [
+        {
+          id: "a".repeat(32),
+          role: "user",
+          content: "可引用的历史文字",
+          createdSequence: 1,
+        },
+      ];
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ChatQueueProvider>
+            <TooltipProvider delayDuration={0}>
+              <MemoryRouter initialEntries={["/chats/chat-1?wakerId=waker-1"]}>
+                <Routes>
+                  <Route element={<ChatLayout />}>
+                    <Route path="/chats/:chatId" element={<ChatPage />} />
+                  </Route>
+                </Routes>
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </QueryClientProvider>,
+      );
+
+      expect(await screen.findByText("可引用的历史文字")).toBeVisible();
+      if (onboarding) {
+        expect(screen.queryByRole("button", { name: "回复" })).toBeNull();
+      } else {
+        expect(
+          await screen.findByRole("button", { name: "回复" }),
+        ).toBeVisible();
+      }
+    },
+  );
+
   it("按输入顺序保留文件、正文和技能引用，并将文件引用与附件分开提交", async () => {
     wakerSkills.current = [
       {
@@ -6453,6 +6952,68 @@ describe("ChatPage", () => {
       }),
     );
   });
+
+  it.each([
+    { attachment: false, typed: false },
+    { attachment: true, typed: false },
+    { attachment: true, typed: true },
+  ])(
+    "代码引用提示保留正文来源，附件=$attachment 显式正文=$typed",
+    async ({ attachment, typed }) => {
+      const user = userEvent.setup();
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ChatQueueProvider>
+            <TooltipProvider delayDuration={0}>
+              <MemoryRouter initialEntries={["/chats/chat-1?wakerId=waker-1"]}>
+                <Routes>
+                  <Route element={<ChatLayout />}>
+                    <Route path="/chats/:chatId" element={<ChatPage />} />
+                  </Route>
+                </Routes>
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </QueryClientProvider>,
+      );
+
+      const input = await screen.findByRole("textbox", { name: "输入消息" });
+      await user.type(input, "@readme");
+      await screen.findByRole("option", { name: /readme\.md/ });
+      await user.keyboard("{Enter}");
+      await waitFor(() =>
+        expect(
+          document.querySelector("[data-chat-composer-code-reference]"),
+        ).toHaveTextContent("readme.md"),
+      );
+      if (attachment) {
+        fireEvent.paste(input, {
+          clipboardData: {
+            files: [new File(["image"], "引用图.png", { type: "image/png" })],
+          },
+        });
+        expect(await screen.findByText("引用图.png")).toBeInTheDocument();
+      }
+      const prompt = "请查看引用的代码片段。";
+      if (typed) await user.type(input, prompt);
+      await user.click(screen.getByRole("button", { name: "发送消息" }));
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+      const body = sendMessage.mock.calls[0]?.[0].body;
+      expect(body).toMatchObject({
+        text: prompt,
+        codeReferences: [{ path: "/tmp/bot/readme.md" }],
+        attachments: attachment
+          ? [{ sourcePath: "/tmp/uploads/staged-引用图.png" }]
+          : [],
+      });
+      expect(body).not.toHaveProperty("attachmentOnly");
+      if (typed) expect(body).not.toHaveProperty("codeReferenceOnly");
+      else expect(body).toHaveProperty("codeReferenceOnly", true);
+    },
+  );
 
   it("输入框开头按 Backspace 会移除最近添加的整文件代码引用", async () => {
     const user = userEvent.setup();

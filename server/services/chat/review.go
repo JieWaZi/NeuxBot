@@ -19,7 +19,7 @@ import (
 
 const reviewWorkbench = "workbench"
 
-// ListReviewChatIDs locates durable review admissions without revisiting unrelated histories.
+// ListReviewChatIDs 通过复盘接纳索引查找需要恢复的聊天。
 func (m *service) ListReviewChatIDs(ctx context.Context) ([]string, error) {
 	journal, ok := m.logStore.(*conversationJournal)
 	if !ok {
@@ -118,8 +118,7 @@ func admittedReviewTurn(start conversation.ReviewStart, authority reviewstate.Ad
 		// UserMessageID 指向本轮已接纳的用户原文。
 		UserMessageID string `json:"userMessageId"`
 	}
-	if fact == nil || json.Unmarshal(fact.Data, &data) != nil || data.EntryPoint != reviewWorkbench ||
-		data.Review.Configuration == "" || data.Review.Configuration != authority.Configuration || data.UserMessageID == "" {
+	if fact == nil || json.Unmarshal(fact.Data, &data) != nil || data.EntryPoint != reviewWorkbench || data.UserMessageID == "" {
 		return reviewstate.Turn{}
 	}
 	return reviewstate.Turn{
@@ -156,12 +155,14 @@ func readReviewTurnBody(ctx context.Context, journal *conversationJournal, chatI
 	if assistant.ID != fact.ExecutionID || checkpoint == 0 {
 		return turn, nil
 	}
-	turn.AssistantID, turn.Assistant = assistant.ID, assistant.Text
 	builder := messageview.NewMessageViewBuilder()
 	builder.SeedNativeLiveMessage(assistant.ID, assistant.Revision)
-	if err := builder.ReplaceStoredContent(assistant, checkpoint, start.CompletedAt); err == nil {
-		turn.Steps = reviewToolSteps(builder.Messages()[0], assistant.Parts)
+	if err := builder.ReplaceStoredContent(assistant, checkpoint, start.CompletedAt); err != nil {
+		return reviewstate.Turn{}, err
 	}
+	message := builder.Messages()[0]
+	turn.AssistantID, turn.Assistant = assistant.ID, message.AssistantResponseText(true)
+	turn.Steps = reviewToolSteps(message, assistant.Parts)
 	return turn, nil
 }
 

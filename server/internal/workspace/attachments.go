@@ -1,16 +1,21 @@
 package workspace
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
+
+const attachmentStagingPrefix = "attachment-staging-"
 
 // AttachmentInput 是用户选择的一份本地文件。
 type AttachmentInput struct {
@@ -63,6 +68,21 @@ func PrepareChatAttachments(
 	messageID string,
 	inputs []AttachmentInput,
 ) (PreparedAttachments, error) {
+	return prepareChatAttachments(workingDirectory, chatID, messageID, inputs, false)
+}
+
+// StageQueuedAttachments 持久保存稍后派发的上传原件，保留每个原始文件名。
+func StageQueuedAttachments(directory, chatID, inputID string, inputs []AttachmentInput) (PreparedAttachments, error) {
+	return prepareChatAttachments(directory, chatID, inputID, inputs, true)
+}
+
+func prepareChatAttachments(
+	workingDirectory string,
+	chatID string,
+	messageID string,
+	inputs []AttachmentInput,
+	staged bool,
+) (PreparedAttachments, error) {
 	if len(inputs) == 0 {
 		return PreparedAttachments{Rollback: func() error { return nil }}, nil
 	}
@@ -96,7 +116,7 @@ func PrepareChatAttachments(
 		inside := err == nil && relative != ".." &&
 			!strings.HasPrefix(relative, ".."+string(filepath.Separator)) &&
 			!filepath.IsAbs(relative)
-		if inside {
+		if inside && !staged {
 			resolvedAttachments = append(resolvedAttachments, resolvedAttachment{
 				sourcePath:   resolved,
 				relativePath: relative,
@@ -114,11 +134,15 @@ func PrepareChatAttachments(
 		})
 	}
 
-	target := filepath.Join(workspace, constants.ExecutionWorkspaceAttachmentsDirectory, messageID)
+	attachmentDirectory := constants.ExecutionWorkspaceAttachmentsDirectory
+	if staged {
+		attachmentDirectory = constants.ChannelLeadInputAttachmentsDirectory
+	}
+	target := filepath.Join(workspace, attachmentDirectory, messageID)
 	if externalCount > 0 {
 		attachmentsRoot, rootErr := ensureManagedRoot(
 			workspace,
-			constants.ExecutionWorkspaceAttachmentsDirectory,
+			attachmentDirectory,
 		)
 		if rootErr != nil {
 			return PreparedAttachments{}, rootErr
@@ -130,6 +154,7 @@ func PrepareChatAttachments(
 		target,
 		chatID,
 		messageID,
+		staged,
 	)
 	if err != nil {
 		return PreparedAttachments{}, err
@@ -154,11 +179,104 @@ func PrepareChatAttachments(
 	}, nil
 }
 
+// RemoveQueuedAttachments 回收指定负责人输入所拥有的附件副本。
+func RemoveQueuedAttachments(directory, chatID, inputID string) error {
+	if !validAttachmentSegment(inputID) {
+		return status_error.MessageAttachmentInvalid
+	}
+	root, err := openQueuedAttachmentRoot(directory)
+	if err != nil || root == nil {
+		return err
+	}
+	defer root.Close()
+	info, err := root.Lstat(inputID)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil || !info.IsDir() {
+		return status_error.ChatDirectoryOwnershipInvalid
+	}
+	owned, err := root.OpenRoot(inputID)
+	if err != nil {
+		return status_error.MessageAttachmentStorageError
+	}
+	owner, err := ReadWorkspaceOwnerAt(owned)
+	_ = owned.Close()
+	if err != nil || owner.Kind != constants.ChatMessageAttachmentsOwnerKind || owner.ChatID != chatID || owner.MessageID != inputID {
+		return status_error.ChatDirectoryOwnershipInvalid
+	}
+	if err := root.RemoveAll(inputID); err != nil {
+		return status_error.MessageAttachmentStorageError
+	}
+	return nil
+}
+
+func openQueuedAttachmentRoot(directory string) (*os.Root, error) {
+	path := filepath.Join(directory, constants.ChannelLeadInputAttachmentsDirectory)
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil || !info.IsDir() {
+		return nil, status_error.ChatDirectoryOwnershipInvalid
+	}
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return nil, status_error.MessageAttachmentStorageError
+	}
+	actual, err := root.Stat(".")
+	if err != nil || !os.SameFile(info, actual) {
+		_ = root.Close()
+		return nil, status_error.ChatDirectoryOwnershipInvalid
+	}
+	return root, nil
+}
+
+// RecoverQueuedAttachmentIDs 清理未完成的临时目录，并返回等待与队列收据对账的标识。
+func RecoverQueuedAttachmentIDs(directory string) ([]string, error) {
+	root, err := openQueuedAttachmentRoot(directory)
+	if err != nil || root == nil {
+		return nil, err
+	}
+	defer root.Close()
+	entries, err := fs.ReadDir(root.FS(), ".")
+	if err != nil {
+		return nil, status_error.MessageAttachmentStorageError
+	}
+	var ids []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		id := entry.Name()
+		if value, temporary := strings.CutPrefix(id, attachmentStagingPrefix); temporary {
+			var suffix string
+			id, suffix, _ = strings.Cut(value, "-")
+			if _, err := strconv.ParseUint(suffix, 10, 32); err != nil {
+				continue
+			}
+		}
+		if len(id) != 32 {
+			continue
+		}
+		if _, err := hex.DecodeString(id); err != nil {
+			continue
+		}
+		if id == entry.Name() {
+			ids = append(ids, id)
+		} else if err := root.RemoveAll(entry.Name()); err != nil {
+			return nil, status_error.MessageAttachmentStorageError
+		}
+	}
+	return ids, nil
+}
+
 func materializeAttachmentReferences(
 	attachments []resolvedAttachment,
 	target string,
 	chatID string,
 	messageID string,
+	staged bool,
 ) ([]AttachmentReference, []string, error) {
 	references := make([]AttachmentReference, 0, len(attachments))
 	runtimePaths := make([]string, 0, len(attachments))
@@ -185,7 +303,7 @@ func materializeAttachmentReferences(
 	} else if exists {
 		return nil, nil, status_error.MessageAttachmentStorageError
 	}
-	staging, err := os.MkdirTemp(root, "attachment-staging-"+messageID+"-")
+	staging, err := os.MkdirTemp(root, attachmentStagingPrefix+messageID+"-")
 	if err != nil {
 		return nil, nil, status_error.MessageAttachmentStorageError
 	}
@@ -217,13 +335,22 @@ func materializeAttachmentReferences(
 			runtimePaths = append(runtimePaths, attachment.sourcePath)
 			continue
 		}
-		name := uniqueAttachmentName(attachment.name, index, usedNames)
+		name := attachment.name
+		if staged {
+			slot := strconv.Itoa(index)
+			if err := os.Mkdir(filepath.Join(staging, slot), 0o700); err != nil {
+				return nil, nil, status_error.MessageAttachmentStorageError
+			}
+			name = filepath.Join(slot, name)
+		} else {
+			name = uniqueAttachmentName(name, index, usedNames)
+		}
 		destination := filepath.Join(staging, name)
-		if err := copyFile(attachment.sourcePath, destination); err != nil {
+		if err := copyFile(attachment.sourcePath, destination, staged); err != nil {
 			return nil, nil, err
 		}
 		relative := filepath.Join(
-			constants.ExecutionWorkspaceAttachmentsDirectory,
+			filepath.Base(root),
 			messageID,
 			name,
 		)
@@ -255,7 +382,7 @@ func uniqueAttachmentName(
 	return name
 }
 
-func copyFile(sourcePath string, destinationPath string) error {
+func copyFile(sourcePath, destinationPath string, durable bool) error {
 	sourceInfo, err := os.Lstat(sourcePath)
 	if err != nil || !sourceInfo.Mode().IsRegular() {
 		return status_error.MessageAttachmentInvalid
@@ -280,6 +407,12 @@ func copyFile(sourcePath string, destinationPath string) error {
 	if _, err := io.Copy(destination, source); err != nil {
 		_ = destination.Close()
 		return status_error.MessageAttachmentStorageError
+	}
+	if durable {
+		if err := destination.Sync(); err != nil {
+			_ = destination.Close()
+			return status_error.MessageAttachmentStorageError
+		}
 	}
 	if err := destination.Close(); err != nil {
 		return status_error.MessageAttachmentStorageError

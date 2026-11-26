@@ -402,6 +402,21 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelInput = {
 };
 
 /**
+ * 负责人队列收据
+ */
+export type GithubComJieWaZiNeuxBotServerApisChannelsChannelLeadInputReceipt = {
+    /**
+     * 失败错误码
+     */
+    errorCode?: string;
+    /**
+     * 输入标识
+     */
+    id?: string;
+    status?: GithubComJieWaZiNeuxBotServerConstantsChannelInputStatus & unknown;
+};
+
+/**
  * 团队成员详情
  */
 export type GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberDetail = {
@@ -534,9 +549,17 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelTimelinePage = {
  */
 export type GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput = {
     /**
+     * 仅附件
+     */
+    attachmentOnly?: boolean;
+    /**
      * 附件列表
      */
     attachments?: Array<GithubComJieWaZiNeuxBotServerApisChatsMessageAttachment>;
+    /**
+     * 代码引用提示
+     */
+    codeReferenceOnly?: boolean;
     /**
      * 代码引用
      */
@@ -550,7 +573,7 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput = {
      */
     mentionWakerId?: string;
     /**
-     * 连接器列表
+     * 插件列表
      */
     pluginIds?: Array<string>;
     /**
@@ -697,6 +720,10 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsReviewChannelTaskRequest = 
 };
 
 export type GithubComJieWaZiNeuxBotServerApisChannelsSendChannelMessageRequest = GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput & {
+    /**
+     * 引用消息标识
+     */
+    replyToMessageId?: string;
     /**
      * 输入提交标识
      */
@@ -947,9 +974,17 @@ export type GithubComJieWaZiNeuxBotServerApisChatsMessageRequest = {
      */
     accountId?: string;
     /**
+     * 仅附件
+     */
+    attachmentOnly?: boolean;
+    /**
      * 附件列表
      */
     attachments?: Array<GithubComJieWaZiNeuxBotServerApisChatsMessageAttachment>;
+    /**
+     * 代码引用提示
+     */
+    codeReferenceOnly?: boolean;
     /**
      * 代码引用
      */
@@ -963,7 +998,7 @@ export type GithubComJieWaZiNeuxBotServerApisChatsMessageRequest = {
      */
     contextWindow?: string;
     /**
-     * Fast
+     * 快速模式
      */
     fast?: boolean;
     historyMode?: GithubComJieWaZiNeuxBotServerConstantsHistoryMode & unknown;
@@ -1055,6 +1090,10 @@ export type GithubComJieWaZiNeuxBotServerApisChatsRetryChatWorkflowDeliveryReque
 };
 
 export type GithubComJieWaZiNeuxBotServerApisChatsSendMessageRequest = GithubComJieWaZiNeuxBotServerApisChatsMessageRequest & {
+    /**
+     * 引用消息标识
+     */
+    replyToMessageId?: string;
     /**
      * 输入提交标识
      */
@@ -7849,6 +7888,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelActivityState = 'idle' 
  * * `interaction.approval.resolved` - ChannelEventApprovalResolved 表示成员 Chat 审批结果已投影到团队事件流。
  * * `interaction.elicitation.requested` - ChannelEventElicitationRequested 表示成员 Chat 结构化输入请求已投影到团队事件流。
  * * `interaction.elicitation.resolved` - ChannelEventElicitationResolved 表示成员 Chat 结构化输入结果已投影到团队事件流。
+ * * `lead.input_cancelled` - ChannelEventLeadInputCancelled 表示指定的负责人队列输入已取消。
  * * `lead.input_failed` - ChannelEventLeadInputFailed 表示负责人队列已结算未进入 Chat 的输入。
  * * `lead.input_queued` - ChannelEventLeadInputQueued 表示用户输入已进入负责人可靠队列。
  * * `members.config_updated` - ChannelEventMemberConfigsUpdated 表示团队对话成员执行配置已经更新。
@@ -7869,7 +7909,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelActivityState = 'idle' 
  * * `thread.work_stopping` - ChannelEventThreadWorkStopping 表示团队对话已经冻结新工作并正在收敛真实执行。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsChannelEventType = '' | 'interaction.approval.requested' | 'interaction.approval.resolved' | 'interaction.elicitation.requested' | 'interaction.elicitation.resolved' | 'lead.input_failed' | 'lead.input_queued' | 'members.config_updated' | 'task.cancelled' | 'task.created' | 'task.dispatch_deferred' | 'task.finished' | 'task.follow_up_queued' | 'task.recovery_failed' | 'task.retry_queued' | 'task.review_approved' | 'task.started' | 'task.updated' | 'team.leader.processing' | 'team.member.direct_delivered' | 'thread.created' | 'thread.work_stopped' | 'thread.work_stopping';
+export type GithubComJieWaZiNeuxBotServerConstantsChannelEventType = '' | 'interaction.approval.requested' | 'interaction.approval.resolved' | 'interaction.elicitation.requested' | 'interaction.elicitation.resolved' | 'lead.input_cancelled' | 'lead.input_failed' | 'lead.input_queued' | 'members.config_updated' | 'task.cancelled' | 'task.created' | 'task.dispatch_deferred' | 'task.finished' | 'task.follow_up_queued' | 'task.recovery_failed' | 'task.retry_queued' | 'task.review_approved' | 'task.started' | 'task.updated' | 'team.leader.processing' | 'team.member.direct_delivered' | 'thread.created' | 'thread.work_stopped' | 'thread.work_stopping';
 
 /**
  * >
@@ -8826,6 +8866,25 @@ export type GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageConnectorRef
 };
 
 /**
+ * 消息引用
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageReply = {
+    /**
+     * 消息标识
+     */
+    messageId: string;
+    /**
+     * 引用预览
+     */
+    preview: string;
+    role: GithubComJieWaZiNeuxBotServerConstantsMessageRole & unknown;
+    /**
+     * 来源伙伴
+     */
+    sourceWakerId?: string;
+};
+
+/**
  * MessageSkillReference 冻结用户发送消息时明确选择的技能展示信息。
  */
 export type GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageSkillReference = {
@@ -8897,9 +8956,17 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      */
     actor?: string;
     /**
+     * 仅附件
+     */
+    attachmentOnly?: boolean;
+    /**
      * Attachments 是用户消息携带的有序附件引用。
      */
     attachments?: Array<GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference>;
+    /**
+     * 代码引用提示
+     */
+    codeReferenceOnly?: boolean;
     /**
      * CodeReferences 是用户消息携带的有序整文件或代码片段引用。
      */
@@ -8966,6 +9033,7 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      * Readable 表示该持久消息具有用户可读正文或公开失败。
      */
     readable?: boolean;
+    replyTo?: GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageReply & unknown;
     /**
      * Revision 是最后一次改变公开消息快照的权威事件序号。
      */
@@ -16100,6 +16168,7 @@ export type ReadErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -16476,6 +16545,7 @@ export type CommandErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -16960,6 +17030,7 @@ export type LogoutAiAccountErrors = {
     /**
      * >
      * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[BadRequest][40000000001]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -16975,6 +17046,7 @@ export type LogoutAiAccountErrors = {
      * >
      * * `[AIAccountCredentialError][50000000046]`
      * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      *
@@ -17122,6 +17194,7 @@ export type StartAiAccountLoginErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -17507,6 +17580,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -17987,6 +18061,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -18454,6 +18529,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -18835,6 +18911,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -19368,6 +19445,7 @@ export type CreateChannelThreadErrors = {
     /**
      * >
      * * `[BadRequest][40000000001]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -19534,6 +19612,44 @@ export type ListChannelEventsResponses = {
 
 export type ListChannelEventsResponse = ListChannelEventsResponses[keyof ListChannelEventsResponses];
 
+export type ListChannelLeadInputsData = {
+    body?: never;
+    path: {
+        /**
+         * 团队标识
+         */
+        channelId: string;
+        /**
+         * 对话标识
+         */
+        threadId: string;
+    };
+    query: {
+        /**
+         * 逗号分隔输入标识
+         */
+        ids: string;
+    };
+    url: '/api/v1/channels/{channelId}/threads/{threadId}/lead-inputs/list';
+};
+
+export type ListChannelLeadInputsErrors = {
+    /**
+     * >
+     * * `[ChannelThreadNotFound][40400000013]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListChannelLeadInputsError = ListChannelLeadInputsErrors[keyof ListChannelLeadInputsErrors];
+
+export type ListChannelLeadInputsResponses = {
+    200: Array<GithubComJieWaZiNeuxBotServerApisChannelsChannelLeadInputReceipt>;
+};
+
+export type ListChannelLeadInputsResponse = ListChannelLeadInputsResponses[keyof ListChannelLeadInputsResponses];
+
 export type UpdateChannelThreadMemberConfigsData = {
     body: GithubComJieWaZiNeuxBotServerApisChannelsUpdateChannelThreadMemberConfigsRequest & unknown;
     path: {
@@ -19606,12 +19722,14 @@ export type SendChannelMessageErrors = {
     /**
      * >
      * * `[BadRequest][40000000001]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -20310,9 +20428,16 @@ export type SendMessageErrors = {
     /**
      * >
      * * `[BadRequest][40000000001]`
+     * * `[MessageAttachmentInvalid][40000000017]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatReplyTargetUnavailable][40400007202]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[StorageCleanupFailed][50000009705]`
@@ -20663,6 +20788,7 @@ export type RetryChatWorkflowDeliveryErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -21313,6 +21439,7 @@ export type StreamEventsErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -22413,6 +22540,7 @@ export type UpdateMcpServiceErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -22888,6 +23016,7 @@ export type UpdateApiServiceErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -31700,6 +31829,7 @@ export type ListPluginsErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -32097,6 +32227,7 @@ export type BrowsePluginsErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -32473,6 +32604,7 @@ export type RefreshPluginCatalogErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -32859,6 +32991,7 @@ export type GetCatalogPluginErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -33253,6 +33386,7 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -33634,6 +33768,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -34028,6 +34163,7 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -34426,6 +34562,7 @@ export type GetCatalogPluginSkillErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -34802,6 +34939,7 @@ export type CreatePluginFromSkillsErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -35318,6 +35456,7 @@ export type GetPluginErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -36202,6 +36341,7 @@ export type GetPluginConfigurationErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -36808,6 +36948,7 @@ export type InstallPluginErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -37338,6 +37479,7 @@ export type UpdatePluginInstallationsErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -40128,6 +40270,7 @@ export type CreateWakerErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -40640,6 +40783,7 @@ export type ListAutomaticTasksErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -41088,6 +41232,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -41502,6 +41647,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -41887,6 +42033,7 @@ export type GetAutomaticTaskErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -42423,6 +42570,7 @@ export type ListAutomaticRunsErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -42808,6 +42956,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -43714,6 +43863,7 @@ export type StartWakerOnboardingErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -44144,6 +44294,7 @@ export type ListWakerPluginsErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -45720,6 +45871,7 @@ export type CreateWorkflowErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -46114,6 +46266,7 @@ export type DeleteWorkflowErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -46518,6 +46671,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -46928,6 +47082,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -47309,6 +47464,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -47778,6 +47934,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -48190,6 +48347,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -48602,6 +48760,7 @@ export type StartWorkflowRunErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -48987,6 +49146,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -49473,6 +49633,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -49862,6 +50023,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -50251,6 +50413,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -50640,6 +50803,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -51025,6 +51189,7 @@ export type RetryWorkflowRunErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`
@@ -51480,6 +51645,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[ChatMessageFileChangeNotFound][40400000011]`
      * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
      * * `[IMTargetUnavailable][40400004002]`

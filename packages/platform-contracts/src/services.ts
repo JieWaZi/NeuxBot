@@ -84,6 +84,10 @@ export type HostCommands = {
   open_external_url: { args: { url: string }; result: void };
 };
 
+export type LocalPathCommands = {
+  reveal_local_path: { args: { path: string }; result: boolean };
+};
+
 /** 仅应用界面外观，不授予文件、执行或远端页面权限。 */
 export const interfaceScales = [0.8, 0.9, 1, 1.1, 1.25, 1.5] as const;
 export type InterfaceScale = (typeof interfaceScales)[number];
@@ -439,6 +443,7 @@ export type CommandMethods<T> = {
 };
 
 export type HostService = CommandMethods<HostCommands> &
+  Partial<CommandMethods<LocalPathCommands>> &
   Partial<CommandMethods<WindowAppearanceCommands>> &
   Partial<CommandMethods<DesktopStorageCommands>> &
   Partial<CommandMethods<NotificationPreferenceCommands>> & {

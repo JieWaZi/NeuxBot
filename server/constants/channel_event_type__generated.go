@@ -24,6 +24,8 @@ func (v ChannelEventType) String() string {
 		return "interaction.elicitation.requested"
 	case ChannelEventElicitationResolved:
 		return "interaction.elicitation.resolved"
+	case ChannelEventLeadInputCancelled:
+		return "lead.input_cancelled"
 	case ChannelEventLeadInputFailed:
 		return "lead.input_failed"
 	case ChannelEventLeadInputQueued:
@@ -76,6 +78,8 @@ func (v ChannelEventType) Label() string {
 		return "ChannelEventElicitationRequested 表示成员 Chat 结构化输入请求已投影到团队事件流。"
 	case ChannelEventElicitationResolved:
 		return "ChannelEventElicitationResolved 表示成员 Chat 结构化输入结果已投影到团队事件流。"
+	case ChannelEventLeadInputCancelled:
+		return "ChannelEventLeadInputCancelled 表示指定的负责人队列输入已取消。"
 	case ChannelEventLeadInputFailed:
 		return "ChannelEventLeadInputFailed 表示负责人队列已结算未进入 Chat 的输入。"
 	case ChannelEventLeadInputQueued:
@@ -117,7 +121,7 @@ func (v ChannelEventType) Label() string {
 }
 
 func (v ChannelEventType) Values() []enum.Enum {
-	return []enum.Enum{ChannelEventTypeUnspecified, ChannelEventApprovalRequested, ChannelEventApprovalResolved, ChannelEventElicitationRequested, ChannelEventElicitationResolved, ChannelEventLeadInputFailed, ChannelEventLeadInputQueued, ChannelEventMemberConfigsUpdated, ChannelEventTaskCancelled, ChannelEventTaskCreated, ChannelEventTaskDispatchDeferred, ChannelEventTaskFinished, ChannelEventTaskFollowUpQueued, ChannelEventTaskRecoveryFailed, ChannelEventTaskRetryQueued, ChannelEventTaskReviewApproved, ChannelEventTaskStarted, ChannelEventTaskUpdated, ChannelEventTeamLeaderProcessing, ChannelEventMemberDirectDelivered, ChannelEventThreadCreated, ChannelEventThreadWorkStopped, ChannelEventThreadWorkStopping}
+	return []enum.Enum{ChannelEventTypeUnspecified, ChannelEventApprovalRequested, ChannelEventApprovalResolved, ChannelEventElicitationRequested, ChannelEventElicitationResolved, ChannelEventLeadInputCancelled, ChannelEventLeadInputFailed, ChannelEventLeadInputQueued, ChannelEventMemberConfigsUpdated, ChannelEventTaskCancelled, ChannelEventTaskCreated, ChannelEventTaskDispatchDeferred, ChannelEventTaskFinished, ChannelEventTaskFollowUpQueued, ChannelEventTaskRecoveryFailed, ChannelEventTaskRetryQueued, ChannelEventTaskReviewApproved, ChannelEventTaskStarted, ChannelEventTaskUpdated, ChannelEventTeamLeaderProcessing, ChannelEventMemberDirectDelivered, ChannelEventThreadCreated, ChannelEventThreadWorkStopped, ChannelEventThreadWorkStopping}
 }
 
 func (v ChannelEventType) Type() string {
@@ -126,7 +130,7 @@ func (v ChannelEventType) Type() string {
 
 func (v ChannelEventType) MarshalText() ([]byte, error) {
 	switch v {
-	case ChannelEventTypeUnspecified, ChannelEventApprovalRequested, ChannelEventApprovalResolved, ChannelEventElicitationRequested, ChannelEventElicitationResolved, ChannelEventLeadInputFailed, ChannelEventLeadInputQueued, ChannelEventMemberConfigsUpdated, ChannelEventTaskCancelled, ChannelEventTaskCreated, ChannelEventTaskDispatchDeferred, ChannelEventTaskFinished, ChannelEventTaskFollowUpQueued, ChannelEventTaskRecoveryFailed, ChannelEventTaskRetryQueued, ChannelEventTaskReviewApproved, ChannelEventTaskStarted, ChannelEventTaskUpdated, ChannelEventTeamLeaderProcessing, ChannelEventMemberDirectDelivered, ChannelEventThreadCreated, ChannelEventThreadWorkStopped, ChannelEventThreadWorkStopping:
+	case ChannelEventTypeUnspecified, ChannelEventApprovalRequested, ChannelEventApprovalResolved, ChannelEventElicitationRequested, ChannelEventElicitationResolved, ChannelEventLeadInputCancelled, ChannelEventLeadInputFailed, ChannelEventLeadInputQueued, ChannelEventMemberConfigsUpdated, ChannelEventTaskCancelled, ChannelEventTaskCreated, ChannelEventTaskDispatchDeferred, ChannelEventTaskFinished, ChannelEventTaskFollowUpQueued, ChannelEventTaskRecoveryFailed, ChannelEventTaskRetryQueued, ChannelEventTaskReviewApproved, ChannelEventTaskStarted, ChannelEventTaskUpdated, ChannelEventTeamLeaderProcessing, ChannelEventMemberDirectDelivered, ChannelEventThreadCreated, ChannelEventThreadWorkStopped, ChannelEventThreadWorkStopping:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -145,6 +149,8 @@ func (v *ChannelEventType) UnmarshalText(text []byte) error {
 		*v = ChannelEventElicitationRequested
 	case ChannelEventElicitationResolved.String():
 		*v = ChannelEventElicitationResolved
+	case ChannelEventLeadInputCancelled.String():
+		*v = ChannelEventLeadInputCancelled
 	case ChannelEventLeadInputFailed.String():
 		*v = ChannelEventLeadInputFailed
 	case ChannelEventLeadInputQueued.String():

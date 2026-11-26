@@ -27,9 +27,11 @@ import type {
 import {
   createChannelThreadMutation,
   commitTeamTimelineEvents,
+  commitTeamLeadInputReceipt,
   compareTimelineItems,
   commitTeamTimelineProjectionEvent,
   reconcileTeamTimelineQuery,
+  reconcileTeamLeadInputReceipts,
   getChannelOptions,
   getChannelThreadOptions,
   getChannelThreadQueryKey,
@@ -43,6 +45,8 @@ import { TeamTaskBoard } from "../components/team-task-board";
 import { projectTeamMembers } from "../model/team-member-projection";
 import {
   teamEventNoticeOf,
+  teamLeadInputNoticeId,
+  teamLeadInputReceiptOf,
   teamLiveProjectionReducer,
 } from "../model/team-live-projection";
 import type { TeamChatContext } from "@/modules/team";
@@ -263,6 +267,14 @@ export function TeamThreadPage({
     });
   }, [channelId, queryClient]);
 
+  const refreshLeadInputReceipts = useCallback(
+    () =>
+      threadId
+        ? reconcileTeamLeadInputReceipts(queryClient, channelId, threadId)
+        : Promise.resolve(),
+    [channelId, queryClient, threadId],
+  );
+
   const eventRefreshScheduler = useMemo(
     () =>
       createTeamThreadRefreshScheduler({
@@ -284,12 +296,14 @@ export function TeamThreadPage({
     });
     dispatchLiveProjection({ type: "snapshot", snapshot });
     await refreshLatestTimeline();
+    void refreshLeadInputReceipts().catch(() => {});
     refreshThreadNavigation();
     return snapshot.eventCursor ?? "";
   }, [
     channelId,
     eventRefreshScheduler,
     queryClient,
+    refreshLeadInputReceipts,
     refreshLatestTimeline,
     refreshThreadNavigation,
     threadId,
@@ -313,6 +327,20 @@ export function TeamThreadPage({
       after: eventCursorRef.current,
       onEvent: (event) => {
         resolveErrorNoticeRecovery(recovery);
+        const receipt =
+          event.threadId === threadId
+            ? teamLeadInputReceiptOf(event)
+            : undefined;
+        const hasOwner = receipt
+          ? commitTeamLeadInputReceipt(
+              queryClient,
+              channelId,
+              threadId,
+              receipt,
+            )
+          : false;
+        if (event.threadId === threadId && event.type === "thread.work_stopped")
+          void refreshLeadInputReceipts().catch(() => {});
         commitTeamTimelineProjectionEvent(
           queryClient,
           channelId,
@@ -331,8 +359,13 @@ export function TeamThreadPage({
           const oldest = notifiedEventIdsRef.current.values().next().value;
           if (oldest) notifiedEventIdsRef.current.delete(oldest);
         }
+        if (hasOwner) return;
+        const id = receipt
+          ? teamLeadInputNoticeId(receipt.id)
+          : `team-event:${eventId}`;
+        if (captureErrorNoticeRecovery(id).length > 0) return;
         reportErrorNotice({
-          id: `team-event:${eventId}`,
+          id,
           scope: `team:${threadId}`,
           message: t(`eventNotice.${notice}`),
           messageSource: "public",
@@ -350,6 +383,7 @@ export function TeamThreadPage({
         });
         recovery = captureErrorNoticeRecovery(streamOperation);
         eventRefreshScheduler.push();
+        void refreshLeadInputReceipts().catch(() => {});
       },
     });
     return unsubscribe;
@@ -359,6 +393,7 @@ export function TeamThreadPage({
     projectedThreadDetail?.thread?.id,
     queryClient,
     reconcileThreadSnapshot,
+    refreshLeadInputReceipts,
     sceneActive,
     t,
     threadId,
@@ -445,6 +480,8 @@ export function TeamThreadPage({
     } catch (error) {
       eventRefreshScheduler.push();
       throw error;
+    } finally {
+      void refreshLeadInputReceipts().catch(() => {});
     }
   };
   const terminalTaskCount = tasks.filter(

@@ -99,22 +99,14 @@ export function useChatSkillTimeline({
     topic: "resources",
     resource: { kind: "waker", id: wakerId },
     queryKeys: [queryKey],
-    eventTypes: [
-      "partner.review.suggestions.changed",
-      "partner.review.changed",
-    ],
-    eventFilter: ({ payload, type }) =>
-      payload && typeof payload === "object" && "chatId" in payload
-        ? payload.chatId === chatId
-        : type === "partner.review.changed",
-    active,
-    enabled,
-  });
-  useQueryEvents({
-    topic: "resources",
-    resource: { kind: "global" },
-    queryKeys: [queryKey],
-    eventTypes: ["partner.review.settings.changed"],
+    eventTypes: ["partner.review.suggestions.changed"],
+    eventFilter: ({ payload }) =>
+      Boolean(
+        payload &&
+        typeof payload === "object" &&
+        "chatId" in payload &&
+        payload.chatId === chatId,
+      ),
     active,
     enabled,
   });

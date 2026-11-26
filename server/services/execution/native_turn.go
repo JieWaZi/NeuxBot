@@ -324,6 +324,18 @@ func (m *service) startNativeExecution(
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
+	if reply := request.replyTarget; reply != nil {
+		nativeInput.Context = append(nativeInput.Context, agent.TurnFact{Name: constants.ChatReplyTargetContextName, Value: struct {
+			// Role 是所引用消息作者的公开角色。
+			Role constants.MessageRole `json:"role"`
+			// SourceWakerID 指向团队内报告或答复的实际伙伴。
+			SourceWakerID string `json:"sourceWakerId,omitempty"`
+			// Text 是本轮可参考的公开正文摘录。
+			Text string `json:"text"`
+			// Truncated 表示摘录省略了原正文的一部分。
+			Truncated bool `json:"truncated,omitempty"`
+		}{Role: reply.Reference.Role, SourceWakerID: reply.Reference.SourceWakerID, Text: reply.Text, Truncated: reply.Truncated}})
+	}
 	nativeInput.UsageWakerID = state.chat.WakerID
 	nativeInput.UsageSource = nativeUsageSource(request, state)
 	if thread.CoreMemoryOwner != "" && m.coreMemory != nil {

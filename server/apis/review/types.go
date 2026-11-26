@@ -25,6 +25,7 @@ type ReviewSettingsInput struct {
 
 // ReviewSettingsResponse 记忆与学习设置。
 type ReviewSettingsResponse struct {
+	// 复盘配置
 	ReviewSettingsInput
 }
 
@@ -38,6 +39,7 @@ type WakerReviewInput struct {
 
 // WakerReviewResponse 伙伴复盘状态。
 type WakerReviewResponse struct {
+	// 复盘偏好
 	WakerReviewInput
 	// 实际智能体
 	RuntimeID string `json:"runtimeId,omitempty"`
@@ -120,7 +122,7 @@ func settingsView(ctx context.Context) (ReviewSettingsResponse, error) {
 }
 
 func wakerView(ctx context.Context, id string) (WakerReviewResponse, error) {
-	selection, cfg, _, reason := global.ReviewWorker.Effective(ctx, id)
+	selection, cfg, reason := global.ReviewWorker.Effective(ctx, id)
 	status, err := global.ReviewWorker.Status(ctx, id)
 	view := WakerReviewResponse{WakerReviewInput: WakerReviewInput{MemoryEnabled: cfg.MemoryEnabled, SkillMode: cfg.SkillMode},
 		RuntimeID: selection.RuntimeID, AccountID: selection.AccountID, Model: selection.Model, Available: reason == nil, Status: status}

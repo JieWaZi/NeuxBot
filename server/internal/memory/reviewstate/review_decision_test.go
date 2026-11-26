@@ -47,7 +47,8 @@ func TestReviewRetriesMalformedModelDecision(t *testing.T) {
 					return answer, gate(ctx)
 				},
 			})
-			selection, _, origin, err := worker.Effective(ctx, "partner")
+			selection, err := worker.resolve(ctx, "partner")
+			origin := cfg.admission()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -96,7 +97,8 @@ func TestMemoryOnlyReviewOmitsSkillInstructionsAndUnusedPayload(t *testing.T) {
 			return store.CommitOnly, nil
 		},
 	})
-	selection, _, origin, err := worker.Effective(ctx, "partner")
+	selection, err := worker.resolve(ctx, "partner")
+	origin := cfg.admission()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +142,8 @@ func TestSkillCatalogFailurePreservesAuthorizedMemoryReview(t *testing.T) {
 			return store.CommitOnly, nil
 		},
 	})
-	selection, _, origin, err := worker.Effective(ctx, "partner")
+	selection, err := worker.resolve(ctx, "partner")
+	origin := cfg.admission()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +187,8 @@ func TestBadSkillProposalDoesNotBlockMemoryChanges(t *testing.T) {
 			}, nil
 		},
 	})
-	selection, _, origin, err := worker.Effective(ctx, "partner")
+	selection, err := worker.resolve(ctx, "partner")
+	origin := cfg.admission()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,10 +221,10 @@ func TestSuggestionDuplicateOnlyBlocksSameSkillAuthorization(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	old := Suggestion{ID: "s1", WakerID: "partner", ChatID: "chat1", Action: ActionCreate, Name: "template-use", Lesson: "Apply the release template.", Status: StatusIgnored, Origin: Admission{Configuration: "old", Skill: 1}}
+	old := Suggestion{ID: "s1", WakerID: "partner", ChatID: "chat1", Action: ActionCreate, Name: "template-use", Lesson: "Apply the release template.", Status: StatusIgnored, Origin: Admission{Skill: 1}}
 	add(old)
 	fresh := old
-	fresh.ID, fresh.ChatID, fresh.Status, fresh.Origin.Configuration = "s2", "chat2", StatusPending, "current"
+	fresh.ID, fresh.ChatID, fresh.Status, fresh.Origin.Skill = "s2", "chat2", StatusPending, 2
 	add(fresh)
 	if item, err := store.Suggestion(ctx, fresh.ChatID, fresh.ID); err != nil || item.ID != fresh.ID {
 		t.Fatalf("an invalid previous authorization suppressed a fresh suggestion: %+v, %v", item, err)
@@ -231,12 +235,12 @@ func TestSuggestionDuplicateOnlyBlocksSameSkillAuthorization(t *testing.T) {
 	if item, err := store.Suggestion(ctx, duplicate.ChatID, duplicate.ID); err != nil || item.ID != "" {
 		t.Fatalf("an identical lesson in the same generation was stored twice: %+v, %v", item, err)
 	}
-	history, err := store.RecentSkillSuggestions(ctx, fresh.WakerID, fresh.Origin)
+	history, err := store.RecentSkillSuggestions(ctx, fresh.WakerID, fresh.Origin.Skill)
 	if err != nil || len(history) != 1 || history[0].ID != fresh.ID {
-		t.Fatalf("prior suggestions crossed the current configuration boundary: %+v, %v", history, err)
+		t.Fatalf("prior suggestions crossed the current skill authorization boundary: %+v, %v", history, err)
 	}
-	fresh.Origin.Skill = 2
-	history, err = store.RecentSkillSuggestions(ctx, fresh.WakerID, fresh.Origin)
+	fresh.Origin.Skill = 3
+	history, err = store.RecentSkillSuggestions(ctx, fresh.WakerID, fresh.Origin.Skill)
 	if err != nil || len(history) != 0 {
 		t.Fatalf("prior suggestions crossed the skill-mode generation boundary: %+v, %v", history, err)
 	}
@@ -266,7 +270,8 @@ func TestReviewKeepsRevisionSuggestionWhenTargetIsUnavailable(t *testing.T) {
 			return `{"skill":{"action":"update","signal":"technique","skillId":"s1","lesson":"Verify the release after the fallback succeeds.","sourceMessageIds":["e3"]}}`, gate(ctx)
 		},
 	})
-	selection, _, origin, err := worker.Effective(ctx, "partner")
+	selection, err := worker.resolve(ctx, "partner")
+	origin := cfg.admission()
 	if err != nil {
 		t.Fatal(err)
 	}

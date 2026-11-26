@@ -13,22 +13,23 @@ import (
 )
 
 const (
-	SourcePartner  = "partner"
-	SourceGlobal   = "global"
-	ModeOff        = "off"
-	ModeAsk        = "ask"
-	ModeAutomatic  = "automatic"
-	ActionCreate   = "create"
-	ActionUpdate   = "update"
-	DecisionSave   = "save"
-	DecisionIgnore = "ignore"
-	StatusPending  = "pending"
-	StatusQueued   = "queued"
-	StatusRunning  = "running"
-	StatusSaved    = "saved"
-	StatusIgnored  = "ignored"
-	StatusFailed   = "failed"
-	StatusIdle     = "idle"
+	SourcePartner      = "partner"
+	SourceGlobal       = "global"
+	ModeOff            = "off"
+	ModeAsk            = "ask"
+	ModeAutomatic      = "automatic"
+	ActionCreate       = "create"
+	ActionUpdate       = "update"
+	DecisionSave       = "save"
+	DecisionIgnore     = "ignore"
+	StatusPending      = "pending"
+	StatusQueued       = "queued"
+	StatusRunning      = "running"
+	StatusSaved        = "saved"
+	StatusIgnored      = "ignored"
+	StatusFailed       = "failed"
+	StatusIdle         = "idle"
+	retryFailedReviews = "UPDATE review_chats SET due_at=0,failures=0 WHERE failures>0"
 )
 
 // Settings 保存共用复盘配置。
@@ -43,8 +44,6 @@ type Settings struct {
 	Model string `json:"model,omitempty"`
 	// EveryTurns 是触发整理所需的合格轮次。
 	EveryTurns int `json:"everyTurns"`
-	// Generation 区分每次生效的智能体和模型配置。
-	Generation int64 `json:"-"`
 }
 
 // Partner 保存每个功能独立的伙伴授权。
@@ -55,14 +54,12 @@ type Partner struct {
 	SkillMode string `json:"skillMode"`
 	// MemoryGeneration 标识当前记忆开关代次。
 	MemoryGeneration int64 `json:"-"`
-	// SkillGeneration 标识当前技能模式代次。
+	// SkillGeneration 标识当前技能开关代次。
 	SkillGeneration int64 `json:"-"`
 }
 
 // Admission 保存轮次接纳时的已授权功能代次。
 type Admission struct {
-	// Configuration 是实际使用的 CLI 配置摘要。
-	Configuration string `json:"configuration"`
 	// Memory 是允许记忆复盘的伙伴设置代次。
 	Memory int64 `json:"memory,omitempty"`
 	// Skill 是允许技能学习的伙伴设置代次。
@@ -145,10 +142,12 @@ CREATE TABLE IF NOT EXISTS review_suggestions (id TEXT PRIMARY KEY, chat_id TEXT
 CREATE INDEX IF NOT EXISTS review_suggestions_queue ON review_suggestions(status, created_at);
 CREATE INDEX IF NOT EXISTS review_suggestions_chat ON review_suggestions(chat_id, created_at);
 CREATE INDEX IF NOT EXISTS review_suggestions_timeline ON review_suggestions(chat_id, ` + suggestionTimelineTime + `, id) WHERE status <> 'ignored';
-CREATE INDEX IF NOT EXISTS review_suggestions_scope_recent ON review_suggestions(
-	waker_id, json_extract(body, '$.origin.configuration'), json_extract(body, '$.origin.skill'), created_at DESC, id DESC);
-CREATE INDEX IF NOT EXISTS review_suggestions_scope_exact ON review_suggestions(
-	waker_id, json_extract(body, '$.origin.configuration'), json_extract(body, '$.origin.skill'), name COLLATE NOCASE, lesson);
+DROP INDEX IF EXISTS review_suggestions_scope_recent;
+DROP INDEX IF EXISTS review_suggestions_scope_exact;
+CREATE INDEX IF NOT EXISTS review_suggestions_skill_recent ON review_suggestions(
+	waker_id, json_extract(body, '$.origin.skill'), created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS review_suggestions_skill_exact ON review_suggestions(
+	waker_id, json_extract(body, '$.origin.skill'), name COLLATE NOCASE, lesson);
 `)
 	return s, mapDB(err)
 }
@@ -157,7 +156,7 @@ CREATE INDEX IF NOT EXISTS review_suggestions_scope_exact ON review_suggestions(
 func (s *Store) Settings(ctx context.Context) (Settings, error) {
 	v := Settings{Source: SourcePartner, EveryTurns: DefaultEveryTurns}
 	var data []byte
-	err := s.db.QueryRowContext(ctx, "SELECT body,revision FROM review_config WHERE id='settings'").Scan(&data, &v.Generation)
+	err := s.db.QueryRowContext(ctx, "SELECT body FROM review_config WHERE id='settings'").Scan(&data)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, nil
 	}
@@ -173,7 +172,7 @@ func (s *Store) Settings(ctx context.Context) (Settings, error) {
 	return v, nil
 }
 
-// SetSettings 保存配置，降低频率阈值时重新检查尚未冻结的等待批次。
+// SetSettings 保存配置，降低整理轮次门槛时重新检查等待的批次。
 func (s *Store) SetSettings(ctx context.Context, v Settings, checkWaiting bool) error {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -184,8 +183,8 @@ func (s *Store) SetSettings(ctx context.Context, v Settings, checkWaiting bool) 
 		return mapDB(err)
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO review_config(id,body,revision) VALUES('settings',?,?)
-		ON CONFLICT(id) DO UPDATE SET body=excluded.body,revision=excluded.revision`, data, v.Generation); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO review_config(id,body,revision) VALUES('settings',?,1)
+		ON CONFLICT(id) DO UPDATE SET body=excluded.body`, data); err != nil {
 		return mapDB(err)
 	}
 	if checkWaiting {
@@ -274,7 +273,7 @@ func (s *Store) PartnerPreferences(ctx context.Context, ids []string) (map[strin
 	return preferences, nil
 }
 
-// SetPartner 保存功能开关和代次。
+// SetPartner 保存伙伴功能设置及开关代次。
 func (s *Store) SetPartner(ctx context.Context, id string, v Partner) error {
 	data, err := json.Marshal(struct {
 		// MemoryEnabled 保存开关。
@@ -289,7 +288,7 @@ func (s *Store) SetPartner(ctx context.Context, id string, v Partner) error {
 	if err != nil {
 		return mapDB(err)
 	}
-	_, err = s.db.ExecContext(ctx, "INSERT INTO review_config(id,body,revision) VALUES(?,?,1) ON CONFLICT(id) DO UPDATE SET body=excluded.body,revision=revision+1", "waker:"+id, data)
+	_, err = s.db.ExecContext(ctx, "INSERT INTO review_config(id,body,revision) VALUES(?,?,1) ON CONFLICT(id) DO UPDATE SET body=excluded.body", "waker:"+id, data)
 	return mapDB(err)
 }
 
@@ -309,15 +308,28 @@ func (s *Store) Ready(ctx context.Context, now time.Time) (Progress, bool, error
 	return p, err == nil, mapDB(err)
 }
 
-// Schedule 保存空闲时间、冻结边界或失败重试计划。
-func (s *Store) Schedule(ctx context.Context, p Progress) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE review_chats SET through_seq=?,due_at=?,failures=? WHERE chat_id=? AND cursor=?", p.Through, p.DueAt, p.Failures, p.ChatID, p.Cursor)
-	return mapDB(err)
+// UpdateProgress 根据读取时的状态保存批次边界、跳过结果或重试计划。
+func (s *Store) UpdateProgress(ctx context.Context, before, after Progress) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE review_chats SET cursor=?,through_seq=?,due_at=?,failures=?
+		WHERE chat_id=? AND cursor=? AND through_seq=? AND due_at=? AND failures=?`,
+		after.Cursor, after.Through, after.DueAt, after.Failures,
+		before.ChatID, before.Cursor, before.Through, before.DueAt, before.Failures)
+	if err != nil {
+		return mapDB(err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return mapDB(err)
+	}
+	if rows != 1 {
+		return status_error.Conflict
+	}
+	return nil
 }
 
 // Retry 重新领取指定伙伴的失败批次。
 func (s *Store) Retry(ctx context.Context, waker string) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE review_chats SET due_at=0,failures=0 WHERE waker_id=? AND failures>0", waker)
+	_, err := s.db.ExecContext(ctx, retryFailedReviews+" AND waker_id=?", waker)
 	return mapDB(err)
 }
 
@@ -381,7 +393,7 @@ SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS(
 	AND json_extract(body, '$.action')=? AND (? <> 'update' OR (
 		json_extract(body, '$.skillId')=? AND json_extract(body, '$.versionId')=?)))
 ON CONFLICT(id) DO NOTHING`, proposal.ID, proposal.ChatID, proposal.WakerID, proposal.Name, proposal.Lesson, proposal.Status, proposal.CreatedAt, data,
-		proposal.WakerID, proposal.Origin.Configuration, proposal.Origin.Skill, proposal.Name, proposal.Lesson, proposal.Action,
+		proposal.WakerID, proposal.Origin.Skill, proposal.Name, proposal.Lesson, proposal.Action,
 		proposal.Action, proposal.SkillID, proposal.VersionID)
 	if err != nil {
 		return false, mapDB(err)
@@ -391,12 +403,12 @@ ON CONFLICT(id) DO NOTHING`, proposal.ID, proposal.ChatID, proposal.WakerID, pro
 }
 
 // suggestionScope 匹配仍属于同一伙伴和当前学习授权的历史。
-const suggestionScope = `waker_id=? AND json_extract(body, '$.origin.configuration')=? AND json_extract(body, '$.origin.skill')=?`
+const suggestionScope = `waker_id=? AND json_extract(body, '$.origin.skill')=?`
 
 // RecentSkillSuggestions 返回同一学习授权下最近的短建议，供模型判断是否已记录该经验。
-func (s *Store) RecentSkillSuggestions(ctx context.Context, waker string, origin Admission) ([]Suggestion, error) {
+func (s *Store) RecentSkillSuggestions(ctx context.Context, waker string, generation int64) ([]Suggestion, error) {
 	return s.listSuggestions(ctx, `SELECT body FROM review_suggestions WHERE `+suggestionScope+`
-		ORDER BY created_at DESC,id DESC LIMIT 5`, waker, origin.Configuration, origin.Skill)
+		ORDER BY created_at DESC,id DESC LIMIT 5`, waker, generation)
 }
 
 // SaveSuggestion 通过预期状态比较提交建议变化。
@@ -484,12 +496,6 @@ func mapDB(err error) error {
 	return status_error.DatabaseError
 }
 
-// Fail 根据当前游标延迟重试，保留已经冻结的批次边界。
-func (s *Store) Fail(ctx context.Context, p Progress) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE review_chats SET due_at=?,failures=? WHERE chat_id=? AND cursor=?", p.DueAt, p.Failures, p.ChatID, p.Cursor)
-	return mapDB(err)
-}
-
 // CommitOnly 提交无记忆变更的游标与建议。
 func (s *Store) CommitOnly(ctx context.Context, apply func(*sql.Tx, bool) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -519,12 +525,6 @@ func (s *Store) ObservedIDs(ctx context.Context) ([]string, error) {
 		ids = append(ids, id)
 	}
 	return ids, mapDB(rows.Err())
-}
-
-// Skip 推进已核验无资格的区间，避免重复扫描旧代次或旧聊天。
-func (s *Store) Skip(ctx context.Context, p Progress, next, due int64) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE review_chats SET cursor=?,through_seq=0,due_at=?,failures=0 WHERE chat_id=? AND cursor=?", next, due, p.ChatID, p.Cursor)
-	return mapDB(err)
 }
 
 // ForgetPartner 在伙伴已删除后清理其复盘状态。

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -18,8 +19,9 @@ import (
 )
 
 const (
-	managementListLimit    = 24
-	managementProbeTimeout = 20 * time.Second
+	managementListLimit     = 24
+	managementProbeTimeout  = 20 * time.Second
+	managementApprovalLimit = 2_000
 )
 
 type managementInput struct {
@@ -46,7 +48,7 @@ type managementInput struct {
 }
 
 // ManagementBindings 绑定当前执行可管理的连接器与实际用户确认入口。
-func (s *Service) ManagementBindings(wakerID, executionID string, approve func(context.Context, string) error, changed func(context.Context, string, capability.Result)) []capability.Binding {
+func (s *Service) ManagementBindings(wakerID, executionID string, approve func(context.Context, string) error) []capability.Binding {
 	if s == nil || wakerID == "" || executionID == "" {
 		return nil
 	}
@@ -75,20 +77,12 @@ func (s *Service) ManagementBindings(wakerID, executionID string, approve func(c
 					if err := capability.DecodeParams(request.Params, &input); err != nil {
 						return capability.Result{}, err
 					}
-					result, err := capability.Execute(ctx, s.config.Commands, scope, request, func(ctx context.Context) error {
+					return capability.Execute(ctx, s.config.Commands, scope, request, func(ctx context.Context) error {
 						return s.mutate(ctx, wakerID, action, input, approve)
 					})
-					if err == nil && changed != nil {
-						changed(ctx, action, result)
-					}
-					return result, err
 				},
 				Receipt: func(ctx context.Context, requestID string) (capability.Result, error) {
-					result, err := capability.Lookup(ctx, s.config.Commands, scope, operation, requestID)
-					if err == nil && changed != nil {
-						changed(ctx, action, result)
-					}
-					return result, err
+					return capability.Lookup(ctx, s.config.Commands, scope, operation, requestID)
 				},
 			})
 		}
@@ -121,7 +115,7 @@ func (s *Service) read(ctx context.Context, wakerID, action string, input manage
 	if !Trusted(current.Connector) {
 		return nil, status_error.MCPConnectorTrustRequired
 	}
-	if err := approve(ctx, approvalDescription("Test MCP connection", current.Connector, nil)); err != nil {
+	if err := approveTarget(ctx, approve, "Test MCP connection", current.Connector, ""); err != nil {
 		return nil, err
 	}
 	fresh, err := s.Visible(ctx, wakerID, input.ConnectorID)
@@ -156,7 +150,7 @@ func (s *Service) mutate(ctx context.Context, wakerID, action string, input mana
 		if err != nil {
 			return err
 		}
-		if err := approve(ctx, approvalDescription("Test and add MCP connector for the current partner", connector, &input)); err != nil {
+		if err := approveTarget(ctx, approve, "Test and add MCP connector for the current partner", connector, ""); err != nil {
 			return err
 		}
 		tested, err := s.probeApprovedConfiguration(ctx, connector)
@@ -232,14 +226,15 @@ func (s *Service) mutate(ctx context.Context, wakerID, action string, input mana
 	probeRequired := (current.Enabled || partners != nil) && runtimeChanged
 	requireApproval := partners != nil || newTrustRequired || probeRequired
 	if requireApproval {
-		reason := approvalDescription("Update MCP connector", prepared, &input)
+		scope := ""
 		if partners != nil {
-			reason += " for " + affected
+			scope = " for " + affected
 		}
-		if err := approve(ctx, reason); err != nil {
+		if err := approveTarget(ctx, approve, "Update MCP connector", prepared, scope); err != nil {
 			return err
 		}
 	}
+	var tested *mcpclient.Result
 	if probeRequired {
 		// 以用户确认的候选配置测试，失败时保留当前启用配置。
 		result, err := s.probeApprovedConfiguration(ctx, prepared)
@@ -249,8 +244,9 @@ func (s *Service) mutate(ctx context.Context, wakerID, action string, input mana
 		if result.Status != constants.MCPTestStatusSucceeded {
 			return status_error.MCPConnectorProbeFailed
 		}
+		tested = &result
 	}
-	_, err = s.saveUpdate(ctx, wakerID, current, prepared, requireApproval, partners)
+	_, err = s.saveUpdate(ctx, wakerID, current, prepared, requireApproval, partners, tested)
 	return err
 }
 
@@ -395,26 +391,45 @@ func (s *Service) approvalScope(ctx context.Context, ids []string) (string, erro
 	return scope, nil
 }
 
-func approvalDescription(action string, connector models.MCPConnector, proposed *managementInput) string {
-	reason := fmt.Sprintf("%s %q", action, bounded(connector.Name, 120))
-	if connector.Transport == constants.MCPTransportStdio {
-		reason += fmt.Sprintf(" using local command %q", bounded(connector.Command, 320))
-		if len(connector.Arguments) > 0 {
-			if proposed != nil && proposed.Arguments != nil {
-				reason += fmt.Sprintf(" with arguments %q", bounded(strings.Join(connector.Arguments, " "), 320))
-			} else {
-				reason += " with its existing arguments"
+// approveTarget presents the full command vector or URL of the frozen candidate.
+func approveTarget(ctx context.Context, approve func(context.Context, string) error, action string, connector models.MCPConnector, scope string) error {
+	reason := fmt.Sprintf("%s %q", action, connector.Name)
+	safe := func(value string) bool {
+		if !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
+			return false
+		}
+		for _, secrets := range [][]models.MCPSecretDefinition{connector.Headers, connector.Environment} {
+			for _, secret := range secrets {
+				if secret.Configured && secret.Value != "" && strings.Contains(value, secret.Value) {
+					return false
+				}
 			}
 		}
-	} else {
-		target := remoteOrigin(connector.URL)
-		if proposed != nil && proposed.URL != nil {
-			// 新提交的地址已经拒绝凭据、查询参数和片段；既有配置仅展示来源。
-			if parsed, err := url.Parse(connector.URL); err == nil {
-				target += parsed.EscapedPath()
-			}
-		}
-		reason += fmt.Sprintf(" at %q", bounded(target, 500))
+		return true
 	}
-	return reason
+	if !safe(connector.Name) {
+		return status_error.MCPConnectorTrustRequired
+	}
+	if connector.Transport == constants.MCPTransportStdio {
+		argv := make([]string, 0, len(connector.Arguments)+1)
+		for _, value := range append([]string{connector.Command}, connector.Arguments...) {
+			if !safe(value) || carriesCredentialArgument(value) {
+				return status_error.MCPConnectorTrustRequired
+			}
+			argv = append(argv, strconv.Quote(value))
+		}
+		reason += " using local command [" + strings.Join(argv, ", ") + "]"
+	} else {
+		target, err := url.Parse(connector.URL)
+		if err != nil || target.Host == "" || target.User != nil || target.RawQuery != "" ||
+			target.ForceQuery || target.Fragment != "" || !safe(connector.URL) || !safe(target.Path) {
+			return status_error.MCPConnectorTrustRequired
+		}
+		reason += fmt.Sprintf(" at %q", connector.URL)
+	}
+	reason += scope
+	if len(reason) > managementApprovalLimit {
+		return status_error.AgentInputInvalid
+	}
+	return approve(ctx, reason)
 }

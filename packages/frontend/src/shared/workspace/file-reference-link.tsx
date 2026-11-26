@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type MouseEvent,
@@ -10,7 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, Copy, Link2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/shared/ui/sonner";
-import { openExternalURL } from "@/shared/platform";
+import { openExternalURL, revealLocalPath } from "@/shared/platform";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
 import { WorkspaceFileTypeIcon } from "./workspace-file-type-icon";
@@ -18,6 +19,7 @@ import { workspaceFileAppearance } from "./workspace-file-icons";
 import {
   emptyFileReferenceContext,
   fileName,
+  isAbsoluteFilePath,
   localFileURL,
   parseReference,
   resolveFileReference,
@@ -31,6 +33,7 @@ type ReferenceNavigation = {
   context: FileReferenceContext;
   onOpenFile?: (file: ResolvedFileReference) => void;
   onOpenURL?: (url: string) => unknown;
+  allowLocalReveal?: boolean;
 };
 const ReferenceContext = createContext<ReferenceNavigation>({
   context: emptyFileReferenceContext,
@@ -41,10 +44,11 @@ export function FileReferenceProvider({
   context,
   onOpenFile,
   onOpenURL,
+  allowLocalReveal,
 }: ReferenceNavigation & { children: ReactNode }) {
   const navigation = useMemo(
-    () => ({ context, onOpenFile, onOpenURL }),
-    [context, onOpenFile, onOpenURL],
+    () => ({ context, onOpenFile, onOpenURL, allowLocalReveal }),
+    [context, onOpenFile, onOpenURL, allowLocalReveal],
   );
   return (
     <ReferenceContext.Provider value={navigation}>
@@ -182,11 +186,13 @@ export function ReferenceLink({
   children,
   className,
   title,
+  showCopy = true,
 }: {
   reference: Reference;
   children?: ReactNode;
   className?: string;
   title?: string;
+  showCopy?: boolean;
 }) {
   const navigation = useContext(ReferenceContext);
   if (reference.kind === "file")
@@ -195,6 +201,7 @@ export function ReferenceLink({
         reference={reference}
         className={className}
         title={title}
+        showCopy={showCopy}
       >
         {children}
       </LocalReferenceLink>
@@ -228,15 +235,22 @@ function LocalReferenceLink({
   children,
   className,
   title,
+  showCopy,
 }: {
   reference: FileReferenceCandidate;
   children?: ReactNode;
   className?: string;
   title?: string;
+  showCopy: boolean;
 }) {
   const { t } = useTranslation("chat");
-  const { onOpenFile } = useContext(ReferenceContext);
-  const [copiedPath, setCopiedPath] = useState("");
+  const { onOpenFile, allowLocalReveal } = useContext(ReferenceContext);
+  const [copyFeedback, setCopyFeedback] = useState<{ path: string }>();
+  useEffect(() => {
+    if (!copyFeedback) return;
+    const timer = window.setTimeout(() => setCopyFeedback(undefined), 5000);
+    return () => window.clearTimeout(timer);
+  }, [copyFeedback]);
   const query = useFileReference(reference, undefined, false);
   const result = query.isError ? undefined : query.data;
   const file = result?.status === "resolved" ? result.file : undefined;
@@ -246,7 +260,7 @@ function LocalReferenceLink({
   const name = target?.name ?? fileName(reference.path);
   const path = target?.canonicalPath ?? reference.path;
   const label = children ?? reference.raw;
-  const copied = copiedPath === path;
+  const copied = copyFeedback?.path === path;
   const copyLabel = t(copied ? "filePathCopied" : "fileCopyPath");
   const { tone } = workspaceFileAppearance(name, Boolean(directory));
   const chipClassName = cn(
@@ -264,7 +278,7 @@ function LocalReferenceLink({
       <span className="min-w-0 truncate">{label}</span>
     </>
   );
-  // 本地目标只能经授权解析打开，修饰点击和中键不能转交系统导航。
+  // 工作台沿用授权解析。显式点击时，桌面可在系统文件管理器定位绝对路径。
   return (
     <span className="inline-flex max-w-full items-center gap-0.5 align-middle">
       {!directory ? (
@@ -288,9 +302,21 @@ function LocalReferenceLink({
             const resolved = file
               ? { status: "resolved" as const, file }
               : (await query.refetch()).data;
-            if (resolved?.status === "resolved") onOpenFile(resolved.file);
-            else if (resolved?.status !== "directory")
-              toast.error(t("fileReference.unavailable"));
+            if (resolved?.status === "resolved") {
+              onOpenFile(resolved.file);
+              return;
+            }
+            if (resolved?.status === "directory") return;
+            if (
+              allowLocalReveal &&
+              resolved?.status !== "ambiguous" &&
+              isAbsoluteFilePath(reference.path) &&
+              (await revealLocalPath(reference.path).catch(() => false))
+            )
+              return;
+            toast.error(
+              t(`fileReference.${resolved?.status ?? "unavailable"}`),
+            );
           }}
           onAuxClick={(event) => event.preventDefault()}
         >
@@ -307,34 +333,38 @@ function LocalReferenceLink({
           {content}
         </span>
       )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className="shrink-0"
-        aria-label={`${copyLabel}：${name}`}
-        title={copyLabel}
-        onClick={async (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          try {
-            const resolved = target ? undefined : (await query.refetch()).data;
-            const fullPath =
-              target?.canonicalPath ??
-              (resolved?.status === "resolved"
-                ? resolved.file.canonicalPath
-                : resolved?.status === "directory"
-                  ? resolved.directory.canonicalPath
-                  : reference.path);
-            await navigator.clipboard.writeText(fullPath);
-            setCopiedPath(fullPath);
-          } catch {
-            toast.error(t("filePathCopyFailed"));
-          }
-        }}
-      >
-        {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-      </Button>
+      {showCopy && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0"
+          aria-label={`${copyLabel}：${name}`}
+          title={copyLabel}
+          onClick={async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            try {
+              const resolved = target
+                ? undefined
+                : (await query.refetch()).data;
+              const fullPath =
+                target?.canonicalPath ??
+                (resolved?.status === "resolved"
+                  ? resolved.file.canonicalPath
+                  : resolved?.status === "directory"
+                    ? resolved.directory.canonicalPath
+                    : reference.path);
+              await navigator.clipboard.writeText(fullPath);
+              setCopyFeedback({ path: fullPath });
+            } catch {
+              toast.error(t("filePathCopyFailed"));
+            }
+          }}
+        >
+          {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+        </Button>
+      )}
     </span>
   );
 }

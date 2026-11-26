@@ -25,8 +25,6 @@ type Waker struct {
 	Bio string `gorm:"column:bio;type:text;not null;default:''" json:"bio"`
 	// DefaultModel 是此伙伴为新对话选定的模型；缺省跟随全局默认。
 	DefaultModel *WakerDefaultModel `gorm:"column:default_model;type:text;serializer:json" json:"defaultModel,omitempty"`
-	// DefaultModelRevision 在默认模型实际变化时推进，撤销旧复盘授权。
-	DefaultModelRevision uint64 `gorm:"column:default_model_revision;not null;default:0" json:"-"`
 	// OnboardingStatus 是伙伴建档状态；旧伙伴保持空值。
 	OnboardingStatus constants.WakerOnboardingStatus `gorm:"column:onboarding_status;type:varchar(16);not null;default:''" json:"onboardingStatus,omitempty"`
 	// OnboardingChatID 是唯一允许建档的普通 Chat 身份，先于接纳首轮保存。

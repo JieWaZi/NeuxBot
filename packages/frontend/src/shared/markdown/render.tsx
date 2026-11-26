@@ -33,12 +33,18 @@ export interface MarkdownInlineCodeProps {
   children: string;
   inLink: boolean;
 }
+export type MarkdownLinkProps = ComponentPropsWithoutRef<"a"> & {
+  standalone: boolean;
+};
+export type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & {
+  inLink: boolean;
+};
 export interface MarkdownComponents {
-  link?: ComponentType<ComponentPropsWithoutRef<"a">>;
+  link?: ComponentType<MarkdownLinkProps>;
   inlineCode?: ComponentType<MarkdownInlineCodeProps>;
   code?: ComponentType<MarkdownCodeProps>;
   table?: ComponentType<ComponentPropsWithoutRef<"table">>;
-  image?: ComponentType<ComponentPropsWithoutRef<"img">>;
+  image?: ComponentType<MarkdownImageProps>;
 }
 const emptyComponents: MarkdownComponents = {};
 export { emptyComponents };
@@ -96,6 +102,8 @@ export interface MarkdownRenderContext {
   readonly omitHtml: boolean;
   /** Inside an anchor's children: interactive mentions must not nest there. */
   readonly inLink?: boolean;
+  /** The paragraph contains just this link, with no surrounding prose. */
+  readonly standaloneLink?: boolean;
   /** Reference targets visible to this pass. */
   readonly targets: ReferenceTargets;
   /** Footnote identifiers in first-reference order; a footnote's number is its 1-based index here. */
@@ -158,7 +166,7 @@ function renderBlockEntries(
   const entries: BlockEntry[] = [];
   for (const [index, block] of blocks.entries()) {
     if (block.type === "paragraph") {
-      entries.push({ paragraph: renderChildren(block.children, context) });
+      entries.push({ paragraph: renderParagraph(block, context) });
     } else {
       const element = renderNode(block, index, context);
       if (element !== null) entries.push({ element });
@@ -174,6 +182,16 @@ function renderChildren(
   return nodes.map((node, index) => renderNode(node, index, context));
 }
 
+function renderParagraph(node: Md.Paragraph, context: MarkdownRenderContext) {
+  const [child] = node.children;
+  if (
+    node.children.length === 1 &&
+    (child?.type === "link" || child?.type === "linkReference")
+  )
+    return [renderNode(child, 0, { ...context, standaloneLink: true })];
+  return renderChildren(node.children, context);
+}
+
 function renderNode(
   node: Md.RootContent,
   key: Key,
@@ -183,7 +201,7 @@ function renderNode(
     case "text":
       return node.value;
     case "paragraph":
-      return <p key={key}>{renderChildren(node.children, context)}</p>;
+      return <p key={key}>{renderParagraph(node, context)}</p>;
     case "heading":
       return createElement(
         `h${node.depth}`,
@@ -462,7 +480,12 @@ function renderAnchor(
   const Link = context.components.link;
   if (Link)
     return (
-      <Link key={key} href={url} title={title ?? undefined}>
+      <Link
+        key={key}
+        href={url}
+        title={title ?? undefined}
+        standalone={context.standaloneLink === true}
+      >
         {children}
       </Link>
     );
@@ -490,7 +513,13 @@ function renderImage(
 ): ReactNode {
   const Image = context.components.image;
   return Image ? (
-    <Image key={key} src={url} alt={alt} title={title ?? undefined} />
+    <Image
+      key={key}
+      src={url}
+      alt={alt}
+      title={title ?? undefined}
+      inLink={context.inLink === true}
+    />
   ) : (
     <span key={key} title={title ?? undefined}>
       {alt}

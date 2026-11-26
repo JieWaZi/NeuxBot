@@ -321,17 +321,25 @@ func (s *service) StopWorkForSubmission(ctx context.Context, channelID, threadID
 		return err
 	}
 	leadInputID := LeadInputID(thread.ID, identity.ID)
-	var queued bool
+	var queued, cancelled bool
 	var followUp models.ChannelTaskFollowUp
 	err = s.transaction(locked, func(ctx context.Context) error {
 		followUp = models.ChannelTaskFollowUp{}
+		cancelled = false
 		_, found, err := s.threads.GetLeadInput(ctx, leadInputID)
 		queued = found
 		if err != nil {
 			return err
 		}
 		if queued {
-			return s.threads.CancelLeadInput(ctx, leadInputID, time.Now().UnixMilli())
+			cancelled, err = s.threads.CancelLeadInput(ctx, leadInputID, time.Now().UnixMilli())
+			if err != nil || !cancelled {
+				return err
+			}
+			_, err = s.appendEvent(ctx, thread.ChannelID, thread.ID, constants.ChannelEventLeadInputCancelled, map[string]any{
+				"inputId": leadInputID,
+			})
+			return err
 		}
 		if err := s.tasks.DeletePendingFollowUp(ctx, thread.ID, identity.ID); err != nil {
 			return err
@@ -339,6 +347,9 @@ func (s *service) StopWorkForSubmission(ctx context.Context, channelID, threadID
 		followUp, _, err = s.tasks.FindDeliveredFollowUp(ctx, thread.ID, identity.ID)
 		return err
 	})
+	if err == nil && cancelled {
+		s.releaseLeadInputAttachments(thread, leadInputID)
+	}
 	release()
 	if err != nil {
 		return err
@@ -519,7 +530,8 @@ func (s *service) finishStopWork(ctx context.Context, thread models.ChannelThrea
 		return workflowStopErr
 	}
 	stoppedAt := time.Now().UnixMilli()
-	return s.transaction(ctx, func(transactionContext context.Context) error {
+	var cancelledInputIDs []string
+	err = s.transaction(ctx, func(transactionContext context.Context) error {
 		current, getErr := s.threads.Get(transactionContext, thread.ID)
 		if getErr != nil {
 			return getErr
@@ -536,7 +548,9 @@ func (s *service) finishStopWork(ctx context.Context, thread models.ChannelThrea
 		if consumeErr := s.tasks.ConsumeOpenNotifications(transactionContext, current.ID, stoppedAt); consumeErr != nil {
 			return consumeErr
 		}
-		if cancelErr := s.threads.CancelOpenLeadInputs(transactionContext, current.ID, stoppedAt); cancelErr != nil {
+		var cancelErr error
+		cancelledInputIDs, cancelErr = s.threads.CancelOpenLeadInputs(transactionContext, current.ID, stoppedAt)
+		if cancelErr != nil {
 			return cancelErr
 		}
 		if _, eventErr := s.appendEvent(
@@ -574,4 +588,10 @@ func (s *service) finishStopWork(ctx context.Context, thread models.ChannelThrea
 		}
 		return nil
 	})
+	if err == nil {
+		for _, id := range cancelledInputIDs {
+			s.releaseLeadInputAttachments(thread, id)
+		}
+	}
+	return err
 }

@@ -13,6 +13,10 @@ import (
 type ChannelWorkInput struct {
 	// 消息正文
 	Text string `json:"text" validate:"required_without=WorkflowID,max=1048576"`
+	// 仅附件
+	AttachmentOnly bool `json:"attachmentOnly,omitempty"`
+	// 代码引用提示
+	CodeReferenceOnly bool `json:"codeReferenceOnly,omitempty"`
 	// 所选工作流
 	WorkflowID string `json:"workflowId,omitempty" validate:"max=32"`
 	// 提及伙伴
@@ -21,7 +25,7 @@ type ChannelWorkInput struct {
 	Attachments []chats.MessageAttachment `json:"attachments" validate:"max=100,dive"`
 	// 技能列表
 	SkillIDs []string `json:"skillIds" validate:"max=100,dive,max=32"`
-	// 连接器列表
+	// 插件列表
 	PluginIDs []string `json:"pluginIds,omitempty" validate:"max=100,dive,max=32"`
 	// 连接器列表
 	ConnectorIDs []string `json:"connectorIds" validate:"max=100,dive,max=32"`
@@ -46,13 +50,15 @@ func (i ChannelWorkInput) workInput() execution.WorkInput {
 		})
 	}
 	return execution.WorkInput{
-		Actor:          string(constants.ChannelMessageActorUser),
-		Content:        i.Text,
-		Workflow:       workinput.SelectWorkflow(strings.TrimSpace(i.WorkflowID)),
-		Attachments:    attachments,
-		CodeReferences: references,
-		SkillIDs:       append([]string(nil), i.SkillIDs...),
-		ConnectorIDs:   append([]string(nil), i.ConnectorIDs...),
-		PluginIDs:      append([]string(nil), i.PluginIDs...),
+		Actor:             string(constants.ChannelMessageActorUser),
+		Content:           i.Text,
+		AttachmentOnly:    i.AttachmentOnly,
+		CodeReferenceOnly: i.CodeReferenceOnly,
+		Workflow:          workinput.SelectWorkflow(strings.TrimSpace(i.WorkflowID)),
+		Attachments:       attachments,
+		CodeReferences:    references,
+		SkillIDs:          append([]string(nil), i.SkillIDs...),
+		ConnectorIDs:      append([]string(nil), i.ConnectorIDs...),
+		PluginIDs:         append([]string(nil), i.PluginIDs...),
 	}
 }

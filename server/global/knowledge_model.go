@@ -32,11 +32,6 @@ func resolveKnowledgeSelection(ctx context.Context, selection models.LibraryExec
 }
 
 func detachedModelSelection(ctx context.Context, selection models.LibraryExecutionDefaults) (models.LibraryExecutionDefaults, models.RuntimeEnvironment, error) {
-	return selectDetachedModel(ctx, selection, agent.SupportsDetachedPolicy)
-}
-
-// selectDetachedModel 复用模型和账号接纳规则，按调用所需能力检查运行时。
-func selectDetachedModel(ctx context.Context, selection models.LibraryExecutionDefaults, supportsProvider func(string) bool) (models.LibraryExecutionDefaults, models.RuntimeEnvironment, error) {
 	selection.RuntimeID = strings.TrimSpace(selection.RuntimeID)
 	selection.AccountID = strings.TrimSpace(selection.AccountID)
 	selection.Model = strings.TrimSpace(selection.Model)
@@ -58,7 +53,7 @@ func selectDetachedModel(ctx context.Context, selection models.LibraryExecutionD
 	if provider == "" {
 		provider = environment.RuntimeID
 	}
-	if !supportsProvider(provider) {
+	if !agent.SupportsDetachedPolicy(provider) {
 		return selection, environment, status_error.RuntimePolicyUnsupported
 	}
 	environment.BaseRuntimeID = provider

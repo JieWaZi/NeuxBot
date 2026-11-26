@@ -8,6 +8,7 @@ import { stageAttachment, discardAttachment } from "@/shared/platform";
 
 export type BotPathFile = File & {
   botSourcePath: string;
+  botUploadState?: "staged" | "renew";
 };
 
 function mediaTypeOf(path: string): string {
@@ -33,12 +34,26 @@ export function pathFile(
   );
 }
 
+/** 新提交可以重传原字节，旧提交仍持有原暂存路径用于幂等对账。 */
+export function fileForFreshSubmission(file: BotPathFile): BotPathFile {
+  if (!file.botUploadState) return file;
+  return Object.assign(
+    new File([file], file.name, {
+      type: file.type,
+      lastModified: file.lastModified,
+    }),
+    { botSourcePath: file.botSourcePath, botUploadState: "renew" as const },
+  );
+}
+
 export const chatAttachmentAdapter = {
   accept: "*",
   async add({ file }): Promise<PendingAttachment> {
-    const sourcePath =
-      (file as BotPathFile).botSourcePath || (await stageAttachment(file));
-    const attachmentFile = Object.assign(file, { botSourcePath: sourcePath });
+    const attachmentFile = file as BotPathFile;
+    if (!attachmentFile.botSourcePath) {
+      attachmentFile.botSourcePath = await stageAttachment(file);
+      attachmentFile.botUploadState = "staged";
+    }
     return {
       id: crypto.randomUUID(),
       type: file.type.startsWith("image/") ? "image" : "file",
@@ -49,7 +64,12 @@ export const chatAttachmentAdapter = {
     };
   },
   async send(attachment: PendingAttachment): Promise<CompleteAttachment> {
-    const sourcePath = (attachment.file as BotPathFile).botSourcePath;
+    const file = attachment.file as BotPathFile;
+    if (file.botUploadState === "renew") {
+      file.botSourcePath = await stageAttachment(file);
+      file.botUploadState = "staged";
+    }
+    const sourcePath = file.botSourcePath;
     if (!sourcePath)
       throw new Error(i18n.t("common:errors.attachmentUnavailable"));
     return {
@@ -66,11 +86,44 @@ export const chatAttachmentAdapter = {
     };
   },
   async remove(attachment): Promise<void> {
-    const sourcePath = (attachment.file as BotPathFile | undefined)
-      ?.botSourcePath;
-    if (sourcePath) await discardAttachment(sourcePath);
+    const file = attachment.file as BotPathFile | undefined;
+    if (file?.botSourcePath && file.botUploadState !== "renew")
+      await discardAttachment(file.botSourcePath);
   },
 } satisfies AttachmentAdapter;
+
+export async function renewReplyAttachments(
+  attachments: readonly CompleteAttachment[],
+) {
+  const freshPaths: string[] = [];
+  const discard = async () => {
+    await Promise.allSettled(freshPaths.map((path) => discardAttachment(path)));
+  };
+  const results = await Promise.allSettled(
+    attachments.map(async (attachment) => {
+      const file = attachment.file as BotPathFile | undefined;
+      if (!file?.botUploadState) return attachment;
+      const fresh = fileForFreshSubmission(file);
+      const renewed = await chatAttachmentAdapter.send({
+        ...attachment,
+        file: fresh,
+        status: { type: "requires-action", reason: "composer-send" },
+      });
+      if (fresh.botSourcePath !== file.botSourcePath)
+        freshPaths.push(fresh.botSourcePath);
+      return renewed;
+    }),
+  );
+  const renewed: CompleteAttachment[] = [];
+  for (const result of results) {
+    if (result.status === "rejected") {
+      await discard();
+      throw result.reason;
+    }
+    renewed.push(result.value);
+  }
+  return { attachments: renewed, discard };
+}
 
 export function attachmentPathsOf(message: AppendMessageLike): string[] {
   return (message.attachments ?? []).flatMap((attachment) =>

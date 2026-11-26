@@ -602,8 +602,9 @@ type directAgentClient struct {
 	cwd string
 	// mcp holds the materialized configuration for native session opening.
 	mcp []acp.McpServer
-	// capabilities and instructionSupport are frozen before the connection becomes available.
-	capabilities       AgentCapabilities
+	// capabilities records the negotiated capabilities of this connection.
+	capabilities AgentCapabilities
+	// instructionSupport records the negotiated instruction delivery modes.
 	instructionSupport map[string]any
 	// mcpCapabilities is the native support for configured network transports.
 	mcpCapabilities acp.McpCapabilities

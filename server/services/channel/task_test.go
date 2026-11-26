@@ -1026,6 +1026,24 @@ func TestLeadCreatedTasksDispatchAfterLeadTerminalAndStartupRecovery(t *testing.
 	}
 }
 
+func TestMemberFollowUpsMarkOnlyEntirelyGeneratedBodies(t *testing.T) {
+	const codePrompt = "请查看引用的代码片段。"
+	task := models.ChannelTask{CurrentFence: 1}
+	queued := []models.ChannelTaskFollowUp{
+		{Payload: workinput.Input{Content: "请查看附件。", AttachmentOnly: true, Attachments: []workinput.Attachment{{SourcePath: "example.txt"}}}},
+		{Payload: workinput.Input{Content: codePrompt, CodeReferenceOnly: true, CodeReferences: []workinput.CodeReference{{Path: "/work/example.go"}}}},
+	}
+	generated, err := taskWorkInput(task, nil, queued)
+	if err != nil || !generated.CodeReferenceOnly || generated.AttachmentOnly || len(generated.Attachments) != 1 || len(generated.CodeReferences) != 1 {
+		t.Fatalf("合并后的自动提示丢失来源: %+v %v", generated, err)
+	}
+	queued = append(queued, models.ChannelTaskFollowUp{Payload: workinput.Input{Content: codePrompt}})
+	typed, err := taskWorkInput(task, nil, queued)
+	if err != nil || typed.CodeReferenceOnly || typed.AttachmentOnly || !strings.HasSuffix(typed.Content, "\n\n"+codePrompt+"\n\n"+codePrompt) {
+		t.Fatalf("合并后的用户正文被当成自动提示: %+v %v", typed, err)
+	}
+}
+
 func TestPendingFollowUpReassignmentKeepsDelegationReason(t *testing.T) {
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "reassigned-follow-up.db"), Migrate: true})
 	if err != nil {

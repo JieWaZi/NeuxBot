@@ -14,20 +14,27 @@ export function useChatMessageLocator({
   active,
   routeKey,
   messageId,
+  cancelReplyLocation,
+  keyboardReplyTrigger,
   requestedInteractionId,
   hasEarlierMessages = false,
   onLoadEarlier,
+  onProgrammaticScroll,
 }: {
   viewport: RefObject<HTMLDivElement | null>;
   active: boolean;
   routeKey?: string;
   messageId?: string;
+  cancelReplyLocation?: () => void;
+  keyboardReplyTrigger?: HTMLButtonElement;
   requestedInteractionId?: string;
   hasEarlierMessages?: boolean;
   onLoadEarlier: () => Promise<boolean | undefined>;
+  onProgrammaticScroll: (top: number) => void;
 }) {
   const sceneVisible = useVisibleScene();
-  const { t } = useTranslation("workBoard");
+  const { t } = useTranslation(["workBoard", "chat", "common"]);
+  const locatingReply = Boolean(cancelReplyLocation);
   const [batch, setBatch] = useState(0);
   const key = messageId ? JSON.stringify([routeKey, messageId]) : undefined;
   const [progress, setProgress] = useState<{
@@ -48,6 +55,8 @@ export function useChatMessageLocator({
     let moved = false;
     let live = true;
     let loadingHistory = false;
+    let highlighted: HTMLElement | undefined;
+    let highlightTimer: ReturnType<typeof setTimeout> | undefined;
     const update = (status: NonNullable<typeof progress>["status"]) => {
       if (key && live) setProgress({ key, status });
     };
@@ -67,7 +76,22 @@ export function useChatMessageLocator({
               card.dataset.chatInteractionId === id,
           );
       if (target) {
-        target.scrollIntoView({ block: "start" });
+        const previousTop = container.scrollTop;
+        target.scrollIntoView({ block: locatingReply ? "center" : "start" });
+        if (container.scrollTop !== previousTop)
+          onProgrammaticScroll(container.scrollTop);
+        const bubble = locatingReply
+          ? target.querySelector<HTMLElement>("[data-chat-message-bubble]")
+          : undefined;
+        if (bubble) {
+          if (keyboardReplyTrigger === target.ownerDocument.activeElement)
+            bubble.focus({ preventScroll: true });
+          highlighted = bubble;
+          bubble.setAttribute("data-chat-message-located", "");
+          highlightTimer = setTimeout(() => {
+            bubble.removeAttribute("data-chat-message-located");
+          }, 1200);
+        }
         moved = true;
         update("positioned");
       }
@@ -107,13 +131,18 @@ export function useChatMessageLocator({
     return () => {
       live = false;
       observer.disconnect();
+      clearTimeout(highlightTimer);
+      highlighted?.removeAttribute("data-chat-message-located");
     };
   }, [
     active,
     sceneVisible,
     routeKey,
     key,
+    keyboardReplyTrigger,
+    locatingReply,
     messageId,
+    onProgrammaticScroll,
     viewport,
     batch,
     requestedInteractionId,
@@ -124,15 +153,23 @@ export function useChatMessageLocator({
         role="status"
         className="text-content-muted type-ui flex shrink-0 items-center gap-3 px-6 py-2"
       >
-        {t(
-          status === "loading"
-            ? "locatingResult"
-            : status === "missing"
-              ? "resultUnavailable"
-              : status === "error"
-                ? "locateFailed"
-                : "resultFurther",
-        )}
+        {locatingReply
+          ? t(
+              {
+                loading: "chat:locatingReply",
+                missing: "chat:replyUnavailable",
+                error: "chat:replyLocateFailed",
+                more: "chat:replyFurther",
+              }[status],
+            )
+          : t(
+              {
+                loading: "locatingResult",
+                missing: "resultUnavailable",
+                error: "locateFailed",
+                more: "resultFurther",
+              }[status],
+            )}
         {status === "more" || status === "error" ? (
           <Button
             size="sm"
@@ -142,10 +179,20 @@ export function useChatMessageLocator({
             {t("continueLocating")}
           </Button>
         ) : null}
+        {cancelReplyLocation ? (
+          <Button size="sm" variant="ghost" onClick={cancelReplyLocation}>
+            {t(status === "loading" ? "common:cancel" : "common:close")}
+          </Button>
+        ) : null}
       </div>
     ) : null;
   return {
-    positioning: Boolean(messageId && status !== "positioned"),
+    positioning: Boolean(
+      messageId &&
+      (locatingReply
+        ? !status || status === "loading"
+        : status !== "positioned"),
+    ),
     feedback,
   };
 }

@@ -19,6 +19,13 @@ import { useChatHistoryScroll } from "./use-chat-history-scroll";
 import { ChatHistoryLoadingState } from "./chat-history-loading-state";
 import { useChatMessageLocator } from "./chat-message-locator";
 import {
+  ChatMessageReplyActions,
+  ComposerReplyContext,
+  MessageReplyAction,
+  MessageReplyQuote,
+  useSelectMessageReply,
+} from "./chat-message-reply";
+import {
   useChatReading,
   usePresentedChatBoundary,
   useVisibleScene,
@@ -126,6 +133,8 @@ import { pathFile, type BotPathFile } from "../runtime/chat-attachment-adapter";
 import {
   type BotChatMessage,
   type ChatPendingElicitation,
+  type ChatReplyDraftEditor,
+  type ChatReplyReference,
   type ChatRunMetrics,
   type ChatToolArgs,
   type ToolCategory,
@@ -216,6 +225,8 @@ type ChatThreadProps = {
   wakerAvatar?: string;
   /** 团队作者索引；空索引沿用当前成员身份，并保留历史回复的身份展示。 */
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
+  /** 团队成员名称索引，用于原消息尚未加载时展示引用作者。 */
+  teamReplyAuthorNames?: Readonly<Record<string, string>>;
   timelineEvents?: readonly ChatTimelineEvent[];
   workflowInvocation?: WorkflowInvocationStop;
   activityStatus?: ReactNode;
@@ -265,6 +276,9 @@ type ChatThreadProps = {
   codeReferenceRequest?: ChatCodeReference;
   composerDraft?: string;
   composerDraftReference?: ChatComposerDraftReference;
+  replyTo?: ChatReplyReference;
+  onReplyToChange?: (replyTo: ChatReplyReference | undefined) => void;
+  registerReplyDraftEditor?: (editor: ChatReplyDraftEditor) => () => void;
   showComposer?: boolean;
   /** 完整输入区可独立用于业务指令，不呈现消息列表或产生阅读事实。 */
   presentation?: "thread" | "composer";
@@ -280,7 +294,10 @@ type ChatThreadProps = {
   /** 真实聊天与成果归属独立于文件授权；所有共享聊天入口沿用同一阅读器。 */
   readingChatId?: string;
   linkAdditionalWorkingDirectories?: readonly string[];
-  onCodeReferencesChange?: (references: ChatCodeReference[]) => void;
+  onCodeReferencesChange?: (
+    references: ChatCodeReference[],
+    codeReferenceOnly: boolean,
+  ) => void;
   onOpenCodeReference?: (reference: ChatCodeReference) => void;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
   onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
@@ -982,7 +999,9 @@ function formatMessageTime(date: Date) {
 }
 
 function MessageTimestamp({ timestamp }: { timestamp?: number }) {
-  const createdAt = new Date(timestamp ?? 0);
+  if (timestamp === undefined || timestamp <= 0) return null;
+  const createdAt = new Date(timestamp);
+  if (!Number.isFinite(createdAt.getTime())) return null;
   return (
     <time
       className="text-muted-foreground type-caption tabular-nums"
@@ -1127,8 +1146,12 @@ export function MessageRunStatus({
 const messageFooterLayoutClassName =
   "mt-1 flex min-h-control-sm items-center gap-1";
 
+const messageLocationClassName =
+  "duration-standard outline-none transition-[background-color] focus-visible:inset-ring-2 focus-visible:inset-ring-ring motion-reduce:transition-none";
+
 function UserMessage({
   message,
+  replyQuote,
   availableSkillIds,
   availableConnectorIds,
   pluginIcons,
@@ -1137,6 +1160,7 @@ function UserMessage({
   onOpenFile,
 }: {
   message: BotChatMessage;
+  replyQuote?: ReactNode;
   availableSkillIds?: ReadonlySet<string>;
   availableConnectorIds?: ReadonlySet<string>;
   pluginIcons?: ChatPluginIcons;
@@ -1144,6 +1168,7 @@ function UserMessage({
   onOpenCodeReference?: (reference: ChatCodeReference) => void;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
 }) {
+  const selectReply = useSelectMessageReply(message);
   const skills = (message.skills ?? []).flatMap((skill) =>
     skill.id && skill.name
       ? [{ id: skill.id, name: skill.name, version: skill.version }]
@@ -1162,7 +1187,15 @@ function UserMessage({
       className="group/user-message mt-1 px-6"
     >
       <div className="ml-auto grid w-fit max-w-[78%] min-w-0 justify-items-end">
-        <div className="bg-user-message-background text-user-message-content type-chat max-w-full min-w-0 overflow-hidden rounded-xl px-4 py-1.5">
+        <div
+          data-chat-message-bubble
+          tabIndex={-1}
+          className={cn(
+            "bg-user-message-background text-user-message-content type-chat data-[chat-message-located]:bg-user-message-background/85 max-w-full min-w-0 overflow-hidden rounded-xl px-4 py-1.5",
+            messageLocationClassName,
+          )}
+        >
+          {replyQuote}
           <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
             <ChatMessagePluginReferences
               plugins={message.plugins}
@@ -1222,6 +1255,7 @@ function UserMessage({
           )}
         >
           <MessageCopyAction message={message} />
+          {selectReply ? <MessageReplyAction onSelect={selectReply} /> : null}
           <MessageReadActions message={message} />
         </footer>
       </div>
@@ -1245,6 +1279,7 @@ function ParticipantMessage({
   const author = messageAuthors?.[messageID];
   const displayName = author?.name ?? name;
   const displayAvatar = author?.avatar ?? avatar;
+  const selectReply = useSelectMessageReply(message, undefined, true);
 
   return (
     <ChatReplyMessage
@@ -1254,6 +1289,7 @@ function ParticipantMessage({
       footer={
         <>
           <MessageCopyAction message={message} />
+          {selectReply ? <MessageReplyAction onSelect={selectReply} /> : null}
           <MessageReadActions message={message} />
           <span className="ml-auto shrink-0">
             <MessageTimestamp timestamp={message.createdAt} />
@@ -1401,7 +1437,12 @@ function ChatReplyMessage({
         {children ? (
           <div
             data-chat-message-card
-            className="bg-message-card-background w-fit max-w-full min-w-0 rounded-xl px-4 py-1.5"
+            data-chat-message-bubble
+            tabIndex={-1}
+            className={cn(
+              "bg-message-card-background w-fit max-w-full min-w-0 rounded-xl px-4 py-1.5 data-[chat-message-located]:bg-[color-mix(in_srgb,var(--message-card-background),var(--accent-default)_12%)]",
+              messageLocationClassName,
+            )}
           >
             {children}
           </div>
@@ -1493,6 +1534,7 @@ export function AssistantMessage({
 }) {
   const { t } = useTranslation("chat");
   const message = view.message;
+  const selectReply = useSelectMessageReply(message, view.segments);
   const messageID = message.id ?? "";
   const hasFileChanges =
     showFileChanges &&
@@ -1563,7 +1605,7 @@ export function AssistantMessage({
         )
       }
       footer={
-        showFooterActions || hasFileChanges ? (
+        showFooterActions || hasFileChanges || selectReply ? (
           <>
             {hasFileChanges ? (
               <ExecutionFileChangesAction
@@ -1572,25 +1614,28 @@ export function AssistantMessage({
                 onOpenFile={openFileChange}
               />
             ) : null}
+            {showFooterActions && isTerminalMessage(message) ? (
+              <MessageRunStatus
+                message={
+                  continuation
+                    ? {
+                        ...message,
+                        runMetrics: continuation.footerMessage.runMetrics,
+                      }
+                    : message
+                }
+                showUsageDetails={showUsageMetrics}
+              />
+            ) : null}
+            {showFooterActions ? (
+              <MessageCopyAction
+                message={continuation?.footerMessage ?? message}
+                hideWhenRunning
+              />
+            ) : null}
+            {selectReply ? <MessageReplyAction onSelect={selectReply} /> : null}
             {showFooterActions ? (
               <>
-                {isTerminalMessage(message) && (
-                  <MessageRunStatus
-                    message={
-                      continuation
-                        ? {
-                            ...message,
-                            runMetrics: continuation.footerMessage.runMetrics,
-                          }
-                        : message
-                    }
-                    showUsageDetails={showUsageMetrics}
-                  />
-                )}
-                <MessageCopyAction
-                  message={continuation?.footerMessage ?? message}
-                  hideWhenRunning
-                />
                 <MessageForkAction message={message} />
                 <MessageReadActions message={message} />
                 <span className="ml-auto shrink-0">
@@ -1658,6 +1703,7 @@ const ChatMessage = memo(function ChatMessage({
   onOpenFile,
   onOpenFileChange,
   messageAuthors,
+  teamReplyAuthorNames,
   showUsageMetrics,
   showFileChanges,
 }: {
@@ -1675,6 +1721,7 @@ const ChatMessage = memo(function ChatMessage({
   onOpenFile?: (file: ChatFileOpenRequest) => void;
   onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
+  teamReplyAuthorNames?: Readonly<Record<string, string>>;
   showUsageMetrics?: boolean;
   showFileChanges?: boolean;
 }) {
@@ -1690,6 +1737,17 @@ const ChatMessage = memo(function ChatMessage({
     ) : null;
   }
   if (message.role === "user") {
+    const replyTo = message.replyTo;
+    const quotedWakerId = replyTo?.sourceWakerId;
+    const quotedWakerName =
+      replyTo && teamReplyAuthorNames
+        ? (messageAuthors?.[replyTo.messageId]?.name ??
+          (quotedWakerId
+            ? teamReplyAuthorNames[quotedWakerId]
+            : replyTo.role === "assistant"
+              ? name
+              : undefined))
+        : undefined;
     return messageAuthors?.[message.id ?? ""]?.displayAsParticipant ? (
       <ParticipantMessage
         message={message}
@@ -1700,6 +1758,14 @@ const ChatMessage = memo(function ChatMessage({
     ) : (
       <UserMessage
         message={message}
+        replyQuote={
+          replyTo ? (
+            <MessageReplyQuote
+              replyTo={replyTo}
+              authorName={quotedWakerName}
+            />
+          ) : undefined
+        }
         availableSkillIds={availableSkillIds}
         availableConnectorIds={availableConnectorIds}
         pluginIcons={pluginIcons}
@@ -1739,15 +1805,16 @@ function ChatReadingSurface({
   viewport: RefObject<HTMLDivElement | null>;
   children: ReactNode;
 }) {
+  const readingActive = active && Boolean(chatId);
   const sceneVisible = useVisibleScene();
-  const reading = useChatReading({ chatId, active });
+  const reading = useChatReading({ chatId, active: readingActive });
   usePresentedChatBoundary({
     root: viewport,
-    active: active && sceneVisible && !positioning,
+    active: readingActive && sceneVisible && !positioning,
     present: reading.present,
     revision: reading.revision,
   });
-  const ready = reading.state?.complete === true;
+  const ready = Boolean(chatId) && reading.state?.complete === true;
   const { markRead, markUnread } = reading;
   const actions = useMemo(
     () => (ready ? { markRead, markUnread } : undefined),
@@ -1756,24 +1823,20 @@ function ChatReadingSurface({
   return <ChatReadingActions value={actions}>{children}</ChatReadingActions>;
 }
 
-function wrapChatReading(
-  readingChatId: string | undefined,
-  active: boolean,
-  positioning: boolean,
-  viewport: RefObject<HTMLDivElement | null>,
-  children: ReactNode,
-) {
-  return readingChatId && /^[a-f0-9]{32}$/.test(readingChatId) ? (
+function ChatMessageReading({
+  chatId,
+  ...props
+}: Omit<ComponentProps<typeof ChatReadingSurface>, "chatId"> & {
+  chatId?: string;
+}) {
+  const inRouter = useInRouterContext();
+  return inRouter ? (
     <ChatReadingSurface
-      chatId={readingChatId}
-      active={active}
-      positioning={positioning}
-      viewport={viewport}
-    >
-      {children}
-    </ChatReadingSurface>
+      {...props}
+      chatId={chatId && /^[a-f0-9]{32}$/.test(chatId) ? chatId : ""}
+    />
   ) : (
-    children
+    props.children
   );
 }
 
@@ -1914,19 +1977,37 @@ export const ChatMessageList = memo(function ChatMessageList({
       );
   }
 
-  const continuations = chatContinuations(views.map((view) => view.message));
+  const messages = views.map((view) => view.message);
+  const continuations = chatContinuations(messages);
   const latest = views.findLast((view) => !view.message.question);
-  const events = timelineEvents
-    .filter((event) => !event.beforeMessageId && !event.afterMessageId)
-    .sort(
-      (left, right) =>
-        left.createdAt - right.createdAt ||
-        (left.sequence ?? 0) - (right.sequence ?? 0) ||
-        left.id.localeCompare(right.id),
-    );
+  const before = new Map<string, ChatTimelineEvent[]>();
+  const after = new Map<string, ChatTimelineEvent[]>();
+  const sequenced: ChatTimelineEvent[] = [];
+  const timed: ChatTimelineEvent[] = [];
+  const hasSequence = views.some(
+    ({ message }) => (message.createdSequence ?? 0) > 0,
+  );
+  for (const event of timelineEvents) {
+    const target = event.beforeMessageId ?? event.afterMessageId;
+    if (target) {
+      const index = event.beforeMessageId ? before : after;
+      const existing = index.get(target);
+      if (existing) existing.push(event);
+      else index.set(target, [event]);
+    } else if (hasSequence && (event.sequence ?? 0) > 0) {
+      sequenced.push(event);
+    } else {
+      timed.push(event);
+    }
+  }
+  sequenced.sort(
+    (a, b) => (a.sequence ?? 0) - (b.sequence ?? 0) || a.id.localeCompare(b.id),
+  );
+  timed.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
   const rows: Array<ChatMessageView | ChatTimelineEvent | TeamReportGroupRow> =
     [];
-  let cursor = 0;
+  let sequenceCursor = 0;
+  let timeCursor = 0;
   for (const view of groupTeamReports(
     orderChatQuestionViews(views),
     props.messageAuthors,
@@ -1940,19 +2021,18 @@ export const ChatMessageList = memo(function ChatMessageList({
           )
         : (view.message.createdAt ?? 0);
     const sequence = "kind" in view ? undefined : view.message.createdSequence;
-    while (cursor < events.length) {
-      const event = events[cursor];
-      if (
-        !event ||
-        event.createdAt > createdAt ||
-        (event.createdAt === createdAt &&
-          event.sequence !== undefined &&
-          sequence !== undefined &&
-          event.sequence > sequence)
-      )
-        break;
+    // 同一聊天的持久事件按游标归位。跨来源且只有发生时间的标记沿用时间定位。
+    while (sequence !== undefined && sequence > 0) {
+      const event = sequenced[sequenceCursor];
+      if (!event || (event.sequence ?? 0) > sequence) break;
       rows.push(event);
-      cursor++;
+      sequenceCursor++;
+    }
+    while (timeCursor < timed.length) {
+      const event = timed[timeCursor];
+      if (!event || event.createdAt > createdAt) break;
+      rows.push(event);
+      timeCursor++;
     }
     if ("kind" in view) {
       const reportIds = new Set(
@@ -1969,21 +2049,12 @@ export const ChatMessageList = memo(function ChatMessageList({
       );
       continue;
     }
-    rows.push(
-      ...timelineEvents.filter(
-        (event) =>
-          event.beforeMessageId && event.beforeMessageId === view.message.id,
-      ),
-    );
+    const id = view.message.id;
+    if (id) rows.push(...(before.get(id) ?? []));
     rows.push(view);
-    if (view.message.id)
-      rows.push(
-        ...timelineEvents.filter(
-          (event) => event.afterMessageId === view.message.id,
-        ),
-      );
+    if (id) rows.push(...(after.get(id) ?? []));
   }
-  rows.push(...events.slice(cursor));
+  rows.push(...sequenced.slice(sequenceCursor), ...timed.slice(timeCursor));
   return (
     <>
       {rows.map((row) => {
@@ -2125,6 +2196,10 @@ const Composer = memo(function Composer({
   onCodeReferencesChange,
   draft,
   draftReference,
+  replyTo,
+  onDismissReply,
+  registerReplyDraftEditor,
+  focusInputRef,
   clearRevision,
   restoreRevision,
   onOpenFile,
@@ -2176,9 +2251,16 @@ const Composer = memo(function Composer({
   errorScopes: readonly string[];
   failure?: BotChatMessage;
   codeReferenceRequest?: ChatCodeReference;
-  onCodeReferencesChange?: (references: ChatCodeReference[]) => void;
+  onCodeReferencesChange?: (
+    references: ChatCodeReference[],
+    codeReferenceOnly: boolean,
+  ) => void;
   draft?: string;
   draftReference?: ChatComposerDraftReference;
+  replyTo?: ChatReplyReference;
+  onDismissReply?: () => void;
+  registerReplyDraftEditor?: (editor: ChatReplyDraftEditor) => () => void;
+  focusInputRef: RefObject<(() => void) | null>;
   clearRevision?: number;
   restoreRevision?: number;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
@@ -2277,6 +2359,14 @@ const Composer = memo(function Composer({
           className="overflow-hidden"
           context={composerContext}
           contextTone={errorNotices ? "danger" : "neutral"}
+          contextFooter={
+            replyTo && onDismissReply ? (
+              <ComposerReplyContext
+                replyTo={replyTo}
+                onDismiss={onDismissReply}
+              />
+            ) : null
+          }
           expanded={!composerIsEmpty}
           contextLayers={
             queuedMessageCount > 0 ? (
@@ -2406,6 +2496,8 @@ const Composer = memo(function Composer({
                 onCodeReferencesChange={onCodeReferencesChange}
                 draft={draft}
                 draftReference={draftReference}
+                registerReplyDraftEditor={registerReplyDraftEditor}
+                focusRef={focusInputRef}
                 clearRevision={clearRevision}
                 restoreRevision={restoreRevision}
                 className="placeholder:text-muted-foreground type-label resize-none bg-transparent outline-none disabled:opacity-55"
@@ -2536,6 +2628,7 @@ function ChatThreadContent({
   wakerId,
   wakerAvatar,
   messageAuthors,
+  teamReplyAuthorNames,
   timelineEvents = [],
   workflowInvocation,
   activityStatus,
@@ -2581,6 +2674,9 @@ function ChatThreadContent({
   codeReferenceRequest,
   composerDraft,
   composerDraftReference,
+  replyTo,
+  onReplyToChange,
+  registerReplyDraftEditor,
   showComposer = true,
   presentation = "thread",
   composerAutoFocus,
@@ -2659,7 +2755,15 @@ function ChatThreadContent({
   );
   const viewportRef = useRef<HTMLDivElement>(null);
   const readingRootRef = useRef<HTMLDivElement>(null);
-  useChatHistoryError(historyError, errorScopes.at(-1));
+  const focusInputRef = useRef<(() => void) | null>(null);
+  const inlineHistoryError =
+    historyError && (messages.length === 0 || errorScopes.length === 0)
+      ? historyError
+      : undefined;
+  useChatHistoryError(
+    active && !inlineHistoryError ? historyError : undefined,
+    errorScopes.at(-1),
+  );
   const historyScroll = useChatHistoryScroll({
     scope: fileScopeChatId ?? errorScopes[0] ?? wakerId ?? "global",
     viewport: viewportRef,
@@ -2689,6 +2793,49 @@ function ChatThreadContent({
     errorScopes[0] ??
     wakerId ??
     "global";
+  const [replyLocation, setReplyLocation] = useState<{
+    scope: string;
+    routeKey?: string;
+    messageId?: string;
+    keyboardTrigger?: HTMLButtonElement;
+    request: number;
+  }>();
+  const currentReplyLocation =
+    active &&
+    replyLocation?.scope === presentationScope &&
+    replyLocation.routeKey === routeKey
+      ? replyLocation
+      : undefined;
+  if (replyLocation && !currentReplyLocation) setReplyLocation(undefined);
+  const locateReply = useCallback(
+    (targetId: string, keyboardTrigger?: HTMLButtonElement) =>
+      setReplyLocation((current) => ({
+        scope: presentationScope,
+        routeKey,
+        messageId: targetId,
+        keyboardTrigger,
+        request: (current?.request ?? 0) + 1,
+      })),
+    [presentationScope, routeKey],
+  );
+  const cancelReplyLocation = () => {
+    setReplyLocation((current) =>
+      current ? { ...current, messageId: undefined } : current,
+    );
+  };
+  const replyActions = useMemo(
+    () => ({
+      select:
+        onReplyToChange && showComposer
+          ? (reply: ChatReplyReference) => {
+              onReplyToChange(reply);
+              focusInputRef.current?.();
+            }
+          : undefined,
+      locate: locateReply,
+    }),
+    [locateReply, onReplyToChange, showComposer],
+  );
   const projection = useMemo(
     () => new ChatMessageProjection(undefined, presentationScope),
     [presentationScope],
@@ -2744,9 +2891,13 @@ function ChatThreadContent({
     liveQuestions.length === 0 &&
     visibleTimelineEvents.length === 0;
   const centerEmptyState =
-    emptyStatePosition === "center" && !isHistoryLoading && emptyThread;
+    emptyStatePosition === "center" &&
+    !isHistoryLoading &&
+    !inlineHistoryError &&
+    emptyThread;
   const showDirectEmptyState =
     !isHistoryLoading &&
+    !inlineHistoryError &&
     liveQuestions.length === 0 &&
     (pinEmptyState || centerEmptyState);
   const threadVisible =
@@ -2754,22 +2905,37 @@ function ChatThreadContent({
     presentation === "thread" &&
     !showDirectEmptyState &&
     (!isHistoryLoading || liveQuestions.length > 0);
+  const targetMessageId = currentReplyLocation
+    ? currentReplyLocation.messageId
+    : messageId;
+  const locatingReply = Boolean(currentReplyLocation?.messageId);
+  const targetKey = locatingReply
+    ? JSON.stringify([
+        presentationScope,
+        routeKey,
+        currentReplyLocation?.request,
+      ])
+    : routeKey;
   const { positioning, feedback: locationFeedback } = useChatMessageLocator({
     viewport: viewportRef,
-    active: threadVisible && (!messageId || !isHistoryLoading),
-    routeKey,
-    messageId,
+    active: threadVisible && (!targetMessageId || !isHistoryLoading),
+    routeKey: targetKey,
+    messageId: targetMessageId,
+    cancelReplyLocation: locatingReply ? cancelReplyLocation : undefined,
+    keyboardReplyTrigger: currentReplyLocation?.keyboardTrigger,
     requestedInteractionId,
     hasEarlierMessages,
     onLoadEarlier: loadEarlier,
+    onProgrammaticScroll: historyScroll.ignoreProgrammaticScroll,
   });
   useChatViewportScroll({
     viewport: viewportRef,
-    scope: presentationScope,
+    scope: fileScopeChatId ?? presentationScope,
     revision: messages,
     isHistoryAnchoring: historyScroll.isAnchoring,
+    onProgrammaticScroll: historyScroll.ignoreProgrammaticScroll,
     enabled: threadVisible && !positioning,
-    followInitially: !messageId,
+    followInitially: !messageId && !currentReplyLocation,
   });
   const latestMessage = messages.findLast((message) => !message.question);
   const compactComposer =
@@ -2802,6 +2968,7 @@ function ChatThreadContent({
     <FileReferenceProvider
       onOpenURL={onOpenLink}
       onOpenFile={openReferencedFile}
+      allowLocalReveal
       context={referenceContext}
     >
       {/* draft → chat 会切换 runtime；会话清理由 clearRevision 显式完成，不重建编辑器。 */}
@@ -2865,11 +3032,11 @@ function ChatThreadContent({
                           )
                         ) : (
                           <>
-                            {historyError && errorScopes.length === 0 ? (
+                            {active && inlineHistoryError ? (
                               <ChatErrorCard
                                 id={`history:${errorScopes.join(":")}`}
-                                message={historyError.message}
-                                onRetry={historyError.onRetry}
+                                message={inlineHistoryError.message}
+                                onRetry={inlineHistoryError.onRetry}
                               />
                             ) : null}
                             {hasEarlierMessages && (
@@ -2900,47 +3067,57 @@ function ChatThreadContent({
                                 ) : null}
                               </div>
                             )}
-                            {wrapChatReading(
-                              readingChatId,
-                              active,
-                              positioning,
-                              readingRootRef,
+                            <ChatMessageReading
+                              chatId={readingChatId}
+                              active={active}
+                              positioning={positioning}
+                              viewport={readingRootRef}
+                            >
                               <MarkdownVisibility value={active}>
                                 <ProcessExpansion value={readingState.groups}>
                                   <CompanionInteraction
                                     value={companionInteraction}
                                   >
-                                    <ChatMessageList
-                                      views={views}
-                                      requestedMessageId={
-                                        active ? messageId : undefined
-                                      }
-                                      requestedMessageKey={routeKey}
-                                      timelineEvents={visibleTimelineEvents}
-                                      forkBoundaryMessageId={
-                                        forkBoundaryMessageId
-                                      }
-                                      forkSourceChatId={forkSourceChatId}
-                                      onOpenForkSource={onOpenForkSource}
-                                      name={wakerName}
-                                      avatar={wakerAvatar}
-                                      availableSkillIds={availableSkillIds}
-                                      availableConnectorIds={
-                                        availableConnectorIds
-                                      }
-                                      pluginIcons={pluginIcons}
-                                      wakerId={wakerId}
-                                      messageAuthors={messageAuthors}
-                                      showUsageMetrics={showUsageMetrics}
-                                      showFileChanges={showFileChanges}
-                                      onOpenCodeReference={onOpenCodeReference}
-                                      onOpenFile={onOpenFile}
-                                      onOpenFileChange={onOpenFileChange}
-                                    />
+                                    <ChatMessageReplyActions
+                                      value={replyActions}
+                                    >
+                                      <ChatMessageList
+                                        views={views}
+                                        requestedMessageId={
+                                          active ? targetMessageId : undefined
+                                        }
+                                        requestedMessageKey={targetKey}
+                                        timelineEvents={visibleTimelineEvents}
+                                        forkBoundaryMessageId={
+                                          forkBoundaryMessageId
+                                        }
+                                        forkSourceChatId={forkSourceChatId}
+                                        onOpenForkSource={onOpenForkSource}
+                                        name={wakerName}
+                                        avatar={wakerAvatar}
+                                        availableSkillIds={availableSkillIds}
+                                        availableConnectorIds={
+                                          availableConnectorIds
+                                        }
+                                        pluginIcons={pluginIcons}
+                                        wakerId={wakerId}
+                                        messageAuthors={messageAuthors}
+                                        teamReplyAuthorNames={
+                                          teamReplyAuthorNames
+                                        }
+                                        showUsageMetrics={showUsageMetrics}
+                                        showFileChanges={showFileChanges}
+                                        onOpenCodeReference={
+                                          onOpenCodeReference
+                                        }
+                                        onOpenFile={onOpenFile}
+                                        onOpenFileChange={onOpenFileChange}
+                                      />
+                                    </ChatMessageReplyActions>
                                   </CompanionInteraction>
                                 </ProcessExpansion>
-                              </MarkdownVisibility>,
-                            )}
+                              </MarkdownVisibility>
+                            </ChatMessageReading>
                           </>
                         )}
                         {liveQuestions}
@@ -3050,6 +3227,17 @@ function ChatThreadContent({
                     onCodeReferencesChange={onCodeReferencesChange}
                     draft={composerDraft}
                     draftReference={composerDraftReference}
+                    replyTo={replyTo}
+                    onDismissReply={
+                      onReplyToChange
+                        ? () => {
+                            onReplyToChange(undefined);
+                            focusInputRef.current?.();
+                          }
+                        : undefined
+                    }
+                    registerReplyDraftEditor={registerReplyDraftEditor}
+                    focusInputRef={focusInputRef}
                     clearRevision={composerClearRevision}
                     restoreRevision={composerRestoreRevision}
                     isRunning={isRunning}

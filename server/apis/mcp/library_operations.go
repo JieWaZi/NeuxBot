@@ -20,6 +20,7 @@ func (*GetLibraryConnector) Path() string { return "/:connectorId" }
 
 // LibraryConnectorDetailResponse 包含全局连接器的实际安装伙伴。
 type LibraryConnectorDetailResponse struct {
+	// 连接器详情
 	ConnectorResponse
 	// 已安装伙伴标识
 	InstalledPartnerIDs []string `json:"installedPartnerIds"`

@@ -385,6 +385,32 @@ describe("chat projection", () => {
     });
   });
 
+  it("消息更新缺少创建时间时保留原时刻，更新发生时刻只写 updatedAt", () => {
+    const existing: BotChatMessage[] = [
+      {
+        id: "reply",
+        role: "assistant",
+        status: "running",
+        createdAt: 100,
+      },
+    ];
+    const updated = applyChatEvent(existing, {
+      type: "runtime.event",
+      sequence: 9,
+      recordedAt: 200,
+      message: { id: "reply", role: "assistant", status: "running" },
+    });
+    expect(updated[0]).toMatchObject({ createdAt: 100, updatedAt: 200 });
+    expect(
+      applyChatEvent([], {
+        type: "runtime.event",
+        sequence: 9,
+        recordedAt: 200,
+        message: { id: "reply", role: "assistant", status: "running" },
+      })[0]?.createdAt,
+    ).toBeUndefined();
+  });
+
   it("流式快照只替换目标消息引用，避免历史消息跟随增量重复渲染", () => {
     const history = Array.from({ length: 50 }, (_, index) => ({
       id: `history-${index}`,

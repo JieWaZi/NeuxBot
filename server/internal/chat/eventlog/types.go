@@ -183,6 +183,18 @@ type CodeReference struct {
 	Content string `json:"content"`
 }
 
+// 消息引用
+type MessageReply struct {
+	// 消息标识
+	MessageID string `json:"messageId" validate:"required"`
+	// 原消息角色
+	Role constants.MessageRole `json:"role" validate:"required"`
+	// 来源伙伴
+	SourceWakerID string `json:"sourceWakerId,omitempty"`
+	// 引用预览
+	Preview string `json:"preview" validate:"required"`
+}
+
 // MessageCreatedData 保存一条用户输入消息的完整内容。
 type MessageCreatedData struct {
 	// SubmissionID 关联调用方为这次输入提供的既有幂等身份；无标识的程序性输入为空。
@@ -199,6 +211,12 @@ type MessageCreatedData struct {
 	Truncated bool `json:"truncated,omitempty"`
 	// Content 是用户输入文本。
 	Content string `json:"content"`
+	// AttachmentOnly 表示正文是附件的界面提示。
+	AttachmentOnly bool `json:"attachmentOnly,omitempty"`
+	// CodeReferenceOnly 表示正文是代码引用的界面提示。
+	CodeReferenceOnly bool `json:"codeReferenceOnly,omitempty"`
+	// ReplyTo 是这轮输入引用的历史消息及发送时的预览。
+	ReplyTo *MessageReply `json:"replyTo,omitempty"`
 	// Attachments 是保持用户选择顺序的本地文件引用。
 	Attachments []AttachmentReference `json:"attachments,omitempty"`
 	// Skills 是本轮用户明确选择的技能快照。

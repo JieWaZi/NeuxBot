@@ -1,4 +1,29 @@
-import { useLayoutEffect, useRef, type RefObject } from "react";
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+
+type AnchorIdentity = {
+  attribute: "data-chat-node-id" | "data-message-id";
+  id: string;
+  offset: number;
+};
+type ReadingAnchor = {
+  element: HTMLElement;
+  offset: number;
+  identities: readonly AnchorIdentity[];
+};
+export type ChatViewportPositions = Map<
+  string,
+  { following: boolean; identities: readonly AnchorIdentity[]; top: number }
+>;
+export const ChatViewportPositionContext = createContext<
+  ChatViewportPositions | undefined
+>(undefined);
 
 /** canonical 消息、前插历史及异步 Markdown 增高共用一个阅读锚点。 */
 export function useChatViewportScroll({
@@ -8,6 +33,7 @@ export function useChatViewportScroll({
   enabled = true,
   followInitially = true,
   isHistoryAnchoring,
+  onProgrammaticScroll,
 }: {
   viewport: RefObject<HTMLDivElement | null>;
   scope: string;
@@ -15,28 +41,43 @@ export function useChatViewportScroll({
   enabled?: boolean;
   followInitially?: boolean;
   isHistoryAnchoring?: () => boolean;
+  onProgrammaticScroll?: (top: number) => void;
 }) {
   const refresh = useRef<(() => void) | undefined>(undefined);
-  const saved = useRef<
-    | {
-        scope: string;
-        following: boolean;
-        anchor?: { element: HTMLElement; offset: number };
-      }
-    | undefined
-  >(undefined);
+  const [localPositions] = useState<ChatViewportPositions>(() => new Map());
+  const positions = useContext(ChatViewportPositionContext) ?? localPositions;
   useLayoutEffect(() => {
     const element = viewport.current;
     if (!enabled || !element) return;
-    const previous =
-      followInitially && saved.current?.scope === scope
-        ? saved.current
-        : undefined;
+    const previous = followInitially ? positions.get(scope) : undefined;
     let following = previous?.following ?? followInitially;
-    let frame: number | undefined;
-    let anchor = previous?.anchor;
+    let anchor: ReadingAnchor | undefined;
+    let restore = previous;
+    let latestTop = previous?.top ?? element.scrollTop;
     // 重新启用时，定位的原生滚动事件可能还未送达。
     let programmaticTop = followInitially ? undefined : element.scrollTop;
+    const remember = (target: HTMLElement, viewportTop: number) => {
+      const identities: AnchorIdentity[] = [];
+      for (const attribute of [
+        "data-chat-node-id",
+        "data-message-id",
+      ] as const) {
+        const owner = target.closest<HTMLElement>(`[${attribute}]`);
+        const id = owner?.getAttribute(attribute);
+        if (owner && id && element.contains(owner)) {
+          identities.push({
+            attribute,
+            id,
+            offset: owner.getBoundingClientRect().top - viewportTop,
+          });
+        }
+      }
+      anchor = {
+        element: target,
+        offset: target.getBoundingClientRect().top - viewportTop,
+        identities,
+      };
+    };
     const capture = () => {
       const box = element.getBoundingClientRect();
       const pointTargets =
@@ -52,10 +93,7 @@ export function useChatViewportScroll({
           "p,pre,table,[data-chat-node-id],[data-message-id]",
         );
         if (target && target !== element && element.contains(target)) {
-          anchor = {
-            element: target,
-            offset: target.getBoundingClientRect().top - box.top,
-          };
+          remember(target, box.top);
           return;
         }
       }
@@ -102,25 +140,61 @@ export function useChatViewportScroll({
         cursor =
           cursor && cursor !== message ? cursor.nextElementSibling : null;
       }
-      anchor = {
-        element: target,
-        offset: target.getBoundingClientRect().top - box.top,
-      };
+      remember(target, box.top);
     };
     const scroll = (top: number) => {
       const before = element.scrollTop;
-      element.scrollTo({ top, behavior: "instant" });
-      if (element.scrollTop !== before) programmaticTop = element.scrollTop;
+      if (Math.abs(top - before) > 0.5)
+        element.scrollTo({ top, behavior: "instant" });
+      latestTop = element.scrollTop;
+      if (latestTop !== before) {
+        programmaticTop = latestTop;
+        onProgrammaticScroll?.(latestTop);
+      }
     };
     const update = () => {
       if (document.hidden || element.clientHeight <= 0) return;
       if (following) {
-        scroll(element.scrollHeight);
+        restore = undefined;
+        scroll(Math.max(0, element.scrollHeight - element.clientHeight));
         return;
       }
       // 翻页请求由既有历史锚点负责一次补偿，避免两个滚动所有者重复移动。
       if (isHistoryAnchoring?.()) return;
-      if (anchor && element.contains(anchor.element)) {
+      if (anchor && !element.contains(anchor.element)) {
+        restore = {
+          following: false,
+          identities: anchor.identities,
+          top: latestTop,
+        };
+        anchor = undefined;
+      }
+      if (restore) {
+        const position = restore;
+        // 只在重新进入或原节点消失时按稳定身份查找，常规增量直接复用已测量的节点。
+        for (const { attribute, id, offset } of position.identities) {
+          const restored = Array.from(
+            element.querySelectorAll<HTMLElement>(`[${attribute}]`),
+          ).find((candidate) => candidate.getAttribute(attribute) === id);
+          if (restored) {
+            anchor = {
+              element: restored,
+              offset,
+              identities: position.identities,
+            };
+            break;
+          }
+        }
+        // 历史恢复前可能只有占位内容，保留锚点给首批真实消息。
+        if (
+          !anchor &&
+          !element.querySelector("[data-chat-node-id],[data-message-id]")
+        )
+          return;
+        restore = undefined;
+        if (!anchor) scroll(position.top);
+      }
+      if (anchor) {
         const delta =
           anchor.element.getBoundingClientRect().top -
           element.getBoundingClientRect().top -
@@ -130,14 +204,8 @@ export function useChatViewportScroll({
       }
       capture();
     };
-    const schedule = () => {
-      if (frame !== undefined || document.hidden) return;
-      frame = requestAnimationFrame(() => {
-        frame = undefined;
-        update();
-      });
-    };
     const onScroll = () => {
+      if (restore && element.scrollHeight <= element.clientHeight) return;
       if (
         programmaticTop !== undefined &&
         Math.abs(element.scrollTop - programmaticTop) < 1
@@ -146,12 +214,14 @@ export function useChatViewportScroll({
         return;
       }
       programmaticTop = undefined;
+      restore = undefined;
+      latestTop = element.scrollTop;
       following =
         element.scrollHeight - element.scrollTop - element.clientHeight <= 24;
       if (following) anchor = undefined;
       else capture();
     };
-    const observer = new ResizeObserver(schedule);
+    const observer = new ResizeObserver(update);
     const observe = () => {
       observer.observe(element);
       const content = element.querySelector("[data-chat-message-column]");
@@ -160,27 +230,41 @@ export function useChatViewportScroll({
     const visibility = () => {
       if (document.hidden) {
         observer.disconnect();
-        if (frame !== undefined) cancelAnimationFrame(frame);
-        frame = undefined;
       } else {
         observe();
-        schedule();
+        update();
       }
     };
-    refresh.current = schedule;
+    refresh.current = update;
     element.addEventListener("scroll", onScroll, { passive: true });
     document.addEventListener("visibilitychange", visibility);
     observe();
     update();
     return () => {
-      saved.current = { scope, following, anchor };
+      positions.delete(scope);
+      positions.set(scope, {
+        following,
+        identities: anchor?.identities ?? restore?.identities ?? [],
+        top: latestTop,
+      });
+      if (positions.size > 10) {
+        const oldest = positions.keys().next().value;
+        if (oldest !== undefined) positions.delete(oldest);
+      }
       refresh.current = undefined;
       observer.disconnect();
       element.removeEventListener("scroll", onScroll);
       document.removeEventListener("visibilitychange", visibility);
-      if (frame !== undefined) cancelAnimationFrame(frame);
     };
-  }, [viewport, scope, enabled, followInitially, isHistoryAnchoring]);
+  }, [
+    viewport,
+    scope,
+    enabled,
+    followInitially,
+    isHistoryAnchoring,
+    onProgrammaticScroll,
+    positions,
+  ]);
   useLayoutEffect(() => {
     refresh.current?.();
   }, [revision]);

@@ -50,7 +50,7 @@ func TestReviewPreservesStateDuringStagedChatDeletion(t *testing.T) {
 					t.Fatalf("observation must wait for staged deletion: %v", err)
 				}
 			case "review":
-				if err := w.review(ctx, p); !errors.Is(err, status_error.ChatHasActiveExecution) {
+				if err := w.review(ctx, &p); !errors.Is(err, status_error.ChatHasActiveExecution) {
 					t.Fatalf("staged deletion must wait for commit or rollback: %v", err)
 				}
 			case "skill":
@@ -61,13 +61,28 @@ func TestReviewPreservesStateDuringStagedChatDeletion(t *testing.T) {
 				t.Fatalf("staged deletion changed suggestion: %+v, %v", actual, err)
 			}
 			release()
-			if err := w.review(ctx, p); err != nil {
+			if err := w.review(ctx, &p); err != nil {
 				t.Fatal(err)
 			}
 			if actual, err = store.Suggestion(ctx, p.ChatID, v.ID); err != nil || actual.ID != "" {
 				t.Fatalf("committed deletion left suggestion: %+v, %v", actual, err)
 			}
 		})
+	}
+}
+
+func TestSourceDeletionCancelsReviewModel(t *testing.T) {
+	store := openReviewTestStore(t)
+	worker := New(store, Ports{
+		Chat:  func(context.Context, string) (ChatAccess, error) { return ChatAccess{WakerID: "partner"}, nil },
+		Guard: func(string, string) (func(), error) { return func() {}, nil },
+	})
+	worker.ports.Generate = func(ctx context.Context, _ Selection, _, _, _, _ string, beforeSubmit func(context.Context) error) (string, error) {
+		worker.ObserveDeletion("chat")
+		return "", beforeSubmit(ctx)
+	}
+	if _, err := worker.generate(t.Context(), Selection{}, "partner", "chat", reviewUsage, "", ""); !errors.Is(err, context.Canceled) {
+		t.Fatalf("source deletion did not cancel the admitted call: %v", err)
 	}
 }
 

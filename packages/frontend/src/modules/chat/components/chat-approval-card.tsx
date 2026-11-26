@@ -324,7 +324,7 @@ export function ChatApprovalCard({
             {approval.title || t("approval.fallbackTitle")}
           </h3>
           {approval.summary && approval.summary !== approval.title ? (
-            <p className="text-muted-foreground type-body mt-1 whitespace-pre-wrap">
+            <p className="text-muted-foreground type-body mt-1 wrap-anywhere whitespace-pre-wrap">
               {approval.summary}
             </p>
           ) : null}

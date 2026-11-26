@@ -202,15 +202,18 @@ export function useChatReading({
   }>(undefined);
   useEffect(() => {
     scope.current = { active, chatId, token };
-    if (!active && openIntents.get(client)?.token === token)
-      openIntents.delete(client);
+    const ownsOpenIntent = () => {
+      const pending = openIntents.get(client);
+      return pending?.chatId === chatId && pending.token === token;
+    };
+    if (!active && ownsOpenIntent()) openIntents.delete(client);
     return () => {
       scope.current.active = false;
       // Scene 切换的 cleanup 与 Strict Mode 重挂载相同，等新 scope 稳定再丢弃。
       queueMicrotask(() => {
         if (
           (!scope.current.active || scope.current.token !== token) &&
-          openIntents.get(client)?.token === token
+          ownsOpenIntent()
         )
           openIntents.delete(client);
       });

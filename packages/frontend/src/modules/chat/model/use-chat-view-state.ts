@@ -4,6 +4,7 @@ import type { ChatCodeReference } from "../runtime/chat-queue-store";
 import type { PermissionLevel } from "@/shared/lib/runtime-permissions";
 
 export type ChatViewState = {
+  codeReferenceOnly: boolean;
   codeReferenceRequest?: ChatCodeReference;
   fileSource: "chat" | "project";
   model: string;
@@ -19,6 +20,7 @@ export type ChatViewState = {
 
 function initialChatViewState(): ChatViewState {
   return {
+    codeReferenceOnly: false,
     fileSource: "project",
     model: "",
     query: "",

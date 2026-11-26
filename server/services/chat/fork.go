@@ -315,12 +315,14 @@ func (m *service) prepareFork(ctx context.Context, input ForkInput) (chatstorage
 		},
 		Boundary: selected.boundary,
 	}
+	inheritedIDs := make(map[string]string, len(messages))
 	for _, message := range messages {
 		if message.Actor == constants.WakerOnboardingActor {
 			continue
 		}
 		sourceMessageID := message.ID
 		message.ID = util.New()
+		inheritedIDs[sourceMessageID] = message.ID
 		message.SourceChatID = input.ChatID
 		message.Inherited = true
 		message.RunMetrics = nil
@@ -328,8 +330,21 @@ func (m *service) prepareFork(ctx context.Context, input ForkInput) (chatstorage
 			message.ExecutionID = message.ID
 			payload.LastExecutionID = message.ID
 		}
+		if reply := message.ReplyTo; reply != nil {
+			message.ReplyTo = nil
+			if targetID := inheritedIDs[reply.MessageID]; targetID != "" && targetID != message.ID {
+				inheritedReply := *reply
+				inheritedReply.MessageID = targetID
+				message.ReplyTo = &inheritedReply
+			}
+		}
 		for i := range message.DisplayParts {
-			message.DisplayParts[i].ID = util.New()
+			part := &message.DisplayParts[i]
+			if part.ID == messageview.DeliveryPartID(sourceMessageID) {
+				part.ID = messageview.DeliveryPartID(message.ID)
+			} else {
+				part.ID = util.New()
+			}
 		}
 		inherited := messageview.InheritedMessage{Message: message, SourceMessageID: sourceMessageID}
 		if message.FileChangeRecord != nil {

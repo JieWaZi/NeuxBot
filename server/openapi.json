@@ -114,7 +114,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -135,6 +135,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -575,7 +576,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -596,6 +597,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -1357,7 +1359,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n",
+            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[BadRequest][40000000001]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -1366,7 +1368,8 @@
               }
             },
             "x-status-errors": [
-              "[AIAccountConfigurationInvalid][40000000020]"
+              "[AIAccountConfigurationInvalid][40000000020]",
+              "[BadRequest][40000000001]"
             ]
           },
           "409": {
@@ -1385,7 +1388,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n",
+            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -1396,6 +1399,7 @@
             "x-status-errors": [
               "[AIAccountCredentialError][50000000046]",
               "[AIAccountWorkspaceError][50000000047]",
+              "[RuntimeConfigurationInvalid][50000000040]",
               "[RuntimeShutdownFailed][50000000041]",
               "[RuntimeUnavailable][50000000006]"
             ]
@@ -1583,7 +1587,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -1604,6 +1608,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -2083,7 +2088,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -2104,6 +2109,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -2790,7 +2796,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -2811,6 +2817,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -3446,7 +3453,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -3467,6 +3474,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -3949,7 +3957,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -3970,6 +3978,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -4873,7 +4882,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n",
+            "description": ">\n* `[BadRequest][40000000001]`\n* `[MessageAttachmentInvalid][40000000017]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -4882,7 +4891,8 @@
               }
             },
             "x-status-errors": [
-              "[BadRequest][40000000001]"
+              "[BadRequest][40000000001]",
+              "[MessageAttachmentInvalid][40000000017]"
             ]
           },
           "500": {
@@ -5201,6 +5211,87 @@
         }
       }
     },
+    "/api/v1/channels/{channelId}/threads/{threadId}/lead-inputs/list": {
+      "get": {
+        "tags": [
+          "github.com/JieWaZi/NeuxBot/server/apis/channels"
+        ],
+        "summary": "负责人队列收据列表",
+        "operationId": "ListChannelLeadInputs",
+        "parameters": [
+          {
+            "name": "channelId",
+            "in": "path",
+            "description": "团队标识",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "团队标识",
+              "x-go-field-name": "ChannelID",
+              "x-tag-in": "path",
+              "x-tag-name": "channelId",
+              "x-tag-validate": "required,max=32"
+            }
+          },
+          {
+            "name": "threadId",
+            "in": "path",
+            "description": "对话标识",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "对话标识",
+              "x-go-field-name": "ThreadID",
+              "x-tag-in": "path",
+              "x-tag-name": "threadId",
+              "x-tag-validate": "required,max=32"
+            }
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "description": "逗号分隔输入标识",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "逗号分隔输入标识",
+              "x-go-field-name": "IDs",
+              "x-tag-in": "query",
+              "x-tag-name": "ids",
+              "x-tag-validate": "required"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisChannelsChannelLeadInputReceipt"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ">\n* `[ChannelThreadNotFound][40400000013]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[ChannelThreadNotFound][40400000013]"
+            ]
+          }
+        }
+      }
+    },
     "/api/v1/channels/{channelId}/threads/{threadId}/members/config": {
       "put": {
         "tags": [
@@ -5392,7 +5483,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n",
+            "description": ">\n* `[BadRequest][40000000001]`\n* `[MessageAttachmentInvalid][40000000017]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5401,11 +5492,12 @@
               }
             },
             "x-status-errors": [
-              "[BadRequest][40000000001]"
+              "[BadRequest][40000000001]",
+              "[MessageAttachmentInvalid][40000000017]"
             ]
           },
           "404": {
-            "description": ">\n* `[ChannelThreadNotFound][40400000013]`\n",
+            "description": ">\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5414,7 +5506,8 @@
               }
             },
             "x-status-errors": [
-              "[ChannelThreadNotFound][40400000013]"
+              "[ChannelThreadNotFound][40400000013]",
+              "[ChatReplyTargetUnavailable][40400007202]"
             ]
           },
           "500": {
@@ -6988,7 +7081,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n",
+            "description": ">\n* `[BadRequest][40000000001]`\n* `[MessageAttachmentInvalid][40000000017]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6997,7 +7090,21 @@
               }
             },
             "x-status-errors": [
-              "[BadRequest][40000000001]"
+              "[BadRequest][40000000001]",
+              "[MessageAttachmentInvalid][40000000017]"
+            ]
+          },
+          "404": {
+            "description": ">\n* `[ChatReplyTargetUnavailable][40400007202]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[ChatReplyTargetUnavailable][40400007202]"
             ]
           },
           "500": {
@@ -7655,7 +7762,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -7676,6 +7783,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -8686,7 +8794,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -8707,6 +8815,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -10660,7 +10769,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -10681,6 +10790,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -11345,7 +11455,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -11366,6 +11476,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -29679,7 +29790,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -29700,6 +29811,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -30213,7 +30325,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -30234,6 +30346,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -30683,7 +30796,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -30704,6 +30817,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -31181,7 +31295,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -31202,6 +31316,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -31705,7 +31820,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -31726,6 +31841,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -32210,7 +32326,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -32231,6 +32347,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -32732,7 +32849,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -32753,6 +32870,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -33268,7 +33386,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -33289,6 +33407,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -33757,7 +33876,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -33778,6 +33897,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -34522,7 +34642,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -34543,6 +34663,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -36105,7 +36226,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -36126,6 +36247,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -37083,7 +37205,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -37104,6 +37226,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -37902,7 +38025,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -37923,6 +38046,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -43423,7 +43547,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -43444,6 +43568,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -44214,7 +44339,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -44235,6 +44360,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -44833,7 +44959,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -44854,6 +44980,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -45402,7 +45529,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -45423,6 +45550,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -45900,7 +46028,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -45921,6 +46049,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -46722,7 +46851,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -46743,6 +46872,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -47239,7 +47369,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -47260,6 +47390,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -48909,7 +49040,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -48930,6 +49061,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -49500,7 +49632,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -49521,6 +49653,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -52709,7 +52842,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -52730,6 +52863,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -53235,7 +53369,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -53256,6 +53390,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -53788,7 +53923,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -53809,6 +53944,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -54362,7 +54498,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -54383,6 +54519,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -54867,7 +55004,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -54888,6 +55025,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -55559,7 +55697,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -55580,6 +55718,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -56124,7 +56263,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -56145,6 +56284,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -56705,7 +56845,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -56726,6 +56866,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -57205,7 +57346,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -57226,6 +57367,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -57932,7 +58074,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -57953,6 +58095,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -58446,7 +58589,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -58467,6 +58610,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -58979,7 +59123,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -59000,6 +59144,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -59512,7 +59657,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -59533,6 +59678,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -60031,7 +60177,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -60052,6 +60198,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -60675,7 +60822,7 @@
             ]
           },
           "404": {
-            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
+            "description": ">\n* `[AIAccountNotFound][40400000017]`\n* `[AgentReceiptNotFound][40400009001]`\n* `[AutomaticRunNotFound][40400000019]`\n* `[AutomaticTaskNotFound][40400000018]`\n* `[ChannelMemberNotFound][40400000014]`\n* `[ChannelNotFound][40400000012]`\n* `[ChannelTaskAttemptNotFound][40400000016]`\n* `[ChannelTaskNotFound][40400000015]`\n* `[ChannelThreadNotFound][40400000013]`\n* `[ChatMessageFileChangeNotFound][40400000011]`\n* `[ChatMessageNotFound][40400007201]`\n* `[ChatNotFound][40400000005]`\n* `[ChatReplyTargetUnavailable][40400007202]`\n* `[ExecutionNotFound][40400000004]`\n* `[IMResourceNotFound][40400004001]`\n* `[IMTargetUnavailable][40400004002]`\n* `[IntegrationNotFound][40400009601]`\n* `[KnowledgeNotFound][40400009501]`\n* `[MCPConnectorNotFound][40400000009]`\n* `[MemoryNotFound][40400000010]`\n* `[PluginNotFound][40400006501]`\n* `[ProfileDocumentNotFound][40400000003]`\n* `[ProjectNotFound][40400000006]`\n* `[RolePresetNotFound][40400000002]`\n* `[SkillNotFound][40400000007]`\n* `[SkillVersionNotFound][40400000008]`\n* `[TerminalNotFound][40400007110]`\n* `[WakerNotFound][40400000001]`\n* `[WorkflowFileNotFound][40400003002]`\n* `[WorkflowNotFound][40400003001]`\n* `[WorkspaceResourceNotFound][40400007103]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -60696,6 +60843,7 @@
               "[ChatMessageFileChangeNotFound][40400000011]",
               "[ChatMessageNotFound][40400007201]",
               "[ChatNotFound][40400000005]",
+              "[ChatReplyTargetUnavailable][40400007202]",
               "[ExecutionNotFound][40400000004]",
               "[IMResourceNotFound][40400004001]",
               "[IMTargetUnavailable][40400004002]",
@@ -65681,6 +65829,36 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisChannelsChannelInput",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/channels.ChannelInput"
       },
+      "GithubComJieWaZiNeuxBotServerApisChannelsChannelLeadInputReceipt": {
+        "type": "object",
+        "properties": {
+          "errorCode": {
+            "type": "string",
+            "description": "失败错误码",
+            "x-go-field-name": "ErrorCode",
+            "x-tag-json": "errorCode,omitempty"
+          },
+          "id": {
+            "type": "string",
+            "description": "输入标识",
+            "x-go-field-name": "ID"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerConstantsChannelInputStatus"
+              },
+              {
+                "description": "队列状态",
+                "x-go-field-name": "Status"
+              }
+            ]
+          }
+        },
+        "description": "负责人队列收据",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisChannelsChannelLeadInputReceipt",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/channels.ChannelLeadInputReceipt"
+      },
       "GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberDetail": {
         "type": "object",
         "properties": {
@@ -65926,6 +66104,12 @@
       "GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput": {
         "type": "object",
         "properties": {
+          "attachmentOnly": {
+            "type": "boolean",
+            "description": "仅附件",
+            "x-go-field-name": "AttachmentOnly",
+            "x-tag-json": "attachmentOnly,omitempty"
+          },
           "attachments": {
             "type": "array",
             "items": {
@@ -65934,6 +66118,12 @@
             "description": "附件列表",
             "x-go-field-name": "Attachments",
             "x-tag-validate": "max=100,dive"
+          },
+          "codeReferenceOnly": {
+            "type": "boolean",
+            "description": "代码引用提示",
+            "x-go-field-name": "CodeReferenceOnly",
+            "x-tag-json": "codeReferenceOnly,omitempty"
           },
           "codeReferences": {
             "type": "array",
@@ -65964,7 +66154,7 @@
             "items": {
               "type": "string"
             },
-            "description": "连接器列表",
+            "description": "插件列表",
             "x-go-field-name": "PluginIDs",
             "x-tag-json": "pluginIds,omitempty",
             "x-tag-validate": "max=100,dive,max=32"
@@ -66225,6 +66415,13 @@
           {
             "type": "object",
             "properties": {
+              "replyToMessageId": {
+                "type": "string",
+                "description": "引用消息标识",
+                "x-go-field-name": "ReplyToMessageID",
+                "x-tag-json": "replyToMessageId,omitempty",
+                "x-tag-validate": "max=32"
+              },
               "submissionId": {
                 "type": "string",
                 "description": "输入提交标识",
@@ -66668,6 +66865,12 @@
             "x-tag-json": "accountId,omitempty",
             "x-tag-validate": "max=32"
           },
+          "attachmentOnly": {
+            "type": "boolean",
+            "description": "仅附件",
+            "x-go-field-name": "AttachmentOnly",
+            "x-tag-json": "attachmentOnly,omitempty"
+          },
           "attachments": {
             "type": "array",
             "items": {
@@ -66676,6 +66879,12 @@
             "description": "附件列表",
             "x-go-field-name": "Attachments",
             "x-tag-validate": "max=100,dive"
+          },
+          "codeReferenceOnly": {
+            "type": "boolean",
+            "description": "代码引用提示",
+            "x-go-field-name": "CodeReferenceOnly",
+            "x-tag-json": "codeReferenceOnly,omitempty"
           },
           "codeReferences": {
             "type": "array",
@@ -66704,7 +66913,7 @@
           },
           "fast": {
             "type": "boolean",
-            "description": "Fast",
+            "description": "快速模式",
             "x-go-field-name": "Fast",
             "x-go-star-level": 1,
             "x-tag-json": "fast,omitempty"
@@ -66889,6 +67098,13 @@
           {
             "type": "object",
             "properties": {
+              "replyToMessageId": {
+                "type": "string",
+                "description": "引用消息标识",
+                "x-go-field-name": "ReplyToMessageID",
+                "x-tag-json": "replyToMessageId,omitempty",
+                "x-tag-validate": "max=32"
+              },
               "submissionId": {
                 "type": "string",
                 "description": "输入提交标识",
@@ -78589,6 +78805,7 @@
           "interaction.approval.resolved",
           "interaction.elicitation.requested",
           "interaction.elicitation.resolved",
+          "lead.input_cancelled",
           "lead.input_failed",
           "lead.input_queued",
           "members.config_updated",
@@ -78608,13 +78825,14 @@
           "thread.work_stopped",
           "thread.work_stopping"
         ],
-        "description": ">\n* `` - ChannelEventTypeUnspecified 表示空或未知事件类型。\n* `interaction.approval.requested` - ChannelEventApprovalRequested 表示成员 Chat 审批请求已投影到团队事件流。\n* `interaction.approval.resolved` - ChannelEventApprovalResolved 表示成员 Chat 审批结果已投影到团队事件流。\n* `interaction.elicitation.requested` - ChannelEventElicitationRequested 表示成员 Chat 结构化输入请求已投影到团队事件流。\n* `interaction.elicitation.resolved` - ChannelEventElicitationResolved 表示成员 Chat 结构化输入结果已投影到团队事件流。\n* `lead.input_failed` - ChannelEventLeadInputFailed 表示负责人队列已结算未进入 Chat 的输入。\n* `lead.input_queued` - ChannelEventLeadInputQueued 表示用户输入已进入负责人可靠队列。\n* `members.config_updated` - ChannelEventMemberConfigsUpdated 表示团队对话成员执行配置已经更新。\n* `task.cancelled` - ChannelEventTaskCancelled 表示单项团队任务已经取消。\n* `task.created` - ChannelEventTaskCreated 表示正式团队任务已经持久化。\n* `task.dispatch_deferred` - ChannelEventTaskDispatchDeferred 表示任务已经持久但本次派发需要稍后重试。\n* `task.finished` - ChannelEventTaskFinished 表示正式团队任务尝试已经提交终态。\n* `task.follow_up_queued` - ChannelEventTaskFollowUpQueued 表示用户补充已经进入任务队列。\n* `task.recovery_failed` - ChannelEventTaskRecoveryFailed 表示恢复时无法继续旧任务尝试。\n* `task.retry_queued` - ChannelEventTaskRetryQueued 表示失败任务已经由负责人显式重试。\n* `task.review_approved` - ChannelEventTaskReviewApproved 表示用户已通过任务人工验收。\n* `task.started` - ChannelEventTaskStarted 表示正式团队任务已经关联成员执行。\n* `task.updated` - ChannelEventTaskUpdated 表示负责人已修改尚未执行的正式团队任务。\n* `team.leader.processing` - ChannelEventTeamLeaderProcessing 表示负责人开始或结束处理成员结果批次。\n* `team.member.direct_delivered` - ChannelEventMemberDirectDelivered 表示成员报告已直接成为团队主时间线的完整答复。\n* `thread.created` - ChannelEventThreadCreated 表示团队对话及成员 Chat 已经就绪。\n* `thread.work_stopped` - ChannelEventThreadWorkStopped 表示团队对话当前工作已由用户停止。\n* `thread.work_stopping` - ChannelEventThreadWorkStopping 表示团队对话已经冻结新工作并正在收敛真实执行。\n",
+        "description": ">\n* `` - ChannelEventTypeUnspecified 表示空或未知事件类型。\n* `interaction.approval.requested` - ChannelEventApprovalRequested 表示成员 Chat 审批请求已投影到团队事件流。\n* `interaction.approval.resolved` - ChannelEventApprovalResolved 表示成员 Chat 审批结果已投影到团队事件流。\n* `interaction.elicitation.requested` - ChannelEventElicitationRequested 表示成员 Chat 结构化输入请求已投影到团队事件流。\n* `interaction.elicitation.resolved` - ChannelEventElicitationResolved 表示成员 Chat 结构化输入结果已投影到团队事件流。\n* `lead.input_cancelled` - ChannelEventLeadInputCancelled 表示指定的负责人队列输入已取消。\n* `lead.input_failed` - ChannelEventLeadInputFailed 表示负责人队列已结算未进入 Chat 的输入。\n* `lead.input_queued` - ChannelEventLeadInputQueued 表示用户输入已进入负责人可靠队列。\n* `members.config_updated` - ChannelEventMemberConfigsUpdated 表示团队对话成员执行配置已经更新。\n* `task.cancelled` - ChannelEventTaskCancelled 表示单项团队任务已经取消。\n* `task.created` - ChannelEventTaskCreated 表示正式团队任务已经持久化。\n* `task.dispatch_deferred` - ChannelEventTaskDispatchDeferred 表示任务已经持久但本次派发需要稍后重试。\n* `task.finished` - ChannelEventTaskFinished 表示正式团队任务尝试已经提交终态。\n* `task.follow_up_queued` - ChannelEventTaskFollowUpQueued 表示用户补充已经进入任务队列。\n* `task.recovery_failed` - ChannelEventTaskRecoveryFailed 表示恢复时无法继续旧任务尝试。\n* `task.retry_queued` - ChannelEventTaskRetryQueued 表示失败任务已经由负责人显式重试。\n* `task.review_approved` - ChannelEventTaskReviewApproved 表示用户已通过任务人工验收。\n* `task.started` - ChannelEventTaskStarted 表示正式团队任务已经关联成员执行。\n* `task.updated` - ChannelEventTaskUpdated 表示负责人已修改尚未执行的正式团队任务。\n* `team.leader.processing` - ChannelEventTeamLeaderProcessing 表示负责人开始或结束处理成员结果批次。\n* `team.member.direct_delivered` - ChannelEventMemberDirectDelivered 表示成员报告已直接成为团队主时间线的完整答复。\n* `thread.created` - ChannelEventThreadCreated 表示团队对话及成员 Chat 已经就绪。\n* `thread.work_stopped` - ChannelEventThreadWorkStopped 表示团队对话当前工作已由用户停止。\n* `thread.work_stopping` - ChannelEventThreadWorkStopping 表示团队对话已经冻结新工作并正在收敛真实执行。\n",
         "x-enum-labels": {
           "": "ChannelEventTypeUnspecified 表示空或未知事件类型。",
           "interaction.approval.requested": "ChannelEventApprovalRequested 表示成员 Chat 审批请求已投影到团队事件流。",
           "interaction.approval.resolved": "ChannelEventApprovalResolved 表示成员 Chat 审批结果已投影到团队事件流。",
           "interaction.elicitation.requested": "ChannelEventElicitationRequested 表示成员 Chat 结构化输入请求已投影到团队事件流。",
           "interaction.elicitation.resolved": "ChannelEventElicitationResolved 表示成员 Chat 结构化输入结果已投影到团队事件流。",
+          "lead.input_cancelled": "ChannelEventLeadInputCancelled 表示指定的负责人队列输入已取消。",
           "lead.input_failed": "ChannelEventLeadInputFailed 表示负责人队列已结算未进入 Chat 的输入。",
           "lead.input_queued": "ChannelEventLeadInputQueued 表示用户输入已进入负责人可靠队列。",
           "members.config_updated": "ChannelEventMemberConfigsUpdated 表示团队对话成员执行配置已经更新。",
@@ -80245,6 +80463,49 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageConnectorReference",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog.MessageConnectorReference"
       },
+      "GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageReply": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "消息标识",
+            "x-go-field-name": "MessageID",
+            "x-tag-validate": "required"
+          },
+          "preview": {
+            "type": "string",
+            "description": "引用预览",
+            "x-go-field-name": "Preview",
+            "x-tag-validate": "required"
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerConstantsMessageRole"
+              },
+              {
+                "description": "原消息角色",
+                "x-go-field-name": "Role",
+                "x-tag-validate": "required"
+              }
+            ]
+          },
+          "sourceWakerId": {
+            "type": "string",
+            "description": "来源伙伴",
+            "x-go-field-name": "SourceWakerID",
+            "x-tag-json": "sourceWakerId,omitempty"
+          }
+        },
+        "required": [
+          "messageId",
+          "role",
+          "preview"
+        ],
+        "description": "消息引用",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageReply",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog.MessageReply"
+      },
       "GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageSkillReference": {
         "type": "object",
         "properties": {
@@ -80350,6 +80611,12 @@
             "x-go-field-name": "Actor",
             "x-tag-json": "actor,omitempty"
           },
+          "attachmentOnly": {
+            "type": "boolean",
+            "description": "仅附件",
+            "x-go-field-name": "AttachmentOnly",
+            "x-tag-json": "attachmentOnly,omitempty"
+          },
           "attachments": {
             "type": "array",
             "items": {
@@ -80358,6 +80625,12 @@
             "description": "Attachments 是用户消息携带的有序附件引用。",
             "x-go-field-name": "Attachments",
             "x-tag-json": "attachments,omitempty"
+          },
+          "codeReferenceOnly": {
+            "type": "boolean",
+            "description": "代码引用提示",
+            "x-go-field-name": "CodeReferenceOnly",
+            "x-tag-json": "codeReferenceOnly,omitempty"
           },
           "codeReferences": {
             "type": "array",
@@ -80512,6 +80785,19 @@
             "type": "boolean",
             "description": "Readable 表示该持久消息具有用户可读正文或公开失败。",
             "x-go-field-name": "Readable"
+          },
+          "replyTo": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageReply"
+              },
+              {
+                "description": "引用消息",
+                "x-go-field-name": "ReplyTo",
+                "x-go-star-level": 1,
+                "x-tag-json": "replyTo,omitempty"
+              }
+            ]
           },
           "revision": {
             "type": "integer",

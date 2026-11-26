@@ -31,6 +31,10 @@ import type {
 import type { ChatWorkspaceMainContent } from "../components/chat-workspace-surface";
 import { useWorkbench } from "../workbench/workbench-store";
 import type { ChatSendSelection } from "../runtime/chat-queue-store";
+import type {
+  ChatReplyDraftEditor,
+  ChatReplyReference,
+} from "../runtime/chat-projection";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/shared/ui/button";
 import {
@@ -46,6 +50,7 @@ import {
   createChatMutation,
   chatListKey,
   chatMessagesInfiniteOptions,
+  chatReadError,
   chatMessageSource,
   useChatHistoryVisibility,
   commitAcceptedChat,
@@ -289,6 +294,25 @@ function ChatView({
         : {},
     );
   const [composerRestoreRevision, setComposerRestoreRevision] = useState(0);
+  const [replyTo, setReplyTo] = useState<ChatReplyReference>();
+  const replyToRef = useRef<ChatReplyReference | undefined>(undefined);
+  const replyDraftRef = useRef<ChatReplyDraftEditor | null>(null);
+  const registerReplyDraftEditor = useCallback(
+    (editor: ChatReplyDraftEditor) => {
+      replyDraftRef.current = editor;
+      return () => {
+        if (replyDraftRef.current === editor) replyDraftRef.current = null;
+      };
+    },
+    [],
+  );
+  const changeReplyTo = useCallback(
+    (target: ChatReplyReference | undefined) => {
+      replyToRef.current = target;
+      setReplyTo(target);
+    },
+    [],
+  );
   const [sessionSwitch, setSessionSwitch] = useState<{
     chatId: string;
     patch: Partial<{
@@ -359,10 +383,11 @@ function ChatView({
         : workspaceScopeKey,
   );
   const resetComposerScope = useCallback(() => {
+    changeReplyTo(undefined);
     setSelectedSkillIDsByWaker({});
     setSelectedPluginIDsByWaker({});
     setSelectedConnectorIDsByWaker({});
-  }, []);
+  }, [changeReplyTo]);
   const {
     composerClearRevision,
     clearComposer,
@@ -379,6 +404,7 @@ function ChatView({
       : (activeChatId ?? workspaceScopeKey);
   const chatInvocationGuard = useChatInvocationGuard(currentChatKey);
   const {
+    codeReferenceOnly,
     codeReferenceRequest,
     fileSource,
     fast,
@@ -431,6 +457,24 @@ function ChatView({
     : (wakers.find((waker) => waker.id === targetWakerID) ??
       (targetWakerID ? undefined : wakers[0]));
   const selectedWakerID = targetWakerID || selectedWaker?.id;
+  const activeChat = detailQuery.data?.chat;
+  const ordinaryChatDestination =
+    !entry &&
+    !activeMemberTab &&
+    (presentation === "workspace" || Boolean(boardDraft));
+  const replyEnabled = Boolean(
+    activeChatId &&
+    ordinaryChatDestination &&
+    !boardDraft &&
+    !routeTransitioning &&
+    activeChat?.id === activeChatId &&
+    !activeChat.hiddenFromWakerHistory &&
+    !wakersQuery.isPending &&
+    !(
+      selectedWaker?.onboardingStatus === "pending" &&
+      selectedWaker.onboardingChatId === activeChatId
+    ),
+  );
   const ordinaryDraft =
     !activeChatId &&
     !entry &&
@@ -1007,11 +1051,30 @@ function ChatView({
       connectorIds: selectedConnectorIDs,
       selectedConnectors,
       codeReferences: selectedCodeReferences,
+      codeReferenceOnly,
+      replyTo: replyEnabled ? replyTo : undefined,
       workflow,
       workflowOnly,
     },
     onMessageAccepted: () => {
+      changeReplyTo(undefined);
       clearComposer();
+    },
+    captureReplyDraft: () => {
+      const editor = replyDraftRef.current;
+      const target = replyToRef.current;
+      if (!editor || !target) return;
+      const restoreDocument = editor.capture();
+      return {
+        isEmpty: () =>
+          replyDraftRef.current === editor &&
+          !replyToRef.current &&
+          editor.isEmpty(),
+        restore: () => {
+          restoreDocument();
+          changeReplyTo(target);
+        },
+      };
     },
     onMessageRejected: (selection) => {
       if (selection.optimizeProfile && !activeChatId)
@@ -1056,6 +1119,12 @@ function ChatView({
       const message = {
         steerExecutionId: selection?.steerExecutionId,
         text,
+        ...(ordinaryChatDestination && selection?.attachmentOnly
+          ? { attachmentOnly: true }
+          : {}),
+        ...(ordinaryChatDestination && selection?.codeReferenceOnly
+          ? { codeReferenceOnly: true }
+          : {}),
         workflowId: selection?.workflow?.id,
         accountId: selection?.accountId ?? "system",
         runtimeId: selection?.runtimeId ?? "",
@@ -1101,8 +1170,14 @@ function ChatView({
       };
       if (entry) return entry.prepareSubmission(body, targetChatId);
       if (targetChatId) {
+        const sendBody = {
+          ...body,
+          ...(selection?.replyTo
+            ? { replyToMessageId: selection.replyTo.messageId }
+            : {}),
+        };
         const requestScope = `${workspaceScopeKey}:send:${targetChatId}`;
-        const prepared = withStableCreateRequest(requestScope, body);
+        const prepared = withStableCreateRequest(requestScope, sendBody);
         const submissionId = prepared.clientRequestId;
         const retire = () =>
           clearStableCreateRequest(requestScope, submissionId);
@@ -1127,7 +1202,7 @@ function ChatView({
           accept: () =>
             send.mutateAsync({
               path: { chatId: targetChatId },
-              body: { ...body, submissionId },
+              body: { ...sendBody, submissionId },
             }),
         };
       }
@@ -1313,9 +1388,15 @@ function ChatView({
     entry?.isHistoryLoading ||
     routeTransitioning ||
     (activeChatId &&
-      !messagesQuery.isSuccess &&
+      !messagesQuery.data &&
+      !messagesQuery.isError &&
       !chatRuntime.hasVisibleMessages),
   );
+  const historyError =
+    sceneActive && activeChatId && !routeTransitioning
+      ? (chatReadError(messagesQuery, t("loadMessagesFailed")) ??
+        chatReadError(detailQuery, t("loadMessagesFailed")))
+      : undefined;
 
   const pickDirectory = async () => {
     const selected = await selectDirectory();
@@ -1558,6 +1639,12 @@ function ChatView({
       wakerAvatar: conversationAvatar,
       emptyState: messageEmptyState,
       isHistoryLoading: historyIsLoading,
+      historyError,
+      replyTo: replyEnabled ? replyTo : undefined,
+      onReplyToChange: replyEnabled ? changeReplyTo : undefined,
+      registerReplyDraftEditor: replyEnabled
+        ? registerReplyDraftEditor
+        : undefined,
       renderComposerSettings: boardDraft
         ? (simplified) => (
             <>
@@ -1618,8 +1705,11 @@ function ChatView({
       linkWorkspaceRoot: workspaceDirectory,
       linkAdditionalWorkingDirectories,
       onOpenLink: openBrowserLink,
-      onCodeReferencesChange: (references) =>
-        updateChatViewState({ selectedCodeReferences: references }),
+      onCodeReferencesChange: (references, referenceOnly) =>
+        updateChatViewState({
+          selectedCodeReferences: references,
+          codeReferenceOnly: referenceOnly,
+        }),
       onOpenCodeReference: openCodeReference,
       onOpenFile: openAttachmentFile,
       onOpenFileChange: openExecutionFileChange,

@@ -65,7 +65,8 @@ function classifyChatSendFailureKind(error: unknown): ChatSendFailureKind {
   }
   if (
     error.code === "RuntimeUnavailable" ||
-    error.code === "SkillUnavailable"
+    error.code === "SkillUnavailable" ||
+    error.code === "ChatReplyTargetUnavailable"
   ) {
     return "rejected";
   }

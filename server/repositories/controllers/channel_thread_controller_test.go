@@ -31,6 +31,30 @@ func TestChannelLeadInputsKeepEnqueueOrderAtTheSameTimestamp(t *testing.T) {
 	}
 }
 
+func TestChannelLeadInputReceiptsAreScopedAndOmitPayload(t *testing.T) {
+	ctx := t.Context()
+	threads := NewChannelThreadController(newTestDB(t))
+	for _, input := range []models.ChannelLeadInput{
+		{ID: "selected", ThreadID: "thread", Status: constants.ChannelInputStatusFailed, ErrorCode: "RuntimeUnavailable"},
+		{ID: "unrequested", ThreadID: "thread", Status: constants.ChannelInputStatusPending},
+		{ID: "outside", ThreadID: "outside-thread", Status: constants.ChannelInputStatusCancelled},
+	} {
+		input.Payload = workinput.Input{Content: "private payload", SubmissionID: "submission"}
+		if err := threads.CreateLeadInput(ctx, input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	receipts, err := threads.ListLeadInputReceipts(ctx, "thread", []string{"selected", "outside", "missing"})
+	if err != nil || len(receipts) != 1 {
+		t.Fatalf("receipts = %+v, err = %v", receipts, err)
+	}
+	receipt := receipts[0]
+	if receipt.ID != "selected" || receipt.Status != constants.ChannelInputStatusFailed ||
+		receipt.ErrorCode != "RuntimeUnavailable" || receipt.Payload.Content != "" || receipt.Payload.SubmissionID != "" {
+		t.Fatalf("receipt = %+v", receipt)
+	}
+}
+
 func TestTeamWorkCountsOnlyActiveChatWorkflowRuns(t *testing.T) {
 	ctx := t.Context()
 	database := newTestDB(t)
@@ -263,7 +287,7 @@ func TestChannelThreadEventsUseUUIDCursorAndStableOrdering(t *testing.T) {
 	threadID := util.New()
 	createdAt := time.Now().UnixMilli()
 	first := models.ChannelEvent{
-		ID:        "11111111111111111111111111111111",
+		ID:        "ffffffffffffffffffffffffffffffff",
 		ChannelID: util.New(),
 		ThreadID:  threadID,
 		Type:      constants.ChannelEventTaskCreated,
@@ -273,18 +297,29 @@ func TestChannelThreadEventsUseUUIDCursorAndStableOrdering(t *testing.T) {
 	second := first
 	second.ID = "22222222222222222222222222222222"
 	second.Payload = []byte(`{"taskId":"b"}`)
+	third := first
+	third.ID = "11111111111111111111111111111111"
+	third.CreatedAt--
+	third.Payload = []byte(`{"taskId":"c"}`)
 	if _, err := controller.AppendEvent(ctx, first); err != nil {
 		t.Fatalf("append first event: %v", err)
+	}
+	checkpoint, err := controller.LatestEventCursor(ctx, threadID)
+	if err != nil || checkpoint != first.ID {
+		t.Fatalf("initial event cursor = %q, error = %v", checkpoint, err)
 	}
 	if _, err := controller.AppendEvent(ctx, second); err != nil {
 		t.Fatalf("append second event: %v", err)
 	}
-	events, err := controller.ListEvents(ctx, threadID, first.ID, 10)
-	if err != nil || len(events) != 1 || events[0].ID != second.ID {
+	if _, err := controller.AppendEvent(ctx, third); err != nil {
+		t.Fatalf("append third event: %v", err)
+	}
+	events, err := controller.ListEvents(ctx, threadID, checkpoint, 10)
+	if err != nil || len(events) != 2 || events[0].ID != second.ID || events[1].ID != third.ID {
 		t.Fatalf("events after UUID cursor = %+v, error = %v", events, err)
 	}
 	latest, err := controller.LatestEventCursor(ctx, threadID)
-	if err != nil || latest != second.ID {
+	if err != nil || latest != third.ID {
 		t.Fatalf("latest event cursor = %q, error = %v", latest, err)
 	}
 	empty, err := controller.LatestEventCursor(ctx, util.New())

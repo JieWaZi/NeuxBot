@@ -15,6 +15,8 @@ import (
 type SendMessageRequest struct {
 	// 输入提交标识
 	SubmissionID string `json:"submissionId,omitempty" validate:"max=64"`
+	// 引用消息标识
+	ReplyToMessageID string `json:"replyToMessageId,omitempty" validate:"max=32"`
 	// 消息内容
 	MessageRequest
 }
@@ -22,6 +24,7 @@ type SendMessageRequest struct {
 func (r SendMessageRequest) workInput() (execution.WorkInput, execution.WorkOptions) {
 	input, options := r.MessageRequest.workInput()
 	input.SubmissionID = strings.TrimSpace(r.SubmissionID)
+	input.ReplyToMessageID = strings.TrimSpace(r.ReplyToMessageID)
 	return input, options
 }
 
@@ -39,6 +42,8 @@ type SendMessage struct {
 func (s *SendMessage) Path() string { return "/:chatId/messages" }
 
 // Output 调用 Chat 续发用例并返回启动后的执行标识。
+// [MessageAttachmentInvalid][40000000017][消息附件不合法或不可读取]
+// [ChatReplyTargetUnavailable][40400007202][当前对话中没有可引用的这条消息]
 func (s *SendMessage) Output(ctx *gin.Context) (interface{}, error) {
 	input, options := s.Body.workInput()
 	release, err := uploads.ClaimWork(ctx, &input)

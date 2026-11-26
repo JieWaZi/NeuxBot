@@ -860,6 +860,34 @@ type Receipt struct {
 	Digest string
 	// Data records the first admission result without credentials or full input.
 	Data map[string]any
+	// Origin identifies a managed change that also appears in its originating chat.
+	Origin ReceiptOrigin
+}
+
+// ReceiptOrigin identifies where to project a committed resource change.
+type ReceiptOrigin struct {
+	// ChatID identifies the destination conversation.
+	ChatID string
+	// ExecutionID identifies the turn that issued the command.
+	ExecutionID string
+	// WakerID identifies the partner that issued the command.
+	WakerID string
+	// Operation is the exact operation granted to that turn.
+	Operation string
+}
+
+type receiptProjection struct {
+	// origin is server-owned context for the resource receipt.
+	origin ReceiptOrigin
+	// committed projects the durable receipt after the domain transaction commits.
+	committed func(Receipt)
+}
+
+type receiptProjectionKey struct{}
+
+// WithReceiptOrigin attaches an originating conversation to a domain receipt.
+func WithReceiptOrigin(ctx context.Context, origin ReceiptOrigin, committed func(Receipt)) context.Context {
+	return context.WithValue(ctx, receiptProjectionKey{}, receiptProjection{origin: origin, committed: committed})
 }
 
 // Store must use the same domain transaction connection supplied through Context.
@@ -917,6 +945,9 @@ func Execute(ctx context.Context, store Store, scope string, request Request, ca
 	}
 	hash := sha256.Sum256(encoded)
 	wanted := Receipt{ID: ID(scope, request.Operation, request.RequestID), Digest: hex.EncodeToString(hash[:])}
+	if projection, ok := ctx.Value(receiptProjectionKey{}).(receiptProjection); ok {
+		wanted.Origin = projection.origin
+	}
 	read := func() (Result, bool, error) {
 		receipt, found, err := store.Find(ctx, wanted.ID)
 		if err != nil || !found {
@@ -956,5 +987,11 @@ func Commit(ctx context.Context, data map[string]any) error {
 		return nil
 	}
 	value.receipt.Data = data
-	return value.store.Create(ctx, value.receipt)
+	if err := value.store.Create(ctx, value.receipt); err != nil {
+		return err
+	}
+	if projection, ok := ctx.Value(receiptProjectionKey{}).(receiptProjection); ok && projection.committed != nil {
+		events.AfterCommit(ctx, func() { projection.committed(value.receipt) })
+	}
+	return nil
 }

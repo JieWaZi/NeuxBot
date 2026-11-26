@@ -1,38 +1,32 @@
-import {
-  Code2,
-  Copy,
-  Download,
-  Image,
-  Maximize2,
-  RotateCcw,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
-import {
-  useContext,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { Code2, Copy, Download, Image, Maximize2 } from "lucide-react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { mermaid } from "./chat-mermaid-plugin";
 
 import { Button } from "@/shared/ui/button";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { useTheme } from "@/shared/theme";
+import { cn } from "@/shared/lib/cn";
 import { ContentVisibility } from "@/shared/lib/content-visibility";
+import { saveBlob } from "@/shared/platform";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/shared/ui/dropdown-menu";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { toast } from "@/shared/ui/sonner";
 
 import { copyPlainText, downloadTextFile } from "./chat-markdown-export";
+import { createMermaidPNG, readMermaidSize } from "./chat-mermaid-export";
 import { ChatPreviewDialog } from "./chat-preview-dialog";
+import {
+  ChatPreviewViewport,
+  useChatPreviewFit,
+} from "./chat-preview-viewport";
 
 type MermaidView = "diagram" | "source";
-
-const MERMAID_ZOOM_MIN = 0.5;
-const MERMAID_ZOOM_MAX = 4;
-const MERMAID_ZOOM_STEP = 0.25;
 
 // 仅适配默认图元；作者明确设置的内联颜色仍由原图保留。
 // CSS 变量在实际 SVG 宿主解析，避免把品牌色或浅色常量写进生成结果。
@@ -52,165 +46,42 @@ const MERMAID_THEME_CSS = `
   .edgeLabel rect, .edgeLabel .labelBkg { fill: var(--muted); }
 `;
 
+function readDiagramSize(content: HTMLDivElement) {
+  return readMermaidSize(content.querySelector("svg"));
+}
+
 function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
-  const { t } = useTranslation("chat");
-  const visible = useContext(ContentVisibility);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const diagramRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(1);
-  const [fittedSize, setFittedSize] = useState({ width: 0, height: 0 });
-
-  useLayoutEffect(() => {
-    const scroll = scrollRef.current;
-    const diagram = diagramRef.current;
-    if (!visible || !scroll || !diagram) return;
-
-    const svgElement = diagram.querySelector("svg");
-    if (!svgElement) return;
-    const viewBox = svgElement
-      .getAttribute("viewBox")
-      ?.trim()
-      .split(/[\s,]+/)
-      .map(Number);
-    const naturalWidth = viewBox?.[2] ?? 0;
-    const naturalHeight = viewBox?.[3] ?? 0;
-    if (!(naturalWidth > 0 && naturalHeight > 0)) return;
-
-    // 视口无边框，使用不随滚动条变化的外尺寸，避免 zoom → 滚动条 → 重新 fit 的反馈。
-    const measureDiagram = () => {
-      const style = getComputedStyle(scroll);
-      const availableWidth =
-        scroll.offsetWidth -
-        (Number.parseFloat(style.paddingLeft) || 0) -
-        (Number.parseFloat(style.paddingRight) || 0);
-      if (availableWidth <= 0) return;
-      let scale = Math.min(1, availableWidth / naturalWidth);
-      if (fullscreen) {
-        const availableHeight =
-          scroll.offsetHeight -
-          (Number.parseFloat(style.paddingTop) || 0) -
-          (Number.parseFloat(style.paddingBottom) || 0);
-        if (availableHeight <= 0) return;
-        scale = Math.min(scale, availableHeight / naturalHeight);
-      }
-      const width = naturalWidth * scale;
-      const height = (width * naturalHeight) / naturalWidth;
-      setFittedSize((current) =>
-        current.width === width && current.height === height
-          ? current
-          : { width, height },
-      );
-    };
-    measureDiagram();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", measureDiagram);
-      return () => window.removeEventListener("resize", measureDiagram);
-    }
-    const observer = new ResizeObserver(measureDiagram);
-    observer.observe(scroll, { box: "border-box" });
-    return () => observer.disconnect();
-  }, [fullscreen, svg, visible]);
-
-  const scaledWidth =
-    fittedSize.width > 0 ? fittedSize.width * zoom : undefined;
-  const scaledHeight =
-    fittedSize.height > 0 ? fittedSize.height * zoom : undefined;
-
-  return (
-    <div className="relative min-w-0">
-      {fullscreen && (
-        <div
-          className="absolute top-4 right-4 z-10 flex items-center gap-1"
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            title={t("mermaidZoomIn")}
-            aria-label={t("mermaidZoomIn")}
-            disabled={zoom >= MERMAID_ZOOM_MAX}
-            onClick={() =>
-              setZoom((current) =>
-                Math.min(MERMAID_ZOOM_MAX, current + MERMAID_ZOOM_STEP),
-              )
-            }
-          >
-            <ZoomIn />
-          </Button>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            title={t("mermaidZoomOut")}
-            aria-label={t("mermaidZoomOut")}
-            disabled={zoom <= MERMAID_ZOOM_MIN}
-            onClick={() =>
-              setZoom((current) =>
-                Math.max(MERMAID_ZOOM_MIN, current - MERMAID_ZOOM_STEP),
-              )
-            }
-          >
-            <ZoomOut />
-          </Button>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            title={t("mermaidZoomReset")}
-            aria-label={t("mermaidZoomReset")}
-            onClick={() => setZoom(1)}
-          >
-            <RotateCcw />
-          </Button>
-        </div>
+  const { fittedSize, viewportRef } = useChatPreviewFit(
+    diagramRef,
+    readDiagramSize,
+    { fitHeight: fullscreen, contentVersion: svg },
+  );
+  const renderDiagram = (zoom: number) => (
+    <div
+      ref={diagramRef}
+      role="img"
+      aria-label="Mermaid diagram"
+      className={cn(
+        "[&_svg]:block [&_svg]:h-auto [&_svg]:w-full [&_svg]:max-w-full",
+        fullscreen ? "origin-top-left" : "max-w-full shrink-0",
       )}
-      <div
-        ref={scrollRef}
-        className={
-          fullscreen
-            ? `bg-muted h-[calc(100dvh-144px)] rounded-lg p-4 pt-16 ${zoom > 1 ? "overflow-auto" : "overflow-hidden"}`
-            : "bg-muted w-full min-w-0 rounded-lg p-4"
-        }
-      >
-        {fullscreen ? (
-          <div className="flex min-h-full w-max min-w-full items-center justify-center">
-            <div
-              className="duration-quick ease-ui relative shrink-0"
-              style={{
-                width: scaledWidth,
-                height: scaledHeight,
-              }}
-            >
-              <div
-                ref={diagramRef}
-                role="img"
-                aria-label="Mermaid diagram"
-                className="origin-top-left [&_svg]:block [&_svg]:h-auto [&_svg]:w-full [&_svg]:max-w-full"
-                style={{
-                  width: fittedSize.width > 0 ? fittedSize.width : undefined,
-                  height: fittedSize.height > 0 ? fittedSize.height : undefined,
-                  transform: zoom === 1 ? undefined : `scale(${zoom})`,
-                }}
-                dangerouslySetInnerHTML={{ __html: svg }}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="flex w-full justify-center">
-            <div
-              ref={diagramRef}
-              role="img"
-              aria-label="Mermaid diagram"
-              className="max-w-full shrink-0 [&_svg]:block [&_svg]:h-auto [&_svg]:w-full [&_svg]:max-w-full"
-              style={{
-                width: fittedSize.width || undefined,
-                height: fittedSize.height || undefined,
-              }}
-              dangerouslySetInnerHTML={{ __html: svg }}
-            />
-          </div>
-        )}
+      style={{
+        ...fittedSize,
+        transform: zoom === 1 ? undefined : `scale(${zoom})`,
+      }}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+
+  return fullscreen ? (
+    <ChatPreviewViewport viewportRef={viewportRef} fittedSize={fittedSize}>
+      {renderDiagram}
+    </ChatPreviewViewport>
+  ) : (
+    <div className="relative min-w-0">
+      <div ref={viewportRef} className="bg-muted w-full min-w-0 rounded-lg p-4">
+        <div className="flex w-full justify-center">{renderDiagram(1)}</div>
       </div>
     </div>
   );
@@ -232,10 +103,6 @@ export function ChatMermaid({ code }: { code: string }) {
 
   const copySource = async () => {
     await copyPlainText(code);
-  };
-
-  const downloadSource = () => {
-    void downloadTextFile("diagram.mmd", code, "text/plain;charset=utf-8");
   };
 
   const mermaidTheme = resolvedTheme === "dark" ? "dark" : "default";
@@ -279,6 +146,19 @@ export function ChatMermaid({ code }: { code: string }) {
   // 首次绘制没有可复用结果时仍显示加载状态。
   const svg = result.svg;
   const error = resultIsCurrent ? result.error : "";
+  const imageReady = resultIsCurrent && Boolean(svg);
+
+  const download = async (format: "png" | "mmd") => {
+    try {
+      if (format === "mmd") {
+        await downloadTextFile("diagram.mmd", code, "text/plain;charset=utf-8");
+      } else if (imageReady) {
+        await saveBlob(await createMermaidPNG(svg), "diagram.png");
+      }
+    } catch {
+      toast.error(t("workspace.downloadFileError"));
+    }
+  };
 
   const viewOptions = [
     {
@@ -317,16 +197,30 @@ export function ChatMermaid({ code }: { code: string }) {
           >
             <Copy />
           </Button>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            title={t("mermaidDownload")}
-            aria-label={t("mermaidDownload")}
-            onClick={downloadSource}
-          >
-            <Download />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                title={t("mermaidDownload")}
+                aria-label={t("mermaidDownload")}
+              >
+                <Download />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                disabled={!imageReady}
+                onSelect={() => void download("png")}
+              >
+                {t("mermaidDownloadPNG")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void download("mmd")}>
+                {t("mermaidDownloadMMD")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {view === "diagram" && svg && (
             <Button
               type="button"

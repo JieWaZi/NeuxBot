@@ -670,8 +670,8 @@ func TestChannelStopDeliveryStateCannotBeOverwrittenByLateWatcher(t *testing.T) 
 	if err := threads.CreateLeadInput(ctx, input); err != nil {
 		t.Fatalf("CreateLeadInput() error = %v", err)
 	}
-	if err := threads.CancelOpenLeadInputs(ctx, threadID, 100); err != nil {
-		t.Fatalf("CancelOpenLeadInputs() error = %v", err)
+	if ids, err := threads.CancelOpenLeadInputs(ctx, threadID, 100); err != nil || len(ids) != 1 || ids[0] != input.ID {
+		t.Fatalf("CancelOpenLeadInputs() = %v, %v", ids, err)
 	}
 	if err := threads.UpdateLeadInputs(ctx, []string{input.ID}, constants.ChannelInputStatusConsumed, "execution-a", 200); err != nil {
 		t.Fatalf("late UpdateLeadInputs() error = %v", err)

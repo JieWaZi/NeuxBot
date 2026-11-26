@@ -51,30 +51,26 @@ func (w *Worker) cancelFlight(waker, chat string) {
 	}
 }
 
-func (w *Worker) generate(ctx context.Context, selection Selection, waker, chat string, origin Admission, use, system, input string) (string, error) {
+func (w *Worker) generate(ctx context.Context, selection Selection, waker, chat, use, system, input string) (string, error) {
 	var text string
-	err := w.authorizedCall(ctx, waker, chat, origin, func(ctx context.Context, gate func(context.Context) error) error {
+	err := w.withSource(ctx, waker, chat, func(ctx context.Context) error {
 		var err error
-		text, err = w.ports.Generate(ctx, selection, waker, use, system, input, gate)
+		text, err = w.ports.Generate(ctx, selection, waker, use, system, input, func(ctx context.Context) error {
+			return w.checkSource(ctx, waker, chat)
+		})
 		return err
 	})
 	return text, err
 }
 
-func (w *Worker) authorizedCall(ctx context.Context, waker, chat string, origin Admission, call func(context.Context, func(context.Context) error) error) error {
+// withSource 让模型及嵌入调用响应实际的来源删除。
+func (w *Worker) withSource(ctx context.Context, waker, chat string, call func(context.Context) error) error {
 	run, cancel := context.WithCancel(ctx)
 	defer cancel()
-	w.mu.Lock()
-	if err := w.checkAuthorization(run, waker, chat, origin); err != nil {
-		w.mu.Unlock()
-		return err
-	}
 	flight := &modelFlight{waker: waker, chat: chat, cancel: cancel}
 	w.flightMu.Lock()
 	w.flight = flight
 	w.flightMu.Unlock()
-	w.mu.Unlock()
-	w.changed(eventReview, waker, chat)
 	defer func() {
 		w.flightMu.Lock()
 		if w.flight == flight {
@@ -82,36 +78,39 @@ func (w *Worker) authorizedCall(ctx context.Context, waker, chat string, origin 
 		}
 		w.flightMu.Unlock()
 	}()
-	return call(run, func(ctx context.Context) error {
-		w.mu.Lock()
-		defer w.mu.Unlock()
-		return w.checkAuthorization(ctx, waker, chat, origin)
-	})
+	if err := w.checkSource(run, waker, chat); err != nil {
+		return err
+	}
+	w.changed(eventReview, waker, chat)
+	return call(run)
 }
 
-func (w *Worker) checkAuthorization(ctx context.Context, waker, chat string, origin Admission) error {
+func (w *Worker) checkSource(ctx context.Context, waker, chat string) error {
+	release, err := w.guardSource(ctx, waker, chat)
+	if err == nil {
+		release()
+	}
+	return err
+}
+
+func (w *Worker) guardSource(ctx context.Context, waker, chat string) (func(), error) {
 	if err := ctx.Err(); err != nil {
-		return err
-	}
-	_, _, current, err := w.Effective(ctx, waker)
-	if err != nil {
-		return err
-	}
-	if current.Configuration != origin.Configuration || (origin.Memory != 0 && origin.Memory != current.Memory) ||
-		(origin.Skill != 0 && origin.Skill != current.Skill) {
-		return status_error.Conflict
+		return nil, err
 	}
 	release, err := w.ports.Guard(waker, chat)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer release()
 	access, err := w.ports.Chat(ctx, chat)
+	if err == nil && access.WakerID != waker {
+		err = status_error.ChatNotFound
+	}
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err != nil {
-		return err
+		release()
+		return nil, err
 	}
-	if access.WakerID != waker {
-		return status_error.ChatNotFound
-	}
-	return ctx.Err()
+	return release, nil
 }

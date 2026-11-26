@@ -113,6 +113,7 @@ export function createTeamThreadRefreshScheduler({
           case "interaction.approval.resolved":
           case "interaction.elicitation.requested":
           case "interaction.elicitation.resolved":
+          case "lead.input_cancelled":
           case "lead.input_failed":
           case "lead.input_queued":
           case "members.config_updated":

@@ -815,6 +815,155 @@ func TestNativeToolCollectionsKeepOmittedEmptyAndNonemptyPresence(t *testing.T) 
 	}
 }
 
+func TestNativeLaunchUsesSameInterpreterPathAsInstallationProbe(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX env shebang regression")
+	}
+	home := t.TempDir()
+	tools := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(tools, 0700); err != nil {
+		t.Fatal(err)
+	}
+	interpreter := filepath.Join(tools, "neux-test-interpreter")
+	if err := os.WriteFile(interpreter, []byte(`#!/bin/sh
+case "$2" in
+  --version) printf 'codex-cli 0.172.0\n' ;;
+  app-server)
+    IFS= read -r request || exit 1
+    case "$request" in *'"method":"initialize"'*) ;; *) exit 2 ;; esac
+    printf '%s\n' '{"id":1,"result":{"userAgent":"codex/0.172.0","platformFamily":"unix","platformOs":"test"}}'
+    while IFS= read -r request; do :; done
+    ;;
+  *) exit 3 ;;
+esac
+`), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cli := filepath.Join(t.TempDir(), "codex")
+	if err := os.WriteFile(cli, []byte("#!/usr/bin/env neux-test-interpreter\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	base := map[string]string{"HOME": home, "PATH": "/usr/bin:/bin"}
+	probe, err := buildPreparedEnvironment([]string{"HOME=" + home, "PATH=/usr/bin:/bin"}, nil, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := native.RuntimeVersion(t.Context(), cli, []string{"--version"}, probe.list(), ""); !strings.Contains(got, "0.172.0") {
+		t.Fatalf("fixture was not found with the installation probe's PATH: %q", got)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	client, err := newDirectAgentClient(ctx, AccountRequest{Provider: "codex", CWD: home},
+		ProviderLaunch{Executable: cli, BaseEnvironment: base}, AccountLease{}, LaunchAuthLease{}, ResourceLease{}, AgentClientCallbacks{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stop()
+		if err := client.Close(cleanup); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := client.Initialize(ctx); err != nil {
+		t.Fatalf("CLI launch could not initialize through its interpreter: %v", err)
+	}
+	if got := client.Capabilities().Version; got != "0.172.0" {
+		t.Fatalf("unexpected version from native initialize: %q", got)
+	}
+}
+
+func TestHostExecutablePathRefreshSharesLoginShellPath(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("requires a POSIX login shell")
+	}
+	home, tools := t.TempDir(), t.TempDir()
+	xdgConfig := t.TempDir()
+	if err := os.WriteFile(filepath.Join(xdgConfig, "path-config"), []byte(tools), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loginShell := filepath.Join(home, "zsh")
+	if err := os.WriteFile(loginShell, []byte(`#!/bin/sh
+printf 'profile banner\n'
+printf x >> "$NEUX_TEST_SHELL_CALLS"
+tools=$(cat "$XDG_CONFIG_HOME/path-config") || exit 4
+export PATH="$tools:$PATH"
+exec /bin/sh -c "$2"
+`), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cli := filepath.Join(tools, "neux-path-test-cli")
+	if err := os.WriteFile(cli, []byte("#!/bin/sh\nprintf initialized"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	readCount := filepath.Join(home, "shell-calls")
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "/usr/bin:/bin")
+	t.Setenv("SHELL", loginShell)
+	t.Setenv("XDG_CONFIG_HOME", xdgConfig)
+	t.Setenv("NEUX_TEST_SHELL_CALLS", readCount)
+	previous := hostExecutablePath.Load()
+	t.Cleanup(func() { hostExecutablePath.Store(previous) })
+	new(Catalog).RefreshHostExecutablePath(t.Context())
+
+	base := map[string]string{"HOME": home, "PATH": "/usr/bin:/bin"}
+	probe, err := buildPreparedEnvironment([]string{"HOME=" + home, "PATH=/usr/bin:/bin"}, nil, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := resolveExecutableCandidate(filepath.Base(cli), probe); err != nil || got != cli {
+		t.Fatalf("CLI discovery missed login-shell tools: %q, %v", got, err)
+	}
+	env, err := nativeLaunchEnvironment("codex", ProviderLaunch{Executable: cli, BaseEnvironment: base}, AccountLease{}, LaunchAuthLease{}, ResourceLease{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(env, func(entry string) bool {
+		return strings.HasPrefix(entry, "PATH="+tools+":/usr/bin:/bin")
+	}) {
+		t.Fatal("native CLI did not inherit login-shell PATH ordering")
+	}
+	if got, err := os.ReadFile(readCount); err != nil || string(got) != "x" {
+		t.Fatalf("discovery and launch should reuse the single shell read: %q, %v", got, err)
+	}
+}
+
+func TestWindowsHostExecutablePathFeedsDiscoveryAndLaunch(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("requires Windows PATH and PATHEXT semantics")
+	}
+	home, inherited := t.TempDir(), t.TempDir()
+	registryDirectory := filepath.Join(t.TempDir(), "tools;node")
+	if err := os.Mkdir(registryDirectory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cli := filepath.Join(registryDirectory, "neux-path-test-cli.cmd")
+	if err := os.WriteFile(cli, []byte("@echo off\r\necho initialized\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	previous := hostExecutablePath.Swap(&hostPathSnapshot{
+		home: home, inherited: inherited, directories: absolutePathEntries([]string{strings.ToUpper(inherited), registryDirectory}),
+	})
+	t.Cleanup(func() { hostExecutablePath.Store(previous) })
+	probe, err := buildPreparedEnvironment([]string{"Path=" + inherited, "PATHEXT=.EXE;.CMD", `=C:=C:\work`}, nil, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := resolveExecutableCandidate("neux-path-test-cli", probe); err != nil || !strings.EqualFold(got, cli) {
+		t.Fatalf("Windows CLI discovery missed the registry PATH: %q, %v", got, err)
+	}
+	launch := ProviderLaunch{Executable: cli, BaseEnvironment: map[string]string{
+		"Path": inherited, "PATHEXT": ".EXE;.CMD", "USERPROFILE": home, "": `C:=C:\work`,
+	}}
+	env, err := nativeLaunchEnvironment("codex", launch, AccountLease{}, LaunchAuthLease{}, ResourceLease{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(env, "PATH="+probe.get("PATH")) || !strings.HasPrefix(probe.get("PATH"), inherited+`;"`+registryDirectory+`";`) {
+		t.Fatal("Windows discovery and launch must share the registry fallback after the inherited PATH")
+	}
+}
+
 func TestNativeLaunchPluginPathPreservesCLIInterpreter(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX env shebang regression")

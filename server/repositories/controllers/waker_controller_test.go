@@ -214,7 +214,7 @@ func TestWakerControllerDefaultModelUpdatesStayIndependentOfBasicDetails(t *test
 	if err != nil || !reflect.DeepEqual(before.DefaultModel, waker.DefaultModel) {
 		t.Fatalf("basic details update overwrote the model: %+v, %v", before, err)
 	}
-	for index, selection := range []*models.WakerDefaultModel{
+	for _, selection := range []*models.WakerDefaultModel{
 		{RuntimeID: "claude", AccountID: "system", Model: "chosen-model"}, nil,
 	} {
 		if err := controller.UpdateDefaultModel(ctx, waker.ID, selection, 3); err != nil {
@@ -224,10 +224,6 @@ func TestWakerControllerDefaultModelUpdatesStayIndependentOfBasicDetails(t *test
 		if err != nil || !reflect.DeepEqual(current.DefaultModel, selection) {
 			t.Fatalf("default model update = %+v, %v", current, err)
 		}
-		if current.DefaultModelRevision != before.DefaultModelRevision+uint64(index)+1 {
-			t.Fatalf("default model change did not advance the review generation: %+v", current)
-		}
-		current.DefaultModelRevision = before.DefaultModelRevision
 		current.DefaultModel, current.UpdatedAt = before.DefaultModel, before.UpdatedAt
 		if !reflect.DeepEqual(current, before) {
 			t.Fatalf("default model update changed partner details: before=%+v after=%+v", before, current)

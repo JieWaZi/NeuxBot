@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
@@ -76,12 +77,10 @@ type Service interface {
 	ReadMessageHistory(ctx context.Context, chatID string, beforeSequence int64, limit int) (MessageHistoryPage, error)
 	// ReadMessageTimeline 读取界面消息及问答项，团队页可提供冻结日志上界。
 	ReadMessageTimeline(ctx context.Context, chatID string, beforeSequence, throughSequence int64, limit int) (MessageHistoryPage, error)
+	// ReadTeamReplyTarget 按同一团队主会话中的已公开消息身份读取引用。
+	ReadTeamReplyTarget(ctx context.Context, threadID, leadChatID, messageID string) (ReplyTarget, error)
 	// ReadManagedResourceChanges 只读取已提交的资源变更及其原时间线位置。
 	ReadManagedResourceChanges(ctx context.Context, chatID string, fromSequence int64) ([]ManagedResourceChange, error)
-	// RecordManagedSkillChange 幂等记录本轮已提交的技能库变更。
-	RecordManagedSkillChange(ctx context.Context, chatID, executionID, action, skillID, versionID, name string) error
-	// RecordManagedConnectorChange 幂等记录本轮已提交的连接器变更。
-	RecordManagedConnectorChange(ctx context.Context, chatID, executionID, commandID, action, connectorID, ownerWakerID, name string) error
 	// GetMessageFileChange 按原消息授权范围读取独立快照的有界文件差异。
 	GetMessageFileChange(ctx context.Context, chatID string, messageID string, path string) (messageview.MessageFileChangeDiff, error)
 	// GetMessageFileChanges 读取独立快照提供的文件成果摘要。
@@ -109,6 +108,8 @@ type Service interface {
 
 // Module 是组合根同时交给查询入口和 Execution Core 的完整 Chat 模块。
 type Module interface {
+	// BindManagedResourceChanges 将来源聊天附着到资源命令的原子回执。
+	BindManagedResourceChanges(chat models.Chat, executionID string, bindings []capability.Binding) []capability.Binding
 	// ReadReviewTurnStarts 读取合格终态的位置和时间。
 	ReadReviewTurnStarts(context.Context, string, int64, int64, reviewstate.Admission, int) ([]reviewstate.Turn, error)
 	// ReadReviewTurns 读取按持久终态排序的合格证据。
@@ -131,6 +132,8 @@ type Module interface {
 
 // service 是 Service 的唯一实现，维护权威日志顺序、查询投影与事件订阅。
 type service struct {
+	// managedCommands 保存资源命令回执和投影确认。
+	managedCommands controllers.AgentCommandController
 	// freezeReview 在普通 Chat 接纳时冻结当前复盘授权。
 	freezeReview func(context.Context, models.Chat) *reviewstate.Admission
 	// reviewTerminal 在接纳的轮次结束后唤醒复盘。
@@ -180,6 +183,8 @@ var _ Module = (*service)(nil)
 
 // Config 声明构造 Chat Service 所需的稳定外部依赖。
 type Config struct {
+	// ManagedCommands 读取并结算已提交的资源命令。
+	ManagedCommands controllers.AgentCommandController
 	// FreezeReview 捕获已授权的配置及功能代次。
 	FreezeReview func(context.Context, models.Chat) *reviewstate.Admission
 	// ReviewTerminal 观察已提交的终态。
@@ -277,6 +282,7 @@ func newService(config Config) (*service, error) {
 	queryIndexes.reading = config.QueryIndexes.Reading
 	queryIndexes.logStore = logStore
 	implementation := &service{freezeReview: config.FreezeReview, reviewTerminal: config.ReviewTerminal, reviewDeleted: config.ReviewDeleted,
+		managedCommands:       config.ManagedCommands,
 		storage:               storage,
 		deletions:             deletions,
 		deletionIntents:       config.QueryIndexes.DeletionIntents,
@@ -355,6 +361,7 @@ func (m *service) Start(ctx context.Context) error {
 	if err := m.recoverFileChanges(ctx); err != nil {
 		return err
 	}
+	m.recoverManagedResourceChanges(ctx, "")
 	if m.readingRepair != nil {
 		for _, diagnostic := range m.RecoveryHealth().Chats {
 			if readingIsolated(diagnostic) {

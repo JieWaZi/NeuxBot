@@ -11,6 +11,20 @@ import (
 // operationKey 标识同步调用链已经持有的团队保护，不能跨 goroutine 传递持锁 Context。
 type operationKey struct{}
 
+// memberReplyRouteKey 标识通用发送入口发起的成员 Chat 引用。
+type memberReplyRouteKey struct{}
+
+// WithMemberReplyRoute 标记通用发送入口只允许回复团队成员自己的 Chat。
+func WithMemberReplyRoute(ctx context.Context) context.Context {
+	return context.WithValue(ctx, memberReplyRouteKey{}, true)
+}
+
+// IsMemberReplyRoute 返回本次引用是否来自通用发送入口。
+func IsMemberReplyRoute(ctx context.Context) bool {
+	marked, _ := ctx.Value(memberReplyRouteKey{}).(bool)
+	return marked
+}
+
 // operationLock 为同一团队提供可取消等待的互斥令牌。
 type operationLock struct {
 	// token 容量为一的令牌只覆盖同步接纳，不覆盖 Runtime 的执行时间。

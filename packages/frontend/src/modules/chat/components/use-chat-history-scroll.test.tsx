@@ -36,6 +36,9 @@ function Harness({
         <div data-message-id="message-1" />
       </div>
       <button onClick={() => void history.loadEarlier()}>加载</button>
+      <button onClick={() => history.ignoreProgrammaticScroll(60)}>
+        恢复阅读位置
+      </button>
       <span>{history.error ? "失败" : "正常"}</span>
     </>
   );
@@ -54,6 +57,16 @@ function scroll(top: number) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("chat history scroll", () => {
+  it("程序恢复到顶部附近时不触发上翻，接下来的用户滚动可以触发", async () => {
+    const load = vi.fn(async () => {});
+    render(<Harness load={load} />);
+    scroll(180);
+    fireEvent.click(screen.getByRole("button", { name: "恢复阅读位置" }));
+    scroll(60);
+    expect(load).not.toHaveBeenCalled();
+    scroll(40);
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+  });
   it("前插已提交而补偿帧尚未执行时，用户继续滚动不会覆盖消息锚定基线", async () => {
     const frames: FrameRequestCallback[] = [];
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {

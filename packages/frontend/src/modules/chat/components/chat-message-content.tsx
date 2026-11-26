@@ -1,18 +1,103 @@
-import { useMemo, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import {
+  Children,
+  useMemo,
+  useRef,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/shared/lib/cn";
 import {
   MarkdownText,
   type MarkdownComponents,
   type MarkdownCodeProps,
+  type MarkdownImageProps,
   type MarkdownInlineCodeProps,
+  type MarkdownLinkProps,
 } from "@/shared/markdown/MarkdownText";
 import { CodeBlock } from "@/shared/markdown/CodeBlock";
 import { ChatMermaid } from "./chat-mermaid";
+import { ChatPreviewDialog } from "./chat-preview-dialog";
+import {
+  ChatPreviewViewport,
+  useChatPreviewFit,
+} from "./chat-preview-viewport";
 import { ChatTable } from "./chat-table";
 import { parseReference } from "@/shared/workspace/file-reference";
 import { ReferenceLink } from "@/shared/workspace/file-reference-link";
-import { WorkspaceMarkdownImage } from "@/shared/workspace/workspace-markdown-image";
+import { isWorkspaceMarkdownImagePath } from "@/shared/workspace/workspace-image-query";
+import {
+  WorkspaceMarkdownImage,
+  type WorkspaceImagePresentationProps,
+} from "@/shared/workspace/workspace-markdown-image";
+
+// 预览位置由消息确定，离开会话释放图片资源后仍保留相同的布局。
+const thumbnailFrameClassName =
+  "bg-muted/40 relative inline-grid aspect-video w-64 max-w-full place-items-center overflow-hidden rounded-lg";
+const thumbnailClassName = "absolute inset-0 size-full object-contain";
+
+function readImageSize(content: HTMLDivElement) {
+  const image = content.querySelector("img");
+  if (!image) return;
+  return { width: image.naturalWidth, height: image.naturalHeight };
+}
+
+function ChatImageViewport({ children }: { children: ReactNode }) {
+  const imageRef = useRef<HTMLDivElement>(null);
+  const { fit, fittedSize, viewportRef } = useChatPreviewFit(
+    imageRef,
+    readImageSize,
+    { fitHeight: true },
+  );
+  return (
+    <ChatPreviewViewport viewportRef={viewportRef} fittedSize={fittedSize}>
+      {() => (
+        <div
+          ref={imageRef}
+          onLoadCapture={fit}
+          className="[&_img]:block [&_img]:h-auto [&_img]:w-full"
+        >
+          {children}
+        </div>
+      )}
+    </ChatPreviewViewport>
+  );
+}
+
+function ChatImagePreview({
+  children,
+  original,
+  label,
+}: WorkspaceImagePresentationProps) {
+  return (
+    <ChatPreviewDialog
+      title={label}
+      trigger={
+        <button
+          type="button"
+          aria-label={label}
+          className="focus-visible:ring-ring absolute inset-0 z-0 cursor-zoom-in rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-inset"
+        >
+          {children}
+        </button>
+      }
+    >
+      <ChatImageViewport>{original}</ChatImageViewport>
+    </ChatPreviewDialog>
+  );
+}
+
+function ChatImage({ inLink, ...props }: MarkdownImageProps) {
+  return (
+    <WorkspaceMarkdownImage
+      {...props}
+      frameClassName={thumbnailFrameClassName}
+      className={thumbnailClassName}
+      fallback={inLink ? props.alt || props.src : undefined}
+      presentation={inLink ? undefined : ChatImagePreview}
+    />
+  );
+}
 
 function ChatInlineCode({
   children,
@@ -62,13 +147,49 @@ function ChatLink({
   href = "",
   className,
   title,
+  standalone,
   allowFileReferences,
-}: ComponentPropsWithoutRef<"a"> & { allowFileReferences: boolean }) {
+  showImageLinks,
+}: MarkdownLinkProps & {
+  allowFileReferences: boolean;
+  showImageLinks: boolean;
+}) {
   const reference = allowFileReferences
     ? parseReference(href, "link")
     : /^https?:\/\//i.test(href)
       ? { kind: "web" as const, url: href }
       : null;
+  if (
+    showImageLinks &&
+    standalone &&
+    reference?.kind === "file" &&
+    reference.line === undefined &&
+    !href.startsWith("//") &&
+    isWorkspaceMarkdownImagePath(reference.path)
+  ) {
+    const [label] = Children.toArray(children);
+    if (typeof label === "string")
+      return (
+        <WorkspaceMarkdownImage
+          src={href}
+          alt={label}
+          title={title}
+          frameClassName={thumbnailFrameClassName}
+          className={thumbnailClassName}
+          presentation={ChatImagePreview}
+          fallback={
+            <ReferenceLink
+              reference={reference}
+              className={className}
+              title={title}
+              showCopy={false}
+            >
+              {children}
+            </ReferenceLink>
+          }
+        />
+      );
+  }
   return reference ? (
     <ReferenceLink reference={reference} className={className} title={title}>
       {children}
@@ -99,7 +220,7 @@ export type AssistantMarkdownProps = {
 function MarkdownBody({
   text,
   isTerminal = true,
-  renderImage,
+  renderImage: CustomImage,
   allowFileReferences = true,
   role,
 }: AssistantMarkdownProps & { role: "assistant" | "user" }) {
@@ -117,20 +238,29 @@ function MarkdownBody({
   const components = useMemo<MarkdownComponents>(
     () => ({
       link: (props) => (
-        <ChatLink {...props} allowFileReferences={allowFileReferences} />
+        <ChatLink
+          {...props}
+          allowFileReferences={allowFileReferences}
+          showImageLinks={isTerminal && !CustomImage}
+        />
       ),
       inlineCode: (props) => (
         <ChatInlineCode {...props} allowFileReferences={allowFileReferences} />
       ),
       code: ChatCode,
       table: ChatTable,
-      ...(renderImage
-        ? { image: renderImage }
+      ...(CustomImage
+        ? {
+            image: ({ inLink, ...props }) => {
+              void inLink;
+              return <CustomImage {...props} />;
+            },
+          }
         : isTerminal && allowFileReferences
-          ? { image: WorkspaceMarkdownImage }
+          ? { image: ChatImage }
           : {}),
     }),
-    [allowFileReferences, renderImage, isTerminal],
+    [allowFileReferences, CustomImage, isTerminal],
   );
   return (
     <MarkdownText

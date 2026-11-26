@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,9 +15,12 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/uploads"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -32,10 +36,15 @@ func TestStartSettlesUnstartableLeadInputAndDispatchesNext(t *testing.T) {
 			sut, thread, _, captured := newDelegationDispatchService(t)
 			sut.Close()
 			for index, id := range []string{"broken-input", "next-input"} {
+				input := execution.WorkInput{Actor: "user", SubmissionID: id, Content: id}
+				identity, err := requestidempotency.New(id, []any{input, false})
+				if err != nil {
+					t.Fatal(err)
+				}
 				if err := sut.threads.CreateLeadInput(ctx, models.ChannelLeadInput{
 					ID: LeadInputID(thread.ID, id), ThreadID: thread.ID,
-					Payload: execution.WorkInput{Actor: "user", SubmissionID: id, Content: id},
-					Status:  constants.ChannelInputStatusPending, CreatedAt: int64(index + 1),
+					Payload: input, RequestHash: identity.Hash,
+					Status: constants.ChannelInputStatusPending, CreatedAt: int64(index + 1),
 				}); err != nil {
 					t.Fatal(err)
 				}
@@ -155,6 +164,263 @@ func TestLeadWorkflowQueueDispatchesTheOriginallySelectedRevision(t *testing.T) 
 	}
 }
 
+func TestTeamReplyKeepsLeadQueueWhenAMemberIsMentioned(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, captured := newDelegationDispatchService(t)
+	sut.Close()
+	chats.summaries[thread.LeadChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: thread.LeadChatID, ActiveExecutionID: "busy"}}
+	sut.chats = &testTeamReplyChat{Service: chats}
+	work := execution.WorkInput{SubmissionID: "member-report-reply", Content: "请核对这份报告", ReplyToMessageID: "committed-report"}
+	request := SendMessageInput{ThreadID: thread.ID, MentionWakerID: "member", Input: work}
+	queued, err := sut.sendMessage(ctx, request)
+	if err != nil || queued.QueuedInput == nil || queued.Task != nil || queued.Execution != nil {
+		t.Fatalf("引用在负责人忙碌时没有进入主队列: %+v %v", queued, err)
+	}
+	replayed, err := sut.sendMessage(ctx, request)
+	if err != nil || replayed.QueuedInput == nil || replayed.QueuedInput.ID != queued.QueuedInput.ID {
+		t.Fatalf("同键续发没有保留队列身份: %+v %v", replayed, err)
+	}
+	stored, found, err := sut.threads.GetLeadInput(ctx, queued.QueuedInput.ID)
+	if err != nil || !found || stored.Payload.ReplyToMessageID != "committed-report" || stored.DirectExecution {
+		t.Fatalf("队列没有保留原报告和负责人协调模式: %+v %v", stored, err)
+	}
+	request.Input.ReplyToMessageID = "foreign-report"
+	if _, err := sut.sendMessage(ctx, request); !errors.Is(err, status_error.CreateRequestConflict) {
+		t.Fatalf("改变引用沿用了另一个已接纳输入: %v", err)
+	}
+	request.Input.SubmissionID = "foreign-reply"
+	if _, err := sut.sendMessage(ctx, request); !errors.Is(err, status_error.ChatReplyTargetUnavailable) {
+		t.Fatalf("主对话队列接纳了范围以外的报告: %v", err)
+	}
+	chats.summaries[thread.LeadChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: thread.LeadChatID}}
+	if err := sut.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	actual := captured.firstStart()
+	if captured.startCount() != 1 || actual.Chat.ChatID != thread.LeadChatID || actual.Input.Content != work.Content ||
+		actual.TeamReplyThreadID != thread.ID || actual.Input.ReplyToMessageID != work.ReplyToMessageID {
+		t.Fatalf("恢复后没有向负责人派发原输入: %+v starts=%d", actual, captured.startCount())
+	}
+}
+
+func TestQueuedTeamReplyRetainsUploadedBytesAcrossRecovery(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, captured := newDelegationDispatchService(t)
+	sut.Close()
+	sut.chats = &testTeamReplyChat{Service: chats}
+	sut.managedFilesDirectory = t.TempDir()
+	layout, err := chatstorage.NewLayout(sut.managedFilesDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory, err := layout.TeamRoot(thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workspace.EnsureThreadExecutionWorkspace(directory, thread.ID, thread.LeadWakerID); err != nil {
+		t.Fatal(err)
+	}
+	chats.summaries[thread.LeadChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: thread.LeadChatID, ActiveExecutionID: "busy"}}
+	store, err := uploads.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(store.Close)
+	const subject, name = "web:test", "证据.txt"
+	contents := []string{"第一份上传内容", "第二份上传内容"}
+	var inputs []execution.AttachmentInput
+	for _, content := range contents {
+		ref, err := store.Stage(ctx, subject, name, strings.NewReader(content))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs = append(inputs, execution.AttachmentInput{SourcePath: ref})
+	}
+	request := SendMessageInput{
+		ThreadID: thread.ID,
+		Input: execution.WorkInput{
+			SubmissionID: "queued-reply-upload", Content: "请结合附件核对", ReplyToMessageID: "committed-report",
+			Attachments: inputs,
+		},
+		ClaimAttachments: func(input *execution.WorkInput) (func(bool), error) {
+			refs := make([]string, 0, len(input.Attachments))
+			for _, attachment := range input.Attachments {
+				refs = append(refs, attachment.SourcePath)
+			}
+			paths, release, err := store.Claim(subject, refs, input.SubmissionID)
+			if err == nil {
+				for index, path := range paths {
+					input.Attachments[index].SourcePath = path
+				}
+			}
+			return release, err
+		},
+	}
+	interrupted := request
+	interrupted.AdmissionBoundary = func(context.Context, func(context.Context) error) error {
+		return status_error.OperationCanceled
+	}
+	if _, err := sut.sendMessage(ctx, interrupted); !errors.Is(err, status_error.OperationCanceled) {
+		t.Fatalf("接纳中断 = %v", err)
+	}
+	queueDirectory := filepath.Join(directory, constants.ChannelLeadInputAttachmentsDirectory, LeadInputID(thread.ID, request.Input.SubmissionID))
+	if _, err := os.Stat(queueDirectory); !os.IsNotExist(err) {
+		t.Fatalf("接纳失败后仍留有队列附件 = %v", err)
+	}
+	queued, err := sut.sendMessage(ctx, request)
+	if err != nil || queued.QueuedInput == nil || queued.Execution != nil {
+		t.Fatalf("负责人忙碌时的队列接纳 = %+v, %v", queued, err)
+	}
+	store.Close()
+	replayed, err := sut.sendMessage(ctx, request)
+	if err != nil || replayed.QueuedInput == nil || replayed.QueuedInput.ID != queued.QueuedInput.ID {
+		t.Fatalf("上传租约消失后的同键重放 = %+v, %v", replayed, err)
+	}
+	sut.executions = &uploadedReplyExecution{postTurnExecutionFake: captured, check: func(intent execution.WorkIntent) {
+		attachments := intent.Input.Attachments
+		if len(attachments) != len(contents) {
+			t.Fatalf("恢复派发附件 = %+v", attachments)
+		}
+		for index, attachment := range attachments {
+			if filepath.Base(attachment.SourcePath) != name {
+				t.Fatalf("恢复派发时原文件名改变 = %+v", attachment)
+			}
+			if data, err := os.ReadFile(attachment.SourcePath); err != nil || string(data) != contents[index] {
+				t.Fatalf("恢复派发附件内容 = %q, %v", data, err)
+			}
+		}
+	}}
+	chats.summaries[thread.LeadChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: thread.LeadChatID}}
+	if err := sut.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if captured.startCount() != 1 {
+		t.Fatalf("恢复派发次数 = %d", captured.startCount())
+	}
+	if _, err := os.Stat(queueDirectory); !os.IsNotExist(err) {
+		t.Fatalf("Chat 接纳后仍留有队列附件 = %v", err)
+	}
+}
+
+func TestTeamStartupReclaimsUnownedAndSettledQueueAttachments(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, _ := newDelegationDispatchService(t)
+	sut.Close()
+	sut.managedFilesDirectory = t.TempDir()
+	layout, err := chatstorage.NewLayout(sut.managedFilesDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory, err := layout.TeamRoot(thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workspace.EnsureThreadExecutionWorkspace(directory, thread.ID, thread.LeadWakerID); err != nil {
+		t.Fatal(err)
+	}
+	chats.summaries[thread.LeadChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: thread.LeadChatID, ActiveExecutionID: "busy"}}
+	file := filepath.Join(t.TempDir(), "queued.txt")
+	if err := os.WriteFile(file, []byte("queue attachment"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	staged := map[constants.ChannelInputStatus]string{}
+	for _, status := range []constants.ChannelInputStatus{"", constants.ChannelInputStatusFailed, constants.ChannelInputStatusCancelled,
+		constants.ChannelInputStatusDelivering, constants.ChannelInputStatusConsumed, constants.ChannelInputStatusPending} {
+		inputID := LeadInputID(thread.ID, "stage-"+string(status))
+		prepared, err := workspace.StageQueuedAttachments(directory, thread.LeadChatID, inputID, []workspace.AttachmentInput{{SourcePath: file}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		staged[status] = prepared.RuntimePaths[0]
+		if status != "" {
+			if err := sut.threads.CreateLeadInput(ctx, models.ChannelLeadInput{ID: inputID, ThreadID: thread.ID, Status: status,
+				Payload: execution.WorkInput{Actor: "user", Content: "queued input"}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	queueDirectory := filepath.Join(directory, constants.ChannelLeadInputAttachmentsDirectory)
+	incomplete, err := os.MkdirTemp(queueDirectory, "attachment-staging-"+LeadInputID(thread.ID, "incomplete")+"-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(queueDirectory, LeadInputID(thread.ID, "unmanaged"))
+	if err := os.Mkdir(foreign, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := sut.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(incomplete); !os.IsNotExist(err) {
+		t.Errorf("未发布的临时目录仍然存在 = %v", err)
+	}
+	if _, err := os.Stat(foreign); err != nil {
+		t.Errorf("无归属的目录被移除 = %v", err)
+	}
+	for status, path := range staged {
+		if _, err := os.Stat(path); status == constants.ChannelInputStatusPending && err != nil || status != constants.ChannelInputStatusPending && !os.IsNotExist(err) {
+			t.Errorf("恢复后的 %q 附件文件状态 = %v", status, err)
+		}
+	}
+}
+
+type uploadedReplyExecution struct {
+	// postTurnExecutionFake 提供团队派发和终态测试端口。
+	*postTurnExecutionFake
+	// check 在 Chat 接纳前核对队列交付的文件原件。
+	check func(execution.WorkIntent)
+}
+
+// Start 在模拟 Chat 接纳前读取附件，覆盖副本回收与接纳的顺序。
+func (f *uploadedReplyExecution) Start(ctx context.Context, intent execution.WorkIntent) (execution.AcceptedExecution, error) {
+	f.check(intent)
+	return f.postTurnExecutionFake.Start(ctx, intent)
+}
+
+func TestTeamCodeReferencePromptKeepsItsSourceThroughTheLeadQueue(t *testing.T) {
+	ctx := t.Context()
+	sut, thread, chats, captured := newDelegationDispatchService(t)
+	sut.Close()
+	chats.summaries[thread.LeadChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: thread.LeadChatID, ActiveExecutionID: "busy"}}
+	request := SendMessageInput{ThreadID: thread.ID, Input: execution.WorkInput{
+		SubmissionID: "lead-code-reference-prompt", Content: "请查看引用的代码片段。", CodeReferenceOnly: true,
+		CodeReferences: []execution.CodeReferenceInput{{Path: "/work/example.go"}},
+	}}
+	queued, err := sut.sendMessage(ctx, request)
+	if err != nil || queued.QueuedInput == nil || queued.Execution != nil {
+		t.Fatalf("代码引用输入没有进入负责人队列: %+v %v", queued, err)
+	}
+	stored, found, err := sut.threads.GetLeadInput(ctx, queued.QueuedInput.ID)
+	if err != nil || !found || !stored.Payload.CodeReferenceOnly {
+		t.Fatalf("负责人队列丢失正文来源: %+v %v", stored, err)
+	}
+	request.Input.CodeReferenceOnly = false
+	if _, err := sut.sendMessage(ctx, request); !errors.Is(err, status_error.CreateRequestConflict) {
+		t.Fatalf("改变正文来源沿用了另一个已排队输入: %v", err)
+	}
+	chats.summaries[thread.LeadChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: thread.LeadChatID}}
+	if err := sut.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	actual := captured.firstStart()
+	if !actual.Input.CodeReferenceOnly || actual.Input.Content != request.Input.Content || len(actual.Input.CodeReferences) != 1 {
+		t.Fatalf("恢复负责人输入时丢失代码引用来源或正文: %+v", actual.Input)
+	}
+}
+
+type testTeamReplyChat struct {
+	// Service 提供引用查询之外的团队聊天端口。
+	chatservice.Service
+}
+
+// ReadTeamReplyTarget 验证团队提交只查询主 Chat 中的原报告。
+func (*testTeamReplyChat) ReadTeamReplyTarget(_ context.Context, threadID, chatID, messageID string) (chatservice.ReplyTarget, error) {
+	if threadID != "thread" || chatID != "lead-chat" || messageID != "committed-report" {
+		return chatservice.ReplyTarget{}, status_error.ChatReplyTargetUnavailable
+	}
+	return chatservice.ReplyTarget{}, nil
+}
+
 func TestWorkflowOnlyTeamFirstSendUsesTheSelectedName(t *testing.T) {
 	ctx := t.Context()
 	sut, thread, chats, captured := newDelegationDispatchService(t)
@@ -225,9 +491,9 @@ func TestDirectedFirstTeamInputKeepsMemberPluginAsMessageReference(t *testing.T)
 func TestLeadInputSendDoesNotReturnAnEarlierSubmissionsExecution(t *testing.T) {
 	ctx := t.Context()
 	sut, thread, _, captured := newDelegationDispatchService(t)
-	earlier, err := sut.enqueueLeadInput(ctx, thread, execution.WorkInput{
+	earlier, err := sut.enqueueLeadInput(ctx, thread, SendMessageInput{Input: execution.WorkInput{
 		Actor: "user", SubmissionID: "earlier-input", Content: "earlier input",
-	}, false, nil)
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +617,7 @@ func TestStartDefersLeadInputWhenSubmissionReceiptReadFails(t *testing.T) {
 	ctx := t.Context()
 	sut, thread, chats, captured := newDelegationDispatchService(t)
 	sut.Close()
-	queued, err := sut.enqueueLeadInput(ctx, thread, execution.WorkInput{Actor: "user", Content: "读取暂时失败", SubmissionID: "broken-input"}, false, nil)
+	queued, err := sut.enqueueLeadInput(ctx, thread, SendMessageInput{Input: execution.WorkInput{Actor: "user", Content: "读取暂时失败", SubmissionID: "broken-input"}})
 	if err != nil {
 		t.Fatal(err)
 	}

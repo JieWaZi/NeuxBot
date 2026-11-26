@@ -185,10 +185,10 @@ function scheduleRefresh(
           consumer.current.active && matches(consumer, refresh.query),
       )
     ) {
-      void client.cancelQueries(
-        { queryKey: refresh.query.queryKey, exact: true },
-        { revert: false },
-      );
+      void client.cancelQueries({
+        queryKey: refresh.query.queryKey,
+        exact: true,
+      });
     }
     return;
   }
@@ -250,7 +250,8 @@ function reconcile(
       }
       if (visible()) {
         refresh.freshFetchRevision = undefined;
-        await client.cancelQueries(filters, { revert: false });
+        // 沿用 Query 的回滚快照（包括读取期间手动提交的数据），避免发布取消错误。
+        await client.cancelQueries(filters);
       }
       if (!alive()) return;
       const read = visible();
@@ -321,10 +322,10 @@ function releaseConsumer(
     }
     // 只取消最后活跃等待者所属的头部读取；共享请求、外部读取和正常分页继续提交。
     if (cancel)
-      void client.cancelQueries(
-        { queryKey: pending.query.queryKey, exact: true },
-        { revert: false },
-      );
+      void client.cancelQueries({
+        queryKey: pending.query.queryKey,
+        exact: true,
+      });
   }
   if (!owner.consumers.size) {
     owner.stop();

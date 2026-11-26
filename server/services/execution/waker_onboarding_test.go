@@ -487,6 +487,12 @@ func TestWakerOnboardingRetryReusesPublicChatAndKeepsInternalInputHidden(t *test
 			t.Fatalf("private Core input appeared in public history: %+v", message)
 		}
 	}
+	if _, err := manager.execution.Start(ctx, replyTestIntent(chatID, page.Resources[1].ID)); !errors.Is(err, status_error.ChatReplyTargetUnavailable) {
+		t.Fatalf("pending onboarding accepted ordinary reply: %v", err)
+	}
+	if calls := manager.nativeCalls(t, "turn/start"); len(calls) != 2 {
+		t.Fatalf("pending onboarding reply reached native execution: %s", calls)
+	}
 	retry.Input.SubmissionID = "stale-continue"
 	if _, err := manager.execution.Start(ctx, retry); !errors.Is(err, status_error.WakerOnboardingStateChanged) {
 		t.Fatalf("stale retry started after the original failure had been superseded: %v", err)

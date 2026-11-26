@@ -42,49 +42,49 @@ type diskRow struct {
 	Purged bool `json:"x,omitempty"`
 }
 
-// rowIndex stores just enough identity to select an exact read.
+// rowIndex 保存精确读取所需的定位信息。
 type rowIndex struct {
-	// Stream is the compact technical stream reference.
+	// Stream 是紧凑的日志流引用。
 	Stream int64 `gorm:"primaryKey;autoIncrement:false;index:conversation_row_message,priority:1,where:message_ref <> 0 AND NOT display_link;index:conversation_row_execution,priority:1,where:execution_ref <> 0;index:conversation_row_host,priority:1,where:host <> '';index:conversation_row_native,priority:1,where:native_ref <> 0"`
-	// Cursor is the logical position within the authoritative stream.
+	// Cursor 是权威日志内的逻辑位置。
 	Cursor int64 `gorm:"primaryKey;autoIncrement:false;index:conversation_row_message,priority:3;index:conversation_row_execution,priority:3;index:conversation_row_host,priority:4;index:conversation_row_native,priority:5"`
-	// Where locates the exact raw JSON row in the stream.
+	// Where 定位日志流中的原始 JSON 记录。
 	Where location `gorm:"embedded;embeddedPrefix:loc_"`
-	// At is the original commit time.
+	// At 是原始提交时间。
 	At int64
-	// Message is supplied by the authority and interned before indexing.
+	// Message 是索引写入前由权威日志提供的原消息标识。
 	Message string `gorm:"-"`
-	// MessageRef is the compact reference to the public message anchor.
+	// MessageRef 紧凑引用公开消息锚点。
 	MessageRef int64 `gorm:"index:conversation_row_message,priority:2"`
-	// Execution is the authoritative identity supplied to the index writer.
+	// Execution 是提供给索引写入的权威执行标识。
 	Execution string `gorm:"-"`
-	// ExecutionRef is the compact reference to the execution locator.
+	// ExecutionRef 紧凑引用执行定位点。
 	ExecutionRef int64 `gorm:"index:conversation_row_execution,priority:2"`
-	// Host identifies the associated host input.
+	// Host 标识相关宿主输入。
 	Host string `gorm:"index:conversation_row_host,priority:2"`
-	// Native is the authoritative native identity supplied to the index writer.
+	// Native 是提供给索引写入的权威原生标识。
 	Native []byte `gorm:"-"`
-	// NativeRef is the first cursor for this native invocation or detached input.
+	// NativeRef 是本次原生调用或独立输入的首个游标。
 	NativeRef int64 `gorm:"index:conversation_row_native,priority:2"`
-	// LaneRef is the first cursor for this native message.
+	// LaneRef 是这条原生消息的首个游标。
 	LaneRef int64 `gorm:"index:conversation_row_native,priority:4"`
-	// Project is the original committed reference, used only when deriving effective display.
+	// Project 保留原始已提交引用，仅用于派生有效展示。
 	Project *agent.MessageChange `gorm:"-"`
-	// Revision is the producer-assigned revision of a native change.
+	// Revision 是生产者分配的原生变更版本。
 	Revision int64
-	// DisplayLink excludes native reference rows from ordinary message positions.
+	// DisplayLink 标记应从普通消息定位中排除的原生引用记录。
 	DisplayLink bool
-	// Tool identifies the tool affected by this row.
+	// Tool 标识此记录影响的工具。
 	Tool string
-	// Kind drives derived index projections.
+	// Kind 决定派生索引的投影方式。
 	Kind indexKind `gorm:"index:conversation_row_host,priority:3;index:conversation_row_native,priority:3"`
-	// ReviewAdmission is derived from the trusted review marker on execution creation.
+	// ReviewAdmission 来自执行创建事实中的可信复盘标记。
 	ReviewAdmission bool `gorm:"index:conversation_review_admission,where:review_admission = 1"`
-	// Content distinguishes final text and each kind of tool or reasoning segment.
+	// Content 区分最终正文、工具和推理等部件。
 	Content constants.RuntimeEventType
-	// Adapter addresses a durable input by its frozen session and adapter ID.
+	// Adapter 以冻结会话和适配器标识定位持久输入。
 	Adapter []byte `gorm:"index:conversation_row_adapter,where:adapter IS NOT NULL"`
-	// PatchBase locates the previous complete or patched tool snapshot.
+	// PatchBase 定位前一个完整或增量工具快照。
 	PatchBase int64
 }
 

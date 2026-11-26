@@ -6,7 +6,8 @@ export type ScrollSession = {
   pending?: Promise<boolean | undefined>;
   frame?: number;
   previousTop?: number;
-  anchor?: { element: HTMLElement; offset: number };
+  programmaticTop?: number;
+  anchor?: { element: HTMLElement; messageId?: string; offset: number };
 };
 
 /** 前插历史时维护可见消息锚点；只在真正翻页时加载 DOM 协调逻辑。 */
@@ -28,6 +29,7 @@ export async function loadChatHistoryWithAnchor(
   session.anchor = anchor
     ? {
         element: anchor,
+        messageId: anchor.dataset.messageId,
         offset: anchor.getBoundingClientRect().top - viewportTop,
       }
     : undefined;
@@ -36,16 +38,29 @@ export async function loadChatHistoryWithAnchor(
   session.frame = requestAnimationFrame(() => {
     if (!session.live || !container || viewport.current !== container) return;
     // 按可见消息的实际位移补偿，浏览器已完成原生锚定时位移为零。
-    if (session.anchor && container.contains(session.anchor.element)) {
+    const position = session.anchor;
+    const target =
+      position &&
+      (container.contains(position.element)
+        ? position.element
+        : Array.from(
+            container.querySelectorAll<HTMLElement>("[data-message-id]"),
+          ).find(
+            (element) => element.dataset.messageId === position.messageId,
+          ));
+    const before = container.scrollTop;
+    if (position && target) {
       container.scrollTop +=
-        session.anchor.element.getBoundingClientRect().top -
+        target.getBoundingClientRect().top -
         container.getBoundingClientRect().top -
-        session.anchor.offset;
+        position.offset;
     } else {
       container.scrollTop =
         (session.previousTop ?? previousTop) +
         Math.max(0, container.scrollHeight - previousHeight);
     }
+    if (container.scrollTop !== before)
+      session.programmaticTop = container.scrollTop;
     session.previousTop = container.scrollTop;
     session.anchor = undefined;
     session.frame = undefined;

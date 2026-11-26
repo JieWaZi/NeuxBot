@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,16 +19,22 @@ import {
 } from "./file-reference";
 import { FileReferenceProvider, ReferenceLink } from "./file-reference-link";
 
-const { openExternalURL, resolveFile, resolveResource, showError } = vi.hoisted(
-  () => ({
-    openExternalURL: vi.fn(async () => undefined),
-    resolveFile: vi.fn<() => Promise<FileReferenceResolution>>(),
-    resolveResource: vi.fn<() => Promise<FileReferenceResolution>>(),
-    showError: vi.fn(),
-  }),
-);
+const {
+  openExternalURL,
+  revealLocalPath,
+  resolveFile,
+  resolveResource,
+  showError,
+} = vi.hoisted(() => ({
+  openExternalURL: vi.fn(async () => undefined),
+  revealLocalPath: vi.fn<(path: string) => Promise<boolean>>(),
+  resolveFile: vi.fn<() => Promise<FileReferenceResolution>>(),
+  resolveResource: vi.fn<() => Promise<FileReferenceResolution>>(),
+  showError: vi.fn(),
+}));
 vi.mock("@/shared/platform", () => ({
   openExternalURL,
+  revealLocalPath,
   resolveFileReferencePath: resolveFile,
   resolveWorkspaceResourceReference: resolveResource,
 }));
@@ -35,6 +47,7 @@ function renderReference(
     context?: FileReferenceContext;
     onOpenFile?: (file: ResolvedFileReference) => void;
     onOpenURL?: (url: string) => unknown;
+    allowLocalReveal?: boolean;
   } = {},
 ) {
   const client = new QueryClient({
@@ -47,6 +60,7 @@ function renderReference(
         context={options.context ?? emptyFileReferenceContext}
         onOpenFile={options.onOpenFile}
         onOpenURL={options.onOpenURL}
+        allowLocalReveal={options.allowLocalReveal}
       >
         {children}
       </FileReferenceProvider>
@@ -340,21 +354,61 @@ describe("reference link activation", () => {
     expect(openExternalURL).not.toHaveBeenCalled();
   });
 
+  it("路径复制成功后保留勾五秒，再次复制从本次成功重新计时", async () => {
+    userEvent.setup();
+    const clipboard = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue();
+    const path = "/work/report.zip";
+    resolveFile.mockResolvedValue({ status: "outside_scope" });
+    vi.useFakeTimers();
+    try {
+      renderReference(
+        <ReferenceLink reference={{ kind: "file", path, raw: path }} />,
+      );
+      const button = screen.getByRole("button", { name: /复制完整路径/ });
+      const copy = async () => {
+        await act(async () => {
+          fireEvent.click(button);
+        });
+      };
+      const advance = async (duration: number) => {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(duration);
+        });
+      };
+      await copy();
+      await advance(4999);
+      expect(button).toHaveAccessibleName(/已复制路径/);
+      await copy();
+      await advance(4999);
+      expect(button).toHaveAccessibleName(/已复制路径/);
+      await advance(1);
+      expect(button).toHaveAccessibleName(/复制完整路径/);
+      expect(clipboard.mock.calls).toEqual([[path], [path]]);
+    } finally {
+      vi.useRealTimers();
+      clipboard.mockRestore();
+    }
+  });
+
   it("keeps denied local references readable without opening a system URL", async () => {
-    resolveFile.mockResolvedValueOnce({ status: "outside_scope" });
+    const path = "/Users/example/Downloads/report.zip";
+    resolveResource.mockResolvedValueOnce({ status: "outside_scope" });
     const open = vi.fn();
     renderReference(
       <ReferenceLink
         reference={{
           kind: "file",
-          path: "/outside/file",
-          raw: "/outside/file",
+          path,
+          raw: path,
         }}
       >
         原始标签
       </ReferenceLink>,
       {
         context: {
+          chatId: "chat-1",
           baseDirectory: "/workspace",
           workspaceRoot: "/workspace",
           sourceRoots: [],
@@ -365,11 +419,51 @@ describe("reference link activation", () => {
     expect(
       fireEvent.click(screen.getByRole("link", { name: "原始标签" })),
     ).toBe(false);
-    await waitFor(() => expect(showError).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(showError).toHaveBeenCalledExactlyOnceWith("不在当前工作范围"),
+    );
+    expect(resolveResource).toHaveBeenCalledExactlyOnceWith(
+      "chat-1",
+      path,
+      "/workspace",
+    );
     expect(screen.getByRole("link", { name: "原始标签" })).toHaveTextContent(
       "原始标签",
     );
     expect(open).not.toHaveBeenCalled();
     expect(openExternalURL).not.toHaveBeenCalled();
+    expect(revealLocalPath).not.toHaveBeenCalled();
+  });
+
+  it("桌面聊天的工作范围外绝对路径在本机文件管理器定位", async () => {
+    const path = "/Users/example/Downloads/report.zip";
+    resolveResource.mockResolvedValueOnce({ status: "outside_scope" });
+    revealLocalPath.mockResolvedValueOnce(true);
+    const open = vi.fn();
+    renderReference(
+      <ReferenceLink reference={{ kind: "file", path, raw: path }}>
+        现场日志包
+      </ReferenceLink>,
+      {
+        context: {
+          chatId: "chat-1",
+          baseDirectory: "/workspace",
+          workspaceRoot: "/workspace",
+          sourceRoots: [],
+        },
+        onOpenFile: open,
+        allowLocalReveal: true,
+      },
+    );
+    const link = screen.getByRole("link", { name: "现场日志包" });
+    fireEvent.click(link, { metaKey: true });
+    expect(revealLocalPath).not.toHaveBeenCalled();
+    fireEvent.click(link);
+    await waitFor(() =>
+      expect(revealLocalPath).toHaveBeenCalledExactlyOnceWith(path),
+    );
+    expect(open).not.toHaveBeenCalled();
+    expect(openExternalURL).not.toHaveBeenCalled();
+    expect(showError).not.toHaveBeenCalled();
   });
 });

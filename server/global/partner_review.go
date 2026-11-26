@@ -148,7 +148,6 @@ func ValidateReviewSelection(ctx context.Context, settings reviewstate.Settings)
 
 func reviewSelection(ctx context.Context, wakerID string, settings reviewstate.Settings, identityWorkspace string) (reviewstate.Selection, error) {
 	selected := reviewstate.Selection{RuntimeID: settings.RuntimeID, AccountID: settings.AccountID, Model: settings.Model}
-	var partnerRevision uint64
 	if settings.Source != reviewstate.SourceGlobal {
 		waker, err := WakerControllerManager.Get(ctx, wakerID)
 		if err != nil {
@@ -157,7 +156,6 @@ func reviewSelection(ctx context.Context, wakerID string, settings reviewstate.S
 		if config := waker.DefaultModel; config != nil {
 			selected.RuntimeID, selected.AccountID, selected.Model = config.RuntimeID, config.AccountID, config.Model
 		}
-		partnerRevision = waker.DefaultModelRevision
 	}
 	if selected.RuntimeID == "" {
 		list, err := RuntimeEnvironmentControllerManager.List(ctx)
@@ -173,7 +171,7 @@ func reviewSelection(ctx context.Context, wakerID string, settings reviewstate.S
 	if err != nil {
 		return selected, err
 	}
-	account := models.AIAccount{}
+	e.BaseRuntimeID = reviewProvider(e)
 	if selected.AccountID == "" {
 		selected.AccountID = e.DefaultAccountID
 	}
@@ -181,36 +179,32 @@ func reviewSelection(ctx context.Context, wakerID string, settings reviewstate.S
 		selected.AccountID = constants.AiAccountSystemID
 	}
 	if selected.AccountID != constants.AiAccountSystemID {
-		account, err = AIAccountService.Get(ctx, selected.AccountID)
+		account, err := AIAccountService.Get(ctx, selected.AccountID)
 		if err != nil {
 			return selected, err
 		}
 		if err = aiaccount.ValidateRuntimeAccount(account, e); err != nil {
 			return selected, err
 		}
+		selected.Model, _ = aiaccount.RuntimeSelectionDefaults(account, e, selected.Model, "")
 	}
 	if selected.AccountID == constants.AiAccountSystemID {
 		if selected.Model == "" {
 			selected.Model = e.DefaultModel
 		}
-	} else {
-		selected.Model, _ = aiaccount.RuntimeSelectionDefaults(account, e, selected.Model, "")
 	}
-	fingerprint, _ := json.Marshal([]any{reviewProvider(e), e.Detection.ResolvedBinary, e.PrefixArgs, e.ConfigHome,
-		account.Revision, account.AuthGeneration, partnerRevision})
-	selected.Configuration = string(fingerprint)
 	if !e.Enabled || strings.TrimSpace(e.Detection.ResolvedBinary) == "" {
 		return selected, status_error.RuntimeUnavailable
 	}
-	if !agent.SupportsProvider(reviewProvider(e)) {
+	if !agent.SupportsProvider(e.BaseRuntimeID) {
 		return selected, status_error.RuntimePolicyUnsupported
 	}
+	selected.Connection = detachedConnection(models.LibraryExecutionDefaults{RuntimeID: selected.RuntimeID, AccountID: selected.AccountID, Model: selected.Model}, e)
 	if identityWorkspace != "" && selected.AccountID == constants.AiAccountSystemID {
-		e.BaseRuntimeID = reviewProvider(e)
-		connection := detachedConnection(models.LibraryExecutionDefaults{RuntimeID: selected.RuntimeID, AccountID: selected.AccountID, Model: selected.Model}, e)
 		// 内置账号的预检查使用复盘自己的目录，实际调用再从同一根目录下的临时工作区核对身份。
-		connection.Account.CWD = identityWorkspace
-		identity, err := AIAccountService.ResolveAccount(ctx, connection.Account, connection.Launch.ConfigHome)
+		request := selected.Connection.Account
+		request.CWD = identityWorkspace
+		identity, err := AIAccountService.ResolveAccount(ctx, request, selected.Connection.Launch.ConfigHome)
 		if err != nil {
 			return selected, err
 		}
@@ -243,10 +237,6 @@ func systemReviewIdentity(account agent.AccountRequest) string {
 func generateReviewText(ctx context.Context, selection reviewstate.Selection, scratch, waker, source, system, input string, authorize func(context.Context) error) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	selected, e, err := selectDetachedModel(ctx, models.LibraryExecutionDefaults{RuntimeID: selection.RuntimeID, AccountID: selection.AccountID, Model: selection.Model}, agent.SupportsProvider)
-	if err != nil {
-		return "", err
-	}
 	resolve := func(ctx context.Context, request agent.AccountRequest, home string) (agent.AccountRequest, error) {
 		identity, err := AIAccountService.ResolveAccount(ctx, request, home)
 		if err == nil && request.AccountID == constants.AiAccountSystemID && systemReviewIdentity(identity) != selection.SystemIdentity {
@@ -254,7 +244,7 @@ func generateReviewText(ctx context.Context, selection reviewstate.Selection, sc
 		}
 		return identity, err
 	}
-	result, err := AgentThreads.GenerateText(ctx, agent.TextRequest{Connection: detachedConnection(selected, e), ResolveAccount: resolve,
+	result, err := AgentThreads.GenerateText(ctx, agent.TextRequest{Connection: selection.Connection, ResolveAccount: resolve,
 		Messages:    []agent.TextMessage{{Role: "system", Content: system}, {Role: "user", Content: input}},
 		UsageSource: source, UsageWakerID: waker, Ephemeral: true, BeforeSubmit: authorize, ScratchRoot: scratch})
 	return result.Text, err

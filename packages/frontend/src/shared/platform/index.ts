@@ -835,6 +835,10 @@ export async function openExternalURL(url: string): Promise<void> {
   await requirePlatformService("host").open_external_url({ url });
 }
 
+export async function revealLocalPath(path: string): Promise<boolean> {
+  return (await platform().host.reveal_local_path?.({ path })) ?? false;
+}
+
 export function subscribeBrowserNavigation(
   onEvent: (event: BrowserNavigationEvent) => void,
 ): () => void {

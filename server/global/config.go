@@ -595,7 +595,9 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	usageChanged := func() {
 		hub.Publish(events.Event{Topic: "usage", Type: "usage.changed", Resource: events.Resource{Kind: "global"}})
 	}
+	commands := controllers.NewAgentCommandController(DB)
 	chatModule, err := chat.New(chat.Config{
+		ManagedCommands: commands,
 		FreezeReview: func(ctx context.Context, item models.Chat) *reviewstate.Admission {
 			if ReviewWorker == nil {
 				return nil
@@ -674,7 +676,6 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 			logx.Warn("invalidate_provider_account: ", err)
 		}
 	})
-	commands := controllers.NewAgentCommandController(DB)
 	skills := skilllearning.New(skilllearning.Config{DataDirectory: configuration.DataDirectory, Skills: SkillControllerManager,
 		Wakers: WakerControllerManager, Plugins: PluginControllerManager, Transactions: TransactionControllerManager, Commands: commands, Events: EventHub})
 	connectors := mcpconnector.New(mcpconnector.Config{Connectors: MCPConnectorControllerManager, Wakers: WakerControllerManager,
@@ -720,22 +721,9 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		AgentEndpoint: "http://127.0.0.1:" + strconv.Itoa(configuration.Server.Port) + constants.AgentCLIPath,
 		AgentBinary:   agentBinaryPath(),
 		ResourceManagementBindings: func(chat models.Chat, executionID string, approve func(context.Context, string) error) []capability.Binding {
-			bindings := skills.ManagementBindings(chat.WakerID, executionID, approve, func(ctx context.Context, action, id, version, name string) error {
-				return chatModule.RecordManagedSkillChange(ctx, chat.ID, executionID, action, id, version, name)
-			})
-			connectorBindings := connectors.ManagementBindings(chat.WakerID, executionID, approve, func(ctx context.Context, action string, result capability.Result) {
-				data, _ := result.Data.(map[string]any)
-				id, _ := data["connectorId"].(string)
-				name, _ := data["name"].(string)
-				ownerID := ""
-				if data["scope"] == string(constants.MCPConnectorScopePrivate) {
-					ownerID = chat.WakerID
-				}
-				if err := chatModule.RecordManagedConnectorChange(ctx, chat.ID, executionID, result.CommandID, action, id, ownerID, name); err != nil {
-					logx.Warnf("publish connector management conversation event: action=%s connector_id=%s error=%v", action, id, err)
-				}
-			})
-			return append(bindings, connectorBindings...)
+			bindings := skills.ManagementBindings(chat.WakerID, executionID, approve)
+			bindings = append(bindings, connectors.ManagementBindings(chat.WakerID, executionID, approve)...)
+			return chatModule.BindManagedResourceChanges(chat, executionID, bindings)
 		},
 		AgentBindings: func(chat models.Chat, executionID string, roots []string, automaticRunID, imReplyLinkID string) []capability.Binding {
 			var bindings []capability.Binding

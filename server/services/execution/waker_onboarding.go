@@ -51,6 +51,9 @@ func (m *service) prepareWakerOnboarding(
 	if waker.OnboardingStatus != constants.WakerOnboardingStatusPending || waker.OnboardingChatID != chat.ID {
 		return nil, nil
 	}
+	if request.replyTarget != nil {
+		return nil, status_error.ChatReplyTargetUnavailable
+	}
 	guide, err := builtinskills.Guide(constants.WakerProfileOnboardingGuide)
 	if err != nil {
 		return nil, err

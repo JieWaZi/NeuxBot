@@ -15,6 +15,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
+import { ContentVisibility } from "@/shared/lib/content-visibility";
 import themeStyles from "@/shared/styles/theme.css?raw";
 
 import { AssistantText, UserText } from "@/test/chat-markdown-context";
@@ -576,15 +577,94 @@ describe("chat markdown", () => {
     const writeSpy = vi
       .spyOn(navigator.clipboard, "writeText")
       .mockResolvedValue(undefined);
-    render(<ChatMermaid code={"flowchart TD\n  A --> B"} />);
+    render(
+      <ContentVisibility value={false}>
+        <ChatMermaid code={"flowchart TD\n  A --> B"} />
+      </ContentVisibility>,
+    );
 
-    await user.click(screen.getByRole("button", { name: "下载 Mermaid 源码" }));
+    await user.click(screen.getByRole("button", { name: "下载 Mermaid" }));
+    expect(screen.getByRole("menuitem", { name: "PNG 图片" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    await user.click(screen.getByRole("menuitem", { name: "MMD 源码" }));
     expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), "diagram.mmd");
     const blob = saveBlob.mock.calls[0]?.[0];
     await expect(blob?.text()).resolves.toBe("flowchart TD\n  A --> B");
 
     await user.click(screen.getByRole("button", { name: "复制 Mermaid 源码" }));
     expect(writeSpy).toHaveBeenCalledWith("flowchart TD\n  A --> B");
+  });
+
+  it("exports the full Mermaid diagram as PNG from the source tab", async () => {
+    const user = userEvent.setup();
+    const png = new Blob(["png"], { type: "image/png" });
+    const context = { drawImage: vi.fn(), fillRect: vi.fn(), fillStyle: "" };
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    const toBlob = vi
+      .spyOn(HTMLCanvasElement.prototype, "toBlob")
+      .mockImplementation((callback) => callback(png));
+    let imageSource = "";
+    vi.stubGlobal(
+      "Image",
+      class {
+        src = "";
+        async decode() {
+          imageSource = this.src;
+        }
+      },
+    );
+    const renderMermaid = vi.fn(async () => ({
+      svg: '<svg width="100%" viewBox="0 0 1200 600"><style>.label{color:var(--foreground)}</style><foreignObject><div>流程图</div></foreignObject></svg>',
+    }));
+    const getMermaid = vi.spyOn(mermaid, "getMermaid").mockReturnValue({
+      initialize: vi.fn(),
+      render: renderMermaid,
+    });
+    const theme = document.createElement("style");
+    theme.textContent = ":root { --foreground: #eee; --background: #222; }";
+    document.head.append(theme);
+
+    try {
+      render(<ChatMermaid code="flowchart TD" />);
+      await screen.findByRole("img", { name: "Mermaid diagram" });
+      await user.click(screen.getByRole("radio", { name: "源码" }));
+      await user.click(screen.getByRole("button", { name: "下载 Mermaid" }));
+      const options = screen.getAllByRole("menuitem");
+      expect(options[0]).toHaveTextContent("PNG 图片");
+      await user.click(screen.getByRole("menuitem", { name: "PNG 图片" }));
+
+      await waitFor(() =>
+        expect(saveBlob).toHaveBeenCalledWith(png, "diagram.png"),
+      );
+      expect(context.drawImage).toHaveBeenCalledWith(
+        expect.anything(),
+        0,
+        0,
+        2400,
+        1200,
+      );
+      expect(context.fillStyle).toBe("#222");
+      expect(context.fillRect).toHaveBeenCalledWith(0, 0, 2400, 1200);
+      const svg = decodeURIComponent(
+        imageSource.slice(imageSource.indexOf(",") + 1),
+      );
+      expect(svg).toContain('xmlns="http://www.w3.org/1999/xhtml"');
+      expect(svg).toContain("--foreground: #eee");
+      expect(svg).toContain("流程图");
+      expect(renderMermaid).toHaveBeenCalledExactlyOnceWith(
+        expect.any(String),
+        "flowchart TD",
+      );
+    } finally {
+      theme.remove();
+      getMermaid.mockRestore();
+      toBlob.mockRestore();
+      getContext.mockRestore();
+    }
   });
 
   it("opens Mermaid fullscreen in the shared preview dialog", async () => {

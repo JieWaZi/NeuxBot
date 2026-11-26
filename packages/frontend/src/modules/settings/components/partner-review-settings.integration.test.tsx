@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -13,6 +13,7 @@ import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 
 import { client } from "@/shared/api/generated/client.gen";
 import { getWakerReviewSettingsQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
+import { subscribeGlobalEvents } from "@/shared/api/global-events";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import { isPartnerReviewDetail } from "@/shared/lib/partner-review-settings";
 import { RuntimeEnvironmentsSection } from "./runtime-environments-section";
@@ -20,7 +21,7 @@ import "@/shared/i18n";
 
 vi.mock(import("@/shared/api/global-events"), async (load) => ({
   ...(await load()),
-  subscribeGlobalEvents: () => () => undefined,
+  subscribeGlobalEvents: vi.fn(() => () => undefined),
 }));
 
 const base = "http://127.0.0.1:8080";
@@ -59,7 +60,10 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = () => undefined;
   server.listen({ onUnhandledRequest: "error" });
 });
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  vi.mocked(subscribeGlobalEvents).mockClear();
+  server.resetHandlers();
+});
 afterAll(() => server.close());
 
 function RoutedSettings() {
@@ -189,6 +193,7 @@ it("locates a linked partner outside the first page and retries only that partne
   const profile = { id: "waker-120", name: "第 120 位", avatar: "" };
   const endpoint = `${review}/wakers/${profile.id}`;
   let failed = true;
+  let available = true;
   server.use(
     http.get(partners, () =>
       HttpResponse.json({ resources: initialRows, totalSize: 120 }),
@@ -196,7 +201,7 @@ it("locates a linked partner outside the first page and retries only that partne
     http.get(`${api}/wakers/${profile.id}`, () => HttpResponse.json(profile)),
     http.get(endpoint, () =>
       HttpResponse.json({
-        available: true,
+        available,
         status: failed ? "failed" : "idle",
         memoryEnabled: true,
         skillMode: "automatic",
@@ -226,6 +231,30 @@ it("locates a linked partner outside the first page and retries only that partne
   expect(notice).toHaveTextContent("有对话处理失败，可以重试。");
   await user.click(screen.getByRole("button", { name: "重试复盘" }));
   await waitFor(() => expect(notice).not.toBeInTheDocument());
+
+  const subscription = vi
+    .mocked(subscribeGlobalEvents)
+    .mock.calls.find(
+      ([topic, resource]) => topic === "entities" && resource.id === profile.id,
+    );
+  if (!subscription) throw new Error("missing partner entity subscription");
+  const [topic, resource, observer] = subscription;
+  available = false;
+  act(() => {
+    observer.onEvent({
+      protocolVersion: 1,
+      epoch: "test",
+      connectionId: "test",
+      deliverySequence: 1,
+      eventId: "default-model-updated",
+      topic,
+      resource,
+      type: "entities.changed",
+      payload: resource,
+    });
+  });
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+
   back.focus();
   expect(back).toHaveFocus();
   await user.keyboard("{Enter}");
@@ -285,6 +314,25 @@ it("loads and filters server pages without per-row diagnostic requests", async (
   ).toBeVisible();
   expect(load).toHaveBeenCalledWith(1, 50, "尾页");
   expect(screen.queryByRole("button", { name: "下一页" })).toBeNull();
+});
+
+it("corrects a saved page after the partner list shrinks below it", async () => {
+  server.use(
+    http.get(partners, ({ request }) => {
+      const page = Number(new URL(request.url).searchParams.get("pageNum"));
+      return HttpResponse.json({
+        resources: page === 1 ? initialRows : [],
+        totalSize: initialRows.length,
+      });
+    }),
+  );
+  show("/settings/agents?detail=partner-review&tab=memory&page=2");
+  expect(
+    await screen.findByRole("switch", { name: "第一位的自动记忆" }),
+  ).toBeVisible();
+  expect(screen.getByLabelText("当前设置地址").textContent).toBe(
+    "/settings/agents?detail=partner-review&tab=memory",
+  );
 });
 
 it("saves only the review frequency and displays the confirmed value", async () => {

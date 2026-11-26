@@ -215,6 +215,8 @@ func (v StatusError) Key() string {
 		return "TerminalNotFound"
 	case ChatMessageNotFound:
 		return "ChatMessageNotFound"
+	case ChatReplyTargetUnavailable:
+		return "ChatReplyTargetUnavailable"
 	case AgentReceiptNotFound:
 		return "AgentReceiptNotFound"
 	case KnowledgeNotFound:
@@ -743,6 +745,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkspaceResourceNotFound:            "workspace resource was not found",
 			TerminalNotFound:                     "terminal session was not found or has ended",
 			ChatMessageNotFound:                  "the conversation message does not exist",
+			ChatReplyTargetUnavailable:           "this message is unavailable for reply in the current conversation",
 			AgentReceiptNotFound:                 "command acceptance receipt was not found in the current scope",
 			KnowledgeNotFound:                    "knowledge resource not found",
 			IntegrationNotFound:                  "integration record was not found",
@@ -1037,6 +1040,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkspaceResourceNotFound:            "工作区资源不存在",
 			TerminalNotFound:                     "终端会话不存在或已结束",
 			ChatMessageNotFound:                  "对话消息不存在",
+			ChatReplyTargetUnavailable:           "当前对话中没有可引用的这条消息",
 			AgentReceiptNotFound:                 "当前范围内尚无该命令的接纳回执",
 			KnowledgeNotFound:                    "知识资源不存在",
 			IntegrationNotFound:                  "未找到对应的 API 集成记录",

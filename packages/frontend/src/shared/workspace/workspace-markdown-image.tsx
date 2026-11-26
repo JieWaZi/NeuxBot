@@ -5,7 +5,9 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ComponentType,
   type ComponentPropsWithoutRef,
+  type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { ContentVisibility } from "@/shared/lib/content-visibility";
@@ -30,12 +32,25 @@ import {
   workspaceImageOptions,
 } from "./workspace-image-query";
 
-export type WorkspaceMarkdownImageProps = ComponentPropsWithoutRef<"img"> & {
-  context?: FileReferenceContext;
-  /** 工作区预览显式沿用外链图片；聊天默认不请求远程地址。 */
-  allowRemote?: boolean;
-  node?: unknown;
+export type WorkspaceImagePresentationProps = {
+  children: ReactNode;
+  original: ReactNode;
+  label: string;
 };
+
+type LocalImagePresentation = {
+  fallback?: ReactNode;
+  presentation?: ComponentType<WorkspaceImagePresentationProps>;
+};
+
+export type WorkspaceMarkdownImageProps = ComponentPropsWithoutRef<"img"> &
+  LocalImagePresentation & {
+    context?: FileReferenceContext;
+    frameClassName?: string;
+    /** 工作区预览显式沿用外链图片；聊天默认不请求远程地址。 */
+    allowRemote?: boolean;
+    node?: unknown;
+  };
 
 type ImageFailure = "failed" | "tooLarge" | "unsupported" | "remoteBlocked";
 const previewMarker =
@@ -110,11 +125,19 @@ function ImageFallback({
 function BrowserImage({
   src,
   alt,
+  fallback,
+  decorate,
+  loading = "lazy",
   ...props
-}: Omit<ComponentPropsWithoutRef<"img">, "src"> & { src: string | Blob }) {
+}: Omit<ComponentPropsWithoutRef<"img">, "src"> & {
+  src: string | Blob;
+  fallback?: ReactNode;
+  decorate?: (image: ReactNode) => ReactNode;
+}) {
   const { t } = useTranslation("common");
   const [failedSource, setFailedSource] = useState<string | Blob>();
   const failed = failedSource === src;
+  const decorated = Boolean(decorate);
   const image = useRef<HTMLImageElement>(null);
   useEffect(() => {
     const element = image.current;
@@ -126,31 +149,42 @@ function BrowserImage({
       element.removeAttribute("src");
       if (objectURL) URL.revokeObjectURL(objectURL);
     };
-  }, [src, failed]);
-  return failed ? (
-    <ImageFallback label={alt || t("markdownImage.label")} failure="failed" />
-  ) : (
+  }, [src, failed, decorated]);
+  if (failed)
+    return (
+      fallback ?? (
+        <ImageFallback
+          label={alt || t("markdownImage.label")}
+          failure="failed"
+        />
+      )
+    );
+  const preview = (
     <img
       {...props}
       ref={image}
       alt={alt ?? ""}
-      loading="lazy"
+      loading={loading}
       onError={(event) => {
         setFailedSource(src);
         props.onError?.(event);
       }}
     />
   );
+  return decorate ? decorate(preview) : preview;
 }
 
 function ResourceImage({
   chatId,
   file,
+  fallback,
+  presentation: Presentation,
   ...props
-}: Omit<ComponentPropsWithoutRef<"img">, "src"> & {
-  chatId: string;
-  file: ResolvedFileReference;
-}) {
+}: Omit<ComponentPropsWithoutRef<"img">, "src"> &
+  LocalImagePresentation & {
+    chatId: string;
+    file: ResolvedFileReference;
+  }) {
   const query = useQuery(workspaceImageOptions(chatId, file));
   useWorkspaceQueryEvents(
     chatId,
@@ -159,8 +193,32 @@ function ResourceImage({
     true,
     file.path,
   );
-  if (query.data && !query.isError)
-    return <BrowserImage {...props} src={query.data} />;
+  const source = query.data;
+  if (source && !query.isError) {
+    const label = props.alt || file.name;
+    return (
+      <BrowserImage
+        {...props}
+        src={source}
+        fallback={fallback}
+        decorate={
+          Presentation
+            ? (image) => (
+                <Presentation
+                  label={label}
+                  original={
+                    <BrowserImage src={source} alt={label} loading="eager" />
+                  }
+                >
+                  {image}
+                </Presentation>
+              )
+            : undefined
+        }
+      />
+    );
+  }
+  if (fallback != null) return fallback;
   return (
     <ImageFallback
       label={props.alt || file.name}
@@ -201,11 +259,13 @@ function DataImage({
 function LocalImage({
   context,
   reference,
+  fallback,
   ...props
-}: Omit<ComponentPropsWithoutRef<"img">, "src"> & {
-  context: FileReferenceContext;
-  reference: FileReferenceCandidate;
-}) {
+}: Omit<ComponentPropsWithoutRef<"img">, "src"> &
+  LocalImagePresentation & {
+    context: FileReferenceContext;
+    reference: FileReferenceCandidate;
+  }) {
   const query = useFileReference(reference, context);
   const result = query.data;
   if (result?.status === "resolved" && context.chatId)
@@ -213,10 +273,12 @@ function LocalImage({
       <ResourceImage
         key={`${context.chatId}:${result.file.canonicalPath}`}
         {...props}
+        fallback={fallback}
         chatId={context.chatId}
         file={result.file}
       />
     );
+  if (fallback != null) return fallback;
   return (
     <ImageFallback
       label={props.alt || reference.raw}
@@ -236,6 +298,9 @@ export function WorkspaceMarkdownImage({
   srcSet: _srcSet,
   node: _node,
   className,
+  frameClassName,
+  fallback,
+  presentation,
   ...props
 }: WorkspaceMarkdownImageProps) {
   void _srcSet;
@@ -262,9 +327,12 @@ export function WorkspaceMarkdownImage({
   const remote = !previewMarker.test(src) && /^(?:https?:)?\/\//i.test(src);
   const dataImage = /^data:/i.test(src);
   return (
-    <span ref={element} className="inline-block max-w-full align-middle">
+    <span
+      ref={element}
+      className={cn("inline-block max-w-full align-middle", frameClassName)}
+    >
       {!active || !activated ? (
-        <ImageFallback label={label} />
+        (fallback ?? <ImageFallback label={label} />)
       ) : reference ? (
         context.chatId && context.workspaceRoot ? (
           <LocalImage
@@ -273,9 +341,11 @@ export function WorkspaceMarkdownImage({
             alt={alt ?? ""}
             context={context}
             reference={reference}
+            fallback={fallback}
+            presentation={presentation}
           />
         ) : (
-          <ImageFallback label={label} failure="failed" />
+          (fallback ?? <ImageFallback label={label} failure="failed" />)
         )
       ) : dataImage && allowRemote ? (
         <DataImage

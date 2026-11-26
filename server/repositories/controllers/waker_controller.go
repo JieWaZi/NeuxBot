@@ -195,7 +195,6 @@ func (c *wakerController) UpdateDefaultModel(ctx context.Context, id string, def
 		Where("id = ?", id).
 		Updates(map[string]any{
 			"default_model": stored, "updated_at": updatedAt,
-			"default_model_revision": gorm.Expr("default_model_revision + 1"),
 		})
 	if result.Error != nil {
 		return databaseError("update_waker_default_model", "waker_id="+id, result.Error)

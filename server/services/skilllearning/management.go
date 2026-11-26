@@ -32,7 +32,7 @@ type managementInput struct {
 }
 
 // ManagementBindings 从宿主当前执行生成伙伴范围内的技能命令。
-func (s *Service) ManagementBindings(wakerID, executionID string, approve func(context.Context, string) error, changed func(context.Context, string, string, string, string) error) []capability.Binding {
+func (s *Service) ManagementBindings(wakerID, executionID string, approve func(context.Context, string) error) []capability.Binding {
 	if s == nil || s.commands == nil || wakerID == "" || executionID == "" {
 		return nil
 	}
@@ -55,20 +55,12 @@ func (s *Service) ManagementBindings(wakerID, executionID string, approve func(c
 				if err := capability.DecodeParams(request.Params, &input); err != nil {
 					return capability.Result{}, err
 				}
-				result, err := capability.Execute(ctx, s.commands, executionID, request, func(ctx context.Context) error {
+				return capability.Execute(ctx, s.commands, executionID, request, func(ctx context.Context) error {
 					return s.applyManagement(ctx, wakerID, action, input, approve)
 				})
-				if err == nil {
-					notifySkillManagement(ctx, changed, action, result)
-				}
-				return result, err
 			},
 			Receipt: func(ctx context.Context, requestID string) (capability.Result, error) {
-				result, err := capability.Lookup(ctx, s.commands, executionID, operation, requestID)
-				if err == nil {
-					notifySkillManagement(ctx, changed, action, result)
-				}
-				return result, err
+				return capability.Lookup(ctx, s.commands, executionID, operation, requestID)
 			},
 		})
 	}
@@ -202,17 +194,4 @@ func (s *Service) publishManagedVersion(ctx context.Context, input Publication) 
 		}
 	}
 	return err
-}
-
-func notifySkillManagement(ctx context.Context, changed func(context.Context, string, string, string, string) error, action string, result capability.Result) {
-	if changed == nil {
-		return
-	}
-	data, _ := result.Data.(map[string]any)
-	skillID, _ := data["skillId"].(string)
-	versionID, _ := data["versionId"].(string)
-	name, _ := data["name"].(string)
-	if err := changed(ctx, action, skillID, versionID, name); err != nil {
-		logx.Warnf("publish skill management conversation event: action=%s skill_id=%s version_id=%s error=%v", action, skillID, versionID, err)
-	}
 }

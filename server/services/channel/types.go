@@ -72,6 +72,8 @@ type SendMessageInput struct {
 	MentionWakerID string
 	// Input 是本轮用户输入和附件引用。
 	Input execution.WorkInput
+	// ClaimAttachments 验证入口的附件权限，为新接纳提供可读取的原件路径。
+	ClaimAttachments func(*execution.WorkInput) (func(bool), error) `json:"-"`
 	// AdmissionBoundary 可选地保护输入进入负责人队列的接纳。
 	AdmissionBoundary execution.AdmissionBoundary `json:"-"`
 }

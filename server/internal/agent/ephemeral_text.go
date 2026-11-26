@@ -184,11 +184,14 @@ type ephemeralTextStore struct {
 	mu sync.Mutex
 	// results contains only this one detached lifecycle's native responses.
 	results map[NativeResultKey]NativeResult
-	// answer retains the last streamed text message for adapters without a final body in the receipt.
-	answerKey       NativeResultKey
+	// answerKey links the streamed answer to its native invocation.
+	answerKey NativeResultKey
+	// answerMessageID identifies the native message supplying the streamed answer.
 	answerMessageID string
-	answer          strings.Builder
-	answerTooLarge  bool
+	// answer retains streamed text for adapters without a final body in the receipt.
+	answer strings.Builder
+	// answerTooLarge records that the streamed response exceeded its byte budget.
+	answerTooLarge bool
 }
 
 func (*ephemeralTextStore) PrepareNativeToolUpdate(context.Context, NativeFragmentBatch) (NativeFragmentBatch, error) {

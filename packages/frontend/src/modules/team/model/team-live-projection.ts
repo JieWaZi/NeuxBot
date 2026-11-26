@@ -37,6 +37,29 @@ function eventPayloadOf(event: ChannelEvent): Record<string, unknown> {
   }
 }
 
+/** 负责人输入事件只有确切的队列身份和公开的稳定错误码。 */
+export function teamLeadInputReceiptOf(event: ChannelEvent) {
+  if (
+    event.type !== "lead.input_failed" &&
+    event.type !== "lead.input_cancelled"
+  )
+    return;
+  const { inputId, errorCode } = eventPayloadOf(event);
+  if (typeof inputId !== "string" || !inputId) return;
+  return {
+    id: inputId,
+    status:
+      event.type === "lead.input_failed"
+        ? ("failed" as const)
+        : ("cancelled" as const),
+    errorCode: typeof errorCode === "string" ? errorCode : undefined,
+  };
+}
+
+export function teamLeadInputNoticeId(inputId: string) {
+  return `team-lead-input:${inputId}`;
+}
+
 /** 将后端失败事件收敛成不泄露底层诊断的稳定用户提示。 */
 export function teamEventNoticeOf(
   event: ChannelEvent,

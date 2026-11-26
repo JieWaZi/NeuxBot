@@ -95,6 +95,10 @@ type Journal interface {
 	ReadHistoryCandidates(context.Context, string, int64, int) (eventlog.HistoryCandidateWindow, error)
 	// ReadExecutionMessages 显式读取指定成功执行的输入与最终公开消息。
 	ReadExecutionMessages(context.Context, string, string) ([]messageview.Message, error)
+	// ReadReplyTarget 为当前用户输入定位普通或成员 Chat 中可引用的公开正文。
+	ReadReplyTarget(context.Context, string, string) (ReplyTarget, error)
+	// ReadTeamReplyTarget 为负责人队列定位该对话中可引用的公开正文。
+	ReadTeamReplyTarget(context.Context, string, string, string) (ReplyTarget, error)
 	// ForkChat 创建独立原生会话并发布可恢复的继承历史。
 	ForkChat(ctx context.Context, input ForkInput, fork NativeFork) (string, error)
 	// LoadExecutionChat 返回追平权威日志后的 Chat 身份和当前执行状态，不加载历史消息。

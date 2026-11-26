@@ -45,6 +45,53 @@ func TestMessagePreservesSteerExecution(t *testing.T) {
 	}
 }
 
+func TestSendMessagePassesOnlyTheReplyTargetIdentity(t *testing.T) {
+	previousExecution := global.ExecutionService
+	t.Cleanup(func() { global.ExecutionService = previousExecution })
+	core := &createChatReplayExecution{}
+	global.ExecutionService = core
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/v1/chats/chat-id/messages", nil)
+	request := SendMessage{ChatID: "chat-id"}
+	if err := json.Unmarshal([]byte(`{"text":"正文","replyToMessageId":" target-id ","replyTo":{"messageId":"forged","preview":"伪造正文"}}`), &request.Body); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := request.Output(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if core.intent.Input.ReplyToMessageID != "target-id" || core.intent.Input.Content != "正文" {
+		t.Fatalf("reply intent = %q, text = %q", core.intent.Input.ReplyToMessageID, core.intent.Input.Content)
+	}
+}
+
+func TestPrivateChatAttachmentOnlyKeepsTheRuntimePrompt(t *testing.T) {
+	for _, request := range []interface {
+		workInput() (execution.WorkInput, execution.WorkOptions)
+	}{&MessageRequest{}, &SendMessageRequest{}} {
+		if err := json.Unmarshal([]byte(`{"text":"请查看附件。","attachmentOnly":true,"attachments":[{"sourcePath":"notice.txt"}]}`), request); err != nil {
+			t.Fatal(err)
+		}
+		input, options := request.workInput()
+		if !input.AttachmentOnly || input.Content != "请查看附件。" || len(input.Attachments) != 1 || options.EntryPoint != execution.WorkbenchEntryPoint {
+			t.Fatalf("附件输入转换丢失来源或执行正文: %+v", input)
+		}
+	}
+}
+
+func TestPrivateChatCodeReferencePromptKeepsItsSource(t *testing.T) {
+	for _, request := range []interface {
+		workInput() (execution.WorkInput, execution.WorkOptions)
+	}{&MessageRequest{}, &SendMessageRequest{}} {
+		if err := json.Unmarshal([]byte(`{"text":"请查看引用的代码片段。","codeReferenceOnly":true,"codeReferences":[{"path":"/work/example.go"}]}`), request); err != nil {
+			t.Fatal(err)
+		}
+		input, _ := request.workInput()
+		if !input.CodeReferenceOnly || input.Content != "请查看引用的代码片段。" || len(input.CodeReferences) != 1 {
+			t.Fatalf("代码引用输入转换丢失来源或执行正文: %+v", input)
+		}
+	}
+}
+
 func TestChatWorkflowSelectionKeepsOnlyTheDefinitionFromHTTP(t *testing.T) {
 	for _, request := range []interface {
 		workInput() (execution.WorkInput, execution.WorkOptions)

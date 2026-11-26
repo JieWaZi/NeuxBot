@@ -17,6 +17,10 @@ type MessageRequest struct {
 	AccountID string `json:"accountId,omitempty" validate:"max=32"`
 	// 消息正文
 	Text string `json:"text" validate:"required_without=WorkflowID,max=1048576"`
+	// 仅附件
+	AttachmentOnly bool `json:"attachmentOnly,omitempty"`
+	// 代码引用提示
+	CodeReferenceOnly bool `json:"codeReferenceOnly,omitempty"`
 	// 所选工作流
 	WorkflowID string `json:"workflowId,omitempty" validate:"max=32"`
 	// 运行时标识
@@ -25,7 +29,7 @@ type MessageRequest struct {
 	Model string `json:"model" validate:"max=200"`
 	// 推理强度
 	Reasoning string `json:"reasoning" validate:"max=80"`
-	// Fast
+	// 快速模式
 	Fast *bool `json:"fast,omitempty"`
 	// 上下文档位
 	ContextWindow string `json:"contextWindow,omitempty" validate:"max=80"`
@@ -92,15 +96,17 @@ func (r MessageRequest) workInput() (execution.WorkInput, execution.WorkOptions)
 		})
 	}
 	return execution.WorkInput{
-			Actor:            "user",
-			SteerExecutionID: strings.TrimSpace(r.SteerExecutionID),
-			Content:          r.Text,
-			Workflow:         workinput.SelectWorkflow(strings.TrimSpace(r.WorkflowID)),
-			Attachments:      attachments,
-			SkillIDs:         append([]string(nil), r.SkillIDs...),
-			ConnectorIDs:     append([]string(nil), r.ConnectorIDs...),
-			PluginIDs:        append([]string(nil), r.PluginIDs...),
-			CodeReferences:   references,
+			Actor:             "user",
+			SteerExecutionID:  strings.TrimSpace(r.SteerExecutionID),
+			Content:           r.Text,
+			AttachmentOnly:    r.AttachmentOnly,
+			CodeReferenceOnly: r.CodeReferenceOnly,
+			Workflow:          workinput.SelectWorkflow(strings.TrimSpace(r.WorkflowID)),
+			Attachments:       attachments,
+			SkillIDs:          append([]string(nil), r.SkillIDs...),
+			ConnectorIDs:      append([]string(nil), r.ConnectorIDs...),
+			PluginIDs:         append([]string(nil), r.PluginIDs...),
+			CodeReferences:    references,
 		}, execution.WorkOptions{
 			EntryPoint:    execution.WorkbenchEntryPoint,
 			AccountID:     strings.TrimSpace(r.AccountID),

@@ -200,6 +200,40 @@ describe("消息错误卡片", () => {
     );
   });
 
+  it("关闭更新的发送失败提示后仍可重试较早的冻结输入", async () => {
+    const retry = vi.fn();
+    const scope = "chat:replies";
+    render(<ChatErrorNotices scopes={[scope]} appearance="composer" />);
+    act(() => {
+      reportErrorNotice(
+        {
+          id: "reply-first",
+          scope,
+          lifetime: "session",
+          message: "较早的回复发送失败",
+          messageSource: "public",
+          action: "retry",
+          retainForRetry: true,
+        },
+        retry,
+      );
+    });
+    act(() => {
+      reportErrorNotice({
+        id: "reply-second",
+        scope,
+        lifetime: "session",
+        message: "新的发送失败",
+        messageSource: "public",
+      });
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("新的发送失败");
+    fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("较早的回复发送失败");
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(retry).toHaveBeenCalledOnce());
+  });
+
   it("结构化会话错误展示可读原因，原始 JSON 仅在详情展开后可见", () => {
     const raw = JSON.stringify({
       code: -32603,

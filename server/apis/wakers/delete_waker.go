@@ -2,16 +2,15 @@ package wakers
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
-	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"os"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -58,20 +57,6 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 		if err := global.ChannelService.ValidateWakerDetachment(ctx, d.WakerID); err != nil {
 			return nil, ginx.WithStack(err)
 		}
-	}
-	// 项目标识在库事务删除后即不可查，提前收集用于事务外的记忆级联清理。
-	projects := []models.Project{}
-	offset := 0
-	for {
-		page, err := global.ProjectControllerManager.ListByWaker(ctx, d.WakerID, "", 500, offset)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		projects = append(projects, page...)
-		if len(page) < 500 {
-			break
-		}
-		offset += len(page)
 	}
 	layout, err := chatstorage.NewLayout(global.Config.ManagedFilesDirectory)
 	if err != nil {

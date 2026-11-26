@@ -41,15 +41,18 @@ import {
   attachmentPathsOf,
   chatAttachmentAdapter,
   pathFile,
+  renewReplyAttachments,
 } from "./chat-attachment-adapter";
 import {
   useChatHandoff,
   useChatQueueEntries,
   useChatQueueStore,
   type ChatSendSelection,
+  type ChatSendSnapshot as SendSnapshot,
   type QueuedChatEntry,
   type PreparedChatSubmission,
   type ChatSubmissionPreparer,
+  type ScopedChatReplyRetry,
 } from "./chat-queue-store";
 import {
   classifyChatSendFailure,
@@ -117,6 +120,7 @@ type ChatRuntimeOptions = {
   onMessageAccepted?: () => void;
   onMessageRejected?: (selection: ChatSendSelection) => void;
   captureDraft?: (message: AppendMessage) => QueuedChatEntry["settleDraft"];
+  captureReplyDraft?: () => QueuedChatEntry["replyDraft"];
   onApprovalRequested?: (approval: PendingApproval) => void;
   prepareSubmission: ChatSubmissionPreparer;
   cancel: (target?: ChatCancellationTarget) => Promise<void>;
@@ -139,15 +143,6 @@ type ChatRuntimeResult = {
   contextMetrics?: ChatRunMetrics;
   pendingApprovals: PendingApproval[];
   pendingElicitations: ChatPendingElicitation[];
-};
-
-type SendSnapshot = {
-  conversationKey: ChatScopeKey;
-  queueKey: string;
-  chatId?: string;
-  selection: ChatSendSelection;
-  prepareSubmission: ChatSubmissionPreparer;
-  settleDraft?: QueuedChatEntry["settleDraft"];
 };
 
 type FirstSubmissionRecovery = {
@@ -224,6 +219,8 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     sourceRef.current = options.messageSource;
   }, [options.messageSource]);
   const queueKey = options.queueKey;
+  const queueStore = useChatQueueStore();
+  const serverManagedQueue = options.serverManagedQueue;
   const cancel = options.cancel;
   const prepareSubmission = options.prepareSubmission;
   const onStarted = options.onStarted;
@@ -261,27 +258,31 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       }
     >(),
   );
-  const confirmSubmission = useCallback((submissionId: string | undefined) => {
-    if (!submissionId) return;
-    const pending = pendingSubmissionsRef.current.get(submissionId);
-    if (!pending) return;
-    pendingSubmissionsRef.current.delete(submissionId);
-    pending.submission.confirmAccepted?.();
-    pending.settleDraft?.(false);
-    if (recoveryRef.current?.prepared === pending.submission) {
-      recoveryRef.current = undefined;
-      setFirstSubmissionRecovery(undefined);
-    }
-    const { noticeId } = pending;
-    if (noticeId) {
-      dismissErrorNotice(noticeId);
-      setSendFailure((current) =>
-        current.noticeId === noticeId
-          ? { chatId: current.chatId, value: NO_SEND_FAILURE }
-          : current,
-      );
-    }
-  }, []);
+  const confirmSubmission = useCallback(
+    (submissionId: string | undefined) => {
+      if (!submissionId) return;
+      queueStore.confirmTeamReply(queueKey, submissionId);
+      const pending = pendingSubmissionsRef.current.get(submissionId);
+      if (!pending) return;
+      pendingSubmissionsRef.current.delete(submissionId);
+      pending.submission.confirmAccepted?.();
+      pending.settleDraft?.(false);
+      if (recoveryRef.current?.prepared === pending.submission) {
+        recoveryRef.current = undefined;
+        setFirstSubmissionRecovery(undefined);
+      }
+      const { noticeId } = pending;
+      if (noticeId) {
+        dismissErrorNotice(noticeId);
+        setSendFailure((current) =>
+          current.noticeId === noticeId
+            ? { chatId: current.chatId, value: NO_SEND_FAILURE }
+            : current,
+        );
+      }
+    },
+    [queueKey, queueStore],
+  );
   useLayoutEffect(() => {
     for (const message of history.messages)
       confirmSubmission(message.submissionId);
@@ -306,7 +307,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     added: [],
     resolvedIds: [],
   });
-  const queueStore = useChatQueueStore();
   const queuedEntries = useChatQueueEntries(queueKey);
   const handoffMessages = useChatHandoff(options.chatId);
   const overlayRef = useRef(overlay);
@@ -537,7 +537,11 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   const reconcileHistory = useCallback(() => {
     void sourceRef.current.reconcile().catch(() => {});
   }, []);
-  useEffect(() => () => clearErrorNoticeActions(queueKey), [queueKey]);
+  const hasScopedDrafts = Boolean(options.captureDraft);
+  useEffect(
+    () => () => clearErrorNoticeActions(queueKey, hasScopedDrafts),
+    [queueKey, hasScopedDrafts],
+  );
 
   const currentSendFailure =
     sendFailure.chatId === options.chatId ? sendFailure.value : NO_SEND_FAILURE;
@@ -552,9 +556,25 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       const workflowOnly = Boolean(
         snapshot.selection.workflow && snapshot.selection.workflowOnly,
       );
+      const composedText = textOf(message);
+      const codeReferenceOnly = Boolean(
+        !workflowOnly &&
+        snapshot.selection.codeReferences?.length &&
+        (snapshot.selection.codeReferenceOnly || !composedText),
+      );
+      const attachmentOnly =
+        !composedText &&
+        !workflowOnly &&
+        attachmentPaths.length > 0 &&
+        !snapshot.selection.codeReferences?.length;
+      const automaticBody = attachmentOnly
+        ? { attachmentOnly }
+        : codeReferenceOnly
+          ? { codeReferenceOnly }
+          : undefined;
       const text = workflowOnly
         ? ""
-        : textOf(message) ||
+        : composedText ||
           (attachmentPaths.length
             ? attachmentOnlyText
             : snapshot.selection.codeReferences?.length
@@ -563,13 +583,18 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       if (!text && !workflowOnly) return;
 
       const now = Date.now();
+      const isReply = Boolean(snapshot.selection.replyTo);
+      const scopedReply = isReply && Boolean(snapshot.settleDraft);
+      const optimisticAttachments = optimisticAttachmentsOf(message);
       const prepared =
         original ??
         snapshot.prepareSubmission(
           text,
           snapshot.chatId,
           attachmentPaths,
-          snapshot.selection,
+          automaticBody
+            ? { ...snapshot.selection, ...automaticBody }
+            : snapshot.selection,
         );
       currentSubmissionRef.current = prepared;
       if (
@@ -581,7 +606,14 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           settleDraft: snapshot.settleDraft,
         });
       const operation = `send:${snapshot.queueKey}`;
-      const recovery = captureErrorNoticeRecovery(operation);
+      const replyOperation =
+        isReply && prepared.submissionId
+          ? `${operation}:${prepared.submissionId}`
+          : undefined;
+      const recovery = [
+        ...captureErrorNoticeRecovery(operation),
+        ...(replyOperation ? captureErrorNoticeRecovery(replyOperation) : []),
+      ];
       const userID = optimisticID("user");
       const assistantID = optimisticID("assistant");
       runningRef.current = true;
@@ -596,15 +628,13 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       });
       const currentOverlay = overlayRef.current;
       const optimisticMessages = [
-        ...(currentOverlay.chatId === snapshot.chatId
-          ? currentOverlay.messages
-          : []),
         {
           id: userID,
           submissionId: prepared.submissionId,
           role: "user",
           content: text,
-          attachments: optimisticAttachmentsOf(message),
+          attachments: optimisticAttachments,
+          ...automaticBody,
           plugins: snapshot.selection.selectedPlugins?.map((plugin) => ({
             ...plugin,
           })),
@@ -617,8 +647,8 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           codeReferences: (snapshot.selection.codeReferences ?? []).map(
             (reference) => ({ ...reference }),
           ),
+          replyTo: snapshot.selection.replyTo,
           workflow: snapshot.selection.workflow,
-          createdAt: now,
           updatedAt: now,
           optimistic: true,
         },
@@ -630,58 +660,80 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           status: "pending",
           preparingSession: !snapshot.chatId,
           steerExecutionId: snapshot.selection.steerExecutionId,
-          createdAt: now,
           updatedAt: now,
           optimistic: true,
         },
       ] satisfies BotChatMessage[];
       const optimisticOverlay = {
         chatId: snapshot.chatId,
-        messages: optimisticMessages,
+        messages: [
+          ...(currentOverlay.chatId === snapshot.chatId
+            ? currentOverlay.messages
+            : []),
+          ...optimisticMessages,
+        ],
       };
       overlayRef.current = optimisticOverlay;
       setOverlay(optimisticOverlay);
 
       try {
         const result = await prepared.accept();
-        if (prepared.submissionId) confirmSubmission(prepared.submissionId);
-        else {
+        const execution = result.execution;
+        const queuedInputId = result.queuedInput?.id;
+        const submissionId = prepared.submissionId;
+        if (submissionId) {
+          if (
+            serverManagedQueue &&
+            scopedReply &&
+            queuedInputId &&
+            !execution
+          ) {
+            // 同一输入的 Chat 事件可能早于 HTTP 回执。
+            if (pendingSubmissionsRef.current.delete(submissionId)) {
+              prepared.confirmQueued?.();
+              queueStore.trackTeamReply({
+                message,
+                snapshot,
+                prepared,
+                inputId: queuedInputId,
+                submissionId,
+              });
+            }
+          } else {
+            confirmSubmission(submissionId);
+          }
+        } else {
           prepared.confirmAccepted?.();
           snapshot.settleDraft?.(false);
         }
-        const execution = result.execution;
         const resultChatID = result.chat?.id ?? snapshot.chatId;
-        const committedMessages: BotChatMessage[] =
-          !execution && snapshot.chatId
-            ? optimisticMessages.filter(
-                (item) => item.id !== userID && item.id !== assistantID,
-              )
-            : optimisticMessages.map((item) => {
-                if (item.id === userID && execution) {
-                  return {
-                    ...item,
-                    id: execution.userMessageId ?? item.id,
-                    executionId: execution.id,
-                    optimistic: false,
-                  };
-                }
-                if (item.id === assistantID) {
-                  if (!execution) return { ...item, preparingSession: false };
-                  return {
-                    ...item,
-                    id: execution.id ?? item.id,
-                    executionId: execution.id,
-                    status: execution.status ?? "pending",
-                    optimistic: false,
-                    preparingSession: false,
-                  };
-                }
-                return item;
-              });
-        const committedOverlay = {
-          chatId: resultChatID,
-          messages: committedMessages,
-        };
+        const settleMessages = (messages: BotChatMessage[]) =>
+          messages.flatMap((item): BotChatMessage[] => {
+            const assistant = item.id === assistantID;
+            if (item.id !== userID && !assistant) return [item];
+            if (!execution) {
+              if (snapshot.chatId) return [];
+              return [assistant ? { ...item, preparingSession: false } : item];
+            }
+            const id =
+              (assistant ? execution.id : execution.userMessageId) ?? item.id;
+            if (id !== item.id && messages.some((message) => message.id === id))
+              return [];
+            return [
+              {
+                ...item,
+                id,
+                executionId: execution.id,
+                optimistic: false,
+                ...(assistant
+                  ? {
+                      status: execution.status ?? "pending",
+                      preparingSession: false,
+                    }
+                  : {}),
+              },
+            ];
+          });
         const invocation: ChatInvocation = {
           chatId: snapshot.chatId,
           key: snapshot.conversationKey,
@@ -693,22 +745,27 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         if (current) {
           // 推送可能先于接纳回执到达；只替换本次乐观身份，保留已经投影的事实。
           setOverlay((previous) => {
-            const observed =
-              previous.chatId === resultChatID
-                ? previous.messages.filter(
-                    (item) => item.id !== userID && item.id !== assistantID,
-                  )
-                : [];
+            if (
+              previous.chatId !== snapshot.chatId &&
+              previous.chatId !== resultChatID
+            )
+              return previous;
             const next = {
-              ...committedOverlay,
-              messages: mergeAuthoritativeMessages(committedMessages, observed),
+              chatId: resultChatID,
+              messages: settleMessages(previous.messages),
             };
             overlayRef.current = next;
             return next;
           });
         }
         if (resultChatID && (resultChatID !== snapshot.chatId || !current)) {
-          queueStore.setHandoff(resultChatID, committedMessages);
+          queueStore.setHandoff(
+            resultChatID,
+            mergeLocalMessages(
+              queueStore.getHandoff(resultChatID),
+              settleMessages(optimisticMessages),
+            ),
+          );
         }
         if (current) {
           cursorRef.current = {
@@ -740,28 +797,75 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           ? pendingSubmissionsRef.current.get(prepared.submissionId)
           : undefined;
         if (prepared.submissionId && !pending) return;
+        if (mountedRef.current) {
+          setOverlay((previous) => {
+            if (previous.chatId !== snapshot.chatId) return previous;
+            const next = {
+              ...previous,
+              messages: previous.messages.filter(
+                (item) => item.id !== userID && item.id !== assistantID,
+              ),
+            };
+            overlayRef.current = next;
+            return next;
+          });
+        }
         const failure = classifyChatSendFailure(error);
         const canceled =
           error instanceof ApiError &&
           applicationErrorKey(error.code) === "OperationCanceled";
         const needsReceipt = prepared.hasUnconfirmedReceipt?.() === true;
-        if (!needsReceipt) {
-          const rejected = prepared.confirmRejected?.(error) === true;
-          if (snapshot.settleDraft) {
-            snapshot.settleDraft(rejected || canceled);
-            if (pending?.submission === prepared) {
-              pending.settleDraft = undefined;
-              if (rejected && prepared.submissionId)
-                pendingSubmissionsRef.current.delete(prepared.submissionId);
-            }
+        const rejected =
+          !needsReceipt && prepared.confirmRejected?.(error) === true;
+        const renewSubmission =
+          scopedReply &&
+          rejected &&
+          prepared.retryWithNewSubmission?.() === true;
+        const rejectedReply =
+          isReply &&
+          !needsReceipt &&
+          (rejected ||
+            canceled ||
+            (!scopedReply &&
+              (failure.kind === "rejected" ||
+                failure.kind === "session-not-found")));
+        let restoredReply = false;
+        if (
+          !needsReceipt &&
+          snapshot.settleDraft &&
+          (!isReply || rejectedReply)
+        ) {
+          const restored = snapshot.settleDraft(
+            !(serverManagedQueue && canceled) &&
+              (rejected || canceled || rejectedReply),
+          );
+          restoredReply = isReply && restored;
+          if (
+            pending?.submission === prepared &&
+            (!isReply || restoredReply || canceled)
+          ) {
+            pending.settleDraft = undefined;
+            if (!isReply && rejected && prepared.submissionId)
+              pendingSubmissionsRef.current.delete(prepared.submissionId);
           }
         }
+        if (rejectedReply && !scopedReply) {
+          // 立即拒绝时也等待输入框完成清空，再判断用户是否已有下一份草稿。
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+          if (
+            prepared.submissionId &&
+            !pendingSubmissionsRef.current.has(prepared.submissionId)
+          )
+            return;
+        }
         // 当前编辑器和错误提示仍受原呈现生命周期约束。
-        if (!mountedRef.current || currentSubmissionRef.current !== prepared)
-          return;
-        runningByQueueRef.current[snapshot.queueKey] = false;
+        const currentSubmission =
+          mountedRef.current && currentSubmissionRef.current === prepared;
+        if (!currentSubmission && !scopedReply) return;
+        if (currentSubmission)
+          runningByQueueRef.current[snapshot.queueKey] = false;
         const current =
-          mountedRef.current &&
+          currentSubmission &&
           observedChatKeyRef.current === snapshot.conversationKey;
         if (current) runningRef.current = false;
         if (needsReceipt) {
@@ -772,25 +876,62 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           recoveryRef.current = undefined;
           setFirstSubmissionRecovery(undefined);
         }
-        // 只重放服务端明确拒绝的限流请求；响应丢失时先核对权威历史。
-        const canRetry =
+        const replyDraft = snapshot.replyDraft;
+        const composer = rejectedReply
+          ? runtimeRef.current?.thread?.composer
+          : undefined;
+        const composerState = composer?.getState();
+        if (
           current &&
+          rejectedReply &&
+          replyDraft?.isEmpty() &&
+          !composerState?.text.trim() &&
+          !composerState?.attachments.length
+        ) {
+          replyDraft.restore();
+          for (const { path, name, mediaType } of optimisticAttachments) {
+            void composer?.addAttachment(
+              pathFile(path, { name, contentType: mediaType }),
+            );
+          }
+          restoredReply = true;
+        }
+        const uncertainReply =
+          isReply &&
+          Boolean(prepared.submissionId) &&
+          (failure.kind === "unknown" ||
+            failure.kind === "active-execution" ||
+            failure.kind === "create-request-in-progress" ||
+            (scopedReply &&
+              !rejectedReply &&
+              failure.kind !== "create-request-conflict"));
+        const retryReply =
+          isReply && !restoredReply && (rejectedReply || uncertainReply);
+        const canRetry =
           !needsReceipt &&
-          !snapshot.settleDraft &&
-          error instanceof ApiError &&
-          error.status === 429;
+          (isReply
+            ? (current || scopedReply) && retryReply
+            : current &&
+              !snapshot.settleDraft &&
+              error instanceof ApiError &&
+              error.status === 429);
+        const retainForRetry = Boolean(canRetry && retryReply && !canceled);
         const canCheck =
           current &&
           snapshot.chatId &&
           (failure.kind === "unknown" ||
             failure.kind === "active-execution" ||
             failure.kind === "create-request-in-progress");
-        const noticeId = `send:${userID}`;
+        const noticeId =
+          retainForRetry && replyOperation ? replyOperation : `send:${userID}`;
+        if (replyOperation && !retainForRetry)
+          dismissErrorNotice(replyOperation);
         if (prepared.submissionId) {
-          const pending = pendingSubmissionsRef.current.get(
-            prepared.submissionId,
-          );
-          if (pending) pending.noticeId = noticeId;
+          if (rejectedReply && (restoredReply || canceled || renewSubmission)) {
+            pendingSubmissionsRef.current.delete(prepared.submissionId);
+          } else if (pending) {
+            pending.noticeId = noticeId;
+          }
         }
         if (!needsReceipt && !canceled)
           reportErrorNotice(
@@ -798,7 +939,10 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
               id: noticeId,
               scope: snapshot.queueKey,
               lifetime: "session",
-              operation,
+              operation: retainForRetry
+                ? (replyOperation ?? operation)
+                : operation,
+              retainForRetry: retainForRetry || undefined,
               ...apiErrorNoticePresentation(
                 error,
                 sendFailureDisplayText(failure, (key) =>
@@ -809,14 +953,37 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
             },
             canRetry
               ? async () => {
-                  if (
-                    !mountedRef.current ||
-                    observedChatKeyRef.current !== snapshot.conversationKey ||
-                    currentSubmissionRef.current !== prepared ||
-                    runningRef.current
-                  )
+                  if (scopedReply) {
+                    await queueStore.retryReply({
+                      message,
+                      snapshot,
+                      prepared,
+                      noticeId,
+                      reconcile: uncertainReply,
+                      renewSubmission,
+                    });
                     return;
-                  await submitMessage(message, snapshot);
+                  }
+                  const canReplay = () =>
+                    mountedRef.current &&
+                    observedChatKeyRef.current === snapshot.conversationKey &&
+                    !runningRef.current &&
+                    !interactionPendingRef.current &&
+                    (isReply && prepared.submissionId
+                      ? pendingSubmissionsRef.current.get(prepared.submissionId)
+                          ?.submission === prepared
+                      : currentSubmissionRef.current === prepared);
+                  if (!canReplay()) return;
+                  // 先用权威历史确认接纳。回执仍未出现时只重放同一提交身份。
+                  if (uncertainReply) {
+                    await sourceRef.current.reconcile().catch(() => {});
+                    if (!canReplay()) return;
+                  }
+                  await submitMessage(
+                    message,
+                    snapshot,
+                    isReply ? prepared : undefined,
+                  );
                 }
               : canCheck
                 ? () => {
@@ -829,32 +996,9 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
                   }
                 : undefined,
           );
-        if (current) {
-          const authoritativeIDs = new Set<string>(
-            sourceRef.current.snapshot.messages.flatMap((message) =>
-              message.id ? [message.id] : [],
-            ),
-          );
-          const failedOverlay = {
-            chatId: snapshot.chatId,
-            messages: overlayRef.current.messages.filter(
-              (item) =>
-                item.id !== userID &&
-                item.id !== assistantID &&
-                (!item.id || !authoritativeIDs.has(item.id)),
-            ),
-          };
-          overlayRef.current = failedOverlay;
-          setOverlay(failedOverlay);
-          if (!canceled) {
-            setSendFailure({
-              chatId: snapshot.chatId,
-              value: failure,
-              noticeId,
-            });
-          }
-        }
-        if (!snapshot.settleDraft)
+        if (current && !canceled)
+          setSendFailure({ chatId: snapshot.chatId, value: failure, noticeId });
+        if (!snapshot.settleDraft && !isReply)
           window.setTimeout(() => {
             if (
               !mountedRef.current ||
@@ -904,8 +1048,77 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       confirmSubmission,
       reconcileHistory,
       queueStore,
+      serverManagedQueue,
     ],
   );
+
+  const replayScopedReply = useCallback(
+    async ({
+      message,
+      snapshot,
+      prepared,
+      noticeId,
+      reconcile,
+      renewSubmission,
+    }: ScopedChatReplyRetry) => {
+      const canReplay = () =>
+        mountedRef.current &&
+        observedChatKeyRef.current === snapshot.conversationKey &&
+        (serverManagedQueue || !runningRef.current) &&
+        !interactionPendingRef.current;
+      const confirmIfObserved = () => {
+        const submissionId = prepared.submissionId;
+        if (
+          !submissionId ||
+          !sourceRef.current.snapshot.messages.some(
+            (item) =>
+              item.submissionId === submissionId &&
+              (!renewSubmission || item.role === "user"),
+          )
+        )
+          return false;
+        prepared.confirmAccepted?.();
+        snapshot.settleDraft?.(false);
+        dismissErrorNotice(noticeId);
+        return true;
+      };
+      if (!canReplay() || confirmIfObserved()) return;
+      if (reconcile) {
+        await sourceRef.current.reconcile().catch(() => {});
+        if (!canReplay() || confirmIfObserved()) return;
+      }
+      if (!renewSubmission) {
+        await submit(message, snapshot, prepared);
+        return;
+      }
+      const renewal = message.attachments?.length
+        ? await renewReplyAttachments(message.attachments)
+        : undefined;
+      if (!canReplay() || confirmIfObserved()) {
+        await renewal?.discard();
+        return;
+      }
+      dismissErrorNotice(noticeId);
+      await submit(
+        renewal ? { ...message, attachments: renewal.attachments } : message,
+        snapshot,
+      );
+    },
+    [serverManagedQueue, submit],
+  );
+  useLayoutEffect(() => {
+    if (!hasScopedDrafts || options.queueActive === false) return;
+    return queueStore.registerReplyRetryHandler(
+      options.conversationKey,
+      replayScopedReply,
+    );
+  }, [
+    hasScopedDrafts,
+    options.conversationKey,
+    options.queueActive,
+    queueStore,
+    replayScopedReply,
+  ]);
 
   const currentSnapshot = useMemo<SendSnapshot>(
     () => ({
@@ -936,6 +1149,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         codeReferences: options.selection.codeReferences?.map((reference) => ({
           ...reference,
         })),
+        replyTo: options.selection.replyTo && { ...options.selection.replyTo },
         workflow: options.selection.workflow && {
           ...options.selection.workflow,
         },
@@ -979,6 +1193,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         selection: { ...head.selection, steerExecutionId },
         prepareSubmission: head.prepareSubmission ?? prepareSubmission,
         settleDraft: head.settleDraft,
+        replyDraft: head.replyDraft,
       });
     },
     [
@@ -1392,13 +1607,17 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   ]);
 
   const captureDraft = options.captureDraft;
+  const captureReplyDraft = options.captureReplyDraft;
   const clearOutgoingDraft = useCallback(
     (message: AppendMessage): SendSnapshot => {
       const settleDraft = captureDraft?.(message);
+      const replyDraft = currentSnapshot.selection.replyTo
+        ? captureReplyDraft?.()
+        : undefined;
       messageAcceptedRef.current?.();
-      return { ...currentSnapshot, settleDraft };
+      return { ...currentSnapshot, settleDraft, replyDraft };
     },
-    [captureDraft, currentSnapshot],
+    [captureDraft, captureReplyDraft, currentSnapshot],
   );
   const onNew = useCallback(
     async (message: AppendMessage) => {
@@ -1451,6 +1670,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           },
           prepareSubmission: snapshot.prepareSubmission,
           settleDraft: snapshot.settleDraft,
+          replyDraft: snapshot.replyDraft,
         };
         const current = queueStore.getEntries(queueKey);
         const queueIsRunning = runningByQueueRef.current[queueKey] ?? isRunning;

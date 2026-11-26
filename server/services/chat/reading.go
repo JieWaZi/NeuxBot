@@ -89,7 +89,14 @@ func (p *queryIndexStore) prepareReading(ctx context.Context, chatID string, tai
 
 // readPublicMessageThrough never applies a body newer than the requested projection boundary.
 func (p *queryIndexStore) readPublicMessageThrough(ctx context.Context, chatID, messageID string, through int64) (*messageview.Message, error) {
-	records, err := p.logStore.ReadMessage(chatID, messageID)
+	journal, native := p.logStore.(*conversationJournal)
+	var records []eventlog.Record
+	var err error
+	if native {
+		records, err = journal.readMessageFacts(ctx, chatID, messageID)
+	} else {
+		records, err = p.logStore.ReadMessage(chatID, messageID)
+	}
 	if err != nil || len(records) < 2 {
 		return nil, err
 	}
@@ -104,7 +111,7 @@ func (p *queryIndexStore) readPublicMessageThrough(ctx context.Context, chatID, 
 		}
 		stamp = r.RecordedAt
 	}
-	if journal, ok := p.logStore.(*conversationJournal); ok {
+	if native {
 		stored, cursor, err := journal.ReadCurrentMessageCheckpointThrough(ctx, chatID, messageID, through)
 		if err != nil && !errors.Is(err, status_error.ChatMessageNotFound) {
 			return nil, err

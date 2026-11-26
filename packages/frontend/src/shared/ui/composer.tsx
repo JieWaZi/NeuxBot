@@ -15,6 +15,7 @@ type ComposerSurfaceProps = ComponentProps<"div"> & {
   context?: ReactNode;
   contextTone?: "neutral" | "danger";
   contextLayers?: ReactNode;
+  contextFooter?: ReactNode;
   leadingActions?: ReactNode;
   trailingActions?: ReactNode;
   visualEffect?: ReactNode;
@@ -156,6 +157,7 @@ export function ComposerSurface({
   context,
   contextTone = "neutral",
   contextLayers,
+  contextFooter,
   expanded = false,
   invalid = false,
   leadingActions,
@@ -201,7 +203,9 @@ export function ComposerSurface({
   );
 
   // 保持输入表面挂载，顶栏消失时不重建编辑器。
-  const hasContext = Boolean(context || contextLayers);
+  const hasContext = Boolean(context || contextLayers || contextFooter);
+  const hasSeparateDangerContext =
+    contextTone === "danger" && Boolean(contextFooter);
   return (
     <ComposerStack
       data-has-context={hasContext || undefined}
@@ -209,7 +213,7 @@ export function ComposerSurface({
       className={cn(
         hasContext && "rounded-2xl",
         hasContext &&
-          (contextTone === "danger"
+          (contextTone === "danger" && !hasSeparateDangerContext
             ? "bg-status-danger-surface"
             : "bg-composer-context"),
       )}
@@ -218,7 +222,17 @@ export function ComposerSurface({
       {contextLayers && context ? (
         <div aria-hidden="true" className="bg-border-subtle mx-3 h-px" />
       ) : null}
-      {context ? <ComposerContext>{context}</ComposerContext> : null}
+      {context ? (
+        <ComposerContext
+          className={cn(
+            hasSeparateDangerContext && "bg-status-danger-surface",
+            hasSeparateDangerContext && !contextLayers && "rounded-t-2xl",
+          )}
+        >
+          {context}
+        </ComposerContext>
+      ) : null}
+      {contextFooter}
       {surface}
     </ComposerStack>
   );

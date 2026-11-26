@@ -80,9 +80,18 @@ func TestReviewInspectsEnabledCodexConfiguration(t *testing.T) {
 	if err := ValidateReviewSelection(ctx, settings); err != nil {
 		t.Fatal(err)
 	}
-	selection, _, err := selectDetachedModel(ctx, models.LibraryExecutionDefaults{RuntimeID: settings.RuntimeID}, agent.SupportsProvider)
+	selection, err := reviewSelection(ctx, "", settings, "")
 	if err != nil || selection.Model != environment.DefaultModel || selection.AccountID != constants.AiAccountSystemID {
-		t.Fatalf("复盘配置解析为 %+v，错误 %v", selection, err)
+		t.Fatalf("复盘模型=%q，账号=%q，错误=%v", selection.Model, selection.AccountID, err)
+	}
+	detection := environment.Detection
+	detection.ResolvedBinary = "/bin/new-codex"
+	if err := RuntimeEnvironmentControllerManager.UpdateDetection(ctx, environment.RuntimeID, detection, 1); err != nil {
+		t.Fatal(err)
+	}
+	next, err := reviewSelection(ctx, "", settings, "")
+	if err != nil || selection.Connection.Launch.Executable != "/bin/codex" || next.Connection.Launch.Executable != detection.ResolvedBinary {
+		t.Fatalf("复盘启动程序未按执行边界选择: 当前=%q 后续=%q, %v", selection.Connection.Launch.Executable, next.Connection.Launch.Executable, err)
 	}
 }
 

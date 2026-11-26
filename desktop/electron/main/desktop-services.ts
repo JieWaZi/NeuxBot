@@ -4,7 +4,7 @@ import {
   type DesktopLogs,
 } from "./storage-maintenance";
 import { dialog, ipcMain, shell, type BrowserWindow } from "electron";
-import { writeFile as save } from "node:fs/promises";
+import { stat, writeFile as save } from "node:fs/promises";
 import path from "node:path";
 import type { DesktopCommands, DesktopEvents } from "../shared/contracts";
 import { commandSchemas } from "../shared/validation";
@@ -143,6 +143,18 @@ export function installDesktopServices(
         await files.workspacePath(root, relativePath),
       );
       if (error) throw new Error(error);
+      return true;
+    },
+    reveal_local_path: async ({ path: target }) => {
+      // 桌面文件管理器只接受本机路径。Windows 额外排除 UNC、设备路径和备用数据流。
+      const local =
+        process.platform === "win32"
+          ? /^[A-Za-z]:[\\/][^:]*$/.test(target)
+          : target.startsWith("/") && !target.startsWith("//");
+      if (!local) return false;
+      const entry = await stat(target).catch(() => undefined);
+      if (!entry?.isFile() && !entry?.isDirectory()) return false;
+      shell.showItemInFolder(target);
       return true;
     },
     browser_create: async (input) => {

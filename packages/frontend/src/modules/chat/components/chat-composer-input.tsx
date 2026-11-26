@@ -13,11 +13,13 @@ import type { SuggestionOptions, SuggestionProps } from "@tiptap/suggestion";
 import {
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
   useState,
+  type RefObject,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { pluginDetailHref } from "@/modules/plugin";
@@ -41,6 +43,7 @@ import type {
 import { chatComposerReferenceChipClass } from "./chat-reference-chip";
 import type { ChatPluginIcon, ChatPluginOption } from "./chat-plugin-reference";
 import type { BotPathFile } from "../runtime/chat-attachment-adapter";
+import type { ChatReplyDraftEditor } from "../runtime/chat-projection";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
 import {
   readWorkspaceFileDrag,
@@ -110,11 +113,16 @@ type ChatComposerInputProps = {
   pluginHrefPrefix?: string;
   onSend?: () => void;
   codeReferenceRequest?: ChatCodeReference;
-  onCodeReferencesChange?: (references: ChatCodeReference[]) => void;
+  onCodeReferencesChange?: (
+    references: ChatCodeReference[],
+    codeReferenceOnly: boolean,
+  ) => void;
   contextReferences?: ChatComposerContextReference[];
   onContextReferencesChange?: (ids: string[]) => void;
   draft?: string;
   draftReference?: ChatComposerDraftReference;
+  registerReplyDraftEditor?: (editor: ChatReplyDraftEditor) => () => void;
+  focusRef?: RefObject<(() => void) | null>;
   clearRevision?: number;
   restoreRevision?: number;
   disabled?: boolean;
@@ -157,6 +165,22 @@ function extractText(editor: ReturnType<typeof useEditor>) {
     blocks.push(parts.join(""));
   });
   return blocks.join("\n");
+}
+
+function removeMemberMentions(editor: Editor) {
+  const { doc, tr } = editor.state;
+  doc.descendants((node, position) => {
+    if (node.type.name === "mention" && node.attrs.referenceType === "member")
+      tr.delete(
+        tr.mapping.map(position),
+        tr.mapping.map(position + node.nodeSize),
+      );
+  });
+  if (!tr.docChanged) return false;
+  editor.view.dispatch(
+    tr.setMeta(contextReferenceSync, true).setMeta("addToHistory", false),
+  );
+  return true;
 }
 
 async function searchFiles(
@@ -478,6 +502,8 @@ export function ChatComposerInput({
   onContextReferencesChange,
   draft,
   draftReference,
+  registerReplyDraftEditor,
+  focusRef,
   clearRevision = 0,
   restoreRevision = 0,
   disabled = false,
@@ -1198,21 +1224,33 @@ export function ChatComposerInput({
           break;
       }
     });
+    if (
+      memberID &&
+      !membersRef.current.length &&
+      removeMemberMentions(nextEditor)
+    )
+      return;
+    const hasText = Boolean(text.trim());
+    const codeReferenceOnly =
+      !hasText && !workflow && codeReferences.length > 0;
     selectedMemberIdRef.current = memberID;
     nextEditor.view.dom.setAttribute("value", text);
     callbacksRef.current.aui.composer.setText(
-      text.trim()
+      hasText
         ? text
         : workflow
           ? t("workflow.referenceOnlyMessage")
-          : codeReferences.length
+          : codeReferenceOnly
             ? t("codeReferenceOnlyMessage")
             : text,
     );
     callbacksRef.current.onPluginSelectionChange?.(Array.from(pluginIDs));
     callbacksRef.current.onSkillSelectionChange?.(Array.from(skillIDs));
     callbacksRef.current.onConnectorSelectionChange?.(Array.from(connectorIDs));
-    callbacksRef.current.onCodeReferencesChange?.(codeReferences);
+    callbacksRef.current.onCodeReferencesChange?.(
+      codeReferences,
+      codeReferenceOnly,
+    );
     if (syncContext)
       callbacksRef.current.onContextReferencesChange?.(Array.from(contextIDs));
     callbacksRef.current.onMemberMentionChange?.(memberID || undefined);
@@ -1222,9 +1260,42 @@ export function ChatComposerInput({
         ? nextEditor.getJSON()
         : undefined,
     );
-    picker?.onSelectionChange(workflow, Boolean(workflow && !text.trim()));
+    picker?.onSelectionChange(workflow, Boolean(workflow && !hasText));
     callbacksRef.current.onValueChange?.();
   }
+
+  useImperativeHandle(
+    focusRef,
+    () => () => {
+      if (editor && !editor.isDestroyed && editor.isEditable)
+        editor.view.focus();
+    },
+    [editor],
+  );
+
+  const memberMentionsEnabled = members.length > 0;
+  useLayoutEffect(() => {
+    if (!memberMentionsEnabled && editor && !editor.isDestroyed)
+      removeMemberMentions(editor);
+  }, [editor, memberMentionsEnabled]);
+
+  useLayoutEffect(() => {
+    if (!registerReplyDraftEditor || !editor) return;
+    return registerReplyDraftEditor({
+      capture: () => {
+        const document = editor.getJSON();
+        return () => {
+          if (editor.isDestroyed) return;
+          editor
+            .chain()
+            .setMeta(contextReferenceSync, true)
+            .setContent(document)
+            .run();
+        };
+      },
+      isEmpty: () => !editor.isDestroyed && editor.isEmpty,
+    });
+  }, [editor, registerReplyDraftEditor]);
 
   useLayoutEffect(() => {
     if (

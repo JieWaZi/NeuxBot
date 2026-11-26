@@ -52,6 +52,14 @@ export const commandSchemas = {
     fileName: text,
   }),
   open_workspace_file: z.object(file),
+  reveal_local_path: z
+    .object({
+      path: z
+        .string()
+        .min(1)
+        .refine((value) => !value.includes("\0") && !/[\r\n]/.test(value)),
+    })
+    .strict(),
   browser_create: z.object({
     ...bounds,
     url: text,

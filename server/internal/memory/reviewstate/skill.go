@@ -25,11 +25,8 @@ func (w *Worker) ChatSuggestions(ctx context.Context, chat string, fromTime int6
 	if err != nil {
 		return nil, err
 	}
-	_, cfg, origin, resolveErr := w.Effective(ctx, access.WakerID)
 	return slices.DeleteFunc(values, func(v Suggestion) bool {
-		return v.WakerID != access.WakerID ||
-			(v.Status != StatusSaved &&
-				(cfg.SkillMode == ModeOff || v.Origin.Skill != cfg.SkillGeneration || (resolveErr == nil && !skillAuthorized(v, origin))))
+		return v.WakerID != access.WakerID
 	}), nil
 }
 
@@ -44,18 +41,11 @@ func (w *Worker) ResolveSuggestion(ctx context.Context, chat, id, decision, appr
 	if v.ID == "" {
 		return v, status_error.ChatNotFound
 	}
-	guard, err := w.ports.Guard(v.WakerID, chat)
+	guard, err := w.guardSource(ctx, v.WakerID, chat)
 	if err != nil {
 		return v, err
 	}
 	defer guard()
-	access, err := w.ports.Chat(ctx, chat)
-	if err != nil {
-		return v, err
-	}
-	if v.WakerID != access.WakerID {
-		return v, status_error.ChatNotFound
-	}
 	if v.Status == StatusSaved || v.Status == StatusIgnored || v.Status == StatusQueued || v.Status == StatusRunning {
 		return v, nil
 	}
@@ -66,13 +56,6 @@ func (w *Worker) ResolveSuggestion(ctx context.Context, chat, id, decision, appr
 	}
 	if decision != DecisionSave {
 		return v, status_error.BadRequest
-	}
-	_, _, origin, err := w.Effective(ctx, v.WakerID)
-	if err != nil {
-		return v, err
-	}
-	if !skillAuthorized(v, origin) {
-		return v, status_error.Conflict
 	}
 	if v.Action == ActionUpdate {
 		target, err := w.ports.Target(ctx, v.WakerID, v.SkillID, v.VersionID)
@@ -116,10 +99,6 @@ func sharedSkillScope(partners []string) []string {
 	return nil
 }
 
-func skillAuthorized(v Suggestion, current Admission) bool {
-	return v.Origin.Skill != 0 && current.Skill == v.Origin.Skill && current.Configuration == v.Origin.Configuration
-}
-
 func sameScope(a, b []string) bool {
 	x, y := slices.Clone(a), slices.Clone(b)
 	slices.Sort(x)
@@ -161,15 +140,9 @@ func (w *Worker) save(ctx context.Context, v Suggestion) {
 		w.failedSuggestion(ctx, v, err)
 		return
 	}
-	selection, _, origin, err := w.Effective(ctx, v.WakerID)
+	selection, err := w.resolve(ctx, v.WakerID)
 	if err != nil {
 		w.failedSuggestion(ctx, v, err)
-		return
-	}
-	if !skillAuthorized(v, origin) {
-		expected := v.Status
-		v.Status, v.Error = StatusIgnored, ""
-		_ = w.updateSuggestion(ctx, v, expected)
 		return
 	}
 	var current string
@@ -201,9 +174,7 @@ func (w *Worker) save(ctx context.Context, v Suggestion) {
 	if err = w.updateSuggestion(ctx, v, expected); err != nil {
 		return
 	}
-	skillOnly := origin
-	skillOnly.Memory = 0
-	turns, err := w.ports.Turns(ctx, v.ChatID, v.From, v.Through, skillOnly, MaxTurns)
+	turns, err := w.ports.Turns(ctx, v.ChatID, v.From, v.Through, Admission{Skill: v.Origin.Skill}, MaxTurns)
 	if err != nil {
 		w.failedSuggestion(ctx, v, err)
 		return
@@ -228,7 +199,7 @@ func (w *Worker) save(ctx context.Context, v Suggestion) {
 		prompt.Name = v.Name
 	}
 	input, _ := json.Marshal(prompt)
-	text, err := w.generate(ctx, selection, v.WakerID, v.ChatID, skillOnly, skillUsage, instruction, string(input))
+	text, err := w.generate(ctx, selection, v.WakerID, v.ChatID, skillUsage, instruction, string(input))
 	if err != nil {
 		w.failedSuggestion(ctx, v, err)
 		return
@@ -248,27 +219,7 @@ func (w *Worker) save(ctx context.Context, v Suggestion) {
 		return
 	}
 	published, err = w.ports.Publish(ctx, v, draft, approved, func() (func(), error) {
-		w.mu.Lock()
-		_, _, latest, err := w.Effective(ctx, v.WakerID)
-		if err != nil || !skillAuthorized(v, latest) {
-			w.mu.Unlock()
-			return nil, status_error.Conflict
-		}
-		guard, err := w.ports.Guard(v.WakerID, v.ChatID)
-		if err != nil {
-			w.mu.Unlock()
-			return nil, err
-		}
-		access, err := w.ports.Chat(ctx, v.ChatID)
-		if err != nil || access.WakerID != v.WakerID {
-			guard()
-			w.mu.Unlock()
-			if err == nil {
-				err = status_error.Conflict
-			}
-			return nil, err
-		}
-		return func() { guard(); w.mu.Unlock() }, nil
+		return w.guardSource(ctx, v.WakerID, v.ChatID)
 	})
 	if err != nil {
 		w.failedSuggestion(ctx, v, err)
@@ -336,15 +287,15 @@ func (w *Worker) failedSuggestion(ctx context.Context, v Suggestion, err error) 
 	_ = w.updateSuggestion(ctx, v, expected)
 }
 
-// skillDraftInput contains only the material needed to write the requested document.
+// skillDraftInput 只包含撰写技能正文所需的材料。
 type skillDraftInput struct {
-	// Name supplies the slug when creating a skill.
+	// Name 是新建技能时使用的标识名。
 	Name string `json:"name,omitempty"`
-	// Lesson is the selected change to capture in the document.
+	// Lesson 是技能正文需记录的做法。
 	Lesson string `json:"lesson"`
-	// Turns provides redacted evidence without citation references.
+	// Turns 提供已脱敏且省略引用标识的证据。
 	Turns []modelTurn `json:"turns"`
-	// CurrentSkill is the published Markdown supplied only for a revision.
+	// CurrentSkill 是修订技能时提供的当前已发布正文。
 	CurrentSkill string `json:"currentSkill,omitempty"`
 }
 

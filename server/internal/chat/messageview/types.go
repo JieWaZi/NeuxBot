@@ -197,6 +197,12 @@ type Message struct {
 	Truncated bool `json:"truncated,omitempty"`
 	// Content 是截至当前日志游标构建出的完整文本。
 	Content string `json:"content"`
+	// 仅附件
+	AttachmentOnly bool `json:"attachmentOnly,omitempty"`
+	// 代码引用提示
+	CodeReferenceOnly bool `json:"codeReferenceOnly,omitempty"`
+	// 引用消息
+	ReplyTo *eventlog.MessageReply `json:"replyTo,omitempty"`
 	// 问题卡
 	Question *MessageQuestion `json:"question,omitempty"`
 	// Attachments 是用户消息携带的有序附件引用。

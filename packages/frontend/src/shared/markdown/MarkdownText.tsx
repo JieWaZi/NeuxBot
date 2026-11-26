@@ -35,7 +35,9 @@ import "katex/dist/katex.min.css";
 export type {
   MarkdownComponents,
   MarkdownCodeProps,
+  MarkdownImageProps,
   MarkdownInlineCodeProps,
+  MarkdownLinkProps,
 } from "./render";
 const defaultLabels: MarkdownLabels = {
   code: { copyLabel: "Copy", copiedLabel: "Copied" },

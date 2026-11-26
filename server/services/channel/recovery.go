@@ -2,15 +2,90 @@ package channel
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
+
+// recoverLeadInputAttachments 用现有队列收据校正崩溃时留下的附件副本。
+func (s *service) recoverLeadInputAttachments(ctx context.Context) error {
+	if s.managedFilesDirectory == "" {
+		return nil
+	}
+	layout, err := chatstorage.NewLayout(s.managedFilesDirectory)
+	if err != nil {
+		return err
+	}
+	threadIDs, err := layout.TeamsWithQueuedAttachments()
+	if err != nil {
+		return err
+	}
+	for _, threadID := range threadIDs {
+		if ctx.Err() != nil {
+			return status_error.OperationCanceled
+		}
+		if err := s.recoverThreadLeadInputAttachments(ctx, layout, threadID); err != nil {
+			logx.Warnf("recover queued lead attachments: thread_id=%s error=%v", threadID, err)
+		}
+	}
+	return nil
+}
+
+func (s *service) recoverThreadLeadInputAttachments(ctx context.Context, layout *chatstorage.Layout, threadID string) error {
+	thread, err := s.threads.Get(ctx, threadID)
+	if hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	locked, release, err := teamwork.Acquire(ctx, thread.ChannelID)
+	if err != nil {
+		return err
+	}
+	defer release()
+	directory, err := layout.TeamRoot(threadID)
+	if err != nil {
+		return err
+	}
+	owner, err := workspace.ReadExecutionWorkspaceOwner(directory)
+	if err != nil {
+		return err
+	}
+	if owner.Kind != constants.ThreadExecutionWorkspaceOwnerKind || owner.ThreadID != threadID {
+		return status_error.ChatDirectoryOwnershipInvalid
+	}
+	ids, err := workspace.RecoverQueuedAttachmentIDs(directory)
+	if err != nil {
+		return err
+	}
+	for batch := range slices.Chunk(ids, constants.ChannelLeadInputReceiptBatchLimit) {
+		receipts, err := s.threads.ListLeadInputReceipts(locked, threadID, batch)
+		if err != nil {
+			return err
+		}
+		pending := make(map[string]bool, len(receipts))
+		for _, receipt := range receipts {
+			pending[receipt.ID] = receipt.Status == constants.ChannelInputStatusPending
+		}
+		for _, id := range batch {
+			if !pending[id] {
+				if err := workspace.RemoveQueuedAttachments(directory, thread.LeadChatID, id); err != nil {
+					logx.Warnf("release recovered lead input attachments: thread_id=%s input_id=%s error=%v", threadID, id, err)
+				}
+			}
+		}
+	}
+	return nil
+}
 
 // recoverInitializingThread 补交已接纳的首发。启动或同键重试可回收明确未接纳的计划。
 func (s *service) recoverInitializingThread(ctx context.Context, thread models.ChannelThread, reclaimUnadmitted bool) (models.ChannelThread, error) {

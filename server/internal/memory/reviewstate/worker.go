@@ -2,9 +2,7 @@ package reviewstate
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"regexp"
 	"slices"
@@ -13,6 +11,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/memory"
 	"github.com/JieWaZi/NeuxBot/server/internal/skills"
@@ -41,19 +40,12 @@ type Selection struct {
 	AccountID string `json:"accountId,omitempty"`
 	// Model 是实际模型。
 	Model string `json:"model,omitempty"`
-	// Configuration 标识有效的本地环境及账号版本。
-	Configuration string `json:"-"`
+	// Connection 固定本次执行的程序、启动环境和账号选择。
+	Connection agent.ProviderConnectionRequest `json:"-"`
 	// SystemIdentity 固定系统原生登录及本地客户端配置，不包含原始凭据。
 	SystemIdentity string `json:"-"`
 	// EveryTurns 决定何时读取模型证据，不改变既有授权代次。
 	EveryTurns int `json:"-"`
-}
-
-// ConfigurationKey 将应用级配置与当前伙伴实际设置合并成稳定代次。
-func (s Selection) ConfigurationKey(settings Settings) string {
-	data, _ := json.Marshal([]any{settings.Generation, s.RuntimeID, s.AccountID, s.Model, s.Configuration, s.SystemIdentity})
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
 }
 
 // ReviewMemory 是已有记忆的有界复盘快照。
@@ -180,7 +172,7 @@ type Worker struct {
 	*Store
 	// ports 保留既有领域能力。
 	ports Ports
-	// mu 保护设置更改与结果短提交。
+	// mu 序列化设置更新和建议确认。
 	mu sync.Mutex
 	// observed 在前台路径合并已提交的终态通知。
 	observed sync.Map
@@ -300,27 +292,16 @@ func (w *Worker) run(ctx context.Context) {
 		}
 		p, available, err := w.Store.Ready(ctx, time.Now())
 		if err == nil && available {
-			err = w.review(ctx, p)
+			err := w.review(ctx, &p)
 			if util.HasStatusCode(err, status_error.ChatNotFound) {
 				err = w.forgetMissingChat(ctx, p.WakerID, p.ChatID)
 			}
 			if err == nil {
 				continue
 			}
-			if ctx.Err() == nil && util.HasStatusCode(err, status_error.ChatHasActiveExecution) {
-				p.DueAt = time.Now().Add(pollInterval).UnixMilli()
-				if w.Store.Schedule(ctx, p) == nil {
-					continue
-				}
-			} else if ctx.Err() == nil {
-				p.Failures++
-				delay := time.Duration(1<<min(p.Failures, 7)) * time.Second
-				if p.Failures >= 4 {
-					delay = 24 * time.Hour
-				}
-				p.DueAt = time.Now().Add(delay).UnixMilli()
-				if w.Store.Fail(ctx, p) == nil {
-					w.changed(eventReview, p.WakerID, p.ChatID)
+			if ctx.Err() == nil {
+				err = w.deferReview(ctx, p, err)
+				if err == nil || util.HasStatusCode(err, status_error.Conflict) {
 					continue
 				}
 			}
@@ -331,6 +312,24 @@ func (w *Worker) run(ctx context.Context) {
 		case <-timer.C:
 		}
 	}
+}
+
+func (w *Worker) deferReview(ctx context.Context, p Progress, cause error) error {
+	next := p
+	delay := pollInterval
+	if !util.HasStatusCode(cause, status_error.ChatHasActiveExecution) {
+		next.Failures++
+		delay = time.Duration(1<<min(next.Failures, 3)) * time.Second
+		if next.Failures >= 4 {
+			delay = 24 * time.Hour
+		}
+	}
+	next.DueAt = time.Now().Add(delay).UnixMilli()
+	if err := w.Store.UpdateProgress(ctx, p, next); err != nil {
+		return err
+	}
+	w.changed(eventReview, p.WakerID, p.ChatID)
+	return nil
 }
 
 func (w *Worker) observe(ctx context.Context, chat string) error {
@@ -372,19 +371,11 @@ func (w *Worker) UpdateSettings(ctx context.Context, v Settings) error {
 	} else if !validFrequency(v.EveryTurns) {
 		return status_error.BadRequest
 	}
-	configurationChanged := current.Source != v.Source || current.RuntimeID != v.RuntimeID || current.AccountID != v.AccountID || current.Model != v.Model
-	if !configurationChanged && v.EveryTurns == current.EveryTurns {
+	if v == current {
 		return nil
-	}
-	v.Generation = current.Generation
-	if configurationChanged {
-		v.Generation++
 	}
 	if err = w.Store.SetSettings(ctx, v, v.EveryTurns < current.EveryTurns); err != nil {
 		return err
-	}
-	if configurationChanged {
-		w.cancelFlight("", "")
 	}
 	w.changed(eventSettings, "", "")
 	w.Wake()
@@ -411,48 +402,53 @@ func (w *Worker) UpdatePartner(ctx context.Context, id string, v Partner) error 
 	if err != nil {
 		return err
 	}
+	if current.MemoryEnabled == v.MemoryEnabled && current.SkillMode == v.SkillMode {
+		return nil
+	}
 	v.MemoryGeneration, v.SkillGeneration = current.MemoryGeneration, current.SkillGeneration
 	if current.MemoryEnabled != v.MemoryEnabled {
 		v.MemoryGeneration++
 	}
-	if current.SkillMode != v.SkillMode {
+	if (current.SkillMode == ModeOff) != (v.SkillMode == ModeOff) {
 		v.SkillGeneration++
 	}
 	if err = w.Store.SetPartner(ctx, id, v); err != nil {
 		return err
-	}
-	if current.MemoryGeneration != v.MemoryGeneration || current.SkillGeneration != v.SkillGeneration {
-		w.cancelFlight(id, "")
 	}
 	w.changed(eventReview, id, "")
 	w.Wake()
 	return nil
 }
 
-// Effective 读取伙伴的可用配置、授权和冻结代次。
-func (w *Worker) Effective(ctx context.Context, id string) (Selection, Partner, Admission, error) {
+// Effective 读取伙伴当前设置及模型选择，供配置页面展示。
+func (w *Worker) Effective(ctx context.Context, id string) (Selection, Partner, error) {
 	cfg, err := w.Store.Partner(ctx, id)
 	if err != nil {
-		return Selection{}, cfg, Admission{}, err
+		return Selection{}, cfg, err
 	}
-	return w.effectivePartner(ctx, id, cfg)
+	selection, err := w.resolve(ctx, id)
+	return selection, cfg, err
 }
 
-func (w *Worker) effectivePartner(ctx context.Context, id string, cfg Partner) (Selection, Partner, Admission, error) {
+func (w *Worker) resolve(ctx context.Context, id string) (Selection, error) {
 	settings, err := w.Store.Settings(ctx)
 	if err != nil {
-		return Selection{}, cfg, Admission{}, err
+		return Selection{}, err
 	}
 	selection, err := w.ports.Resolve(ctx, id, settings)
 	selection.EveryTurns = settings.EveryTurns
-	origin := Admission{Configuration: selection.ConfigurationKey(settings)}
+	return selection, err
+}
+
+func (cfg Partner) admission() Admission {
+	var origin Admission
 	if cfg.MemoryEnabled {
 		origin.Memory = cfg.MemoryGeneration
 	}
 	if cfg.SkillMode != ModeOff {
 		origin.Skill = cfg.SkillGeneration
 	}
-	return selection, cfg, origin, err
+	return origin
 }
 
 // Freeze 捕获普通聊天接纳时的权限，暂不可用的配置不阻塞聊天。
@@ -463,36 +459,20 @@ func (w *Worker) Freeze(ctx context.Context, id string, project, temporary bool)
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Millisecond)
 	defer cancel()
 	cfg, err := w.Store.Partner(ctx, id)
-	if err != nil || (!cfg.MemoryEnabled && cfg.SkillMode == ModeOff) {
+	if err != nil {
 		return nil
 	}
-	_, _, origin, _ := w.effectivePartner(ctx, id, cfg)
+	origin := cfg.admission()
 	if project {
 		origin.Memory = 0
 	}
-	if origin.Configuration == "" || (origin.Memory == 0 && origin.Skill == 0) {
+	if origin == (Admission{}) {
 		return nil
 	}
 	return &origin
 }
 
-// ChangeFollowedDefault serializes an actual partner default change with review submission and publication.
-func (w *Worker) ChangeFollowedDefault(ctx context.Context, id string, change func() (bool, error)) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	changed, err := change()
-	if err == nil && changed {
-		settings, settingsErr := w.Store.Settings(ctx)
-		if settingsErr != nil || settings.Source != SourceGlobal {
-			w.cancelFlight(id, "")
-			w.changed(eventReview, id, "")
-			w.Wake()
-		}
-	}
-	return err
-}
-
-func (w *Worker) review(ctx context.Context, p Progress) error {
+func (w *Worker) review(ctx context.Context, p *Progress) error {
 	access, err := w.ports.Chat(ctx, p.ChatID)
 	if util.HasStatusCode(err, status_error.ChatNotFound) {
 		return w.forgetMissingChat(ctx, p.WakerID, p.ChatID)
@@ -500,13 +480,19 @@ func (w *Worker) review(ctx context.Context, p Progress) error {
 	if err != nil {
 		return err
 	}
-	selection, cfg, origin, resolveErr := w.Effective(ctx, p.WakerID)
-	if !cfg.MemoryEnabled && cfg.SkillMode == ModeOff {
-		p.Through, p.DueAt = 0, idleReviewDueAt
-		return w.Store.Schedule(ctx, p)
+	cfg, err := w.Store.Partner(ctx, p.WakerID)
+	if err != nil {
+		return err
 	}
-	if resolveErr != nil {
-		return resolveErr
+	origin := cfg.admission()
+	if origin == (Admission{}) {
+		next := *p
+		next.Through, next.DueAt = 0, idleReviewDueAt
+		return w.Store.UpdateProgress(ctx, *p, next)
+	}
+	selection, err := w.resolve(ctx, p.WakerID)
+	if err != nil {
+		return err
 	}
 	if p.Through == 0 {
 		starts, err := w.ports.TurnStarts(ctx, p.ChatID, p.Cursor, access.LatestSequence, origin, selection.EveryTurns)
@@ -514,28 +500,35 @@ func (w *Worker) review(ctx context.Context, p Progress) error {
 			return err
 		}
 		if len(starts) == 0 {
-			return w.Store.Skip(ctx, p, max(p.Cursor, access.LatestSequence), idleReviewDueAt)
+			return w.skipReviewThrough(ctx, *p, access.LatestSequence, idleReviewDueAt)
 		}
-		p.Through = ReadyThrough(starts, 0, selection.EveryTurns, access.Active, time.Now())
-		if p.Through == 0 {
-			p.DueAt = idleReviewDueAt
+		next := *p
+		next.Through = ReadyThrough(starts, 0, selection.EveryTurns, access.Active, time.Now())
+		if next.Through == 0 {
+			next.DueAt = idleReviewDueAt
 			if len(starts) >= IdleTurns && !access.Active {
-				p.DueAt = starts[len(starts)-1].At.Add(IdleDelay).UnixMilli()
+				next.DueAt = starts[len(starts)-1].At.Add(IdleDelay).UnixMilli()
 			}
-			return w.Store.Schedule(ctx, p)
 		}
-		if err = w.Store.Schedule(ctx, p); err != nil {
+		if err = w.Store.UpdateProgress(ctx, *p, next); err != nil || next.Through == 0 {
 			return err
 		}
+		*p = next
 	}
-	turns, err := w.readEvidence(ctx, p, origin)
+	turns, err := w.readEvidence(ctx, *p, origin)
 	if err != nil {
 		return err
 	}
 	if len(turns) == 0 {
-		return w.Store.Skip(ctx, p, max(p.Cursor, p.Through), 0)
+		return w.skipReviewThrough(ctx, *p, p.Through, 0)
 	}
-	return w.evaluate(ctx, selection, cfg, origin, p, turns)
+	return w.evaluate(ctx, selection, cfg, origin, *p, turns)
+}
+
+func (w *Worker) skipReviewThrough(ctx context.Context, p Progress, through, dueAt int64) error {
+	next := p
+	next.Cursor, next.Through, next.DueAt, next.Failures = max(p.Cursor, through), 0, dueAt, 0
+	return w.Store.UpdateProgress(ctx, p, next)
 }
 
 // readEvidence 逐页读取正文，填满本次模型证据预算后保留其余冻结区间。
@@ -696,7 +689,7 @@ func (w *Worker) evaluate(ctx context.Context, selection Selection, cfg Partner,
 		for i := range prompt.Skills {
 			prompt.Skills[i].SkillID = skillReferences.add("s", skills[i].SkillID)
 		}
-		prior, err := w.Store.RecentSkillSuggestions(ctx, p.WakerID, origin)
+		prior, err := w.Store.RecentSkillSuggestions(ctx, p.WakerID, origin.Skill)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -716,14 +709,7 @@ func (w *Worker) evaluate(ctx context.Context, selection Selection, cfg Partner,
 	if wantMemory || wantSkill {
 		prompt.Turns = modelEvidence(evidence, wantMemory, wantSkill, evidenceReferences)
 		data, _ := json.Marshal(prompt)
-		permitted := origin
-		if !wantMemory {
-			permitted.Memory = 0
-		}
-		if !wantSkill {
-			permitted.Skill = 0
-		}
-		answer, err := w.generate(ctx, selection, p.WakerID, p.ChatID, permitted, reviewUsage, reviewInstruction(wantMemory, wantSkill), string(data))
+		answer, err := w.generate(ctx, selection, p.WakerID, p.ChatID, reviewUsage, reviewInstruction(wantMemory, wantSkill), string(data))
 		if err != nil {
 			return err
 		}
@@ -774,12 +760,7 @@ func (w *Worker) evaluate(ctx context.Context, selection Selection, cfg Partner,
 	batch.Progress.Through = evidence[len(evidence)-1].Sequence
 	commit := MemoryCommit(w.Store.CommitOnly)
 	if len(changes) > 0 {
-		memoryOnly := origin
-		memoryOnly.Skill = 0
-		err = w.authorizedCall(ctx, p.WakerID, p.ChatID, memoryOnly, func(ctx context.Context, gate func(context.Context) error) error {
-			if err := gate(ctx); err != nil {
-				return err
-			}
+		err = w.withSource(ctx, p.WakerID, p.ChatID, func(ctx context.Context) error {
 			var err error
 			commit, err = w.ports.Prepare(ctx, batch)
 			return err
@@ -788,29 +769,11 @@ func (w *Worker) evaluate(ctx context.Context, selection Selection, cfg Partner,
 			return err
 		}
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	_, _, current, err := w.Effective(ctx, p.WakerID)
-	if err != nil {
-		return err
-	}
-	if current.Configuration != origin.Configuration {
-		return status_error.Conflict
-	}
-	if current.Skill != origin.Skill {
-		suggestion = nil
-	}
-	if current.Memory != origin.Memory {
-		commit = w.Store.CommitOnly
-	}
-	unlock, err := w.ports.Guard(p.WakerID, p.ChatID)
+	unlock, err := w.guardSource(ctx, p.WakerID, p.ChatID)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	if _, err = w.ports.Chat(ctx, p.ChatID); err != nil {
-		return err
-	}
 	memoryChanged, suggestionAdded := false, false
 	if err = commit(ctx, func(tx *sql.Tx, changed bool) error {
 		memoryChanged = changed

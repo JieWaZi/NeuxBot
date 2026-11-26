@@ -22,15 +22,8 @@ func TestSkillManagementPersistsImmutableEditsAndReceipts(t *testing.T) {
 	svc.commands = controllers.NewAgentCommandController(db.DB)
 	ctx := t.Context()
 	var approvals []string
-	var changes []string
 	bindings := svc.ManagementBindings("owner", "run", func(_ context.Context, reason string) error {
 		approvals = append(approvals, reason)
-		return nil
-	}, func(_ context.Context, action, id, version, name string) error {
-		changes = append(changes, action)
-		if id == "" || version == "" || name != "checklist" {
-			t.Fatalf("invalid change payload: %v %v %v %v", action, id, version, name)
-		}
 		return nil
 	})
 	call := func(action, requestID string, params map[string]any) (capability.Result, error) {
@@ -86,8 +79,8 @@ func TestSkillManagementPersistsImmutableEditsAndReceipts(t *testing.T) {
 		t.Fatalf("old version accepted: %v", err)
 	}
 	deleted, err := call("delete", "delete", map[string]any{"skillId": id, "expectedVersionId": id2})
-	if err != nil || deleted.CommandID == "" || len(approvals) != 2 || !slices.Contains(changes, "delete") {
-		t.Fatalf("delete result = %+v, %v, approvals %v, changes %v", deleted, err, approvals, changes)
+	if err != nil || deleted.CommandID == "" || len(approvals) != 2 {
+		t.Fatalf("delete result = %+v, %v, approvals %v", deleted, err, approvals)
 	}
 	if _, err := svc.skills.GetPackage(ctx, id); !util.HasStatusCode(err, status_error.SkillNotFound) {
 		t.Fatalf("deleted skill retained: %v", err)
@@ -109,7 +102,7 @@ func TestSkillManagementChecksVisibilityAndRevalidatesApproval(t *testing.T) {
 			return svc.skills.EnsureWakerSkill(ctx, models.WakerSkill{
 				ID: "new-sharing", WakerID: "other", SkillPackageID: "imported",
 			})
-		}, nil)
+		})
 		operation := "skills.packages." + action
 		return bindings[slices.IndexFunc(bindings, func(binding capability.Binding) bool { return binding.Operation == operation })]
 	}
@@ -146,7 +139,7 @@ func TestSkillManagementRevisionPreservesVerifiedPackageResources(t *testing.T) 
 	svc, db := testLibrary(t)
 	svc.commands = controllers.NewAgentCommandController(db.DB)
 	original := seedSkill(t, svc, "imported", "checklist", constants.SkillSourceZip)
-	bindings := svc.ManagementBindings("owner", "run", nil, nil)
+	bindings := svc.ManagementBindings("owner", "run", nil)
 	operation := "skills.packages.revise"
 	revise := bindings[slices.IndexFunc(bindings, func(binding capability.Binding) bool { return binding.Operation == operation })]
 	request := capability.Request{Operation: operation, RequestID: "revise-imported", Params: map[string]any{

@@ -29,12 +29,16 @@ export type ChatMessageView = {
 export function timelineEventsInMessageWindow<
   T extends {
     createdAt: number;
+    sequence?: number;
     beforeMessageId?: string;
     afterMessageId?: string;
   },
 >(
   events: readonly T[],
-  messages: readonly Pick<BotChatMessage, "id" | "createdAt">[],
+  messages: readonly Pick<
+    BotChatMessage,
+    "id" | "createdAt" | "createdSequence"
+  >[],
   hasEarlierMessages: boolean,
 ): readonly T[] {
   if (
@@ -47,11 +51,21 @@ export function timelineEventsInMessageWindow<
     (oldest, message) => Math.min(oldest, message.createdAt ?? Infinity),
     Infinity,
   );
+  const earliestSequence = messages.reduce(
+    (oldest, message) =>
+      (message.createdSequence ?? 0) > 0
+        ? Math.min(oldest, message.createdSequence ?? Infinity)
+        : oldest,
+    Infinity,
+  );
   return events.filter((event) => {
     const anchor = event.beforeMessageId ?? event.afterMessageId;
-    return anchor
-      ? messageIds.has(anchor)
-      : !hasEarlierMessages || event.createdAt >= earliest;
+    if (anchor) return messageIds.has(anchor);
+    if (!hasEarlierMessages) return true;
+    const sequence = event.sequence ?? 0;
+    return sequence > 0 && Number.isFinite(earliestSequence)
+      ? sequence >= earliestSequence
+      : event.createdAt >= earliest;
   });
 }
 

@@ -61,6 +61,9 @@ func (s *service) AcquireChatInput(ctx context.Context, chatID string, userInput
 	if !exists {
 		return ctx, func() {}, nil
 	}
+	if thread.LeadChatID == chatID && teamwork.IsMemberReplyRoute(ctx) {
+		return nil, nil, status_error.ChatReplyTargetUnavailable
+	}
 	locked, release, err := teamwork.Acquire(ctx, thread.ChannelID)
 	if err != nil {
 		return nil, nil, err

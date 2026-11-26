@@ -4,13 +4,19 @@ import type { JSONContent } from "@tiptap/core";
 import { useEffect, useRef, useState } from "react";
 import { listWorkflowsOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
-import { pathFile, type BotPathFile } from "../runtime/chat-attachment-adapter";
+import {
+  fileForFreshSubmission,
+  pathFile,
+  type BotPathFile,
+} from "../runtime/chat-attachment-adapter";
+import type { ChatReplyReference } from "../runtime/chat-projection";
 
 export type ChatWorkflowReference = { id: string; name: string };
 type ChatComposerDraft = {
   document?: JSONContent;
   attachments?: readonly BotPathFile[];
   uploads?: Set<Promise<void>>;
+  replyTo?: { chatId: string; target: ChatReplyReference };
   pendingSubmission?: symbol;
   restoredSubmission?: symbol;
 };
@@ -40,7 +46,12 @@ function updateDraft(
   changes: Partial<ChatComposerDraft>,
 ) {
   const draft = { ...drafts.get(key), ...changes };
-  if (draft.document || draft.attachments?.length || draft.uploads?.size) {
+  if (
+    draft.document ||
+    draft.attachments?.length ||
+    draft.uploads?.size ||
+    draft.replyTo
+  ) {
     draft.pendingSubmission = undefined;
     drafts.set(key, draft);
   } else if (draft.pendingSubmission) drafts.set(key, draft);
@@ -50,8 +61,19 @@ function updateDraft(
 export function hasChatComposerDraft(drafts: ChatComposerDrafts, key: string) {
   const draft = drafts.get(key);
   return Boolean(
-    draft?.document || draft?.attachments?.length || draft?.uploads?.size,
+    draft?.document ||
+    draft?.attachments?.length ||
+    draft?.uploads?.size ||
+    draft?.replyTo,
   );
+}
+
+export function setChatComposerDraftReply(
+  drafts: ChatComposerDrafts,
+  key: string,
+  replyTo: ChatComposerDraft["replyTo"],
+) {
+  updateDraft(drafts, key, { replyTo });
 }
 
 /** 页签只清空可编辑草稿，原提交有自己的文档与附件快照。 */
@@ -61,44 +83,54 @@ export function captureTeamComposerDraft(
   message: AppendMessage,
   onRestored: () => void,
 ) {
-  const document = drafts.get(key)?.document;
-  const attachments = (message.attachments ?? []).flatMap((attachment) =>
-    (attachment.content ?? []).flatMap((part) =>
-      part.type === "file"
-        ? [
-            pathFile(part.data, {
-              name: attachment.name,
-              contentType: part.mimeType,
-            }),
-          ]
-        : [],
-    ),
-  );
-  if (!document && !attachments.length) return;
+  const { document, replyTo } = drafts.get(key) ?? {};
+  const attachments = (message.attachments ?? []).flatMap((attachment) => {
+    const file = attachment.file as BotPathFile | undefined;
+    return file?.botSourcePath
+      ? [file]
+      : attachment.content.flatMap((part) =>
+          part.type === "file"
+            ? [
+                pathFile(part.data, {
+                  name: attachment.name,
+                  contentType: part.mimeType,
+                }),
+              ]
+            : [],
+        );
+  });
+  if (!document && !attachments.length && !replyTo) return;
   const pendingSubmission = Symbol();
   drafts.set(key, { pendingSubmission });
-  return (rejected: boolean) => {
-    if (drafts.get(key)?.pendingSubmission !== pendingSubmission) return;
+  return (rejected: boolean, restoreIfEmpty = false) => {
+    const current = drafts.get(key);
+    if (
+      current?.pendingSubmission !== pendingSubmission &&
+      !(rejected && restoreIfEmpty && !current)
+    )
+      return false;
     if (rejected) {
       drafts.set(key, {
         document,
-        attachments,
+        attachments: replyTo
+          ? attachments.map(fileForFreshSubmission)
+          : attachments,
+        replyTo,
         restoredSubmission: pendingSubmission,
       });
       onRestored();
-    } else {
-      drafts.delete(key);
+      return true;
     }
+    drafts.delete(key);
+    return false;
   };
 }
 
 function composerFiles(composer: ThreadComposerRuntime): BotPathFile[] {
-  return composer
-    .getState()
-    .attachments.flatMap(({ file, name, contentType }) => {
-      const sourcePath = (file as BotPathFile | undefined)?.botSourcePath;
-      return sourcePath ? [pathFile(sourcePath, { name, contentType })] : [];
-    });
+  return composer.getState().attachments.flatMap(({ file }) => {
+    const source = file as BotPathFile | undefined;
+    return source?.botSourcePath ? [source] : [];
+  });
 }
 
 /** 主聊和成员各用原 Composer，暂存中的粘贴随草稿在页签间交接。 */
@@ -210,10 +242,7 @@ export function useTeamComposerDraftAttachments(
             updateDraft(drafts, draft[0], {
               attachments: [
                 ...(draft[1].attachments ?? []),
-                pathFile(sourcePath, {
-                  name: file.name,
-                  contentType: file.type,
-                }),
+                file as BotPathFile,
               ],
             });
           }

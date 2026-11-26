@@ -81,11 +81,18 @@ func (s *service) createThread(
 	input.ProjectID = strings.TrimSpace(input.ProjectID)
 	input.WorkingDirectory = strings.TrimSpace(input.WorkingDirectory)
 	input.MentionWakerID = strings.TrimSpace(input.MentionWakerID)
+	if input.Input.ReplyToMessageID != "" {
+		return ThreadResult{}, status_error.ChatReplyTargetUnavailable
+	}
+	if input.Input.AttachmentOnly && len(input.Input.Attachments) == 0 {
+		return ThreadResult{}, status_error.MessageAttachmentInvalid
+	}
 	if input.Input.Actor != constants.AutomaticTaskActor {
 		input.Input.Actor = string(constants.ChannelMessageActorUser)
 	}
 	if input.ChannelID == "" || input.ClientRequestID == "" ||
 		(strings.TrimSpace(input.Input.Content) == "" && input.Input.Workflow == nil) ||
+		(input.Input.CodeReferenceOnly && len(input.Input.CodeReferences) == 0) ||
 		(input.Input.Workflow != nil && input.MentionWakerID != "") ||
 		(input.ProjectID != "" && input.WorkingDirectory != "") {
 		return ThreadResult{}, status_error.BadRequest
@@ -658,8 +665,18 @@ func (s *service) sendMessage(
 ) (SendMessageResult, error) {
 	input.ThreadID = strings.TrimSpace(input.ThreadID)
 	input.MentionWakerID = strings.TrimSpace(input.MentionWakerID)
+	input.Input.ReplyToMessageID = strings.TrimSpace(input.Input.ReplyToMessageID)
+	if input.Input.ReplyToMessageID != "" {
+		// 主对话引用的是历史消息，仍由负责人协调当前用户输入。
+		input.MentionWakerID = ""
+	}
+	if input.Input.AttachmentOnly && len(input.Input.Attachments) == 0 {
+		return SendMessageResult{}, status_error.MessageAttachmentInvalid
+	}
 	input.Input.Actor = string(constants.ChannelMessageActorUser)
-	if input.ThreadID == "" || (strings.TrimSpace(input.Input.Content) == "" && input.Input.Workflow == nil) || (input.Input.Workflow != nil && input.MentionWakerID != "") {
+	if input.ThreadID == "" || (strings.TrimSpace(input.Input.Content) == "" && input.Input.Workflow == nil) ||
+		(input.Input.CodeReferenceOnly && len(input.Input.CodeReferences) == 0) ||
+		(input.Input.Workflow != nil && input.MentionWakerID != "") {
 		return SendMessageResult{}, status_error.BadRequest
 	}
 	inputContext := ctx
@@ -686,6 +703,15 @@ func (s *service) sendMessage(
 		}
 	}
 	if input.MentionWakerID != "" && input.MentionWakerID != thread.LeadWakerID {
+		var releaseAttachments func(bool)
+		attachmentsAccepted := false
+		if input.ClaimAttachments != nil {
+			releaseAttachments, err = input.ClaimAttachments(&input.Input)
+			if err != nil {
+				return SendMessageResult{}, err
+			}
+			defer func() { releaseAttachments(attachmentsAccepted) }()
+		}
 		active, activeErr := s.activeTaskForAssignee(ctx, thread.ID, input.MentionWakerID)
 		if activeErr != nil {
 			return SendMessageResult{}, activeErr
@@ -694,6 +720,7 @@ func (s *service) sendMessage(
 			if err := s.FollowUpTask(ctx, active.ID, input.Input); err != nil {
 				return SendMessageResult{}, err
 			}
+			attachmentsAccepted = true
 			return SendMessageResult{Task: active}, nil
 		}
 		release()
@@ -708,9 +735,10 @@ func (s *service) sendMessage(
 		if err != nil {
 			return SendMessageResult{}, err
 		}
+		attachmentsAccepted = true
 		return SendMessageResult{Task: &created.Task}, nil
 	}
-	queued, err := s.enqueueLeadInput(ctx, thread, input.Input, input.MentionWakerID != "" || input.Input.Workflow != nil, input.AdmissionBoundary)
+	queued, err := s.enqueueLeadInput(ctx, thread, input)
 	if err != nil {
 		return SendMessageResult{}, err
 	}

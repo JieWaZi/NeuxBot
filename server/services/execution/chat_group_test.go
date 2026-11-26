@@ -6,12 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // failingRuntimeEnvironmentReader 为团队 Chat 准备测试保留底层环境查询错误。
@@ -36,6 +39,13 @@ func TestPrepareChatGroupUsesLeadMemberChatAsMainChat(t *testing.T) {
 	threadID := "thread-shared-workspace"
 	leadChatID := "11111111111111111111111111111111"
 	memberChatID := "22222222222222222222222222222222"
+	core := manager.execution.(*service)
+	core.acquireTeamChatInput = func(ctx context.Context, chatID string, _ bool) (context.Context, func(), error) {
+		if chatID == leadChatID && teamwork.IsMemberReplyRoute(ctx) {
+			return nil, nil, status_error.ChatReplyTargetUnavailable
+		}
+		return ctx, func() {}, nil
+	}
 	group, err := manager.execution.PrepareChatGroup(
 		context.Background(),
 		PrepareChatGroupIntent{
@@ -132,6 +142,61 @@ func TestPrepareChatGroupUsesLeadMemberChatAsMainChat(t *testing.T) {
 	otherHistory, err := manager.chats.ReadMessageHistory(context.Background(), group.Chats[0].ID, 0, 10)
 	if err != nil || len(otherHistory.Resources) != 0 {
 		t.Fatalf("unassigned member chat history = %+v, error = %v", otherHistory.Resources, err)
+	}
+	reply := replyTestIntent(memberChatID, accepted.Execution.ID)
+	crossChat := replyTestIntent(leadChatID, accepted.Execution.ID)
+	if _, err := manager.execution.Start(t.Context(), crossChat); !errors.Is(err, status_error.ChatReplyTargetUnavailable) {
+		t.Fatalf("另一成员 Chat 的文本成为引用: %v", err)
+	}
+	followUp, err := manager.execution.Start(t.Context(), reply)
+	if err != nil || followUp.Chat.ID != memberChatID {
+		t.Fatalf("成员 Chat 引用没有沿原路径发送: %+v, %v", followUp, err)
+	}
+	waitForChatTerminal(t, manager, memberChatID)
+	memberHistory, err := manager.chats.ReadMessageHistory(t.Context(), memberChatID, 0, 10)
+	if err != nil || len(memberHistory.Resources) != 4 || memberHistory.Resources[2].ReplyTo == nil ||
+		memberHistory.Resources[2].ReplyTo.SourceWakerID != "waker-2" {
+		t.Fatalf("成员 Chat 引用丢失原助手作者: %+v, %v", memberHistory.Resources, err)
+	}
+	if err := manager.chats.AppendParticipantMessages(t.Context(), leadChatID, []chatservice.ParticipantMessageInput{{
+		ID: "team-report", Actor: string(constants.ChannelMessageActorMemberReport), Content: "只公开这段成员报告",
+		SourceWakerID: "waker-2", SourceChatID: memberChatID,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	leadReply := replyTestIntent(leadChatID, "team-report")
+	if _, err := manager.execution.Start(t.Context(), leadReply); !errors.Is(err, status_error.ChatReplyTargetUnavailable) {
+		t.Fatalf("成员路径可以引用负责人时间线报告: %v", err)
+	}
+	leadReply.Options.EntryPoint = ""
+	leadReply.Admission = constants.ExecutionAdmissionCommitBeforeDispatch
+	leadReply.TeamReplyThreadID = "unrelated-thread"
+	if _, err := manager.execution.Start(t.Context(), leadReply); !errors.Is(err, status_error.ChatReplyTargetUnavailable) {
+		t.Fatalf("跨团队对话引用成为公开报告: %v", err)
+	}
+	leadReply.TeamReplyThreadID = threadID
+	coordinated, err := manager.execution.Start(t.Context(), leadReply)
+	if err != nil || coordinated.Chat.ID != leadChatID {
+		t.Fatalf("报告引用没有进入负责人 Chat: %+v, %v", coordinated, err)
+	}
+	waitForChatTerminal(t, manager, leadChatID)
+	leadHistory, err := manager.chats.ReadMessageHistory(t.Context(), leadChatID, 0, 10)
+	if err != nil || len(leadHistory.Resources) != 3 {
+		t.Fatalf("负责人引用历史: %+v, %v", leadHistory.Resources, err)
+	}
+	quote := leadHistory.Resources[1].ReplyTo
+	if quote == nil || quote.MessageID != "team-report" || quote.Role != constants.MessageRoleAssistant ||
+		quote.SourceWakerID != "waker-2" || quote.Preview != "只公开这段成员报告" {
+		t.Fatalf("团队公开引用缺少报告作者或正文: %+v", quote)
+	}
+	genericLeadReply := replyTestIntent(leadChatID, coordinated.Execution.ID)
+	genericLeadReply.Input.SubmissionID = "generic-lead-reply"
+	if _, err := manager.execution.Start(t.Context(), genericLeadReply); !errors.Is(err, status_error.ChatReplyTargetUnavailable) {
+		t.Fatalf("通用接口绕过主对话队列引用了负责人答复: %v", err)
+	}
+	if calls := manager.nativeCalls(t, "turn/start"); len(calls) != 3 ||
+		!strings.Contains(string(calls[2]), `\"role\":\"assistant\",\"sourceWakerId\":\"waker-2\",\"text\":\"只公开这段成员报告\"`) {
+		t.Fatalf("原生负责人输入缺少团队报告事实: %s", calls)
 	}
 }
 

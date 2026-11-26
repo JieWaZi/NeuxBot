@@ -261,10 +261,39 @@ func (p *MessageViewBuilder) snapshotMessage(message Message, public bool) Messa
 		} else {
 			message.Content += "\n\n" + text
 		}
-		message.DisplayParts = append(message.DisplayParts, MessageDisplayPart{ID: message.ID + ":delivery", Type: constants.MessageDisplayPartText, Text: text})
+		message.DisplayParts = append(message.DisplayParts, MessageDisplayPart{ID: DeliveryPartID(message.ID), Type: constants.MessageDisplayPartText, Text: text})
 	}
 	message.Readable = ReadingKind(message) != ""
 	return message
+}
+
+// DeliveryPartID 返回助手消息所附交付摘要的稳定部件标识。
+func DeliveryPartID(messageID string) string {
+	return messageID + ":delivery"
+}
+
+// AssistantResponseText 提取公开答复，成功回合只保留最后一组连续正文。
+func (message Message) AssistantResponseText(finalOnly bool) string {
+	var paragraphs []string
+	separated := false
+	for _, part := range message.DisplayParts {
+		switch part.Type {
+		case constants.MessageDisplayPartText:
+			if part.ID == DeliveryPartID(message.ID) || strings.TrimSpace(part.Text) == "" {
+				continue
+			}
+			if finalOnly && separated {
+				paragraphs = paragraphs[:0]
+			}
+			paragraphs = append(paragraphs, part.Text)
+			separated = false
+		case constants.MessageDisplayPartTool:
+			separated = true
+		case constants.MessageDisplayPartProcessCommentary, constants.MessageDisplayPartReasoning:
+			separated = separated || strings.TrimSpace(part.Text) != ""
+		}
+	}
+	return strings.Join(paragraphs, "\n\n")
 }
 
 func (p *MessageViewBuilder) applyExecutionDelivery(record eventlog.Record) (string, error) {
@@ -349,25 +378,28 @@ func (p *MessageViewBuilder) applyMessageCreated(record eventlog.Record) (string
 		return "", nil
 	}
 	message := Message{
-		ID:              record.MessageID,
-		SubmissionID:    data.SubmissionID,
-		Role:            data.Role,
-		Actor:           data.Actor,
-		SourceWakerID:   data.SourceWakerID,
-		SourceChatID:    data.SourceChatID,
-		Truncated:       data.Truncated,
-		Content:         data.Content,
-		Attachments:     append([]eventlog.AttachmentReference(nil), data.Attachments...),
-		Plugins:         append([]plugins.Snapshot(nil), data.Plugins...),
-		Skills:          append([]eventlog.MessageSkillReference(nil), data.Skills...),
-		Connectors:      append([]eventlog.MessageConnectorReference(nil), data.Connectors...),
-		CodeReferences:  append([]eventlog.CodeReference(nil), data.CodeReferences...),
-		Workflow:        data.Workflow,
-		Revision:        record.Sequence,
-		LiveRevision:    record.Sequence,
-		CreatedSequence: record.Sequence,
-		CreatedAt:       record.RecordedAt,
-		UpdatedAt:       record.RecordedAt,
+		ID:                record.MessageID,
+		SubmissionID:      data.SubmissionID,
+		Role:              data.Role,
+		Actor:             data.Actor,
+		SourceWakerID:     data.SourceWakerID,
+		SourceChatID:      data.SourceChatID,
+		Truncated:         data.Truncated,
+		Content:           data.Content,
+		AttachmentOnly:    data.AttachmentOnly,
+		CodeReferenceOnly: data.CodeReferenceOnly,
+		ReplyTo:           data.ReplyTo,
+		Attachments:       append([]eventlog.AttachmentReference(nil), data.Attachments...),
+		Plugins:           append([]plugins.Snapshot(nil), data.Plugins...),
+		Skills:            append([]eventlog.MessageSkillReference(nil), data.Skills...),
+		Connectors:        append([]eventlog.MessageConnectorReference(nil), data.Connectors...),
+		CodeReferences:    append([]eventlog.CodeReference(nil), data.CodeReferences...),
+		Workflow:          data.Workflow,
+		Revision:          record.Sequence,
+		LiveRevision:      record.Sequence,
+		CreatedSequence:   record.Sequence,
+		CreatedAt:         record.RecordedAt,
+		UpdatedAt:         record.RecordedAt,
 	}
 	if data.Content != "" {
 		message.DisplayParts = []MessageDisplayPart{{
@@ -870,6 +902,10 @@ func displayPartID(messageID string, sequence int64) string {
 // cloneMessage 深拷贝可变字段，并按公开视图要求移除 Runtime 原始事件。
 func cloneMessage(message Message, public bool) Message {
 	clone := message
+	if message.ReplyTo != nil {
+		reply := *message.ReplyTo
+		clone.ReplyTo = &reply
+	}
 	if message.FileChangeRecord != nil {
 		record := *message.FileChangeRecord
 		clone.FileChangeRecord = &record

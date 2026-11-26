@@ -40,6 +40,8 @@ const (
 	ChannelEventLeadInputQueued ChannelEventType = "lead.input_queued"
 	// ChannelEventLeadInputFailed 表示负责人队列已结算未进入 Chat 的输入。
 	ChannelEventLeadInputFailed ChannelEventType = "lead.input_failed"
+	// ChannelEventLeadInputCancelled 表示指定的负责人队列输入已取消。
+	ChannelEventLeadInputCancelled ChannelEventType = "lead.input_cancelled"
 	// ChannelEventTeamLeaderProcessing 表示负责人开始或结束处理成员结果批次。
 	ChannelEventTeamLeaderProcessing ChannelEventType = "team.leader.processing"
 	// ChannelEventMemberDirectDelivered 表示成员报告已直接成为团队主时间线的完整答复。

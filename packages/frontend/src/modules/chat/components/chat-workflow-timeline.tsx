@@ -1,4 +1,5 @@
 import {
+  isCancelledError,
   useMutation,
   useQueries,
   useQueryClient,
@@ -710,9 +711,8 @@ export function useChatWorkflowTimeline({
     const affectedBatches = queries.flatMap((query, index) => {
       const batch = batches[index];
       if (!batch) return [];
-      // 首次失败后的重试保留错误和按钮，直到本批取得新回执。
-      const failed =
-        query.isError || (query.isPending && query.errorUpdatedAt > 0);
+      // 时间戳会跨读取保留，只有当前批次的实际失败才进入时间线。
+      const failed = query.isError && !isCancelledError(query.error);
       const loading =
         query.isLoading &&
         batch.some((id) => uncovered.has(id) && workflowExecutions.has(id));

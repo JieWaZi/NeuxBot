@@ -15,6 +15,8 @@ type ChannelLeadInput struct {
 	ThreadID string `gorm:"column:thread_id;type:varchar(32);not null;index" json:"threadId"`
 	// Payload 是完整用户输入，包含正文与有序能力引用。
 	Payload workinput.Input `gorm:"column:payload;type:text;not null;serializer:json" json:"payload"`
+	// RequestHash 在解析上传和冻结工作流前标记原始续发内容。
+	RequestHash string `gorm:"column:request_hash;not null;default:''" json:"-"`
 	// DirectExecution 表示用户显式提及负责人，本条输入应在负责人 Chat 中获得可写执行能力而不创建任务。
 	DirectExecution bool `gorm:"column:direct_execution;not null;default:false" json:"directExecution"`
 	// Status 是补充消息从排队到进入负责人 Chat 的投递状态。

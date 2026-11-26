@@ -19,6 +19,11 @@ import (
 
 const MaximumBytes = 64 << 20
 
+// IsReference 判断输入是否为 Core 签发的临时上传引用。
+func IsReference(value string) bool {
+	return strings.HasPrefix(value, "upload:")
+}
+
 // entry 保存暂存字节与短期接纳回执路径。
 type entry struct {
 	// subject 是签发上传的认证主体。
@@ -124,7 +129,7 @@ func (s *Store) Stage(lifetime context.Context, subject, name string, reader io.
 
 // Discard 释放已认证主体的上传，保留活动接纳与幂等回执。
 func (s *Store) Discard(subject, ref string) error {
-	if !strings.HasPrefix(ref, "upload:") {
+	if !IsReference(ref) {
 		return status_error.BadRequest
 	}
 	s.mu.Lock()
@@ -205,7 +210,7 @@ func (s *Store) Claim(subject string, refs []string, requestKeys ...string) ([]s
 	paths := make([]string, len(refs))
 	claimed := make(map[string]*entry)
 	for index, ref := range refs {
-		if !strings.HasPrefix(ref, "upload:") {
+		if !IsReference(ref) {
 			if strings.HasPrefix(subject, "web:") {
 				return nil, nil, errors.New("浏览器附件必须先上传")
 			}

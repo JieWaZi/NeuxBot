@@ -12,6 +12,12 @@ type Input struct {
 	Actor string `json:"actor"`
 	// Content 是本次需要执行的完整文本。
 	Content string `json:"content"`
+	// AttachmentOnly 表示正文是界面为附件生成的提示。
+	AttachmentOnly bool `json:"attachmentOnly,omitempty"`
+	// CodeReferenceOnly 表示没有用户正文，界面为代码引用生成提示。
+	CodeReferenceOnly bool `json:"codeReferenceOnly,omitempty"`
+	// ReplyToMessageID 是同一公开对话中选中的已提交消息标识。
+	ReplyToMessageID string `json:"replyToMessageId,omitempty"`
 	// Attachments 是需要物化到受管工作区的附件。
 	Attachments []Attachment `json:"attachments,omitempty"`
 	// CodeReferences 是整文件或代码片段引用。

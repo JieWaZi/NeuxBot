@@ -27,7 +27,7 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-func forkFixture(t *testing.T) (*service, string) {
+func forkFixture(t *testing.T, withReply ...bool) (*service, string) {
 	t.Helper()
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "fork.db"), Migrate: true})
 	if err != nil {
@@ -59,8 +59,12 @@ func forkFixture(t *testing.T) (*service, string) {
 	}
 	facts := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker", WorkspaceDirectory: root, Title: "原会话"})}}
 	for _, mark := range []string{"before", "after"} {
+		user := eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: mark, Attachments: []eventlog.AttachmentReference{{Name: "before.txt", Path: "attachments/before.txt", Managed: true}}}
+		if len(withReply) != 0 && withReply[0] && mark == "after" {
+			user.ReplyTo = &eventlog.MessageReply{MessageID: "user-before", Role: constants.MessageRoleUser, Preview: "before"}
+		}
 		facts = append(facts,
-			eventlog.AppendInput{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user-" + mark, Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: mark, Attachments: []eventlog.AttachmentReference{{Name: "before.txt", Path: "attachments/before.txt", Managed: true}}})},
+			eventlog.AppendInput{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user-" + mark, Data: marshalData(user)},
 			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: mark, Data: marshalData(eventlog.ExecutionCreatedData{UserMessageID: "user-" + mark, AccountID: "account-source", RuntimeID: "custom-codex", Model: "model", Reasoning: "high", PermissionLevel: constants.PermissionLevelDefault})},
 			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: mark},
 			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: mark, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
@@ -73,6 +77,30 @@ func forkFixture(t *testing.T) (*service, string) {
 		forkNativeFixture(t, m.logStore.(*conversationJournal), id, mark, "turn", "turn-"+mark)
 	}
 	return m, id
+}
+
+func TestForkRemapsTheReplyTargetToTheInheritedMessage(t *testing.T) {
+	m, parent := forkFixture(t, true)
+	child, err := m.ForkChat(t.Context(), ForkInput{ChatID: parent, ExecutionID: "after", ClientRequestID: "fork-reply-target"},
+		NativeFork{Execute: func(context.Context, NativeForkInput) (agent.NativeBinding, error) {
+			return forkTestBinding("native-child"), nil
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := m.ReadMessageHistory(t.Context(), child, 0, 20)
+	if err != nil || len(page.Resources) != 4 {
+		t.Fatalf("unexpected fork history: %+v, %v", page, err)
+	}
+	target, reply := page.Resources[0], page.Resources[2]
+	if target.Content != "before" || reply.Content != "after" || target.ID == "user-before" ||
+		reply.ReplyTo == nil || reply.ReplyTo.MessageID != target.ID || reply.ReplyTo.Role != constants.MessageRoleUser || reply.ReplyTo.Preview != "before" {
+		t.Fatalf("fork did not link its own inherited rows: %+v, %+v", target, reply)
+	}
+	resolved, err := m.ReadReplyTarget(t.Context(), child, target.ID)
+	if err != nil || resolved.Text != "before" || resolved.Reference.MessageID != target.ID {
+		t.Fatalf("inherited message could not be quoted in its own Chat: %+v, %v", resolved, err)
+	}
 }
 
 // TestForkCopiesBoundaryWithoutExecutionsAndSurvivesParentDeletion 验证继承历史边界和独立生命周期。

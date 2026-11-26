@@ -106,6 +106,40 @@ it("filters both memory groups and paginates each independently", async () => {
   expect(reads).not.toContainEqual({ core: "true", page: "2" });
 });
 
+it("returns to the last available page when the final item moves to the core group", async () => {
+  let moved = false;
+  server.use(
+    http.get(path, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      const core = params.get("core") === "true";
+      const page = Number(params.get("pageNum"));
+      return HttpResponse.json({
+        pageNum: page,
+        pageSize: 20,
+        resources: core
+          ? moved
+            ? [{ id: "last", content: "末页记忆", core: true }]
+            : []
+          : page === 1
+            ? [{ id: "first", content: "第一页记忆", core: false }]
+            : moved
+              ? []
+              : [{ id: "last", content: "末页记忆", core: false }],
+        totalSize: core ? (moved ? 1 : 0) : moved ? 20 : 21,
+      });
+    }),
+    http.put(`${path}/last/core`, () => {
+      moved = true;
+      return HttpResponse.json({ id: "last", content: "末页记忆", core: true });
+    }),
+  );
+  const user = renderPage("?regularPage=2");
+  await user.click(
+    await group("普通记忆").findByRole("button", { name: "设为核心记忆" }),
+  );
+  expect(await group("普通记忆").findByText("第一页记忆")).toBeVisible();
+});
+
 it("creates directly for the current partner and offers settings for that partner", async () => {
   let created: unknown;
   server.use(

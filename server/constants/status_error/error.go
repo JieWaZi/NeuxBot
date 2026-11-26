@@ -855,6 +855,9 @@ const (
 	// @errZH 对话消息不存在
 	// @errEN the conversation message does not exist
 	ChatMessageNotFound StatusError = http.StatusNotFound*1e8 + 7201
+	// @errZH 当前对话中没有可引用的这条消息
+	// @errEN this message is unavailable for reply in the current conversation
+	ChatReplyTargetUnavailable StatusError = http.StatusNotFound*1e8 + 7202
 )
 
 const (

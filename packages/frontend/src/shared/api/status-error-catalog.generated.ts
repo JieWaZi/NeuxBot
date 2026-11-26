@@ -1017,6 +1017,19 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  ChatReplyTargetUnavailable: {
+    code: 40400007202,
+    en: [
+      {
+        text: "this message is unavailable for reply in the current conversation",
+      },
+    ],
+    zh: [
+      {
+        text: "当前对话中没有可引用的这条消息",
+      },
+    ],
+  },
   ChatServiceNotStarted: {
     code: 50000000003,
     en: [

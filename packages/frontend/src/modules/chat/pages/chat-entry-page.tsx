@@ -25,6 +25,7 @@ import {
   writeChatLastWakerId,
 } from "@/shared/lib/chat-navigation";
 import { Button } from "@/shared/ui/button";
+import { ApiError } from "@/shared/api/errors";
 import {
   useRouteSceneActive,
   useScenePresentationKey,
@@ -66,32 +67,37 @@ export function ChatEntryPage({
   const cachedList = queryClient.getQueryData<InfiniteData<ListChatsResponse>>(
     chatListKey(wakerId || "pending"),
   );
-  const latestFromCache = cachedList?.pages[0]?.resources?.[0];
-
-  const lastActiveQuery = useQuery({
-    ...getChatOptions({
-      path: { chatId: lastActive?.chatId ?? "pending" },
-    }),
-    enabled:
-      resolveRecent &&
-      Boolean(lastActive?.chatId) &&
-      Boolean(wakerId) &&
-      lastActive?.wakerId === wakerId &&
-      (requestedWakerReady || wakersQuery.isSuccess),
-  });
-  useLayoutEffect(() => {
-    if (!resolveRecent || !lastActiveQuery.isError || !lastActive?.chatId)
-      return;
-    clearChatLastActiveIfMatches(lastActive.chatId);
-  }, [lastActive?.chatId, lastActiveQuery.isError, resolveRecent]);
-  const staleLastActiveId =
-    lastActiveQuery.isError && lastActive?.chatId
+  const preferredChatId =
+    resolveRecent && wakerId && lastActive?.wakerId === wakerId
       ? lastActive.chatId
       : undefined;
-  const latestFromCacheSafe =
-    latestFromCache?.id && latestFromCache.id === staleLastActiveId
-      ? undefined
-      : latestFromCache;
+  const lastActiveQuery = useQuery({
+    ...getChatOptions({
+      path: { chatId: preferredChatId ?? "pending" },
+    }),
+    enabled:
+      Boolean(preferredChatId) &&
+      (requestedWakerReady || wakersQuery.isSuccess),
+  });
+  const lastActiveChat = lastActiveQuery.data?.chat;
+  const verifiedChat =
+    preferredChatId &&
+    lastActiveChat?.id === preferredChatId &&
+    (!lastActiveChat?.wakerId || lastActiveChat.wakerId === wakerId)
+      ? lastActiveChat
+      : undefined;
+  const preferredUnavailable = Boolean(
+    preferredChatId &&
+    !verifiedChat &&
+    (lastActiveQuery.isSuccess ||
+      (lastActiveQuery.error instanceof ApiError &&
+        lastActiveQuery.error.status === 404 &&
+        lastActiveQuery.fetchStatus === "idle")),
+  );
+  useLayoutEffect(() => {
+    if (preferredUnavailable && preferredChatId)
+      clearChatLastActiveIfMatches(preferredChatId);
+  }, [preferredChatId, preferredUnavailable]);
 
   const chatsQuery = useInfiniteQuery({
     ...listOptions,
@@ -100,18 +106,19 @@ export function ChatEntryPage({
       Boolean(wakerId) &&
       (requestedWakerReady || wakersQuery.isSuccess),
   });
-  const latestChat =
-    chatsQuery.data?.pages[0]?.resources?.[0] ?? latestFromCacheSafe;
-  const lastActiveChat = lastActiveQuery.data?.chat;
+  const waitingForPreferred = Boolean(
+    preferredChatId && !verifiedChat && !preferredUnavailable,
+  );
+  const rejectedChatId = preferredUnavailable ? preferredChatId : undefined;
+  const latestChat = waitingForPreferred
+    ? undefined
+    : (chatsQuery.data ?? cachedList)?.pages
+        .flatMap((page) => page.resources ?? [])
+        .find((chat) => chat.id && chat.id !== rejectedChatId);
   const resolvedTarget = resolveChatRecentTarget({
     requestedWakerId,
     lastWakerId,
-    lastActive: lastActiveChat?.id
-      ? {
-          id: lastActiveChat.id,
-          wakerId: lastActiveChat.wakerId,
-        }
-      : undefined,
+    lastActive: verifiedChat,
     wakers,
     latestChat,
   });
@@ -146,7 +153,21 @@ export function ChatEntryPage({
     );
   }
 
-  if (wakersQuery.isError && !resolvedChatHref) {
+  if (
+    waitingForPreferred &&
+    lastActiveQuery.isError &&
+    lastActiveQuery.fetchStatus === "idle"
+  ) {
+    return (
+      <ChatEntryState
+        description={t("entryLoadFailed")}
+        actionLabel={t("entryRetry")}
+        onAction={() => void lastActiveQuery.refetch()}
+      />
+    );
+  }
+
+  if (wakersQuery.isError && !requestedWakerReady) {
     return (
       <ChatEntryState
         description={t("entryLoadFailed")}
@@ -160,7 +181,8 @@ export function ChatEntryPage({
     chatsQuery.isError &&
     (requestedWakerReady || wakersQuery.isSuccess) &&
     Boolean(wakerId) &&
-    !latestFromCacheSafe
+    !latestChat &&
+    !waitingForPreferred
   ) {
     return (
       <ChatEntryState
@@ -172,10 +194,8 @@ export function ChatEntryPage({
   }
 
   if (
-    !wakersQuery.isSuccess ||
-    (Boolean(wakerId) &&
-      lastActive?.wakerId === wakerId &&
-      lastActiveQuery.isPending) ||
+    (!requestedWakerReady && !wakersQuery.isSuccess) ||
+    waitingForPreferred ||
     (Boolean(wakerId) && !latestChat && chatsQuery.isPending)
   ) {
     return (

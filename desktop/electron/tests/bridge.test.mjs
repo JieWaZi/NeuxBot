@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { loadModule } from "./load-module.mjs";
@@ -70,7 +70,58 @@ test("下载保存允许原文件扩展名，并原样写入文件字节", async
     await rm(directory, { recursive: true, force: true });
   }
 });
-test("预加载只暴露白名单方法，事件注销幂等且不泄露 Electron 事件", () => {
+test("文件管理器只定位实际存在的本机绝对路径", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "bot-reveal-test-"));
+  const target = path.join(directory, "现场日志.zip");
+  const registered = new Map();
+  const revealed = [];
+  const { installDesktopServices } = loadModule("main/desktop-services.ts", {
+    electron: {
+      ipcMain: {
+        handle: (name, handler) => registered.set(name, handler),
+        removeHandler: (name) => registered.delete(name),
+      },
+      shell: { showItemInFolder: (file) => revealed.push(file) },
+      Notification: { isSupported: () => false },
+    },
+    "node-pty": {},
+  });
+  const contents = new EventEmitter();
+  contents.mainFrame = { url: "bot://app/index.html" };
+  contents.isDestroyed = () => false;
+  const dispose = installDesktopServices(
+    { webContents: contents, isDestroyed: () => false },
+    {},
+    contents.mainFrame.url,
+  );
+  try {
+    await writeFile(target, "test");
+    const reveal = registered.get("bot:reveal_local_path");
+    assert.equal(typeof reveal, "function");
+    const event = { sender: contents, senderFrame: contents.mainFrame };
+    assert.throws(
+      () => reveal({ ...event, sender: {} }, { path: target }),
+      /来源/,
+    );
+    assert.equal(await reveal(event, { path: target }), true);
+    assert.equal(await reveal(event, { path: directory }), true);
+    for (const input of [
+      path.join(directory, "missing.zip"),
+      "relative.zip",
+      "https://example.com/file.zip",
+      "//example.com/files/report.zip",
+      String.raw`\\example.com\files\report.zip`,
+    ]) {
+      assert.equal(await reveal(event, { path: input }), false);
+    }
+    assert.deepEqual(revealed, [target, directory]);
+  } finally {
+    dispose();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("预加载只暴露白名单方法，事件注销幂等且不泄露 Electron 事件", async () => {
   const ipc = new EventEmitter();
   ipc.invoke = async (...args) => args;
   let bridge;
@@ -97,6 +148,10 @@ test("预加载只暴露白名单方法，事件注销幂等且不泄露 Electro
   assert.equal(typeof bridge.preview_desktop_storage, "function");
   assert.equal(bridge.terminal_start, undefined);
   assert.equal(bridge.open_workspace_scope, undefined);
+  assert.deepEqual(
+    await bridge.reveal_local_path({ path: "/tmp/report.zip" }),
+    ["bot:reveal_local_path", { path: "/tmp/report.zip" }],
+  );
   const received = [];
   const stop = bridge.onBrowserNavigation((event) => received.push(event));
   ipc.emit(

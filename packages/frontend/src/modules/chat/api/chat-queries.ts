@@ -3,7 +3,6 @@ export {
   cancelChatExecutionMutation,
   createChatMutation,
   deleteChatMutation,
-  getChatOptions,
   getChatQueryKey,
   getChatMessageFileChangeOptions,
   getChatMessageFileChangesOptions,
@@ -29,17 +28,27 @@ import {
   useQueryClient,
   type InfiniteData,
   type QueryClient,
+  type QueryFunctionContext,
 } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 import { clearChatLastActiveIfMatches } from "@/shared/lib/chat-navigation";
 import { refreshQueryFromEvent } from "@/shared/api/use-query-events";
+import {
+  localApiErrorMessage,
+  withLocalErrorSurface,
+} from "@/shared/api/local-error-surface";
 
 import {
+  getChatOptions as generatedGetChatOptions,
   getChatQueryKey,
   listChatSkillSuggestionsQueryKey,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
-import { listChatMessages, listChats } from "@/shared/api/generated/sdk.gen";
+import {
+  getChat,
+  listChatMessages,
+  listChats,
+} from "@/shared/api/generated/sdk.gen";
 import type {
   GetChatResponse,
   ListChatMessagesResponse,
@@ -49,6 +58,7 @@ import type {
 
 import type { ChatEvent } from "@/shared/api/events";
 import type { ChatMessageSource } from "../runtime/chat-projection";
+import { chatEventCreatedAt } from "../model/chat-message-time";
 
 type ChatCursor = {
   beforeUpdatedAt: number;
@@ -78,6 +88,52 @@ export { chatListKey };
 export const chatMessagesKey = (chatId: string) =>
   ["chats", "messages", chatId] as const;
 
+/** 详情和预取共用原查询身份，由聊天界面处理读取结果。 */
+export function getChatOptions(
+  options: Parameters<typeof generatedGetChatOptions>[0],
+) {
+  return {
+    ...generatedGetChatOptions(options),
+    queryFn: async ({
+      queryKey,
+      signal,
+    }: QueryFunctionContext<ReturnType<typeof getChatQueryKey>>) => {
+      const { data } = await getChat(
+        withLocalErrorSurface({
+          ...options,
+          ...queryKey[0],
+          signal,
+          throwOnError: true,
+        }),
+      );
+      return data;
+    },
+  };
+}
+
+export function chatReadError(
+  query: {
+    isError: boolean;
+    isFetchNextPageError?: boolean;
+    fetchStatus: "idle" | "fetching" | "paused";
+    error: unknown;
+    refetch: () => Promise<unknown>;
+  },
+  fallback: string,
+) {
+  if (
+    !query.isError ||
+    query.isFetchNextPageError ||
+    query.fetchStatus !== "idle"
+  )
+    return undefined;
+  return {
+    error: query.error,
+    message: localApiErrorMessage(query.error, fallback),
+    onRetry: () => void query.refetch(),
+  };
+}
+
 /** 接纳回执按原持久序号进入详情 Query；消息或终态先到时保留更新事实。 */
 export function commitAcceptedChat(
   queryClient: QueryClient,
@@ -98,10 +154,7 @@ export function commitAcceptedChat(
   )
     return true;
   // 旧的在途摘要不能在接纳事实提交后再覆盖原 Query。
-  void queryClient.cancelQueries(
-    { queryKey: key, exact: true },
-    { revert: false },
-  );
+  void queryClient.cancelQueries({ queryKey: key, exact: true });
   const terminal = history?.pages
     .flatMap((page) => page.resources ?? [])
     .find(
@@ -218,7 +271,10 @@ export function mergeChatHistoryEvents(
     // 同一批保留最后一份完整快照，游标保留真实权威日志的位置。
     updates.set(event.message.id, {
       ...event.message,
-      createdAt: event.message.createdAt ?? event.recordedAt,
+      createdAt: chatEventCreatedAt(
+        event,
+        updates.get(event.message.id)?.createdAt,
+      ),
       updatedAt: event.message.updatedAt ?? event.recordedAt,
     });
   }
@@ -230,7 +286,9 @@ export function mergeChatHistoryEvents(
       if (!snapshot) return message;
       changed = true;
       if (message.id) appendable.delete(message.id);
-      return snapshot;
+      return !snapshot.createdAt && message.createdAt
+        ? { ...snapshot, createdAt: message.createdAt }
+        : snapshot;
     });
     return changed ? { ...page, resources } : page;
   });
@@ -332,10 +390,14 @@ function reconcileMessageHistory(current: unknown, incoming: unknown) {
         const incomingTerminal = ["completed", "failed", "canceled"].includes(
           message.status ?? "",
         );
-        if (previousTerminal !== incomingTerminal)
-          return previousTerminal ? previous : message;
-        return (previous.revision ?? -1) > (message.revision ?? -1)
-          ? previous
+        if (
+          (previousTerminal && !incomingTerminal) ||
+          (previousTerminal === incomingTerminal &&
+            (previous.revision ?? -1) > (message.revision ?? -1))
+        )
+          return previous;
+        return !message.createdAt && previous.createdAt
+          ? { ...message, createdAt: previous.createdAt }
           : message;
       }),
     };
@@ -374,12 +436,14 @@ export function chatMessagesInfiniteOptions(chatId: string) {
       }
       const readPage = async () =>
         (
-          await listChatMessages({
-            path: { chatId },
-            query: { limit: 50, ...pageParam },
-            signal,
-            throwOnError: true,
-          })
+          await listChatMessages(
+            withLocalErrorSurface({
+              path: { chatId },
+              query: { limit: 50, ...pageParam },
+              signal,
+              throwOnError: true,
+            }),
+          )
         ).data;
       let deliverySequence = readCache()?.deliverySequence ?? 0;
       let data = await readPage();
@@ -427,7 +491,7 @@ export function chatMessagesInfiniteOptions(chatId: string) {
           // 真正的 HTTP 头部快照证明详情已落后；只淘汰旧元数据读取，不阻塞消息提交。
           const filters = { queryKey: detailKey, exact: true };
           void client
-            .cancelQueries(filters, { revert: false })
+            .cancelQueries(filters)
             .then(() => {
               if (
                 needsMetadata(client.getQueryData<GetChatResponse>(detailKey))

@@ -84,12 +84,21 @@ func TestRevisionAuthoringUsesTheOriginalEvidenceBehindTheMessageAnchor(t *testi
 	proposal.SourceMessageIDs = []string{"rendered-assistant"}
 	target.Markdown = "---\nname: checklist\ndescription: 检查清单\n---\n使用标准模板。\n保留每条验证结果。\n" + strings.Repeat("核", 3800)
 	seedSkillSuggestion(t, store, proposal)
+	if err := worker.UpdateSettings(ctx, Settings{Source: SourceGlobal, RuntimeID: "codex", Model: "new"}); err != nil {
+		t.Fatal(err)
+	}
+	if visible, err := worker.ChatSuggestions(ctx, proposal.ChatID, 0); err != nil || len(visible) != 1 {
+		t.Fatalf("suggestion disappeared after changing models: %+v, %v", visible, err)
+	}
 	queued, err := worker.ResolveSuggestion(ctx, proposal.ChatID, proposal.ID, DecisionSave, proposal.ApprovalToken())
 	if err != nil || queued.Status != StatusQueued {
 		t.Fatalf("did not queue confirmed suggestion: %+v, %v", queued, err)
 	}
 	worker.ports.Published = func(context.Context, Suggestion) (PublishedSkill, bool, error) { return PublishedSkill{}, false, nil }
-	worker.ports.Turns = func(context.Context, string, int64, int64, Admission, int) ([]Turn, error) {
+	worker.ports.Turns = func(_ context.Context, _ string, _, _ int64, admission Admission, _ int) ([]Turn, error) {
+		if admission != (Admission{Skill: proposal.Origin.Skill}) {
+			t.Fatalf("skill authoring did not use the suggestion's original evidence: %+v", admission)
+		}
 		longText := strings.Repeat(" example", 500)
 		return []Turn{
 			{Sequence: 1, UserID: "user", User: "请先核对模板。" + longText, AssistantID: "rendered-assistant",
@@ -119,6 +128,9 @@ func TestRevisionAuthoringUsesTheOriginalEvidenceBehindTheMessageAnchor(t *testi
 			}
 		}
 		if err := authorize(ctx); err != nil {
+			return "", err
+		}
+		if err := worker.UpdateSettings(ctx, Settings{Model: "next", Source: SourceGlobal, RuntimeID: "codex"}); err != nil {
 			return "", err
 		}
 		return `{"revision":{"edits":[{"before":"使用标准模板。","after":"核对后使用标准模板。"}]}}`, nil
@@ -170,13 +182,10 @@ func setupSkillApproval(t *testing.T) (*Store, *Worker, *SkillTarget, Suggestion
 			return target, nil
 		},
 	})
-	_, _, origin, err := worker.Effective(ctx, "owner")
-	if err != nil {
-		t.Fatal(err)
-	}
+	origin := worker.Freeze(ctx, "owner", false, false)
 	return store, worker, &target, Suggestion{
 		ID: "suggestion", ChatID: "chat", WakerID: "owner", Name: "checklist", Lesson: "Verify the checklist.",
-		Action: ActionUpdate, SkillID: "skill", VersionID: "v1", Status: StatusPending, Origin: origin,
+		Action: ActionUpdate, SkillID: "skill", VersionID: "v1", Status: StatusPending, Origin: *origin,
 	}
 }
 

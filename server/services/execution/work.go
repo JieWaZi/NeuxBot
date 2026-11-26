@@ -28,6 +28,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
@@ -40,6 +41,10 @@ type userMessage struct {
 	Actor string
 	// Text 是消息正文。
 	Text string
+	// AttachmentOnly 表示正文是附件的界面提示。
+	AttachmentOnly bool `json:",omitempty"`
+	// CodeReferenceOnly 表示正文是代码引用的界面提示。
+	CodeReferenceOnly bool `json:",omitempty"`
 	// Attachments 是按用户选择顺序提交的本地文件路径。
 	Attachments []AttachmentInput
 	// SkillIDs 是用户在本轮消息中明确选择调用的技能标识。
@@ -130,6 +135,12 @@ type pendingMessage struct {
 	createChatID string
 	// chatID 是续接已有对话时的标识，创建时为空。
 	chatID string
+	// replyToMessageID 是客户端选中的同一 Chat 消息身份。
+	replyToMessageID string
+	// teamReplyThreadID 固定负责人队列回复所属的团队对话。
+	teamReplyThreadID string
+	// replyTarget 保存已核验的公开引用和本轮模型摘录。
+	replyTarget *chatservice.ReplyTarget
 	// create 是创建新对话时需要锁定的身份和工作范围。
 	create *pendingChat
 	// message 是本轮用户输入。
@@ -291,7 +302,8 @@ func (m *service) startMessage(
 	}
 	// 先完成纯输入规范化和契约校验，避免任何外部副作用发生后才拒绝请求。
 	request = normalizePendingMessage(request)
-	if !validCodeReferences(request.message.CodeReferences) {
+	if !validCodeReferences(request.message.CodeReferences) ||
+		(request.message.CodeReferenceOnly && len(request.message.CodeReferences) == 0) {
 		return AcceptedExecution{}, status_error.BadRequest
 	}
 	isNew := request.chatID == ""
@@ -305,6 +317,9 @@ func (m *service) startMessage(
 		}
 		if request.imReplyLinkID != "" {
 			content = append(content, map[string]string{"imReplyLinkId": request.imReplyLinkID})
+		}
+		if request.replyToMessageID != "" {
+			content = append(content, map[string]string{"replyToMessageId": request.replyToMessageID})
 		}
 		if len(request.messagePlugins) != 0 {
 			content = append(content, request.messagePlugins)
@@ -350,6 +365,19 @@ func (m *service) startMessage(
 		if capability.ID == "" || capability.Name == "" || len(capability.Bindings) == 0 {
 			return AcceptedExecution{}, status_error.BadRequest
 		}
+	}
+	if request.replyToMessageID != "" {
+		var target chatservice.ReplyTarget
+		var err error
+		if request.teamReplyThreadID == "" {
+			target, err = m.journal.ReadReplyTarget(ctx, request.chatID, request.replyToMessageID)
+		} else {
+			target, err = m.journal.ReadTeamReplyTarget(ctx, request.teamReplyThreadID, request.chatID, request.replyToMessageID)
+		}
+		if err != nil {
+			return AcceptedExecution{}, err
+		}
+		request.replyTarget = &target
 	}
 
 	var files *preparedMessageFiles
@@ -662,6 +690,12 @@ func createRequestContent(request pendingMessage) []interface{} {
 	}
 	if request.create.profileOptimization {
 		content = append(content, map[string]bool{"profileOptimization": true})
+	}
+	if request.message.AttachmentOnly {
+		content = append(content, map[string]bool{"attachmentOnly": true})
+	}
+	if request.message.CodeReferenceOnly {
+		content = append(content, map[string]bool{"codeReferenceOnly": true})
 	}
 	if request.runtime.Fast != nil {
 		content = append(content, map[string]any{"fast": *request.runtime.Fast})
@@ -1423,6 +1457,10 @@ func startedMessageEvents(
 	if len(pluginReferences) > 0 {
 		selectedPlugins = pluginReferences[0]
 	}
+	var reply *eventlog.MessageReply
+	if request.replyTarget != nil {
+		reply = &request.replyTarget.Reference
+	}
 	inputs := make([]eventlog.AppendInput, 0, 3)
 	if state.isNew {
 		inputs = append(inputs, eventlog.AppendInput{
@@ -1450,16 +1488,19 @@ func startedMessageEvents(
 			Type:      constants.ChatEventTypeUserMessageCreated,
 			MessageID: execution.UserMessageID,
 			Data: marshalData(eventlog.MessageCreatedData{
-				SubmissionID:   execution.SubmissionID,
-				Role:           constants.MessageRoleUser,
-				Actor:          request.message.Actor,
-				Content:        request.message.Text,
-				Attachments:    attachments,
-				Plugins:        selectedPlugins,
-				Skills:         skills,
-				Connectors:     connectors,
-				CodeReferences: codeReferences,
-				Workflow:       request.message.Workflow,
+				SubmissionID:      execution.SubmissionID,
+				Role:              constants.MessageRoleUser,
+				Actor:             request.message.Actor,
+				Content:           request.message.Text,
+				AttachmentOnly:    request.message.AttachmentOnly,
+				CodeReferenceOnly: request.message.CodeReferenceOnly,
+				ReplyTo:           reply,
+				Attachments:       attachments,
+				Plugins:           selectedPlugins,
+				Skills:            skills,
+				Connectors:        connectors,
+				CodeReferences:    codeReferences,
+				Workflow:          request.message.Workflow,
 			}),
 		},
 		eventlog.AppendInput{

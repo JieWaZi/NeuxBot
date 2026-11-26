@@ -78,14 +78,16 @@ type ChannelThreadController interface {
 	CreateLeadInput(ctx context.Context, input models.ChannelLeadInput) error
 	// ListLeadInputs 返回指定状态的负责人输入队列，按创建顺序排列。
 	ListLeadInputs(ctx context.Context, threadID string, statuses []constants.ChannelInputStatus, limit int) ([]models.ChannelLeadInput, error)
+	// ListLeadInputReceipts 仅读取指定对话与输入范围内的身份、状态和稳定错误码。
+	ListLeadInputReceipts(ctx context.Context, threadID string, ids []string) ([]models.ChannelLeadInput, error)
 	// FailLeadInput 只结算仍未进入负责人 Chat 的输入。
 	FailLeadInput(ctx context.Context, id string, errorCode string, updatedAt int64) (bool, error)
 	// UpdateLeadInputs 推进一批负责人输入的投递状态和 Execution 映射。
 	UpdateLeadInputs(ctx context.Context, ids []string, status constants.ChannelInputStatus, leadExecutionID string, updatedAt int64) error
 	// CancelLeadInput 取消指定且尚未消费的负责人输入。
-	CancelLeadInput(ctx context.Context, id string, updatedAt int64) error
-	// CancelOpenLeadInputs 取消团队对话尚未消费的负责人用户输入。
-	CancelOpenLeadInputs(ctx context.Context, threadID string, updatedAt int64) error
+	CancelLeadInput(ctx context.Context, id string, updatedAt int64) (bool, error)
+	// CancelOpenLeadInputs 取消团队对话尚未消费的负责人用户输入并返回受影响标识。
+	CancelOpenLeadInputs(ctx context.Context, threadID string, updatedAt int64) ([]string, error)
 	// RecoverLeadInputs 收尾中断投递并返回仍有待处理输入的团队对话标识。
 	RecoverLeadInputs(ctx context.Context, updatedAt int64) ([]string, error)
 }
@@ -874,7 +876,7 @@ func (c *channelThreadController) publishDirectDelivery(event models.ChannelEven
 	}
 }
 
-// ListEvents 返回指定全局游标之后的团队对话持久事件。
+// ListEvents 按数据库追加顺序读取指定团队对话游标之后的事件。
 func (c *channelThreadController) ListEvents(
 	ctx context.Context,
 	threadID string,
@@ -884,23 +886,20 @@ func (c *channelThreadController) ListEvents(
 	events := []models.ChannelEvent{}
 	db := controllerDB(ctx, c.db).Where("thread_id = ?", threadID)
 	if after != "" {
-		var cursor models.ChannelEvent
+		var position int64
 		if err := controllerDB(ctx, c.db).
+			Model(&models.ChannelEvent{}).
+			Select("rowid").
 			Where("thread_id = ? AND id = ?", threadID, after).
-			First(&cursor).Error; err != nil {
+			Take(&position).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, status_error.BadRequest
 			}
 			return nil, databaseError("get_channel_event_cursor", "event_id="+after, err)
 		}
-		db = db.Where(
-			"created_at > ? OR (created_at = ? AND id > ?)",
-			cursor.CreatedAt,
-			cursor.CreatedAt,
-			cursor.ID,
-		)
+		db = db.Where("rowid > ?", position)
 	}
-	err := db.Order("created_at ASC, id ASC").
+	err := db.Order("rowid ASC").
 		Limit(limit).
 		Find(&events).Error
 	if err != nil {
@@ -918,8 +917,8 @@ func (c *channelThreadController) LatestEventCursor(
 	err := controllerDB(ctx, c.db).
 		Select("id").
 		Where("thread_id = ?", threadID).
-		Order("created_at DESC, id DESC").
-		First(&event).Error
+		Order("rowid DESC").
+		Take(&event).Error
 	if err == nil {
 		return event.ID, nil
 	}
@@ -961,6 +960,26 @@ func (c *channelThreadController) ListLeadInputs(
 		Find(&inputs).Error
 	if err != nil {
 		return nil, databaseError("list_channel_lead_inputs", "thread_id="+threadID, err)
+	}
+	return inputs, nil
+}
+
+// ListLeadInputReceipts 仅读取用于结算原输入的公开队列字段。
+func (c *channelThreadController) ListLeadInputReceipts(
+	ctx context.Context,
+	threadID string,
+	ids []string,
+) ([]models.ChannelLeadInput, error) {
+	inputs := []models.ChannelLeadInput{}
+	if len(ids) == 0 || len(ids) > constants.ChannelLeadInputReceiptBatchLimit {
+		return nil, status_error.BadRequest
+	}
+	err := controllerDB(ctx, c.db).
+		Select("id", "status", "error_code").
+		Where("thread_id = ? AND id IN ?", threadID, ids).
+		Find(&inputs).Error
+	if err != nil {
+		return nil, databaseError("list_channel_lead_input_receipts", "thread_id="+threadID, err)
 	}
 	return inputs, nil
 }
@@ -1020,28 +1039,40 @@ func (c *channelThreadController) CancelOpenLeadInputs(
 	ctx context.Context,
 	threadID string,
 	updatedAt int64,
-) error {
-	return cancelLeadInputs(controllerDB(ctx, c.db).Where("thread_id = ?", threadID), updatedAt)
+) ([]string, error) {
+	var cancelled []models.ChannelLeadInput
+	db := controllerDB(ctx, c.db).Model(&cancelled).
+		Clauses(clause.Returning{Columns: []clause.Column{{Name: "id"}}}).Where("thread_id = ?", threadID)
+	if _, err := cancelLeadInputs(db, updatedAt); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(cancelled))
+	for _, input := range cancelled {
+		ids = append(ids, input.ID)
+	}
+	return ids, nil
 }
 
-func (c *channelThreadController) CancelLeadInput(ctx context.Context, id string, updatedAt int64) error {
-	return cancelLeadInputs(controllerDB(ctx, c.db).Where("id = ?", id), updatedAt)
+// CancelLeadInput 取消指定输入并报告是否实际改变其状态。
+func (c *channelThreadController) CancelLeadInput(ctx context.Context, id string, updatedAt int64) (bool, error) {
+	affected, err := cancelLeadInputs(controllerDB(ctx, c.db).Model(&models.ChannelLeadInput{}).Where("id = ?", id), updatedAt)
+	return affected == 1, err
 }
 
-func cancelLeadInputs(db *gorm.DB, updatedAt int64) error {
-	if err := db.Model(&models.ChannelLeadInput{}).
-		Where("status IN ?", []constants.ChannelInputStatus{
-			constants.ChannelInputStatusPending,
-			constants.ChannelInputStatusDelivering,
-		}).
+func cancelLeadInputs(db *gorm.DB, updatedAt int64) (int64, error) {
+	result := db.Where("status IN ?", []constants.ChannelInputStatus{
+		constants.ChannelInputStatusPending,
+		constants.ChannelInputStatusDelivering,
+	}).
 		Updates(map[string]interface{}{
 			"status":            constants.ChannelInputStatusCancelled,
 			"lead_execution_id": "",
 			"updated_at":        updatedAt,
-		}).Error; err != nil {
-		return databaseError("cancel_channel_lead_inputs", "channel_input", err)
+		})
+	if result.Error != nil {
+		return 0, databaseError("cancel_channel_lead_inputs", "channel_input", result.Error)
 	}
-	return nil
+	return result.RowsAffected, nil
 }
 
 // RecoverLeadInputs 收尾中断投递并返回仍有待处理输入的团队对话标识。

@@ -1,6 +1,7 @@
 import { i18n } from "@/shared/i18n";
 import {
   infiniteQueryOptions,
+  queryOptions,
   replaceEqualDeep,
   type InfiniteData,
   type QueryClient,
@@ -15,6 +16,7 @@ import {
 } from "@/shared/api/generated/@tanstack/react-query.gen";
 import {
   listChannels,
+  listChannelLeadInputs,
   listChannelTimeline,
   listChannelThreads,
   listWakers,
@@ -23,6 +25,7 @@ import type {
   GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail as ChannelThreadDetail,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelEvent as ChannelEvent,
   ListChannelsResponse,
+  ListChannelLeadInputsResponse,
   ListChannelThreadsResponse,
   ListChannelTimelineResponse,
   ListWakersResponse,
@@ -60,6 +63,9 @@ export {
 const teamWakersPageSize = 30;
 const teamChannelsPageSize = 30;
 const teamThreadsPageSize = 50;
+const leadInputReceiptBatchSize = 32;
+
+export type TeamLeadInputReceipt = ListChannelLeadInputsResponse[number];
 
 export const teamQueryKeys = {
   channels: () => generatedListChannelsQueryKey(),
@@ -78,6 +84,8 @@ export const teamQueryKeys = {
       }),
       "infinite",
     ] as const,
+  leadInputReceipts: (channelId: string, threadId: string) =>
+    ["team-lead-input-receipts", channelId, threadId] as const,
   wakers: () => generatedListWakersQueryKey(),
   wakerPages: (query: string) =>
     [
@@ -87,6 +95,106 @@ export const teamQueryKeys = {
       "infinite",
     ] as const,
 };
+
+export function teamLeadInputReceiptsOptions(
+  channelId: string,
+  threadId: string,
+  ids: readonly string[],
+) {
+  return queryOptions({
+    queryKey: [
+      ...teamQueryKeys.leadInputReceipts(channelId, threadId),
+      ids,
+    ] as const,
+    gcTime: 0,
+    queryFn: async ({ signal }) => {
+      const batches: Array<Promise<ListChannelLeadInputsResponse>> = [];
+      for (
+        let offset = 0;
+        offset < ids.length;
+        offset += leadInputReceiptBatchSize
+      ) {
+        batches.push(
+          listChannelLeadInputs(
+            withLocalErrorSurface({
+              path: { channelId, threadId },
+              query: {
+                ids: ids
+                  .slice(offset, offset + leadInputReceiptBatchSize)
+                  .join(","),
+              },
+              signal,
+              throwOnError: true,
+            }),
+          ).then(({ data }) => data),
+        );
+      }
+      return (await Promise.all(batches)).flat();
+    },
+    structuralSharing: (previous, next) => {
+      const incoming = next as ListChannelLeadInputsResponse;
+      const versions = new Map(
+        incoming.map((receipt) => [receipt.id, receipt]),
+      );
+      for (const receipt of (previous as
+        ListChannelLeadInputsResponse | undefined) ?? []) {
+        const seen = versions.get(receipt.id);
+        // 在途 GET 可能早于已提交的队列结算事件。
+        if (
+          receipt.status !== "pending" &&
+          (!seen || seen.status === "pending")
+        )
+          versions.set(receipt.id, receipt);
+      }
+      return replaceEqualDeep(previous, [...versions.values()]);
+    },
+  });
+}
+
+/** 实时终态提交到原查询，只处理正在对账的输入身份。 */
+export function commitTeamLeadInputReceipt(
+  client: QueryClient,
+  channelId: string,
+  threadId: string,
+  receipt: TeamLeadInputReceipt,
+) {
+  const queries = client.getQueryCache().findAll({
+    queryKey: teamQueryKeys.leadInputReceipts(channelId, threadId),
+    type: "active",
+    predicate: (query) => {
+      const ids = query.queryKey.at(-1);
+      return Array.isArray(ids) && ids.includes(receipt.id);
+    },
+  });
+  for (const { queryKey } of queries)
+    client.setQueryData<ListChannelLeadInputsResponse>(queryKey, (previous) => [
+      ...(previous ?? []).filter((item) => item.id !== receipt.id),
+      receipt,
+    ]);
+  return queries.length > 0;
+}
+
+/** 团队流恢复和停止通过同一个查询所有者补读仍在等待的队列收据。 */
+export function reconcileTeamLeadInputReceipts(
+  client: QueryClient,
+  channelId: string,
+  threadId: string,
+) {
+  const queries = client.getQueryCache().findAll({
+    queryKey: teamQueryKeys.leadInputReceipts(channelId, threadId),
+    type: "active",
+  });
+  return Promise.all(
+    queries.map(({ queryKey }) =>
+      refreshQueryFromEvent(client, queryKey, () =>
+        client.refetchQueries(
+          { queryKey, exact: true },
+          { throwOnError: true },
+        ),
+      ),
+    ),
+  );
+}
 
 export async function fetchTeamTimelinePage(
   channelId: string,

@@ -185,11 +185,15 @@ func (j *conversationJournal) ReadLatestSequence(id string) (int64, error) {
 }
 
 func (j *conversationJournal) ReadMessage(id, messageID string) ([]eventlog.Record, error) {
-	rows, err := j.ReadMessagePositions(context.Background(), id, messageID)
+	return j.readMessageFacts(context.Background(), id, messageID)
+}
+
+func (j *conversationJournal) readMessageFacts(ctx context.Context, id, messageID string) ([]eventlog.Record, error) {
+	rows, err := j.ReadMessagePositions(ctx, id, messageID)
 	if err != nil || len(rows) == 0 {
 		return nil, err
 	}
-	created, err := j.ReadAfter(id, 0, 1)
+	created, err := j.readAfter(ctx, id, 0, 1)
 	if err != nil {
 		return nil, err
 	}

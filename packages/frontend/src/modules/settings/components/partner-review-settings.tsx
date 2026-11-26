@@ -372,6 +372,20 @@ export function PartnerReviewSettingsDetail({
   });
   const resources = list.isPlaceholderData ? [] : (list.data?.resources ?? []);
   const total = list.data?.totalSize ?? 0;
+  const lastPage = Math.max(1, Math.ceil(total / partnerPageSize));
+  const hasCurrentPage = Boolean(list.data) && !list.isPlaceholderData;
+  useEffect(() => {
+    if (!hasCurrentPage || page <= lastPage) return;
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (lastPage === 1) next.delete("page");
+        else next.set("page", String(lastPage));
+        return next;
+      },
+      { replace: true },
+    );
+  }, [hasCurrentPage, lastPage, page, setParams]);
   const needsFocusedPartner =
     Boolean(
       focusedId &&
@@ -695,6 +709,12 @@ function PartnerReviewStatus({ wakerId }: { wakerId: string }) {
     withLocalErrorSurface({ path }),
   );
   const review = useQuery(options);
+  useQueryEvents({
+    topic: "entities",
+    resource: { kind: "waker", id: wakerId },
+    queryKeys: [options.queryKey],
+    eventTypes: ["entities.changed"],
+  });
   useQueryEvents({
     topic: "resources",
     resource: { kind: "waker", id: wakerId },

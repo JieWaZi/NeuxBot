@@ -205,9 +205,6 @@ func (s *Service) PrepareReviewChanges(ctx context.Context, batch ReviewMemoryBa
 					if err != nil {
 						return nil, err
 					}
-					if state.conflict {
-						return nil, status_error.MemoryEmbeddingConflict
-					}
 					prepared.checkedEmbedding, prepared.embedding = true, state.config
 				}
 				embedAction := constants.MemoryEmbeddingActionAdd
@@ -215,7 +212,9 @@ func (s *Service) PrepareReviewChanges(ctx context.Context, batch ReviewMemoryBa
 					embedAction = constants.MemoryEmbeddingActionUpdate
 				}
 				vector, err = s.embedMemory(ctx, state, content, embedAction)
-				if err != nil {
+				if errors.Is(err, status_error.MemoryEmbeddingConflict) {
+					vector = nil
+				} else if err != nil {
 					return nil, err
 				}
 			}
@@ -234,14 +233,15 @@ func (s *Service) CommitReviewChanges(ctx context.Context, prepared *PreparedRev
 	}
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
+	writeVectors := false
 	if prepared.checkedEmbedding {
 		state, err := s.resolveEmbedding(ctx)
 		if err != nil {
 			return err
 		}
-		if state.conflict || state.config != prepared.embedding {
-			return status_error.MemoryEmbeddingConflict
-		}
+		writeVectors = !state.conflict && state.config == prepared.embedding
+	}
+	if writeVectors {
 		var dimensions int
 		for _, candidate := range prepared.changes {
 			if len(candidate.vector) == 0 {
@@ -250,10 +250,15 @@ func (s *Service) CommitReviewChanges(ctx context.Context, prepared *PreparedRev
 			if dimensions == 0 {
 				dimensions = len(candidate.vector)
 				if err := s.checkDimensions(candidate.vector); err != nil {
-					return err
+					if !errors.Is(err, status_error.MemoryEmbeddingConflict) {
+						return err
+					}
+					writeVectors = false
+					break
 				}
 			} else if len(candidate.vector) != dimensions {
-				return status_error.MemoryEmbeddingConflict
+				writeVectors = false
+				break
 			}
 		}
 	}
@@ -261,6 +266,9 @@ func (s *Service) CommitReviewChanges(ctx context.Context, prepared *PreparedRev
 		changed, coreChanged := false, false
 		forgotten := map[string]bool{}
 		for _, candidate := range prepared.changes {
+			if !writeVectors {
+				candidate.vector = nil
+			}
 			applied, core, err := s.applyReviewChange(tx, prepared, candidate, forgotten)
 			if err != nil {
 				return err

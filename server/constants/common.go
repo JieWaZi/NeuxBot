@@ -103,6 +103,15 @@ const WorkflowFileMaximumBytes int64 = 100 << 20
 // SkillPartnerPreviewLimit 是独立技能卡片最多返回的安装伙伴预览数。
 const SkillPartnerPreviewLimit = 4
 
+// ChatReplyPreviewLimit 限制持久引用预览的 Unicode 字符数。
+const ChatReplyPreviewLimit = 160
+
+// ChatReplyExcerptLimit 限制本轮随模型输入交付的引用摘录字符数。
+const ChatReplyExcerptLimit = 4096
+
+// ChatReplyTargetContextName 是原消息摘录在当前模型输入中的字段名称。
+const ChatReplyTargetContextName = "Reply target"
+
 const (
 	// WorkflowInstanceBudget 标识整次工作流累计节点实例数的预算错误。
 	WorkflowInstanceBudget = "instances"
@@ -242,6 +251,8 @@ const (
 	ChannelEventDefaultLimit = 100
 	// ChannelEventMaximumLimit 是团队事件接口允许的最大返回条数。
 	ChannelEventMaximumLimit = 500
+	// ChannelLeadInputReceiptBatchLimit 是团队负责人队列收据单批查询上限。
+	ChannelLeadInputReceiptBatchLimit = 32
 	// ChannelCollectionDefaultPageSize 是团队与对话列表的默认单页数量。
 	ChannelCollectionDefaultPageSize = 50
 	// ChannelCollectionMaximumPageSize 是团队与对话列表允许的最大单页数量。
@@ -475,6 +486,8 @@ const (
 	ChatMessageAttachmentsOwnerKind = "message-attachments"
 	// TeamSharedDirectoryName 是团队工作区中的真实共享文件子目录名。
 	TeamSharedDirectoryName = "shared"
+	// ChannelLeadInputAttachmentsDirectory 是团队负责人待派发上传的私有目录名。
+	ChannelLeadInputAttachmentsDirectory = "lead-input-attachments"
 	// ExecutionWorkspaceAttachmentsDirectory 是 Chat 工作区内消息附件和会话生成文件的受管根目录名。
 	ExecutionWorkspaceAttachmentsDirectory = "attachments"
 	// ProjectEntriesDirectoryName 是不支持原生附加目录时使用的受管项目入口根目录。

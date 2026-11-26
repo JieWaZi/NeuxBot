@@ -10,6 +10,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -360,6 +361,9 @@ func (s *service) Start(ctx context.Context) error {
 	inputThreads, err := s.threads.RecoverLeadInputs(ctx, now)
 	if err != nil {
 		return err
+	}
+	if err := s.recoverLeadInputAttachments(ctx); err != nil {
+		logx.Warnf("recover lead input attachments: error=%v", err)
 	}
 	notificationThreads, err := s.tasks.RecoverNotifications(ctx, now)
 	if err != nil {

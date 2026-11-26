@@ -14,6 +14,7 @@ import type {
   GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation,
 } from "@/shared/api/generated/types.gen";
 import type { ChatEvent } from "@/shared/api/events";
+import { chatEventCreatedAt } from "../model/chat-message-time";
 import type { ChatCodeReference } from "./chat-queue-store";
 import { runtimeFailurePresentation } from "../model/runtime-failure-presentation";
 import { applyChatLiveFrame } from "./chat-live";
@@ -65,6 +66,11 @@ export type ChatToolArgs = {
 
 export type ChatRunMetrics = MessageRunMetrics;
 export type ChatFileChange = ToolFileChangeSummary & { path: string };
+export type ChatReplyReference = NonNullable<ChatMessage["replyTo"]>;
+export type ChatReplyDraftEditor = {
+  capture: () => () => void;
+  isEmpty: () => boolean;
+};
 
 export type ChatPendingElicitation = Omit<
   PendingElicitation,
@@ -168,18 +174,6 @@ function toolActionOf(value?: string): ToolAction {
 
 function messageIDOf(message: BotChatMessage | ChatMessage) {
   return message.id ?? "";
-}
-
-function normalizeAuthoritativeMessage(
-  message: ChatMessage,
-  recordedAt?: number,
-): BotChatMessage {
-  return {
-    ...message,
-    createdAt: message.createdAt ?? recordedAt,
-    updatedAt: message.updatedAt ?? recordedAt,
-    optimistic: false,
-  };
 }
 
 function contentRevision(message: BotChatMessage): number {
@@ -294,10 +288,14 @@ export function mergeAuthoritativeMessages(
       .filter((message) => message.id)
       .map((message) => [message.id, message]),
   );
-  const merged = authoritative.map((message) => {
+  const merged = authoritative.map((snapshot) => {
     const local =
-      currentByID.get(message.id) ??
-      current.find((item) => sameSubmittedMessage(item, message));
+      currentByID.get(snapshot.id) ??
+      current.find((item) => sameSubmittedMessage(item, snapshot));
+    const message =
+      !snapshot.createdAt && local?.createdAt
+        ? { ...snapshot, createdAt: local.createdAt }
+        : snapshot;
     currentByID.delete(local?.id ?? message.id);
     if (!local) return message;
     if (local.optimistic || isTerminalMessageStatus(message.status))
@@ -394,17 +392,20 @@ export function applyChatEvent(
     return updated;
   }
   if (!event.message) return messages;
-  const authoritative = normalizeAuthoritativeMessage(
-    event.message,
-    event.recordedAt,
-  );
-  if (!isMessageVisible(authoritative)) return messages;
-  const matchedIndex = findMessageIndex(messages, authoritative.id);
+  const matchedIndex = findMessageIndex(messages, event.message.id);
+  const snapshot = event.message;
   const index =
     matchedIndex >= 0
       ? matchedIndex
-      : messages.findIndex((item) => sameSubmittedMessage(item, authoritative));
+      : messages.findIndex((item) => sameSubmittedMessage(item, snapshot));
   const currentMessage = index >= 0 ? messages[index] : undefined;
+  const authoritative: BotChatMessage = {
+    ...snapshot,
+    createdAt: chatEventCreatedAt(event, currentMessage?.createdAt),
+    updatedAt: snapshot.updatedAt ?? event.recordedAt,
+    optimistic: false,
+  };
+  if (!isMessageVisible(authoritative)) return messages;
   const delivery =
     event.type === "execution.delivery" &&
     authoritative.role === "assistant" &&
@@ -493,7 +494,7 @@ export function toThreadMessage(
     id: messageIDOf(message),
     role,
     content,
-    createdAt: new Date(message.createdAt ?? Date.now()),
+    createdAt: message.createdAt ? new Date(message.createdAt) : undefined,
     metadata: {
       isOptimistic: message.optimistic,
       custom: {

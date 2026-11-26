@@ -78,6 +78,13 @@ export function useChatHistoryScroll({
     const session = sessionRef.current;
     const previous = session.previousTop;
     session.previousTop = container.scrollTop;
+    const programmaticTop = session.programmaticTop;
+    session.programmaticTop = undefined;
+    if (
+      programmaticTop !== undefined &&
+      Math.abs(container.scrollTop - programmaticTop) < 1
+    )
+      return;
     if (session.anchor) {
       // Viewport 已关闭原生锚定；只按实际滚动量移动目标，不把前插布局位移写回基线。
       session.anchor.offset -=
@@ -94,8 +101,12 @@ export function useChatHistoryScroll({
   };
 
   const isAnchoring = useCallback(() => Boolean(sessionRef.current.anchor), []);
+  const ignoreProgrammaticScroll = useCallback((top: number) => {
+    sessionRef.current.programmaticTop = top;
+  }, []);
   return {
     isAnchoring,
+    ignoreProgrammaticScroll,
     loadEarlier,
     onScroll,
     error,

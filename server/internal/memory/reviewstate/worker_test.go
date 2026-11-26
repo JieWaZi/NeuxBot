@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/skills"
 )
 
@@ -36,9 +37,14 @@ func TestCombinedReviewOnlyGeneratesSkillAfterExplicitSave(t *testing.T) {
 			calls := 0
 			var applied int
 			var guarded bool
-			worker := New(store, Ports{
-				Chat: func(context.Context, string) (ChatAccess, error) { return ChatAccess{WakerID: partner}, nil },
-				Resolve: func(context.Context, string, Settings) (Selection, error) {
+			var worker *Worker
+			worker = New(store, Ports{
+				Chat:        func(context.Context, string) (ChatAccess, error) { return ChatAccess{WakerID: partner}, nil },
+				WakerExists: func(context.Context, string) (bool, error) { return true, nil },
+				Resolve: func(_ context.Context, _ string, settings Settings) (Selection, error) {
+					if settings.Source == SourceGlobal {
+						return Selection{RuntimeID: settings.RuntimeID, Model: settings.Model}, nil
+					}
 					return Selection{RuntimeID: "claude", Model: "test-model"}, nil
 				},
 				Turns: func(context.Context, string, int64, int64, Admission, int) ([]Turn, error) {
@@ -53,7 +59,7 @@ func TestCombinedReviewOnlyGeneratesSkillAfterExplicitSave(t *testing.T) {
 				Guard:    func(string, string) (func(), error) { guarded = true; return func() { guarded = false }, nil },
 				Memories: func(context.Context, string, string) ([]ReviewMemory, error) { return nil, nil },
 				Skills:   func(context.Context, string) ([]SkillCandidate, error) { return nil, nil },
-				Generate: func(ctx context.Context, _ Selection, _, use, _, input string, authorize func(context.Context) error) (string, error) {
+				Generate: func(ctx context.Context, selection Selection, _, use, _, input string, authorize func(context.Context) error) (string, error) {
 					if err := authorize(ctx); err != nil {
 						return "", err
 					}
@@ -62,10 +68,22 @@ func TestCombinedReviewOnlyGeneratesSkillAfterExplicitSave(t *testing.T) {
 						t.Fatal("a model call was made inside the chat guard")
 					}
 					if use == reviewUsage {
+						if selection.Model != "test-model" {
+							t.Fatalf("review model = %q", selection.Model)
+						}
+						if err := worker.UpdateSettings(ctx, Settings{Source: SourceGlobal, RuntimeID: "codex", Model: "new-model"}); err != nil {
+							return "", err
+						}
+						if err := worker.UpdatePartner(ctx, partner, Partner{SkillMode: ModeOff}); err != nil {
+							return "", err
+						}
 						if !strings.Contains(input, "Call me J") || !strings.Contains(input, "Verified.") {
 							t.Fatalf("no combined evidence: %s", input)
 						}
 						return `{"operations":[{"action":"add","content":"The user's name is J.","evidenceIds":["e2"]}],"skill":{"name":"use-a-template","lesson":"Apply the saved template and check the result.","action":"create","signal":"correction","sourceMessageIds":["e4","e7"]}}`, nil
+					}
+					if selection.Model != "new-model" {
+						t.Fatalf("skill generation model = %q", selection.Model)
 					}
 					if strings.Contains(input, "Only authorized for remembering") {
 						t.Fatal("memory-only turn leaked into skill authoring")
@@ -102,7 +120,7 @@ func TestCombinedReviewOnlyGeneratesSkillAfterExplicitSave(t *testing.T) {
 			if err != nil || !ok {
 				t.Fatal(err)
 			}
-			if err = worker.review(ctx, p); err != nil {
+			if err = worker.review(ctx, &p); err != nil {
 				t.Fatal(err)
 			}
 			suggestions, err := worker.ChatSuggestions(ctx, chat, 0)
@@ -133,7 +151,7 @@ func TestCombinedReviewOnlyGeneratesSkillAfterExplicitSave(t *testing.T) {
 	}
 }
 
-func TestReviewCancellationRechecksBeforeDataLeavesCore(t *testing.T) {
+func TestReviewSettingsChangeDoesNotCancelAdmittedCall(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "review.db"))
 	if err != nil {
@@ -165,22 +183,25 @@ func TestReviewCancellationRechecksBeforeDataLeavesCore(t *testing.T) {
 			return "{}", nil
 		},
 	})
-	selection, _, origin, err := worker.Effective(ctx, "p")
+	selection, err := worker.resolve(ctx, "p")
 	if err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := worker.generate(ctx, selection, "p", "c", origin, skillUsage, "rules", "authorized before revocation")
+		_, err := worker.generate(ctx, selection, "p", "c", skillUsage, "rules", "accepted before changing settings")
 		done <- err
 	}()
 	<-entered
 	if err := worker.UpdatePartner(ctx, "p", Partner{SkillMode: ModeOff}); err != nil {
 		t.Fatal(err)
 	}
+	if err := worker.UpdateSettings(ctx, Settings{Source: SourceGlobal, RuntimeID: "codex", Model: "new"}); err != nil {
+		t.Fatal(err)
+	}
 	close(release)
-	if err := <-done; err == nil || sent {
-		t.Fatalf("revoked input reached the model (%v, sent=%v)", err, sent)
+	if err := <-done; err != nil || !sent {
+		t.Fatalf("settings change interrupted the admitted call (%v, sent=%v)", err, sent)
 	}
 }
 
@@ -209,7 +230,7 @@ func TestReviewDefersReadingBodiesUntilTrigger(t *testing.T) {
 			return starts, nil
 		},
 	})
-	if err := worker.review(ctx, Progress{ChatID: "c", WakerID: "p"}); err != nil {
+	if err := worker.review(ctx, &Progress{ChatID: "c", WakerID: "p"}); err != nil {
 		t.Fatal(err)
 	}
 	if bodyReads != 0 {
@@ -265,14 +286,14 @@ func TestReviewReadsWithinBudgetAndKeepsFrozenTail(t *testing.T) {
 			return `{"skill":null}`, gate(ctx)
 		},
 	})
-	if err := worker.review(ctx, Progress{ChatID: "c", WakerID: "p"}); err != nil {
+	if err := worker.review(ctx, &Progress{ChatID: "c", WakerID: "p"}); err != nil {
 		t.Fatal(err)
 	}
 	p, ok, err := store.Ready(ctx, time.Now())
 	if err != nil || !ok || p.Cursor != 1 || p.Through != MaxTurns || bodyReads > 4 {
 		t.Fatalf("first slice did not preserve unprocessed turns: %+v, %t, reads=%d, %v", p, ok, bodyReads, err)
 	}
-	if err := worker.review(ctx, p); err != nil {
+	if err := worker.review(ctx, &p); err != nil {
 		t.Fatal(err)
 	}
 	p, ok, err = store.Ready(ctx, time.Now())
@@ -322,7 +343,7 @@ func TestReviewFrequencyKeepsBatchSizeAndFrozenTail(t *testing.T) {
 		if err != nil || !ok {
 			t.Fatalf("window = %+v, %v", p, err)
 		}
-		if err := worker.review(ctx, p); err != nil {
+		if err := worker.review(ctx, &p); err != nil {
 			t.Fatal(err)
 		}
 		p, ok, err = store.Ready(ctx, time.Now())
@@ -347,7 +368,7 @@ func TestReviewFrequencyUpdatePreservesAdmittedConfiguration(t *testing.T) {
 	if err := store.Observe(ctx, "c", "p"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Schedule(ctx, Progress{ChatID: "c", DueAt: time.Now().Add(time.Hour).UnixMilli()}); err != nil {
+	if err := store.UpdateProgress(ctx, Progress{ChatID: "c"}, Progress{ChatID: "c", DueAt: time.Now().Add(time.Hour).UnixMilli()}); err != nil {
 		t.Fatal(err)
 	}
 	if err := worker.UpdateSettings(ctx, Settings{EveryTurns: 5}); err != nil {
@@ -360,5 +381,31 @@ func TestReviewFrequencyUpdatePreservesAdmittedConfiguration(t *testing.T) {
 	}
 	if pending, found, err := store.Ready(ctx, time.Now()); err != nil || !found || pending.ChatID != "c" {
 		t.Fatalf("lower frequency threshold did not reconsider waiting chat: %+v, %v", pending, err)
+	}
+}
+
+func TestRepeatedReviewFailureBacksOffAndCanBeRetried(t *testing.T) {
+	ctx := t.Context()
+	store := openReviewTestStore(t)
+	worker := New(store, Ports{})
+	p := Progress{ChatID: "chat", WakerID: "p", Cursor: 5, Through: 12, Failures: 3}
+	if err := store.Observe(ctx, p.ChatID, p.WakerID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateProgress(ctx, Progress{ChatID: p.ChatID}, p); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.deferReview(ctx, p, status_error.RuntimeProtocolIncompatible); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.Ready(ctx, time.Now().Add(time.Hour)); err != nil || found {
+		t.Fatalf("persistent failure was scheduled for another immediate call: found=%t, %v", found, err)
+	}
+	if err := store.Retry(ctx, p.WakerID); err != nil {
+		t.Fatal(err)
+	}
+	next, found, err := store.Ready(ctx, time.Now())
+	if err != nil || !found || next.Cursor != p.Cursor || next.Through != p.Through || next.Failures != 0 {
+		t.Fatalf("manual retry did not preserve the batch: %+v, %t, %v", next, found, err)
 	}
 }

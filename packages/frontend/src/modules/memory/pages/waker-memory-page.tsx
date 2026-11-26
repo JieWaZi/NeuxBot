@@ -94,6 +94,33 @@ function PartnerMemory({ wakerId }: { wakerId: string }) {
   });
   usePartnerMemoryEvents(wakerId);
 
+  const coreLastPage = Math.max(
+    1,
+    Math.ceil((core.data?.totalSize ?? Infinity) / PAGE_SIZE),
+  );
+  const regularLastPage = Math.max(
+    1,
+    Math.ceil((regular.data?.totalSize ?? Infinity) / PAGE_SIZE),
+  );
+  useLayoutEffect(() => {
+    if (corePage <= coreLastPage && regularPage <= regularLastPage) return;
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        for (const [key, page, lastPage] of [
+          ["corePage", corePage, coreLastPage],
+          ["regularPage", regularPage, regularLastPage],
+        ] as const) {
+          if (page <= lastPage) continue;
+          if (lastPage === 1) next.delete(key);
+          else next.set(key, String(lastPage));
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  }, [coreLastPage, corePage, regularLastPage, regularPage, setParams]);
+
   const [formTarget, setFormTarget] = useState<
     MemoryResource | null | undefined
   >(undefined);

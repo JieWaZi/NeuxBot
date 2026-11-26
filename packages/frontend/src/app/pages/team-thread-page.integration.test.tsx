@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -53,16 +54,21 @@ const stream = vi.hoisted(() => ({
   channel: undefined as
     Parameters<typeof subscribeChannel>[2]["onEvent"] | undefined,
   chat: undefined as Parameters<typeof subscribeChat>[1]["onEvent"] | undefined,
+  reconcileChannel: undefined as
+    Parameters<typeof subscribeChannel>[2]["reconcileCursor"] | undefined,
   workflows: new Map<
     string,
     Parameters<typeof subscribeGlobalEvents>[2]["onEvent"]
   >(),
 }));
 vi.mock("@/shared/api/events", () => ({
-  subscribeChannel: ((_, __, { onEvent }) => {
+  subscribeChannel: ((_, __, { onEvent, reconcileCursor }) => {
     stream.channel = onEvent;
+    stream.reconcileChannel = reconcileCursor;
     return () => {
       if (stream.channel === onEvent) stream.channel = undefined;
+      if (stream.reconcileChannel === reconcileCursor)
+        stream.reconcileChannel = undefined;
     };
   }) satisfies typeof subscribeChannel,
   subscribeChat: ((_, { onEvent }) => {
@@ -82,20 +88,88 @@ function deferred<T>() {
 }
 
 async function verifyQueuedLeadInputFeedback() {
-  const submissions: string[] = [];
+  const submissions: Array<{
+    submissionId: string;
+    replyToMessageId?: string;
+    attachments?: Array<{ sourcePath: string }>;
+    workflowId?: string;
+  }> = [];
+  const receipts = new Map<string, "pending" | "failed" | "cancelled">();
+  const reads = vi.fn();
+  let blockedReceiptRead: Promise<void> | undefined;
+  const originalFile = new File(["queued file"], "queued-reply.md", {
+    type: "text/markdown",
+  });
+  const uploadPaths = [
+    "upload:first/queued-reply.md",
+    "upload:fresh/queued-reply.md",
+    "upload:retried/queued-reply.md",
+  ];
+  stagePastedFile.mockReset();
+  for (const path of uploadPaths) stagePastedFile.mockResolvedValueOnce(path);
   server.use(
+    http.get(`${api}/chats/member-chat`, () =>
+      HttpResponse.json({
+        chat: {
+          id: "member-chat",
+          wakerId: "member",
+          workspaceDirectory: "/tmp/bot",
+        },
+      }),
+    ),
+    http.get(`${api}/chats/member-chat/messages`, () =>
+      HttpResponse.json({ resources: [], hasMore: false }),
+    ),
+    http.get(`${api}/wakers/member/skills`, () => HttpResponse.json([])),
+    http.get(`${api}/wakers/member/connectors`, () => HttpResponse.json([])),
+    http.get(`${api}/wakers/member/plugin-references`, () =>
+      HttpResponse.json([]),
+    ),
+    http.get(`${api}/workflows`, () =>
+      HttpResponse.json({
+        items: [
+          {
+            id: "queued-workflow",
+            title: "Queued reply flow",
+            currentRevisionId: "rev",
+          },
+        ],
+      }),
+    ),
     http.post(
       `${api}/channels/team-1/threads/thread-1/messages`,
       async ({ request }) => {
-        const body = (await request.json()) as { submissionId: string };
-        submissions.push(body.submissionId);
+        const body = (await request.json()) as (typeof submissions)[number];
+        submissions.push(body);
+        const id = `queued-${submissions.length}`;
+        receipts.set(id, "pending");
         return HttpResponse.json({
           queuedInput: {
-            id: `queued-${submissions.length}`,
+            id,
             createdAt: Date.now(),
             status: "pending",
           },
         });
+      },
+    ),
+    http.get(
+      `${api}/channels/team-1/threads/thread-1/lead-inputs/list`,
+      async ({ request }) => {
+        const ids =
+          new URL(request.url).searchParams.get("ids")?.split(",") ?? [];
+        reads(ids);
+        if (blockedReceiptRead) {
+          await blockedReceiptRead;
+          return new HttpResponse(null, { status: 503 });
+        }
+        return HttpResponse.json(
+          ids.map((id) => ({
+            id,
+            status: receipts.get(id),
+            errorCode:
+              receipts.get(id) === "failed" ? "RuntimeUnavailable" : undefined,
+          })),
+        );
       },
     ),
   );
@@ -118,7 +192,8 @@ async function verifyQueuedLeadInputFeedback() {
       message: {
         id: "queued-user-message",
         executionId: "queued-execution",
-        submissionId: submissions[0],
+        submissionId: submissions[0]?.submissionId,
+        createdSequence: 3,
         content: completed,
         actor: "user",
         role: "user",
@@ -160,6 +235,143 @@ async function verifyQueuedLeadInputFeedback() {
   await user.click(screen.getByRole("button", { name: "关闭错误提示" }));
   act(() => stream.channel?.(failure));
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+  const attachReply = async () => {
+    const target = screen
+      .getByText(completed)
+      .closest<HTMLElement>("[data-message-id]");
+    if (!target) throw new Error("缺少引用目标");
+    await user.click(within(target).getByRole("button", { name: "回复" }));
+  };
+  const quoted = "等待派发的原引用回复";
+  await attachReply();
+  await user.type(screen.getByRole("textbox"), "#Queued");
+  await user.click(
+    await screen.findByRole("option", { name: "Queued reply flow" }),
+  );
+  fireEvent.paste(screen.getByRole("textbox"), {
+    clipboardData: {
+      files: [originalFile],
+    },
+  });
+  expect(await screen.findByText("queued-reply.md")).toBeVisible();
+  await enqueue(quoted, 3);
+  expect(submissions[2]?.replyToMessageId).toBe("queued-user-message");
+  expect(submissions[2]?.workflowId).toBe("queued-workflow");
+  expect(submissions[2]?.attachments).toEqual([{ sourcePath: uploadPaths[0] }]);
+  await waitFor(() => expect(reads).toHaveBeenCalledWith(["queued-3"]));
+  await user.type(screen.getByRole("textbox"), "临时输入");
+  await user.clear(screen.getByRole("textbox"));
+  act(() => {
+    receipts.set("queued-3", "failed");
+    stream.channel?.({
+      ...failure,
+      id: "queued-reply-failed",
+      payload: { ...failure.payload, inputId: "queued-3" },
+    });
+  });
+  await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(quoted));
+  expect(screen.getByRole("button", { name: "移除回复" })).toBeVisible();
+  expect(await screen.findByText("queued-reply.md")).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "重试" }),
+  ).not.toBeInTheDocument();
+
+  // 重新发送恢复的草稿，并在它等待派发时开始下一份草稿。
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "加入发送队列" })).toBeEnabled(),
+  );
+  await user.click(screen.getByRole("button", { name: "加入发送队列" }));
+  await waitFor(() => expect(submissions).toHaveLength(4));
+  expect(submissions[3]).toEqual({
+    ...submissions[2],
+    submissionId: submissions[3]?.submissionId,
+    attachments: [{ sourcePath: uploadPaths[1] }],
+  });
+  await waitFor(() =>
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+  );
+  await user.type(screen.getByRole("textbox"), "不能覆盖的新草稿");
+  await user.click(screen.getByRole("button", { name: "打开开发成员" }));
+  await user.type(screen.getByRole("textbox"), "另一个页签的草稿");
+  act(() => {
+    receipts.set("queued-4", "failed");
+    stream.channel?.({
+      ...failure,
+      id: "second-queued-reply-failed",
+      payload: { ...failure.payload, inputId: "queued-4" },
+    });
+  });
+  expect(screen.getByRole("textbox")).toHaveValue("另一个页签的草稿");
+  expect(
+    screen.queryByRole("button", { name: "重试" }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "切换到团队主对话" }));
+  expect(screen.getByRole("textbox")).toHaveValue("不能覆盖的新草稿");
+  await user.click(await screen.findByRole("button", { name: "重试" }));
+  await waitFor(() => expect(submissions).toHaveLength(5));
+  const retried = submissions[4];
+  expect(retried?.submissionId).not.toBe(submissions[3]?.submissionId);
+  expect(retried).toEqual({
+    ...submissions[3],
+    submissionId: retried?.submissionId,
+    attachments: [{ sourcePath: uploadPaths[2] }],
+  });
+  expect(stagePastedFile).toHaveBeenCalledTimes(3);
+  for (const [file] of stagePastedFile.mock.calls) {
+    expect(file.size).toBe(originalFile.size);
+    expect(file.name).toBe(originalFile.name);
+    expect(file.type).toBe(originalFile.type);
+  }
+  expect(screen.getByRole("textbox")).toHaveValue("不能覆盖的新草稿");
+
+  // 断线期间取消了排队的回复，恢复时只结算原队列，不复活已停止的草稿。
+  await user.clear(screen.getByRole("textbox"));
+  await attachReply();
+  await enqueue("已取消的排队引用", 6);
+  await waitFor(() =>
+    expect(reads).toHaveBeenCalledWith(["queued-5", "queued-6"]),
+  );
+  const readsBeforeRecovery = reads.mock.calls.length;
+  const blockedReceipt = deferred<undefined>();
+  blockedReceiptRead = blockedReceipt.promise;
+  const reconcileChannel = stream.reconcileChannel;
+  if (!reconcileChannel) throw new Error("缺少团队重连回调");
+  let recovered = false;
+  let recovery: Promise<unknown> | undefined;
+  act(() => {
+    recovery = reconcileChannel(new AbortController().signal)
+      .then((cursor) => {
+        recovered = true;
+        return cursor;
+      })
+      .catch(() => undefined);
+  });
+  try {
+    await waitFor(() => {
+      expect(reads.mock.calls.length).toBeGreaterThan(readsBeforeRecovery);
+      expect(recovered).toBe(true);
+    });
+  } finally {
+    await act(async () => {
+      blockedReceiptRead = undefined;
+      blockedReceipt.resolve(undefined);
+      await recovery;
+    });
+  }
+  receipts.set("queued-5", "cancelled");
+  receipts.set("queued-6", "cancelled");
+  expect(stream.reconcileChannel).toBeDefined();
+  await act(async () => {
+    await stream.reconcileChannel?.(new AbortController().signal);
+  });
+  expect(screen.getByRole("textbox")).toHaveValue("");
+  expect(
+    screen.queryByRole("button", { name: "移除回复" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "重试" }),
+  ).not.toBeInTheDocument();
 }
 
 async function verifyWorkflowDraftMove() {
@@ -224,17 +436,40 @@ async function verifyWorkflowDraftMove() {
   expect(stagePastedFile).toHaveBeenCalledOnce();
 }
 
-function TeamTestTabs() {
+function TeamTestTabs({ openMember = false }: { openMember?: boolean }) {
   const workspace = useSceneWorkspace("team:team-1:thread-1");
-  return workspace.snapshot.tabs.map((tab) => (
-    <button
-      key={tab.id}
-      type="button"
-      onClick={() => workspace.dispatch({ type: "select-tab", tabId: tab.id })}
-    >
-      {tab.kind === "chat" ? "切换到团队主对话" : `切换到${tab.label}`}
-    </button>
-  ));
+  return (
+    <>
+      {openMember ? (
+        <button
+          type="button"
+          onClick={() =>
+            workspace.dispatch({
+              type: "open-member",
+              member: {
+                chatId: "member-chat",
+                label: "开发成员",
+                wakerId: "member",
+              },
+            })
+          }
+        >
+          打开开发成员
+        </button>
+      ) : null}
+      {workspace.snapshot.tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() =>
+            workspace.dispatch({ type: "select-tab", tabId: tab.id })
+          }
+        >
+          {tab.kind === "chat" ? "切换到团队主对话" : `切换到${tab.label}`}
+        </button>
+      ))}
+    </>
+  );
 }
 
 const api = "http://bot.test/api/v1";
@@ -544,7 +779,9 @@ describe("团队首发完整路由交接", () => {
                       }}
                     >
                       <RouterProvider router={router} />
-                      {checkDraftMove ? <TeamTestTabs /> : null}
+                      {checkDraftMove || checkQueuedFailure ? (
+                        <TeamTestTabs openMember={checkQueuedFailure} />
+                      ) : null}
                     </AppSceneWorkspaceContextProvider>
                   </ChatQueueProvider>
                 </WorkbenchProvider>

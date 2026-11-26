@@ -117,6 +117,10 @@ it("ready无视业务类型过滤，取消挂起旧GET并读取订阅后的新�
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  const statuses: string[] = [];
+  const stopObserving = client.getQueryCache().subscribe(({ type, query }) => {
+    if (type === "updated") statuses.push(query.state.status);
+  });
   let releaseOld: (value: string) => void = () => {};
   const read = vi
     .fn()
@@ -159,7 +163,9 @@ it("ready无视业务类型过滤，取消挂起旧GET并读取订阅后的新�
   });
   expect(screen.getByText("新事实")).toBeInTheDocument();
   expect(client.getQueryData(["chat", "ready"])).toBe("新事实");
+  expect(statuses).not.toContain("error");
   view.unmount();
+  stopObserving();
   client.clear();
 });
 
@@ -1022,7 +1028,11 @@ it("取消最后一个恢复命令会终止真实读取且保留期间提交的�
     await rejected;
     expect(signal?.aborted).toBe(true);
     expect(client.getQueryData(key)).toBe("期间提交的新事实");
-    expect(client.getQueryState(key)?.fetchStatus).toBe("idle");
+    expect(client.getQueryState(key)).toMatchObject({
+      fetchStatus: "idle",
+      status: "success",
+      error: null,
+    });
     expect(client.getQueryCache().hasListeners()).toBe(false);
     release();
     await Promise.resolve();

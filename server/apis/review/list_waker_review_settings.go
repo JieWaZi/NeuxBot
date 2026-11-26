@@ -30,6 +30,7 @@ type WakerReviewSettingsItem struct {
 	Name string `json:"name"`
 	// 伙伴头像
 	Avatar string `json:"avatar"`
+	// 复盘偏好
 	WakerReviewInput
 }
 

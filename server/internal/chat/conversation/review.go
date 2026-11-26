@@ -11,17 +11,17 @@ import (
 	"gorm.io/gorm"
 )
 
-// ReviewStart is the admission metadata and corresponding durable successful terminal position.
+// ReviewStart 保存复盘接纳信息和对应的持久成功终态。
 type ReviewStart struct {
-	// Admission contains only the execution creation fact.
+	// Admission 只包含执行创建事实。
 	Admission agent.ConversationRecord
-	// Terminal is the successful terminal cursor used for restart and batch identity.
+	// Terminal 是重启恢复和批次识别使用的成功终态游标。
 	Terminal int64
-	// CompletedAt is the original terminal timestamp in Unix milliseconds.
+	// CompletedAt 是成功终态的原始 Unix 毫秒时间。
 	CompletedAt int64
 }
 
-// ReadReviewStarts reads only indexed success positions and review-tagged creation facts.
+// ReadReviewStarts 通过索引读取成功终态和已标记的复盘接纳事实。
 func (s *Store) ReadReviewStarts(ctx context.Context, chatID string, after, through int64, limit int) ([]ReviewStart, int64, error) {
 	if limit < 1 || limit > maxPageSize {
 		return nil, after, status_error.ChatEventCursorInvalid
@@ -71,7 +71,7 @@ func (s *Store) ReadReviewStarts(ctx context.Context, chatID string, after, thro
 	return results, next, nil
 }
 
-// ListReviewChatIDs recovers review-tagged streams after Chat reconciles its authority.
+// ListReviewChatIDs 在聊天权威日志对账后查找已标记的复盘会话。
 func (s *Store) ListReviewChatIDs(ctx context.Context) ([]string, error) {
 	var ids []string
 	err := s.indexes.with(ctx, func(db *gorm.DB) error {

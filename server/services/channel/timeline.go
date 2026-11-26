@@ -470,14 +470,16 @@ func appendPendingWorkInput(
 		role = constants.MessageRoleAssistant
 	}
 	message := messageview.Message{
-		ID:           messageID,
-		SubmissionID: input.SubmissionID,
-		Role:         role,
-		Actor:        input.Actor,
-		Content:      input.Content,
-		Workflow:     input.Workflow,
-		CreatedAt:    createdAt,
-		UpdatedAt:    createdAt,
+		ID:                messageID,
+		SubmissionID:      input.SubmissionID,
+		Role:              role,
+		Actor:             input.Actor,
+		Content:           input.Content,
+		AttachmentOnly:    input.AttachmentOnly,
+		CodeReferenceOnly: input.CodeReferenceOnly,
+		Workflow:          input.Workflow,
+		CreatedAt:         createdAt,
+		UpdatedAt:         createdAt,
 	}
 	if input.Content != "" {
 		message.DisplayParts = []messageview.MessageDisplayPart{{

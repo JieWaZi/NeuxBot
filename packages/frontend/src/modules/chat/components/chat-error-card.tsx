@@ -96,6 +96,7 @@ export function ChatErrorCard({
   const action =
     onContinue || (onRetry && !missingSession) ? (
       <Button
+        type="button"
         size="sm"
         variant="ghost"
         className="shrink-0"
@@ -164,6 +165,7 @@ export function ChatErrorCard({
         </div>
         {appearance === "composer" ? action : null}
         <Button
+          type="button"
           size="icon-sm"
           variant="ghost"
           className="shrink-0"
@@ -180,7 +182,7 @@ export function ChatErrorCard({
       {details ? (
         <Collapsible>
           <CollapsibleTrigger asChild>
-            <Button size="sm" variant="ghost">
+            <Button type="button" size="sm" variant="ghost">
               {t("errorDetails")}
             </Button>
           </CollapsibleTrigger>
@@ -203,7 +205,12 @@ export function ChatErrorCard({
     <Collapsible open={expanded} onOpenChange={setExpanded}>
       {!expanded ? (
         <CollapsibleTrigger asChild>
-          <Button size="sm" variant="ghost" aria-label={t("expandFailure")}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-label={t("expandFailure")}
+          >
             <AlertTriangle className="text-destructive" />
             <span>{t("failed")}</span>
             <ChevronRight />
@@ -312,6 +319,10 @@ export function ChatErrorNotices(props: ChatErrorNoticesProps) {
   return useChatErrorNotices(props);
 }
 
+function retainsRetry(notice: ErrorNotice): boolean {
+  return notice.action === "retry" && notice.retainForRetry === true;
+}
+
 /** 同一份提示状态供独立区域与 Composer 顶栏复用，关闭后返回空槽位。 */
 export function useChatErrorNotices({
   scopes,
@@ -340,6 +351,7 @@ export function useChatErrorNotices({
       ).message
     : undefined;
   const sameFailure = (notice: ErrorNotice) => {
+    if (retainsRetry(notice)) return false;
     if (failureId && dismissedFailures.has(failureId)) return false;
     if (!failure || (failure.createdAt && notice.createdAt < failure.createdAt))
       return false;
@@ -384,7 +396,9 @@ export function useChatErrorNotices({
     resolveErrorNoticeRecovery(
       notices.filter(
         (notice) =>
-          scopes.includes(notice.scope) && notice.id !== latestNoticeId,
+          scopes.includes(notice.scope) &&
+          notice.id !== latestNoticeId &&
+          !retainsRetry(notice),
       ),
     );
   }, [notices, scopes, latestNoticeId, failure?.status, failureId]);

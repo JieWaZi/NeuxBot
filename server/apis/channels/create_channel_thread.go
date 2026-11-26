@@ -60,6 +60,7 @@ func (c *CreateChannelThread) Validate(*gin.Context) error {
 }
 
 // Output 首次发送时才建立团队对话和全部成员独立 Chat。
+// [MessageAttachmentInvalid][40000000017][消息附件不合法或不可读取]
 func (c *CreateChannelThread) Output(ctx *gin.Context) (interface{}, error) {
 	input := c.Body.workInput()
 	release, err := uploads.ClaimWork(ctx, &input, ctx.Request.URL.Path+":"+strings.TrimSpace(c.Body.ClientRequestID))

@@ -124,10 +124,10 @@ func (s *Service) Update(ctx context.Context, wakerID, connectorID string, input
 	if err != nil {
 		return models.MCPConnectorWithState{}, err
 	}
-	return s.saveUpdate(ctx, wakerID, current, prepared, input.TrustConfirmed, nil)
+	return s.saveUpdate(ctx, wakerID, current, prepared, input.TrustConfirmed, nil, nil)
 }
 
-func (s *Service) saveUpdate(ctx context.Context, wakerID string, current models.MCPConnectorWithState, prepared models.MCPConnector, trustConfirmed bool, approvedPartners []string) (models.MCPConnectorWithState, error) {
+func (s *Service) saveUpdate(ctx context.Context, wakerID string, current models.MCPConnectorWithState, prepared models.MCPConnector, trustConfirmed bool, approvedPartners []string, tested *mcpclient.Result) (models.MCPConnectorWithState, error) {
 	existing := current.Connector
 	if existing.Scope == constants.MCPConnectorScopeBuiltIn && builtInDefinitionChanged(existing, prepared) {
 		return models.MCPConnectorWithState{}, status_error.BuiltInMCPConnectorReadOnly
@@ -169,7 +169,9 @@ func (s *Service) saveUpdate(ctx context.Context, wakerID string, current models
 			return err
 		}
 		toSave := prepared
-		if !configurationChanged {
+		if tested != nil {
+			applyTestSnapshot(&toSave, *tested)
+		} else if !configurationChanged {
 			toSave.TestStatus = fresh.Connector.TestStatus
 			toSave.TestedAt = fresh.Connector.TestedAt
 			toSave.TestDurationMS = fresh.Connector.TestDurationMS

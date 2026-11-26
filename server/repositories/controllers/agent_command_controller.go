@@ -3,10 +3,20 @@ package controllers
 import (
 	"context"
 	"errors"
+
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"gorm.io/gorm"
 )
+
+// AgentCommandController 管理原子领域回执及其聊天投影确认。
+type AgentCommandController interface {
+	capability.Store
+	// ListPendingManagedChanges 分页读取全局或指定聊天的未确认资源变更。
+	ListPendingManagedChanges(ctx context.Context, chatID string, after capability.Receipt, limit int) ([]capability.Receipt, error)
+	// MarkManagedChangeProjected 确认指定回执的日志投影已完成。
+	MarkManagedChangeProjected(ctx context.Context, id string) error
+}
 
 // agentCommandController 复用主业务数据库与事务连接。
 type agentCommandController struct {
@@ -15,7 +25,7 @@ type agentCommandController struct {
 }
 
 // NewAgentCommandController 构造无后台任务的命令回执仓储。
-func NewAgentCommandController(db *gorm.DB) capability.Store {
+func NewAgentCommandController(db *gorm.DB) AgentCommandController {
 	return &agentCommandController{db: db}
 }
 
@@ -28,12 +38,49 @@ func (c *agentCommandController) Find(ctx context.Context, id string) (capabilit
 	if err != nil {
 		return capability.Receipt{}, false, databaseError("get_agent_command", id, err)
 	}
-	return capability.Receipt{ID: value.ID, Digest: value.Digest, Data: value.Data}, true, nil
+	return agentCommandReceipt(value), true, nil
 }
 
 func (c *agentCommandController) Create(ctx context.Context, value capability.Receipt) error {
-	if err := controllerDB(ctx, c.db).Create(&models.AgentCommandReceipt{ID: value.ID, Digest: value.Digest, Data: value.Data}).Error; err != nil {
+	origin := value.Origin
+	if err := controllerDB(ctx, c.db).Create(&models.AgentCommandReceipt{
+		ID: value.ID, Digest: value.Digest, Data: value.Data,
+		ManagedChatID: origin.ChatID, ManagedExecutionID: origin.ExecutionID, ManagedWakerID: origin.WakerID, ManagedOperation: origin.Operation,
+	}).Error; err != nil {
 		return databaseError("create_agent_command", value.ID, err)
 	}
 	return nil
+}
+
+func (c *agentCommandController) ListPendingManagedChanges(ctx context.Context, chatID string, after capability.Receipt, limit int) ([]capability.Receipt, error) {
+	query := controllerDB(ctx, c.db).Where("managed_chat_id <> '' AND managed_projected = 0").
+		Where("(managed_chat_id, id) > (?, ?)", after.Origin.ChatID, after.ID)
+	if chatID != "" {
+		query = query.Where("managed_chat_id = ?", chatID)
+	}
+	var rows []models.AgentCommandReceipt
+	if err := query.Order("managed_chat_id, id").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, databaseError("list_pending_managed_changes", chatID, err)
+	}
+	receipts := make([]capability.Receipt, 0, len(rows))
+	for _, row := range rows {
+		receipts = append(receipts, agentCommandReceipt(row))
+	}
+	return receipts, nil
+}
+
+func (c *agentCommandController) MarkManagedChangeProjected(ctx context.Context, id string) error {
+	err := controllerDB(ctx, c.db).Model(&models.AgentCommandReceipt{}).
+		Where("id = ? AND managed_chat_id <> ''", id).
+		UpdateColumn("managed_projected", true).Error
+	if err != nil {
+		return databaseError("mark_managed_change_projected", id, err)
+	}
+	return nil
+}
+
+func agentCommandReceipt(row models.AgentCommandReceipt) capability.Receipt {
+	return capability.Receipt{ID: row.ID, Digest: row.Digest, Data: row.Data, Origin: capability.ReceiptOrigin{
+		ChatID: row.ManagedChatID, ExecutionID: row.ManagedExecutionID, WakerID: row.ManagedWakerID, Operation: row.ManagedOperation,
+	}}
 }

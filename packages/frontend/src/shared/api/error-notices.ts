@@ -28,6 +28,8 @@ export type ErrorNotice = {
   messageKey?: typeof serviceConnectionMessageKey;
   createdAt: number;
   action?: "retry" | "check";
+  /** 展示更新的错误时，保留仍可重试的冻结请求。 */
+  retainForRetry?: boolean;
 };
 type ErrorNoticeDraft = Omit<
   ErrorNotice,
@@ -255,10 +257,18 @@ export function apiErrorScope(path: string): string {
 }
 
 /** 页面离开后释放闭包，错误事实仍保留，避免旧恢复动作操作其他会话。 */
-export function clearErrorNoticeActions(scope: string) {
+export function clearErrorNoticeActions(
+  scope: string,
+  preserveRetainedRetries = false,
+) {
   let changed = false;
   notices = notices.map((notice) => {
-    if (notice.scope !== scope || !notice.action) return notice;
+    if (
+      notice.scope !== scope ||
+      !notice.action ||
+      (preserveRetainedRetries && notice.retainForRetry)
+    )
+      return notice;
     actions.delete(notice.id);
     changed = true;
     return { ...notice, action: undefined };

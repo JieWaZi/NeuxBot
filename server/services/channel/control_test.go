@@ -13,6 +13,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -562,6 +563,34 @@ func TestStopWorkRejectsTheOldDispatchSnapshotAfterCompletion(t *testing.T) {
 	release()
 }
 
+func TestMemberReplyRouteRejectsTheLeadChat(t *testing.T) {
+	ctx := t.Context()
+	svc, thread, _, _ := newDelegationDispatchService(t)
+	member, err := svc.threads.GetMember(ctx, thread.ID, "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply := teamwork.WithMemberReplyRoute(ctx)
+	if _, release, err := svc.AcquireChatInput(reply, thread.LeadChatID, true); !errors.Is(err, status_error.ChatReplyTargetUnavailable) {
+		if release != nil {
+			release()
+		}
+		t.Fatalf("主 Chat 接纳了成员路径中的引用: %v", err)
+	}
+	for _, chatID := range []string{member.ChatID, "private-chat"} {
+		_, release, err := svc.AcquireChatInput(reply, chatID, true)
+		if err != nil {
+			t.Fatalf("%s 不允许通用发送入口引用: %v", chatID, err)
+		}
+		release()
+	}
+	_, release, err := svc.AcquireChatInput(ctx, thread.LeadChatID, true)
+	if err != nil {
+		t.Fatalf("团队队列原派发入口被拒绝: %v", err)
+	}
+	release()
+}
+
 func TestStopFirstTeamBeforeSendLeavesNoProvisionalThread(t *testing.T) {
 	ctx := t.Context()
 	svc, thread, _, executions := newDelegationDispatchService(t)
@@ -633,6 +662,14 @@ func TestStopTeamSubmissionCancelsOnlyItsLeadQueueEntry(t *testing.T) {
 	another, _, err := svc.threads.GetLeadInput(ctx, LeadInputID(thread.ID, "another"))
 	if err != nil || another.Status != constants.ChannelInputStatusPending || len(stop.calls) != 0 {
 		t.Fatalf("other input = %+v, stopped chats = %v, err = %v", another, stop.calls, err)
+	}
+	if err := svc.StopWorkForSubmission(ctx, thread.ChannelID, thread.ID, "stopped"); err != nil {
+		t.Fatal(err)
+	}
+	events, err := svc.ListEvents(ctx, thread.ID, "", 20)
+	if err != nil || len(events) != 1 || events[0].Type != "lead.input_cancelled" ||
+		string(events[0].Payload) != `{"inputId":"`+stopped.ID+`"}` {
+		t.Fatalf("queue cancellation events = %+v, %v", events, err)
 	}
 }
 

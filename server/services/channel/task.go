@@ -695,6 +695,8 @@ func taskWorkInput(
 	} else if task.DirectInput == nil {
 		workInput = execution.WorkInput{Actor: string(followUpActor), Content: task.Description}
 	}
+	generatedOnly := strings.TrimSpace(workInput.Content) == "" || workInput.AttachmentOnly || workInput.CodeReferenceOnly
+	hasCodeReferencePrompt := workInput.CodeReferenceOnly
 	for _, followUp := range followUps {
 		input := followUp.Payload
 		if strings.TrimSpace(input.Content) == "" {
@@ -704,8 +706,12 @@ func taskWorkInput(
 			workInput.Content += "\n\n"
 		}
 		workInput.Content += input.Content
+		generatedOnly = generatedOnly && (input.AttachmentOnly || input.CodeReferenceOnly)
+		hasCodeReferencePrompt = hasCodeReferencePrompt || input.CodeReferenceOnly
 		appendWorkInputReferences(&workInput, input)
 	}
+	workInput.AttachmentOnly = generatedOnly && !hasCodeReferencePrompt
+	workInput.CodeReferenceOnly = generatedOnly && hasCodeReferencePrompt
 	workInput.Actor = string(followUpActor)
 	workInput.IMReplyLinkID = followUps[0].Payload.IMReplyLinkID
 	return workInput, nil

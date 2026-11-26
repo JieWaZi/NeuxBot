@@ -1,208 +1,92 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
-import {
-  MemoryRouter,
-  Route,
-  Routes,
-  useNavigate,
-  useParams,
-} from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import "@/shared/i18n";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { expect, it, vi } from "vitest";
+import type * as ChatNavigation from "@/shared/lib/chat-navigation";
 import { ChatEntryPage } from "./chat-entry-page";
 
-const { chatState } = vi.hoisted(() => ({
-  chatState: {
-    current: "latest" as "latest" | "pending" | "empty" | "missing",
-  },
+const recent = vi.hoisted(() => ({
+  read: vi.fn<() => Promise<{ chat: { id: string; wakerId: string } }>>(),
 }));
-const storage = new Map<string, string>();
-
-vi.mock("@/modules/waker", () => ({
-  listWakersOptions: () => ({
-    queryKey: ["wakers"],
-    queryFn: async () => ({
-      resources: [{ id: "waker-1", name: "测试伙伴" }],
-    }),
-  }),
+vi.mock("@/shared/lib/chat-navigation", async (original) => ({
+  ...(await original<typeof ChatNavigation>()),
+  readChatLastActive: () => ({ chatId: "last-visited", wakerId: "partner" }),
 }));
-
-vi.mock("../api/chat-queries", () => ({
-  chatListKey: (wakerId: string) => ["chats", "list", wakerId],
-  chatListInfiniteOptions: (wakerId: string) => ({
-    queryKey: ["chats", "list", wakerId],
-    initialPageParam: undefined,
-    queryFn: async () => {
-      if (chatState.current === "pending") {
-        await new Promise(() => undefined);
-      }
-      return {
-        resources:
-          chatState.current === "empty"
-            ? []
-            : [
-                {
-                  id: "chat-latest",
-                  wakerId: "waker-1",
-                },
-              ],
-        hasMore: false,
-      };
-    },
-    getNextPageParam: () => undefined,
-  }),
-  getChatOptions: () => ({
-    queryKey: ["chat", "chat-b"],
-    queryFn: async () => {
-      if (chatState.current === "missing") {
-        throw new Error("chat deleted");
-      }
-      return {
-        chat: { id: "chat-b", wakerId: "waker-1" },
-      };
-    },
-  }),
-}));
-
 vi.mock("./chat-page", () => ({
-  ChatPageContent: ({
-    routeTransitioning,
-  }: {
-    routeTransitioning?: boolean;
-  }) => (
-    <div data-testid="draft-page" aria-busy={routeTransitioning}>
-      <textarea aria-label="输入消息" />
-    </div>
+  ChatPageContent: ({ chatId }: { chatId?: string }) => (
+    <div data-testid="visible-chat">{chatId}</div>
   ),
 }));
+vi.mock("@/modules/waker", () => ({
+  listWakersOptions: () => ({
+    queryKey: ["partners"],
+    queryFn: async () => ({ resources: [{ id: "partner" }] }),
+  }),
+}));
+vi.mock("../api/chat-queries", () => ({
+  chatListKey: (id: string) => ["chat-list", id],
+  chatListInfiniteOptions: (id: string) => ({
+    queryKey: ["chat-list", id],
+    queryFn: async () => ({
+      resources: [{ id: "last-updated", wakerId: "partner" }],
+    }),
+    initialPageParam: null,
+    getNextPageParam: () => undefined,
+  }),
+  getChatOptions: ({ path }: { path: { chatId: string } }) => ({
+    queryKey: ["chat-detail", path.chatId],
+    queryFn: recent.read,
+  }),
+}));
 
-function ChatTarget() {
-  const { chatId } = useParams();
-  return <div data-testid="chat-page">{chatId}</div>;
-}
-
-function AcceptChat() {
-  const navigate = useNavigate();
+function Entry() {
+  const { pathname } = useLocation();
   return (
-    <button onClick={() => navigate("/chats/chat-created?wakerId=waker-1")}>
-      接纳首条消息
-    </button>
+    <>
+      <output>{pathname}</output>
+      <ChatEntryPage presentationScopeKey="chat-scene" />
+    </>
   );
 }
 
-function renderEntry(initialEntry = "/chat") {
-  const queryClient = new QueryClient({
+it("等待上次访问的会话验证，不让先返回的最近列表抢走路由", async () => {
+  const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]}>
+  let settle:
+    ((value: { chat: { id: string; wakerId: string } }) => void) | undefined;
+  recent.read.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+  );
+  const view = render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/chat?wakerId=partner"]}>
         <Routes>
-          <Route
-            path="/chat"
-            element={<ChatEntryPage presentationScopeKey="test-entry" />}
-          />
-          <Route path="/chats/:chatId" element={<ChatTarget />} />
+          <Route element={<Entry />}>
+            <Route path="/chat" element={null} />
+            <Route path="/chats/:chatId" element={null} />
+          </Route>
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
-}
-
-describe("ChatEntryPage", () => {
-  beforeEach(() => {
-    chatState.current = "latest";
-    storage.clear();
-    Object.defineProperty(window, "localStorage", {
-      configurable: true,
-      value: {
-        getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: string) => storage.set(key, value),
-      },
-    });
-  });
-
-  it.each(["/chat?wakerId=waker-1", "/chat?draftId=new&wakerId=waker-1"])(
-    "首发接纳后保留输入区组件身份（入口：%s）",
-    async (entry) => {
-      chatState.current = "empty";
-      const queryClient = new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      });
-      render(
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter initialEntries={[entry]}>
-            <AcceptChat />
-            <Routes>
-              <Route
-                element={<ChatEntryPage presentationScopeKey="test-entry" />}
-              >
-                <Route path="/chat" element={<></>} />
-                <Route path="/chats/:chatId" element={<></>} />
-              </Route>
-            </Routes>
-          </MemoryRouter>
-        </QueryClientProvider>,
-      );
-      const input = await screen.findByRole("textbox", { name: "输入消息" });
-      fireEvent.change(input, { target: { value: "保留未提交草稿" } });
-      fireEvent.click(screen.getByRole("button", { name: "接纳首条消息" }));
-      expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(input);
-      expect(input).toHaveValue("保留未提交草稿");
-    },
-  );
-
-  it("restores the last active chat instead of the server latest", async () => {
-    window.localStorage.setItem("bot.chat.last-waker-id", "waker-1");
-    window.localStorage.setItem(
-      "bot.chat.last-active",
-      JSON.stringify({ wakerId: "waker-1", chatId: "chat-b" }),
+  try {
+    await waitFor(() =>
+      expect(client.getQueryState(["chat-list", "partner"])?.status).toBe(
+        "success",
+      ),
     );
-    renderEntry();
-
-    expect(await screen.findByTestId("chat-page")).toHaveTextContent("chat-b");
-  });
-
-  it("查询最近对话时保留真实输入区并标记历史加载", async () => {
-    chatState.current = "pending";
-    renderEntry();
-
-    expect(await screen.findByTestId("draft-page")).toHaveAttribute(
-      "aria-busy",
-      "true",
+    expect(screen.getByText("/chat")).toBeInTheDocument();
+    expect(screen.getByTestId("visible-chat")).toBeEmptyDOMElement();
+    await act(async () =>
+      settle?.({ chat: { id: "last-visited", wakerId: "partner" } }),
     );
-    expect(screen.getByRole("textbox", { name: "输入消息" })).toBeVisible();
-  });
-
-  it("ignores a deleted last active chat and falls back to the latest", async () => {
-    chatState.current = "missing";
-    window.localStorage.setItem("bot.chat.last-waker-id", "waker-1");
-    window.localStorage.setItem(
-      "bot.chat.last-active",
-      JSON.stringify({ wakerId: "waker-1", chatId: "chat-b" }),
-    );
-
-    renderEntry();
-
-    expect(await screen.findByTestId("chat-page")).toHaveTextContent(
-      "chat-latest",
-    );
-    expect(screen.queryByTestId("draft-page")).not.toBeInTheDocument();
-  });
-
-  it("persists the requested waker id when switching partners", async () => {
-    window.localStorage.setItem("bot.chat.last-waker-id", "waker-old");
-    renderEntry("/chat?wakerId=waker-1");
-
-    expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
-    expect(window.localStorage.getItem("bot.chat.last-waker-id")).toBe(
-      "waker-1",
-    );
-  });
+    expect(await screen.findByText("/chats/last-visited")).toBeInTheDocument();
+  } finally {
+    view.unmount();
+    client.clear();
+  }
 });
-
-vi.mock("@/shared/api/global-events", () => ({
-  registerCoreConnectionRecovery: () => () => {},
-  subscribeGlobalEvents: () => () => {},
-}));

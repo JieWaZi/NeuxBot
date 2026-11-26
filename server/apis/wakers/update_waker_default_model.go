@@ -32,28 +32,19 @@ func (u *UpdateWakerDefaultModel) Path() string {
 }
 
 // Output 只更新默认模型；空配置表示新对话跟随全局默认。
+// [DatabaseError][50000000002][数据库操作失败]
 func (u *UpdateWakerDefaultModel) Output(ctx *gin.Context) (interface{}, error) {
 	defaultModel, err := normalizeDefaultModel(u.Body.DefaultModel)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	change := func() (bool, error) {
-		changed := false
-		err := global.TransactionControllerManager.Transaction(ctx, func(tx context.Context) error {
-			waker, err := global.WakerControllerManager.Get(tx, u.WakerID)
-			if err != nil || reflect.DeepEqual(waker.DefaultModel, defaultModel) {
-				return err
-			}
-			changed = true
-			return global.WakerControllerManager.UpdateDefaultModel(tx, u.WakerID, defaultModel, time.Now().UnixMilli())
-		})
-		return changed, err
-	}
-	if global.ReviewWorker == nil {
-		_, err = change()
-	} else {
-		err = global.ReviewWorker.ChangeFollowedDefault(ctx, u.WakerID, change)
-	}
+	err = global.TransactionControllerManager.Transaction(ctx, func(tx context.Context) error {
+		waker, err := global.WakerControllerManager.Get(tx, u.WakerID)
+		if err != nil || reflect.DeepEqual(waker.DefaultModel, defaultModel) {
+			return err
+		}
+		return global.WakerControllerManager.UpdateDefaultModel(tx, u.WakerID, defaultModel, time.Now().UnixMilli())
+	})
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

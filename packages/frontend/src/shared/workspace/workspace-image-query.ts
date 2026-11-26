@@ -7,12 +7,21 @@ import {
 } from "@/shared/platform";
 import type { ResolvedFileReference } from "./file-reference";
 
-const imageTypes = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-]);
+const imageTypesByExtension = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+const imageTypes = new Set(Object.values(imageTypesByExtension));
+
+export function isWorkspaceMarkdownImagePath(path: string) {
+  const extension = /\.([a-z]+)$/i.exec(path)?.[1]?.toLowerCase();
+  return (
+    extension !== undefined && Object.hasOwn(imageTypesByExtension, extension)
+  );
+}
 
 export class WorkspaceImageError extends Error {
   constructor(readonly reason: "failed" | "tooLarge" | "unsupported") {

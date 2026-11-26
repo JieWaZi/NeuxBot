@@ -3,6 +3,8 @@ package channels
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 func TestChannelHTTPInputKeepsOneExistingSubmissionIdentity(t *testing.T) {
@@ -19,6 +21,31 @@ func TestChannelHTTPInputKeepsOneExistingSubmissionIdentity(t *testing.T) {
 	}
 	if got := creation.workInput().SubmissionID; got != "first-team-input" {
 		t.Fatalf("team initial input identity = %q", got)
+	}
+}
+
+func TestChannelHTTPInputKeepsReplyIdentityAndAttachmentProvenance(t *testing.T) {
+	var request SendChannelMessageRequest
+	if err := json.Unmarshal([]byte(`{"replyToMessageId":" report-id ","attachmentOnly":true,"text":"请查看附件。"}`), &request); err != nil {
+		t.Fatal(err)
+	}
+	input := request.workInput()
+	if input.ReplyToMessageID != "report-id" || !input.AttachmentOnly || input.Content != "请查看附件。" {
+		t.Fatalf("团队输入转换丢失引用或附件来源: %+v", input)
+	}
+}
+
+func TestChannelHTTPInputKeepsCodeReferencePromptSource(t *testing.T) {
+	for _, request := range []interface {
+		workInput() execution.WorkInput
+	}{&CreateChannelThreadRequest{}, &SendChannelMessageRequest{}} {
+		if err := json.Unmarshal([]byte(`{"text":"请查看引用的代码片段。","codeReferenceOnly":true,"codeReferences":[{"path":"/work/example.go"}]}`), request); err != nil {
+			t.Fatal(err)
+		}
+		input := request.workInput()
+		if !input.CodeReferenceOnly || input.Content != "请查看引用的代码片段。" || len(input.CodeReferences) != 1 {
+			t.Fatalf("团队输入转换丢失代码引用来源或执行正文: %+v", input)
+		}
 	}
 }
 

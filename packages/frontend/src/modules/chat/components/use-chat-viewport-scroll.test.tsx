@@ -1,7 +1,11 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useLayoutEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useChatViewportScroll } from "./use-chat-viewport-scroll";
+import {
+  ChatViewportPositionContext,
+  useChatViewportScroll,
+  type ChatViewportPositions,
+} from "./use-chat-viewport-scroll";
 
 const layout = { height: 300, top: 0, second: 150 };
 const callbacks = new Set<ResizeObserverCallback>();
@@ -24,11 +28,15 @@ function Harness({
   revision = 0,
   scope = "chat-a",
   enabled = true,
+  rowVersion = 0,
+  withRows = true,
   isHistoryAnchoring,
 }: {
   revision?: number;
   scope?: string;
   enabled?: boolean;
+  rowVersion?: number;
+  withRows?: boolean;
   isHistoryAnchoring?: () => boolean;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
@@ -50,14 +58,6 @@ function Harness({
       element.scrollTop = (typeof options === "number" ? y : options?.top) ?? 0;
     };
     element.getBoundingClientRect = () => new DOMRect(0, 0, 400, 100);
-    const first = element.querySelector<HTMLElement>("[data-first]");
-    const second = element.querySelector<HTMLElement>("[data-second]");
-    if (first)
-      first.getBoundingClientRect = () =>
-        new DOMRect(0, -layout.top, 400, layout.second);
-    if (second)
-      second.getBoundingClientRect = () =>
-        new DOMRect(0, layout.second - layout.top, 400, 100);
   }, []);
   useChatViewportScroll({
     viewport,
@@ -69,12 +69,33 @@ function Harness({
   return (
     <div ref={viewport} data-testid="viewport">
       <div data-chat-message-column>
-        <p data-first data-chat-node-id="first">
-          第一段
-        </p>
-        <p data-second data-chat-node-id="second">
-          阅读中的段落
-        </p>
+        {withRows && (
+          <>
+            <p
+              data-first
+              data-chat-node-id="first"
+              ref={(node) => {
+                if (node)
+                  node.getBoundingClientRect = () =>
+                    new DOMRect(0, -layout.top, 400, layout.second);
+              }}
+            >
+              第一段
+            </p>
+            <p
+              key={rowVersion}
+              data-second
+              data-chat-node-id="second"
+              ref={(node) => {
+                if (node)
+                  node.getBoundingClientRect = () =>
+                    new DOMRect(0, layout.second - layout.top, 400, 100);
+              }}
+            >
+              阅读中的段落
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -189,6 +210,46 @@ describe("canonical 消息阅读滚动", () => {
     layout.second = 190;
     layout.height = 440;
     view.rerender(<Harness enabled revision={1} />);
+    expect(layout.top).toBe(190);
+  });
+  it("同一个段落换了 DOM 时在提交阶段恢复原视口偏移", () => {
+    const view = render(<Harness />);
+    layout.top = 150;
+    fireEvent.scroll(screen.getByTestId("viewport"));
+    const before = screen.getByText("阅读中的段落");
+    layout.second = 190;
+    layout.height = 440;
+    view.rerender(<Harness rowVersion={1} revision={1} />);
+    expect(screen.getByText("阅读中的段落")).not.toBe(before);
+    expect(layout.top).toBe(190);
+  });
+  it("切到其他会话后返回，恢复原聊天的阅读位置", () => {
+    const positions: ChatViewportPositions = new Map();
+    const tab = (scope: string) => (
+      <ChatViewportPositionContext value={positions}>
+        <Harness key={scope} scope={scope} />
+      </ChatViewportPositionContext>
+    );
+    const view = render(tab("chat-a"));
+    layout.top = 150;
+    fireEvent.scroll(screen.getByTestId("viewport"));
+    view.rerender(tab("chat-b"));
+    expect(layout.top).toBe(200);
+    layout.second = 190;
+    layout.height = 440;
+    view.rerender(tab("chat-a"));
+    expect(layout.top).toBe(190);
+  });
+  it("切回会话时历史暂空，保留锚点直到消息到达", () => {
+    const view = render(<Harness />);
+    layout.top = 150;
+    fireEvent.scroll(screen.getByTestId("viewport"));
+    view.rerender(<Harness scope="chat-b" revision={1} />);
+    Object.assign(layout, { top: 0, height: 100 });
+    view.rerender(<Harness scope="chat-a" withRows={false} revision={2} />);
+    layout.second = 190;
+    layout.height = 440;
+    view.rerender(<Harness scope="chat-a" revision={3} />);
     expect(layout.top).toBe(190);
   });
   it("停用、来源切换与卸载释放observer和排队帧", () => {

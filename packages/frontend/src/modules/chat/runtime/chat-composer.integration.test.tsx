@@ -2138,13 +2138,16 @@ describe("chat composer", () => {
     expect(
       input.querySelector('[data-chat-composer-reference-type="code"]'),
     ).toHaveTextContent("server/main.go (17-18)");
-    expect(onCodeReferencesChange).toHaveBeenLastCalledWith([
-      expect.objectContaining({
-        path: "server/main.go",
-        startLine: 17,
-        endLine: 18,
-      }),
-    ]);
+    expect(onCodeReferencesChange).toHaveBeenLastCalledWith(
+      [
+        expect.objectContaining({
+          path: "server/main.go",
+          startLine: 17,
+          endLine: 18,
+        }),
+      ],
+      true,
+    );
 
     fireEvent.keyDown(input, { key: "Backspace" });
     await waitFor(() =>
@@ -2152,7 +2155,7 @@ describe("chat composer", () => {
         input.querySelector('[data-chat-composer-reference-type="code"]'),
       ).not.toBeInTheDocument(),
     );
-    expect(onCodeReferencesChange).toHaveBeenLastCalledWith([]);
+    expect(onCodeReferencesChange).toHaveBeenLastCalledWith([], false);
   });
 
   it("添加选区保留已有草稿并聚焦输入框，相同请求只插入一次", async () => {
@@ -2190,9 +2193,10 @@ describe("chat composer", () => {
     expect(
       input.querySelectorAll('[data-chat-composer-reference-type="code"]'),
     ).toHaveLength(1);
-    expect(onCodeReferencesChange).toHaveBeenLastCalledWith([
-      expect.objectContaining(reference),
-    ]);
+    expect(onCodeReferencesChange).toHaveBeenLastCalledWith(
+      [expect.objectContaining(reference)],
+      false,
+    );
   });
 
   it("删除代码引用后发送不再携带已删除的引用", async () => {

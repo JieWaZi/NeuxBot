@@ -213,6 +213,286 @@ describe("useChatRuntime queue", () => {
     notices.unmount();
   });
 
+  it("保留原排队消息的引用目标并在出队时显示在乐观消息中", async () => {
+    const replyTo = {
+      messageId: "message-original",
+      role: "assistant" as const,
+      preview: "原消息",
+    };
+    const send = vi.fn(() => new Promise<MessageResult>(() => {}));
+    const options = {
+      ...runtimeOptions("chat-reply-queue"),
+      selection: { ...runtimeOptions("chat-reply-queue").selection, replyTo },
+      send,
+    };
+    const { result, rerender } = renderHook(useChatRuntime, {
+      wrapper,
+      initialProps: options,
+    });
+    act(() =>
+      runtimeAdapter.current?.queue?.enqueue(queuedMessage, { steer: false }),
+    );
+    rerender({
+      ...options,
+      selection: {
+        ...options.selection,
+        replyTo: {
+          messageId: "message-newer",
+          role: "assistant",
+          preview: "新版引用",
+        },
+      },
+    });
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "execution.completed",
+        message: {
+          id: "execution-1",
+          role: "assistant",
+          executionId: "execution-1",
+          status: "completed",
+        },
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        result.current.messages.find((item) => item.optimistic),
+      ).toMatchObject({
+        role: "user",
+        content: "排队消息",
+        replyTo,
+      }),
+    );
+  });
+
+  it.each([false, true])(
+    "明确拒绝引用回复时恢复空草稿或重试原来的输入，新草稿存在=%s",
+    async (hasNewDraft) => {
+      const replyTo = {
+        messageId: "message-original",
+        role: "assistant",
+        preview: "原消息",
+      } as const;
+      const restore = vi.fn();
+      const send = vi
+        .fn()
+        .mockRejectedValueOnce(
+          new ApiError("引用消息不可用", "ChatReplyTargetUnavailable", 400),
+        )
+        .mockResolvedValueOnce({
+          chat: { id: "chat-reply-rejected" },
+          execution: { id: "accepted", status: "running" },
+        });
+      const options = {
+        ...runtimeOptions("chat-reply-rejected"),
+        activeExecutionId: undefined,
+        captureReplyDraft: () => ({ isEmpty: () => !hasNewDraft, restore }),
+        selection: {
+          ...runtimeOptions("chat-reply-rejected").selection,
+          replyTo,
+        },
+        send,
+      };
+      const { result } = renderHook(
+        () => ({ chat: useChatRuntime(options), notices: useErrorNotices() }),
+        { wrapper },
+      );
+      await act(async () => {
+        await runtimeAdapter.current?.onNew?.(queuedMessage);
+      });
+      await waitFor(() => {
+        expect(result.current.notices[0]?.action).toBe(
+          hasNewDraft ? "retry" : undefined,
+        );
+        if (!hasNewDraft) expect(restore).toHaveBeenCalledOnce();
+      });
+      if (hasNewDraft) {
+        expect(restore).not.toHaveBeenCalled();
+        await act(async () => {
+          const notice = result.current.notices[0];
+          if (!notice) throw new Error("缺少回复发送失败提示");
+          await runErrorNoticeAction(notice.id);
+        });
+        expect(send).toHaveBeenCalledTimes(2);
+        expect(send.mock.calls[1]).toEqual(send.mock.calls[0]);
+        expect(
+          result.current.chat.messages.find((item) => item.role === "user"),
+        ).toMatchObject({ replyTo });
+      }
+    },
+  );
+
+  it("回执未知时对账后重试同一个引用请求", async () => {
+    const options = runtimeOptions("chat-reply-unconfirmed");
+    const replyTo = {
+      messageId: "message-original",
+      role: "assistant",
+      preview: "原消息",
+    } as const;
+    const accept = vi
+      .fn<() => Promise<MessageResult>>()
+      .mockRejectedValueOnce(new ApiError("Failed to fetch", "NETWORK"))
+      .mockResolvedValueOnce({
+        chat: { id: options.chatId },
+        execution: { id: "accepted", userMessageId: "sent-user" },
+      });
+    const prepareSubmission = vi.fn(() => ({
+      submissionId: "reply-1",
+      accept,
+    }));
+    const reconcile = vi.fn(async () => undefined);
+    const { result } = renderHook(
+      () => ({
+        chat: useProductionChatRuntime({
+          ...options,
+          activeExecutionId: undefined,
+          selection: { ...options.selection, replyTo },
+          messageSource: {
+            snapshot: { messages: [], latestSequence: 1, ready: true },
+            commit: () => undefined,
+            reconcile,
+          },
+          prepareSubmission,
+        }),
+        notices: useErrorNotices(),
+      }),
+      { wrapper },
+    );
+    await act(async () => {
+      await runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    const notice = result.current.notices[0];
+    expect(notice?.action).toBe("retry");
+    if (!notice) throw new Error("缺少回复发送提示");
+    await act(async () => {
+      await runErrorNoticeAction(notice.id);
+    });
+    expect(prepareSubmission).toHaveBeenCalledOnce();
+    expect(accept).toHaveBeenCalledTimes(2);
+    expect(reconcile).toHaveBeenCalledTimes(2);
+    expect(result.current.notices).toHaveLength(0);
+    expect(
+      result.current.chat.messages.find((item) => item.id === "sent-user"),
+    ).toMatchObject({ replyTo });
+  });
+
+  it.each(["rejected", "queued"] as const)(
+    "较早的团队回复结算后，较晚的回执不会复活其占位消息：%s",
+    async (outcome) => {
+      const options = runtimeOptions("team-overlapping-replies");
+      type Receipt = { queuedInput: { id: string; status: "pending" } };
+      const requests: Array<{
+        reject: (error: Error) => void;
+        resolve: (value: Receipt) => void;
+      }> = [];
+      const { result } = renderHook(
+        () =>
+          useProductionChatRuntime({
+            ...options,
+            activeExecutionId: undefined,
+            serverManagedQueue: true,
+            selection: {
+              ...options.selection,
+              replyTo: {
+                messageId: "original",
+                role: "assistant",
+                preview: "原消息",
+              },
+            },
+            captureDraft: () => () => false,
+            messageSource: {
+              snapshot: { messages: [], latestSequence: 1, ready: true },
+              commit: () => undefined,
+              reconcile: async () => undefined,
+            },
+            prepareSubmission: () => ({
+              submissionId: `overlap-${requests.length + 1}`,
+              confirmRejected: () => true,
+              accept: () =>
+                new Promise<Receipt>((resolve, reject) => {
+                  requests.push({ resolve, reject });
+                }),
+            }),
+          }),
+        { wrapper },
+      );
+      const enqueue = () =>
+        runtimeAdapter.current?.queue?.enqueue(queuedMessage, { steer: false });
+      await act(async () => enqueue());
+      await act(async () => enqueue());
+      const [first, second] = requests;
+      if (!first || !second) throw new Error("缺少团队回复提交");
+      await act(async () => {
+        if (outcome === "rejected")
+          first.reject(
+            new ApiError("原消息不可用", "ChatReplyTargetUnavailable", 404),
+          );
+        else
+          first.resolve({ queuedInput: { id: "queue-a", status: "pending" } });
+      });
+      await act(async () =>
+        second.resolve({ queuedInput: { id: "queue-b", status: "pending" } }),
+      );
+      expect(result.current.messages).toEqual([]);
+      expect(result.current.isRunning).toBe(false);
+    },
+  );
+
+  it("团队引用回复排队回执保留原草稿结算，收到主聊天消息后才确认", async () => {
+    const options = runtimeOptions("chat-team-queued-reply");
+    const settle = vi.fn(() => false);
+    const confirmAccepted = vi.fn();
+    const submissionId = "queued-reply-submission";
+    const accept = vi.fn(async () => ({
+      queuedInput: { id: "lead-input-id", status: "pending" as const },
+    }));
+    renderHook(
+      () =>
+        useProductionChatRuntime({
+          ...options,
+          serverManagedQueue: true,
+          selection: {
+            ...options.selection,
+            replyTo: {
+              messageId: "original-message",
+              role: "assistant",
+              preview: "原引用消息",
+            },
+          },
+          captureDraft: () => settle,
+          messageSource: {
+            snapshot: { messages: [], latestSequence: 1, ready: true },
+            commit: () => undefined,
+            reconcile: async () => undefined,
+          },
+          prepareSubmission: () => ({
+            submissionId,
+            confirmAccepted,
+            accept,
+          }),
+        }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      runtimeAdapter.current?.queue?.enqueue(queuedMessage, { steer: false });
+    });
+    expect(accept).toHaveBeenCalledOnce();
+    expect(confirmAccepted).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
+
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "message.user_created",
+        message: { id: "accepted-message", role: "user", submissionId },
+      }),
+    );
+    expect(confirmAccepted).toHaveBeenCalledOnce();
+    expect(settle).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
   it.each([undefined, "existing-chat"])(
     "仅新建会话的首次请求标记会话准备：%s",
     async (chatId) => {
@@ -2904,7 +3184,7 @@ it("按原首发提交停止，并恢复被明确取消的草稿", async () => {
   let rejectSend!: (error: unknown) => void;
   let submitted: Promise<unknown> | undefined;
   const firstStop = vi.fn(async () => {});
-  const settleDraft = vi.fn();
+  const settleDraft = vi.fn(() => false);
   const { result } = renderHook(
     () =>
       useProductionChatRuntime({

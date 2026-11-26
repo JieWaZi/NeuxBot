@@ -30,15 +30,9 @@ func TestChatConnectorLifecycleUsesApprovalAndScopedReceipts(t *testing.T) {
 		}
 		return mcpclient.Result{Status: constants.MCPTestStatusSucceeded, Tools: []models.MCPToolSummary{{Name: "search"}}}
 	}
-	var changes []string
 	bindings := service.ManagementBindings("owner", "execution-1", func(context.Context, string) error {
 		approvals++
 		return nil
-	}, func(_ context.Context, action string, result capability.Result) {
-		if result.CommandID == "" || result.Data.(map[string]any)["connectorId"] == "" {
-			t.Fatalf("change did not come from a real connection receipt: %+v", result)
-		}
-		changes = append(changes, action)
 	})
 	run := func(operation, requestID string, params map[string]any) (capability.Result, error) {
 		t.Helper()
@@ -72,7 +66,7 @@ func TestChatConnectorLifecycleUsesApprovalAndScopedReceipts(t *testing.T) {
 	if err != nil || !replay.Replayed || replay.CommandID != created.CommandID || approvals != 1 || probes != 1 {
 		t.Fatalf("create replay: %+v %v, %d approvals", replay, err, approvals)
 	}
-	getOther := service.ManagementBindings("other", "execution-2", nil, nil)
+	getOther := service.ManagementBindings("other", "execution-2", nil)
 	if _, err := callBinding(t, ctx, getOther, "get", "", map[string]any{"connectorId": id}); !matchesStatus(err, status_error.MCPConnectorNotFound) {
 		t.Fatalf("another partner read a connector without installing it: %v", err)
 	}
@@ -93,9 +87,6 @@ func TestChatConnectorLifecycleUsesApprovalAndScopedReceipts(t *testing.T) {
 	if err != nil || deleted.Data.(map[string]any)["deleted"] != true || approvals != 3 {
 		t.Fatalf("delete: %+v %v, %d approvals", deleted, err, approvals)
 	}
-	if got := strings.Join(changes, ","); got != "create,create,update,delete" {
-		t.Fatalf("unexpected callbacks for reads, writes or retries: %s", got)
-	}
 	if _, err := run("get", "", map[string]any{"connectorId": id}); !matchesStatus(err, status_error.MCPConnectorNotFound) {
 		t.Fatalf("deleted connector remains visible: %v", err)
 	}
@@ -115,7 +106,7 @@ func TestChatConnectorKeepsFailedCreationDisabledAndSkipsDeclinedProbe(t *testin
 			return status_error.AgentOperationForbidden
 		}
 		return nil
-	}, nil)
+	})
 	parameters := map[string]any{"name": "Unavailable", "transport": "streamable_http", "url": "https://example.test/mcp"}
 	if _, err := callBinding(t, ctx, bindings, "create", "declined", parameters); !errors.Is(err, status_error.AgentOperationForbidden) || probes != 0 {
 		t.Fatalf("a declined creation must not test the endpoint: %d %v", probes, err)
@@ -151,7 +142,7 @@ func TestChatConnectorProbesBeforeReplacingEnabledConfiguration(t *testing.T) {
 		if connector.URL != proposed || approvals != probes {
 			t.Fatalf("incorrect probe target or ordering: %s, %d approvals, %d probes", connector.URL, approvals, probes)
 		}
-		return mcpclient.Result{Status: status}
+		return mcpclient.Result{Status: status, DurationMS: 17, Tools: []models.MCPToolSummary{{Name: "candidate-tool"}}}
 	}
 	bindings := service.ManagementBindings("owner", "execution-1", func(_ context.Context, reason string) error {
 		approvals++
@@ -159,7 +150,7 @@ func TestChatConnectorProbesBeforeReplacingEnabledConfiguration(t *testing.T) {
 			t.Fatalf("approval did not show the proposed endpoint: %s", reason)
 		}
 		return nil
-	}, nil)
+	})
 	params := map[string]any{"connectorId": current.Connector.ID, "expectedRevision": connectorRevision(current.Connector), "url": proposed}
 	if _, err := callBinding(t, ctx, bindings, "update", "probe-failed", params); !errors.Is(err, status_error.MCPConnectorProbeFailed) || probes != 1 {
 		t.Fatalf("failed probe did not block enabled configuration change: %v, %d probes", err, probes)
@@ -169,12 +160,64 @@ func TestChatConnectorProbesBeforeReplacingEnabledConfiguration(t *testing.T) {
 		t.Fatalf("failed edit modified working configuration: %+v %v", original, err)
 	}
 	status = constants.MCPTestStatusSucceeded
-	if _, err := callBinding(t, ctx, bindings, "update", "probe-success", params); err != nil || probes != 2 {
+	result, err := callBinding(t, ctx, bindings, "update", "probe-success", params)
+	if err != nil || probes != 2 {
 		t.Fatalf("successful probe did not permit edit: %v, %d probes", err, probes)
 	}
 	updated, err := service.Visible(ctx, "owner", current.Connector.ID)
-	if err != nil || !updated.Enabled || updated.Connector.URL != proposed {
+	if err != nil || !updated.Enabled || updated.Connector.URL != proposed ||
+		updated.Connector.TestStatus != constants.MCPTestStatusSucceeded || updated.Connector.TestDurationMS != 17 ||
+		len(updated.Connector.TestTools) != 1 || updated.Connector.TestTools[0].Name != "candidate-tool" {
 		t.Fatalf("verified edit was not saved: %+v %v", updated, err)
+	}
+	if result.Data.(map[string]any)["testStatus"] != "succeeded" {
+		t.Fatalf("receipt omitted the tested candidate status: %+v", result)
+	}
+}
+
+func TestChatConnectorApprovalShowsExactExistingTargetOrRejectsIt(t *testing.T) {
+	service := testConnectorService(t)
+	ctx := t.Context()
+	var reason string
+	probes := 0
+	service.config.Probe = func(context.Context, models.MCPConnector) mcpclient.Result {
+		probes++
+		return mcpclient.Result{Status: constants.MCPTestStatusSucceeded}
+	}
+	bindings := service.ManagementBindings("owner", "execution-1", func(_ context.Context, summary string) error {
+		reason = summary
+		return nil
+	})
+	for _, tc := range []struct {
+		name       string
+		definition Definition
+		want       string
+	}{
+		{"argv", Definition{Transport: constants.MCPTransportStdio, Command: "notes-server", Arguments: []string{"one two", "", "three"}}, `["notes-server", "one two", "", "three"]`},
+		{"remote path", Definition{Transport: constants.MCPTransportStreamableHTTP, URL: "https://example.test/mcp/one%20two"}, "https://example.test/mcp/one%20two"},
+		{"sensitive argument", Definition{Transport: constants.MCPTransportStdio, Command: "notes-server", Arguments: []string{"--api-key", "fixture-secret"}}, ""},
+		{"sensitive URL", Definition{Transport: constants.MCPTransportStreamableHTTP, URL: "https://example.test/mcp?token=fixture-secret"}, ""},
+		{"long argument", Definition{Transport: constants.MCPTransportStdio, Command: "notes-server", Arguments: []string{strings.Repeat("x", 4096)}}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.definition.Name, tc.definition.TrustConfirmed = tc.name, true
+			item, err := service.Create(ctx, "owner", tc.definition)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reason = ""
+			before := probes
+			_, err = callBinding(t, ctx, bindings, "test", "", map[string]any{"connectorId": item.Connector.ID})
+			if tc.want == "" {
+				if err == nil || reason != "" || probes != before {
+					t.Fatalf("unsafe target was offered or tested: %v, approval=%t, probes=%d", err, reason != "", probes-before)
+				}
+				return
+			}
+			if err != nil || !strings.Contains(reason, tc.want) || probes != before+1 {
+				t.Fatalf("incomplete target confirmation: %q, %v, probes=%d", reason, err, probes-before)
+			}
+		})
 	}
 }
 
@@ -183,7 +226,7 @@ func TestChatConnectorRejectsCredentialArgumentsBeforeApproval(t *testing.T) {
 	bindings := service.ManagementBindings("owner", "execution-1", func(context.Context, string) error {
 		t.Fatal("credential argument reached approval display")
 		return nil
-	}, nil)
+	})
 	for _, args := range [][]string{{"--api-key", "value"}, {"MCP_ACCESS_TOKEN=value"}, {"--header", "Authorization: value"}} {
 		_, err := callBinding(t, t.Context(), bindings, "create", "secret", map[string]any{
 			"name": "Notes", "transport": "stdio", "command": "notes-server", "arguments": args,
@@ -226,7 +269,7 @@ func TestChatConnectorKeepsCredentialsAndProbeOutputProtected(t *testing.T) {
 			return status_error.AgentOperationForbidden
 		}
 		return nil
-	}, nil)
+	})
 	ids := map[string]any{"connectorId": item.Connector.ID}
 	for _, action := range []string{"list", "get"} {
 		params := ids
@@ -285,7 +328,7 @@ func TestChatConnectorRechecksSharedApprovalAndDetachesOnlyCurrentPartner(t *tes
 			return service.config.Connectors.DeleteWakerConnector(ctx, "other", id)
 		}
 		return nil
-	}, nil)
+	})
 	params := map[string]any{"connectorId": id, "expectedRevision": connectorRevision(shared.Connector)}
 	swap = true
 	if _, err := callBinding(t, ctx, bindings, "delete", "stale-shared", params); !errors.Is(err, status_error.Conflict) {

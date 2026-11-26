@@ -11,6 +11,7 @@ import (
 	agentcap "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -60,6 +61,8 @@ type WorkIntent struct {
 	Chat ChatTarget
 	// Input 描述本次用户或系统输入及文件引用。
 	Input WorkInput
+	// TeamReplyThreadID 是团队域为主会话回复冻结的归属，普通续发为空。
+	TeamReplyThreadID string `json:"-"`
 	// MessagePlugins 是上层为公开消息冻结的其他成员插件引用，不授予当前执行插件能力。
 	MessagePlugins []plugins.Snapshot `json:"-"`
 	// Options 描述本次 Runtime、模型和 Session 选择。
@@ -214,9 +217,26 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 
 	inputContext := ctx
 	intent.Chat.ChatID = strings.TrimSpace(intent.Chat.ChatID)
+	intent.Input.ReplyToMessageID = strings.TrimSpace(intent.Input.ReplyToMessageID)
+	if intent.Input.AttachmentOnly && len(intent.Input.Attachments) == 0 {
+		return AcceptedExecution{}, status_error.MessageAttachmentInvalid
+	}
+	teamReply := intent.TeamReplyThreadID != ""
+	if intent.Input.ReplyToMessageID != "" &&
+		(intent.Chat.ChatID == "" || intent.Chat.Create != nil || (!teamReply && intent.Options.EntryPoint != WorkbenchEntryPoint) ||
+			(teamReply && intent.Admission != constants.ExecutionAdmissionCommitBeforeDispatch) ||
+			strings.TrimSpace(intent.Input.Actor) != string(constants.ChannelMessageActorUser) ||
+			(!teamReply && intent.AutomaticRunID != "") || intent.Input.IMReplyLinkID != "" || intent.Options.WorkflowCreationSessionID != "") {
+		return AcceptedExecution{}, status_error.ChatReplyTargetUnavailable
+	}
 	releaseTeam := func() {}
 	if m.acquireTeamChatInput != nil && intent.Chat.ChatID != "" {
-		locked, release, err := m.acquireTeamChatInput(ctx, intent.Chat.ChatID, intent.Input.Actor == "" || intent.Input.Actor == string(constants.ChannelMessageActorUser))
+		admissionContext := ctx
+		if intent.Input.ReplyToMessageID != "" && !teamReply {
+			admissionContext = teamwork.WithMemberReplyRoute(ctx)
+		}
+		teamUserInput := intent.Input.Actor == "" || intent.Input.Actor == string(constants.ChannelMessageActorUser)
+		locked, release, err := m.acquireTeamChatInput(admissionContext, intent.Chat.ChatID, teamUserInput)
 		if err != nil {
 			return AcceptedExecution{}, err
 		}
@@ -254,21 +274,25 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		return AcceptedExecution{}, status_error.BadRequest
 	}
 	request := pendingMessage{automaticRunID: intent.AutomaticRunID, imReplyLinkID: intent.Input.IMReplyLinkID,
-		entryPoint:      intent.Options.EntryPoint,
-		executionID:     intent.ExecutionID,
-		submissionID:    intent.Input.SubmissionID,
-		clientRequestID: intent.ClientRequestID,
-		chatID:          intent.Chat.ChatID,
+		entryPoint:        intent.Options.EntryPoint,
+		executionID:       intent.ExecutionID,
+		submissionID:      intent.Input.SubmissionID,
+		clientRequestID:   intent.ClientRequestID,
+		chatID:            intent.Chat.ChatID,
+		replyToMessageID:  intent.Input.ReplyToMessageID,
+		teamReplyThreadID: intent.TeamReplyThreadID,
 		message: userMessage{
-			Actor:            intent.Input.Actor,
-			SteerExecutionID: intent.Input.SteerExecutionID,
-			Text:             intent.Input.Content,
-			Attachments:      append([]AttachmentInput(nil), intent.Input.Attachments...),
-			CodeReferences:   append([]CodeReferenceInput(nil), intent.Input.CodeReferences...),
-			Workflow:         intent.Input.Workflow,
-			SkillIDs:         append([]string(nil), intent.Input.SkillIDs...),
-			ConnectorIDs:     append([]string(nil), intent.Input.ConnectorIDs...),
-			PluginIDs:        append([]string(nil), intent.Input.PluginIDs...),
+			Actor:             intent.Input.Actor,
+			SteerExecutionID:  intent.Input.SteerExecutionID,
+			Text:              intent.Input.Content,
+			AttachmentOnly:    intent.Input.AttachmentOnly,
+			CodeReferenceOnly: intent.Input.CodeReferenceOnly,
+			Attachments:       append([]AttachmentInput(nil), intent.Input.Attachments...),
+			CodeReferences:    append([]CodeReferenceInput(nil), intent.Input.CodeReferences...),
+			Workflow:          intent.Input.Workflow,
+			SkillIDs:          append([]string(nil), intent.Input.SkillIDs...),
+			ConnectorIDs:      append([]string(nil), intent.Input.ConnectorIDs...),
+			PluginIDs:         append([]string(nil), intent.Input.PluginIDs...),
 		},
 		messagePlugins: intent.MessagePlugins,
 		runtime: runtimeSelection{
