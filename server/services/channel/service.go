@@ -362,8 +362,8 @@ func (s *service) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.recoverLeadInputAttachments(ctx); err != nil {
-		logx.Warnf("recover lead input attachments: error=%v", err)
+	if err := s.recoverTeamInputAttachments(ctx); err != nil {
+		logx.Warnf("recover team input attachments: error=%v", err)
 	}
 	notificationThreads, err := s.tasks.RecoverNotifications(ctx, now)
 	if err != nil {

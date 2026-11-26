@@ -302,6 +302,137 @@ func TestQueuedTeamReplyRetainsUploadedBytesAcrossRecovery(t *testing.T) {
 	}
 }
 
+func TestQueuedMemberInputRetainsUploadedBytes(t *testing.T) {
+	for _, followUp := range []bool{false, true} {
+		label := "new task"
+		if followUp {
+			label = "follow-up"
+		}
+		t.Run(label, func(t *testing.T) {
+			ctx := t.Context()
+			sut, thread, chats, captured := newDelegationDispatchService(t)
+			sut.Close()
+			sut.managedFilesDirectory = t.TempDir()
+			layout, err := chatstorage.NewLayout(sut.managedFilesDirectory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			directory, err := layout.TeamRoot(thread.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := workspace.EnsureThreadExecutionWorkspace(directory, thread.ID, thread.LeadWakerID); err != nil {
+				t.Fatal(err)
+			}
+			const memberChatID = "member-chat"
+			var attempt models.ChannelTaskAttempt
+			if followUp {
+				initial, err := sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, MentionWakerID: "member",
+					Input: execution.WorkInput{Content: "initial task"}})
+				if err != nil || initial.Task == nil || initial.Task.Status != constants.ChannelTaskStatusInProgress {
+					t.Fatalf("initial member task = %+v, %v", initial, err)
+				}
+				attempt, err = sut.tasks.GetCurrentAttempt(ctx, initial.Task.ID, initial.Task.CurrentFence)
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				chats.summaries[memberChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: memberChatID, ActiveExecutionID: "occupied"}}
+			}
+			store, err := uploads.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(store.Close)
+			const content, subject, name = "member attachment bytes", "web:test", "成员附件.txt"
+			ref, err := store.Stage(ctx, subject, name, strings.NewReader(content))
+			if err != nil {
+				t.Fatal(err)
+			}
+			queued, err := sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, MentionWakerID: "member",
+				Input: execution.WorkInput{SubmissionID: "upload-member-input", Content: "请读取附件", Attachments: []execution.AttachmentInput{{SourcePath: ref}}},
+				ClaimAttachments: func(input *execution.WorkInput) (func(bool), error) {
+					paths, release, err := store.Claim(subject, []string{input.Attachments[0].SourcePath}, input.SubmissionID)
+					if err == nil {
+						input.Attachments[0].SourcePath = paths[0]
+					}
+					return release, err
+				}})
+			if err != nil || queued.Task == nil {
+				t.Fatalf("queued member input = %+v, %v", queued, err)
+			}
+			store.Close()
+			var memberAttachment string
+			sut.executions = &uploadedReplyExecution{postTurnExecutionFake: captured, check: func(intent execution.WorkIntent) {
+				if intent.Chat.ChatID != memberChatID {
+					return
+				}
+				if len(intent.Input.Attachments) != 1 {
+					t.Fatalf("member attachment dispatch = %+v", intent.Input.Attachments)
+				}
+				memberAttachment = intent.Input.Attachments[0].SourcePath
+				if data, err := os.ReadFile(memberAttachment); err != nil || string(data) != content || filepath.Base(memberAttachment) != name {
+					t.Fatalf("member attachment dispatch = %q, %v", data, err)
+				}
+			}}
+			if followUp {
+				if err := sut.Start(ctx); err != nil {
+					t.Fatal(err)
+				}
+				if err := sut.handleAttemptTerminal(attempt, messageview.Message{Status: constants.ExecutionStatusCompleted}); err != nil {
+					t.Fatal(err)
+				}
+				if memberAttachment == "" {
+					t.Fatal("member follow-up was not dispatched")
+				}
+				if _, err := os.Stat(memberAttachment); !os.IsNotExist(err) {
+					t.Fatalf("follow-up still owns the copy after Chat admission: %v", err)
+				}
+				return
+			}
+			chats.summaries[memberChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: memberChatID}}
+			if err := sut.Start(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if memberAttachment == "" {
+				t.Fatal("queued member task was not recovered")
+			}
+			current, err := sut.tasks.Get(ctx, queued.Task.ID)
+			if err != nil || current.Status != constants.ChannelTaskStatusInProgress {
+				t.Fatalf("dispatched task = %+v, %v", current, err)
+			}
+			attempt, err = sut.tasks.GetCurrentAttempt(ctx, current.ID, current.CurrentFence)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := sut.handleAttemptTerminal(attempt, messageview.Message{Status: constants.ExecutionStatusFailed}); err != nil {
+				t.Fatal(err)
+			}
+			memberAttachment = ""
+			if err := sut.retryTask(ctx, current.ID, "", ""); err != nil {
+				t.Fatal(err)
+			}
+			if memberAttachment == "" {
+				t.Fatal("member retry did not dispatch the original uploaded file")
+			}
+			current, err = sut.tasks.Get(ctx, current.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			attempt, err = sut.tasks.GetCurrentAttempt(ctx, current.ID, current.CurrentFence)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := sut.handleAttemptTerminal(attempt, messageview.Message{Status: constants.ExecutionStatusCompleted}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(memberAttachment); !os.IsNotExist(err) {
+				t.Fatalf("completed task still owns its upload copy: %v", err)
+			}
+		})
+	}
+}
+
 func TestTeamStartupReclaimsUnownedAndSettledQueueAttachments(t *testing.T) {
 	ctx := t.Context()
 	sut, thread, chats, _ := newDelegationDispatchService(t)
@@ -485,6 +616,64 @@ func TestDirectedFirstTeamInputKeepsMemberPluginAsMessageReference(t *testing.T)
 	}
 	if input := result.Tasks[0].DirectInput; input == nil || len(input.PluginIDs) != 1 || input.PluginIDs[0] != "member-plugin" {
 		t.Fatalf("member task lost its own plugin selection: %+v", input)
+	}
+}
+
+func TestDirectedFirstTeamInputKeepsUploadedAttachmentForDeferredMember(t *testing.T) {
+	ctx := t.Context()
+	sut, existing, chats, captured := newDelegationDispatchService(t)
+	sut.Close()
+	sut.managedFilesDirectory = t.TempDir()
+	sut.chatGroups = &leaderTurnChatGroupFake{chats: chats, managedFilesDirectory: sut.managedFilesDirectory, busyMember: "member"}
+	store, err := uploads.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(store.Close)
+	const subject, content = "web:test", "uploaded first message bytes"
+	ref, err := store.Stage(ctx, subject, "first.txt", strings.NewReader(content))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := CreateThreadInput{ChannelID: existing.ChannelID, ClientRequestID: "first-upload", MentionWakerID: "member",
+		Input: execution.WorkInput{SubmissionID: "first-upload", Content: "Read the file", Attachments: []execution.AttachmentInput{{SourcePath: ref}}},
+		ClaimAttachments: func(input *execution.WorkInput) (func(bool), error) {
+			paths, release, err := store.Claim(subject, []string{input.Attachments[0].SourcePath}, input.SubmissionID)
+			if err == nil {
+				input.Attachments[0].SourcePath = paths[0]
+			}
+			return release, err
+		}}
+	var delivered []string
+	sut.executions = &uploadedReplyExecution{postTurnExecutionFake: captured, check: func(intent execution.WorkIntent) {
+		if len(intent.Input.Attachments) == 0 {
+			return
+		}
+		data, err := os.ReadFile(intent.Input.Attachments[0].SourcePath)
+		if err != nil || string(data) != content {
+			t.Fatalf("first message attachment for %s = %q, %v", intent.Chat.ChatID, data, err)
+		}
+		delivered = append(delivered, intent.Chat.ChatID)
+	}}
+	created, err := sut.createThread(ctx, req)
+	if err != nil || len(created.Tasks) != 1 || created.Tasks[0].Status != constants.ChannelTaskStatusPending {
+		t.Fatalf("first member task = %+v, %v", created, err)
+	}
+	store.Close()
+	replay, err := sut.createThread(ctx, req)
+	if err != nil || !replay.Replayed || replay.Thread.ID != created.Thread.ID {
+		t.Fatalf("first upload replay after upload cleanup = %+v, %v", replay, err)
+	}
+	member, err := sut.threads.GetMember(ctx, created.Thread.ID, "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chats.summaries[member.ChatID] = chatservice.ChatSummary{Chat: models.Chat{ID: member.ChatID}}
+	if _, err := sut.schedule(ctx, created.Thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(delivered) != 2 || delivered[0] != created.Thread.LeadChatID || delivered[1] != member.ChatID {
+		t.Fatalf("attachment dispatches = %v", delivered)
 	}
 }
 
@@ -835,6 +1024,10 @@ func TestTeamAdmittedNativeDefaultsSurviveEnvironmentChanges(t *testing.T) {
 type leaderTurnChatGroupFake struct {
 	// chats 保存成员 Chat 摘要，供负责人繁忙检查和重启恢复读取。
 	chats *postTurnChatFake
+	// managedFilesDirectory 在附件用例中创建真实归属的团队工作区。
+	managedFilesDirectory string
+	// busyMember 模拟暂时无法接纳的成员。
+	busyMember string
 }
 
 // PrepareChatGroup 为每位成员返回独立 Chat，并模拟首发执行期间负责人繁忙。
@@ -842,6 +1035,19 @@ func (f *leaderTurnChatGroupFake) PrepareChatGroup(
 	_ context.Context,
 	intent execution.PrepareChatGroupIntent,
 ) (execution.PreparedChatGroup, error) {
+	if f.managedFilesDirectory != "" {
+		layout, err := chatstorage.NewLayout(f.managedFilesDirectory)
+		if err != nil {
+			return execution.PreparedChatGroup{}, err
+		}
+		directory, err := layout.TeamRoot(intent.ThreadID)
+		if err != nil {
+			return execution.PreparedChatGroup{}, err
+		}
+		if err := workspace.EnsureThreadExecutionWorkspace(directory, intent.ThreadID, intent.Scope.WakerID); err != nil {
+			return execution.PreparedChatGroup{}, err
+		}
+	}
 	f.chats.mutex.Lock()
 	defer f.chats.mutex.Unlock()
 	result := execution.PreparedChatGroup{}
@@ -853,6 +1059,8 @@ func (f *leaderTurnChatGroupFake) PrepareChatGroup(
 		result.Chats = append(result.Chats, chat)
 		if member.WakerID == intent.Scope.WakerID {
 			chat.ActiveExecutionID = "initial-execution"
+		} else if member.WakerID == f.busyMember {
+			chat.ActiveExecutionID = "occupied"
 		}
 		f.chats.summaries[chat.ID] = chatservice.ChatSummary{Chat: chat}
 	}

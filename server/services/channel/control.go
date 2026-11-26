@@ -9,6 +9,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
@@ -23,6 +24,10 @@ func (s *service) FollowUpTask(
 	taskID string,
 	input execution.WorkInput,
 ) error {
+	return s.followUpTask(ctx, taskID, input, nil)
+}
+
+func (s *service) followUpTask(ctx context.Context, taskID string, input execution.WorkInput, claimAttachments func(*execution.WorkInput) (func(bool), error)) error {
 	taskID = strings.TrimSpace(taskID)
 	text := strings.TrimSpace(input.Content)
 	input.Actor = strings.TrimSpace(input.Actor)
@@ -67,6 +72,10 @@ func (s *service) FollowUpTask(
 		Payload:   input,
 		CreatedAt: now,
 	}
+	finishAttachments, err := s.prepareTeamInputAttachments(thread, followUp.ID, &followUp.Payload, claimAttachments)
+	if err != nil {
+		return err
+	}
 	err = s.transaction(ctx, func(transactionContext context.Context) error {
 		current, getErr := s.tasks.Get(transactionContext, task.ID)
 		if getErr != nil {
@@ -93,6 +102,7 @@ func (s *service) FollowUpTask(
 		}
 		return capability.Commit(transactionContext, map[string]any{"taskId": task.ID, "followUpId": followUp.ID, "accepted": true})
 	})
+	finishAttachments(err == nil)
 	if err != nil {
 		return err
 	}
@@ -194,10 +204,12 @@ func (s *service) StopTask(ctx context.Context, taskID string) error {
 func (s *service) stopTask(ctx context.Context, taskID string, fromSubmission bool, expectedAttemptID string) error {
 	var attempt models.ChannelTaskAttempt
 	var scheduleThreadID string
+	var cancelledInputThread models.ChannelThread
 	now := time.Now().UnixMilli()
 	if err := s.transaction(ctx, func(ctx context.Context) error {
 		attempt = models.ChannelTaskAttempt{}
 		scheduleThreadID = ""
+		cancelledInputThread = models.ChannelThread{}
 		task, err := s.tasks.Get(ctx, taskID)
 		if err != nil {
 			return err
@@ -243,6 +255,7 @@ func (s *service) stopTask(ctx context.Context, taskID string, fromSubmission bo
 			}); err != nil {
 				return err
 			}
+			cancelledInputThread = thread
 			if thread.ReadyAt != nil {
 				scheduleThreadID = thread.ID
 				if _, err := s.appendEvent(ctx, thread.ChannelID, thread.ID, constants.ChannelEventTaskCancelled, map[string]string{"taskId": task.ID}); err != nil {
@@ -264,6 +277,18 @@ func (s *service) stopTask(ctx context.Context, taskID string, fromSubmission bo
 		return capability.Commit(ctx, map[string]any{"taskId": task.ID, "cancellationRequested": true})
 	}); err != nil {
 		return err
+	}
+	if cancelledInputThread.ID != "" && s.managedFilesDirectory != "" {
+		s.releaseTeamInputAttachments(cancelledInputThread, taskID)
+		followUps, err := s.tasks.ListPendingFollowUps(context.WithoutCancel(ctx), taskID)
+		if err != nil {
+			logx.Warnf("read cancelled task inputs: task_id=%s error=%v", taskID, err)
+		}
+		for _, followUp := range followUps {
+			if len(followUp.Payload.Attachments) > 0 {
+				s.releaseTeamInputAttachments(cancelledInputThread, followUp.ID)
+			}
+		}
 	}
 	var workflowStopErr error
 	if attempt.ID != "" {
@@ -323,8 +348,10 @@ func (s *service) StopWorkForSubmission(ctx context.Context, channelID, threadID
 	leadInputID := LeadInputID(thread.ID, identity.ID)
 	var queued, cancelled bool
 	var followUp models.ChannelTaskFollowUp
+	var cancelledFollowUpIDs []string
 	err = s.transaction(locked, func(ctx context.Context) error {
 		followUp = models.ChannelTaskFollowUp{}
+		cancelledFollowUpIDs = nil
 		cancelled = false
 		_, found, err := s.threads.GetLeadInput(ctx, leadInputID)
 		queued = found
@@ -341,14 +368,20 @@ func (s *service) StopWorkForSubmission(ctx context.Context, channelID, threadID
 			})
 			return err
 		}
-		if err := s.tasks.DeletePendingFollowUp(ctx, thread.ID, identity.ID); err != nil {
+		cancelledFollowUpIDs, err = s.tasks.DeletePendingFollowUp(ctx, thread.ID, identity.ID)
+		if err != nil {
 			return err
 		}
 		followUp, _, err = s.tasks.FindDeliveredFollowUp(ctx, thread.ID, identity.ID)
 		return err
 	})
-	if err == nil && cancelled {
-		s.releaseLeadInputAttachments(thread, leadInputID)
+	if err == nil {
+		if cancelled {
+			s.releaseTeamInputAttachments(thread, leadInputID)
+		}
+		for _, id := range cancelledFollowUpIDs {
+			s.releaseTeamInputAttachments(thread, id)
+		}
 	}
 	release()
 	if err != nil {
@@ -484,10 +517,11 @@ func (s *service) finishStopWork(ctx context.Context, thread models.ChannelThrea
 		return status_error.ChannelTaskStateConflict
 	}
 	// 停止收敛只串行化同一对话的请求与恢复。
-	_, releaseStop, err := teamwork.Acquire(ctx, "thread-stop:"+thread.ID)
+	_, unlockStop, err := teamwork.Acquire(ctx, "thread-stop:"+thread.ID)
 	if err != nil {
 		return err
 	}
+	releaseStop := sync.OnceFunc(unlockStop)
 	defer releaseStop()
 	// 等待已有团队接纳结束。持久停止意图继续阻止本对话的新接纳。
 	locked, releaseAdmission, err := acquireThreadAdmission(ctx, thread.ID)
@@ -530,7 +564,6 @@ func (s *service) finishStopWork(ctx context.Context, thread models.ChannelThrea
 		return workflowStopErr
 	}
 	stoppedAt := time.Now().UnixMilli()
-	var cancelledInputIDs []string
 	err = s.transaction(ctx, func(transactionContext context.Context) error {
 		current, getErr := s.threads.Get(transactionContext, thread.ID)
 		if getErr != nil {
@@ -548,9 +581,7 @@ func (s *service) finishStopWork(ctx context.Context, thread models.ChannelThrea
 		if consumeErr := s.tasks.ConsumeOpenNotifications(transactionContext, current.ID, stoppedAt); consumeErr != nil {
 			return consumeErr
 		}
-		var cancelErr error
-		cancelledInputIDs, cancelErr = s.threads.CancelOpenLeadInputs(transactionContext, current.ID, stoppedAt)
-		if cancelErr != nil {
+		if _, cancelErr := s.threads.CancelOpenLeadInputs(transactionContext, current.ID, stoppedAt); cancelErr != nil {
 			return cancelErr
 		}
 		if _, eventErr := s.appendEvent(
@@ -588,9 +619,14 @@ func (s *service) finishStopWork(ctx context.Context, thread models.ChannelThrea
 		}
 		return nil
 	})
-	if err == nil {
-		for _, id := range cancelledInputIDs {
-			s.releaseLeadInputAttachments(thread, id)
+	if err == nil && s.managedFilesDirectory != "" {
+		releaseStop()
+		layout, cleanupErr := chatstorage.NewLayout(s.managedFilesDirectory)
+		if cleanupErr == nil {
+			cleanupErr = s.recoverThreadInputAttachments(context.WithoutCancel(ctx), layout, thread.ID)
+		}
+		if cleanupErr != nil {
+			logx.Warnf("release stopped team input attachments: thread_id=%s error=%v", thread.ID, cleanupErr)
 		}
 	}
 	return err

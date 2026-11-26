@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -374,6 +375,24 @@ func (s *service) createThread(
 		s.rollbackInitializingThread(ctx, thread, plannedChatIDs)
 		return ThreadResult{}, status_error.ChannelLeadInvalid
 	}
+	attachmentsAccepted := false
+	if input.ClaimAttachments != nil && len(leadInput.Attachments) > 0 {
+		original := leadInput.Attachments
+		leadInput.Attachments = slices.Clone(original)
+		finishAttachments, err := input.ClaimAttachments(&leadInput)
+		if err != nil {
+			s.rollbackInitializingThread(ctx, thread, plannedChatIDs)
+			return ThreadResult{}, err
+		}
+		defer func() { finishAttachments(attachmentsAccepted) }()
+		if initialTask != nil {
+			if _, err := s.stageTeamInputAttachments(thread, initialTask.ID, original, leadInput.Attachments); err != nil {
+				s.rollbackInitializingThread(ctx, thread, plannedChatIDs)
+				return ThreadResult{}, err
+			}
+			initialTask.DirectInput.Attachments = leadInput.Attachments
+		}
+	}
 	thread.Title = leadChat.Title
 	thread.ProjectID = leadChat.ProjectID
 	thread.ProjectName = leadChat.ProjectName
@@ -391,10 +410,7 @@ func (s *service) createThread(
 		if initialTask == nil {
 			return nil
 		}
-		return s.tasks.UpdateFields(transactionContext, initialTask.ID, map[string]interface{}{
-			"subject":    initialTask.Subject,
-			"updated_at": initialTask.UpdatedAt,
-		})
+		return s.tasks.UpdateProvisionedInput(transactionContext, *initialTask)
 	}); err != nil {
 		s.rollbackInitializingThread(ctx, thread, plannedChatIDs)
 		return ThreadResult{}, err
@@ -441,12 +457,14 @@ func (s *service) createThread(
 		s.capabilities.Revoke(capabilityToken)
 		receipt, readErr := s.readInitialThreadExecution(completionContext, thread)
 		if readErr != nil || receipt != nil {
+			attachmentsAccepted = receipt != nil
 			// 日志同步错误可能留下完整接纳记录，保留初始化锚点供恢复核对。
 			return ThreadResult{}, status_error.CreateRequestInProgress
 		}
 		s.rollbackInitializingThread(completionContext, thread, plannedChatIDs)
 		return ThreadResult{}, err
 	}
+	attachmentsAccepted = true
 	initialTasks := []models.ChannelTask{}
 	if initialTask != nil {
 		initialTasks = append(initialTasks, *initialTask)
@@ -703,39 +721,29 @@ func (s *service) sendMessage(
 		}
 	}
 	if input.MentionWakerID != "" && input.MentionWakerID != thread.LeadWakerID {
-		var releaseAttachments func(bool)
-		attachmentsAccepted := false
-		if input.ClaimAttachments != nil {
-			releaseAttachments, err = input.ClaimAttachments(&input.Input)
-			if err != nil {
-				return SendMessageResult{}, err
-			}
-			defer func() { releaseAttachments(attachmentsAccepted) }()
-		}
 		active, activeErr := s.activeTaskForAssignee(ctx, thread.ID, input.MentionWakerID)
 		if activeErr != nil {
 			return SendMessageResult{}, activeErr
 		}
 		if active != nil {
-			if err := s.FollowUpTask(ctx, active.ID, input.Input); err != nil {
+			if err := s.followUpTask(ctx, active.ID, input.Input, input.ClaimAttachments); err != nil {
 				return SendMessageResult{}, err
 			}
-			attachmentsAccepted = true
 			return SendMessageResult{Task: active}, nil
 		}
 		release()
 		created, err := s.CreateTask(inputContext, CreateTaskInput{
-			ThreadID:        thread.ID,
-			AssigneeWakerID: input.MentionWakerID,
-			Subject:         shortSubject(input.Input.Content),
-			Description:     input.Input.Content,
-			DirectInput:     &input.Input,
-			DirectDelivery:  true,
+			ThreadID:         thread.ID,
+			AssigneeWakerID:  input.MentionWakerID,
+			Subject:          shortSubject(input.Input.Content),
+			Description:      input.Input.Content,
+			DirectInput:      &input.Input,
+			DirectDelivery:   true,
+			claimAttachments: input.ClaimAttachments,
 		})
 		if err != nil {
 			return SendMessageResult{}, err
 		}
-		attachmentsAccepted = true
 		return SendMessageResult{Task: &created.Task}, nil
 	}
 	queued, err := s.enqueueLeadInput(ctx, thread, input)

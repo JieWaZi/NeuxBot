@@ -15,8 +15,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-// recoverLeadInputAttachments 用现有队列收据校正崩溃时留下的附件副本。
-func (s *service) recoverLeadInputAttachments(ctx context.Context) error {
+// recoverTeamInputAttachments 按持久输入归属校正崩溃时留下的附件副本。
+func (s *service) recoverTeamInputAttachments(ctx context.Context) error {
 	if s.managedFilesDirectory == "" {
 		return nil
 	}
@@ -32,14 +32,14 @@ func (s *service) recoverLeadInputAttachments(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return status_error.OperationCanceled
 		}
-		if err := s.recoverThreadLeadInputAttachments(ctx, layout, threadID); err != nil {
-			logx.Warnf("recover queued lead attachments: thread_id=%s error=%v", threadID, err)
+		if err := s.recoverThreadInputAttachments(ctx, layout, threadID); err != nil {
+			logx.Warnf("recover queued team attachments: thread_id=%s error=%v", threadID, err)
 		}
 	}
 	return nil
 }
 
-func (s *service) recoverThreadLeadInputAttachments(ctx context.Context, layout *chatstorage.Layout, threadID string) error {
+func (s *service) recoverThreadInputAttachments(ctx context.Context, layout *chatstorage.Layout, threadID string) error {
 	thread, err := s.threads.Get(ctx, threadID)
 	if hasStatusErrorCode(err, status_error.ChannelThreadNotFound.Code()) {
 		return nil
@@ -72,14 +72,23 @@ func (s *service) recoverThreadLeadInputAttachments(ctx context.Context, layout 
 		if err != nil {
 			return err
 		}
-		pending := make(map[string]bool, len(receipts))
+		owners, err := s.tasks.ListTaskAttachmentOwners(locked, threadID, batch)
+		if err != nil {
+			return err
+		}
+		retained := make(map[string]bool, len(receipts)+len(owners))
+		for _, id := range owners {
+			retained[id] = true
+		}
 		for _, receipt := range receipts {
-			pending[receipt.ID] = receipt.Status == constants.ChannelInputStatusPending
+			if receipt.Status == constants.ChannelInputStatusPending {
+				retained[receipt.ID] = true
+			}
 		}
 		for _, id := range batch {
-			if !pending[id] {
+			if !retained[id] {
 				if err := workspace.RemoveQueuedAttachments(directory, thread.LeadChatID, id); err != nil {
-					logx.Warnf("release recovered lead input attachments: thread_id=%s input_id=%s error=%v", threadID, id, err)
+					logx.Warnf("release recovered team input attachments: thread_id=%s input_id=%s error=%v", threadID, id, err)
 				}
 			}
 		}

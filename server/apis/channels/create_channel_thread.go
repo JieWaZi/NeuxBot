@@ -62,13 +62,6 @@ func (c *CreateChannelThread) Validate(*gin.Context) error {
 // Output 首次发送时才建立团队对话和全部成员独立 Chat。
 // [MessageAttachmentInvalid][40000000017][消息附件不合法或不可读取]
 func (c *CreateChannelThread) Output(ctx *gin.Context) (interface{}, error) {
-	input := c.Body.workInput()
-	release, err := uploads.ClaimWork(ctx, &input, ctx.Request.URL.Path+":"+strings.TrimSpace(c.Body.ClientRequestID))
-	if err != nil {
-		return nil, err
-	}
-	accepted := false
-	defer func() { release(accepted) }()
 	result, err := global.ChannelService.SubmitMessage(ctx, channelservice.SubmitMessageInput{Create: &channelservice.CreateThreadInput{
 		ChannelID:        c.ChannelID,
 		ClientRequestID:  c.Body.ClientRequestID,
@@ -76,11 +69,13 @@ func (c *CreateChannelThread) Output(ctx *gin.Context) (interface{}, error) {
 		WorkingDirectory: c.Body.WorkingDirectory,
 		MentionWakerID:   c.Body.MentionWakerID,
 		MemberConfigs:    memberExecutionConfigInputs(c.Body.MemberConfigs),
-		Input:            input,
+		Input:            c.Body.workInput(),
+		ClaimAttachments: func(input *execution.WorkInput) (func(bool), error) {
+			return uploads.ClaimWork(ctx, input)
+		},
 	}})
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	accepted = true
 	return *result.Thread, nil
 }

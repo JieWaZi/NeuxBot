@@ -28,6 +28,8 @@ type CreateThreadInput struct {
 	MemberConfigs []MemberExecutionConfigInput
 	// Input 是进入负责人 Chat 的首条用户输入。
 	Input execution.WorkInput
+	// ClaimAttachments 在检查原提交后领取首发消息的临时上传。
+	ClaimAttachments func(*execution.WorkInput) (func(bool), error) `json:"-"`
 	// AdmissionBoundary 可选地保护负责人首发的耐久接纳。
 	AdmissionBoundary execution.AdmissionBoundary `json:"-"`
 }
@@ -136,6 +138,8 @@ type CreateTaskInput struct {
 	DirectDelivery bool
 	// DirectInput 是显式 @ 非负责人成员时必须原样持久化并交给成员 Chat 的用户输入。
 	DirectInput *execution.WorkInput
+	// claimAttachments 在直接用户输入持久化前领取其临时上传。
+	claimAttachments func(*execution.WorkInput) (func(bool), error)
 	// imReplyLinkID 是负责人正式创建任务时从当前回合继承的原 IM 会话标识。
 	imReplyLinkID string
 	// DeferDispatch 表示由负责人当前规划回合结束后统一派发本次创建的任务。

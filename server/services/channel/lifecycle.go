@@ -250,7 +250,9 @@ func (s *service) handleAttemptTerminal(
 	if marshalErr != nil {
 		return status_error.InternalServerError
 	}
+	var settled bool
 	err = s.transaction(ctx, func(transactionContext context.Context) error {
+		settled = false
 		current, err := s.tasks.Get(transactionContext, task.ID)
 		if err != nil {
 			return err
@@ -277,6 +279,7 @@ func (s *service) handleAttemptTerminal(
 		}); err != nil {
 			return err
 		}
+		settled = taskStatus == constants.ChannelTaskStatusCompleted || taskStatus == constants.ChannelTaskStatusCancelled
 		// 负责人任务已在同一个负责人 Chat 中产生结果，不再向自己重复投递报告。
 		if task.AssigneeWakerID != thread.LeadWakerID {
 			if err := s.tasks.CreateNotification(transactionContext, models.ChannelLeadNotification{
@@ -298,6 +301,9 @@ func (s *service) handleAttemptTerminal(
 	})
 	if err != nil {
 		return err
+	}
+	if settled && task.DirectInput != nil && len(task.DirectInput.Attachments) > 0 {
+		s.releaseTeamInputAttachments(thread, task.ID)
 	}
 	if projectionErr := s.projectPendingMemberReports(ctx, thread.ID); projectionErr != nil {
 		logx.Errorf("project member report before channel scheduling failed: task_id=%s attempt_id=%s thread_id=%s execution_id=%s error=%v", task.ID, attempt.ID, thread.ID, attempt.ExecutionID, projectionErr)

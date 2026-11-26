@@ -31,6 +31,8 @@ type ChannelTaskController interface {
 	LoadDispatchSnapshot(ctx context.Context, threadID string) (ChannelDispatchSnapshot, error)
 	// UpdateFields 更新任务服务已经校验过的明确字段集合。
 	UpdateFields(ctx context.Context, taskID string, fields map[string]interface{}) error
+	// UpdateProvisionedInput 提交首发任务准备后的主题和可派发输入。
+	UpdateProvisionedInput(ctx context.Context, task models.ChannelTask) error
 	// ClaimForDispatch 按旧状态和围栏原子领取一项待派发任务。
 	ClaimForDispatch(ctx context.Context, taskID string, threadID string, assigneeWakerID string, expectedFence int, newFence int, maxParallel int, startedAt int64) (bool, error)
 	// GetActiveForAssignee 定向返回成员当前运行任务；没有时 exists 为 false。
@@ -55,8 +57,10 @@ type ChannelTaskController interface {
 	CreateFollowUp(ctx context.Context, followUp models.ChannelTaskFollowUp) error
 	// ListPendingFollowUps 按创建顺序返回任务尚未交付的用户补充。
 	ListPendingFollowUps(ctx context.Context, taskID string) ([]models.ChannelTaskFollowUp, error)
-	// DeletePendingFollowUp 按对话和提交身份撤回尚未被尝试领取的补充。
-	DeletePendingFollowUp(ctx context.Context, threadID, submissionID string) error
+	// ListTaskAttachmentOwners 返回该对话仍需保留已暂存附件的任务及补充标识。
+	ListTaskAttachmentOwners(ctx context.Context, threadID string, ids []string) ([]string, error)
+	// DeletePendingFollowUp 按对话和提交身份撤回未领取的补充，并返回其标识。
+	DeletePendingFollowUp(ctx context.Context, threadID, submissionID string) ([]string, error)
 	// FindDeliveredFollowUp 按原提交返回已被尝试领取的补充，不读取其他团队的输入。
 	FindDeliveredFollowUp(ctx context.Context, threadID, submissionID string) (models.ChannelTaskFollowUp, bool, error)
 	// ListTimelineFollowUps 按团队和可见性读取时间游标之前的有界补充窗口。
@@ -308,6 +312,16 @@ func (c *channelTaskController) UpdateFields(
 	}
 	publishCommittedChange(ctx, c.db, "work-board", eventsResource("task", taskID))
 	publish()
+	return nil
+}
+
+func (c *channelTaskController) UpdateProvisionedInput(ctx context.Context, task models.ChannelTask) error {
+	err := controllerDB(ctx, c.db).Model(&models.ChannelTask{}).Where("id = ?", task.ID).
+		Select("Subject", "DirectInput", "UpdatedAt").Updates(&task).Error
+	if err != nil {
+		return databaseError("update_channel_task_provisioned_input", "task_id="+task.ID, err)
+	}
+	publishCommittedChange(ctx, c.db, "work-board", eventsResource("task", task.ID))
 	return nil
 }
 
@@ -648,15 +662,40 @@ func (c *channelTaskController) ListPendingFollowUps(
 	return followUps, nil
 }
 
-func (c *channelTaskController) DeletePendingFollowUp(ctx context.Context, threadID, submissionID string) error {
+func (c *channelTaskController) ListTaskAttachmentOwners(ctx context.Context, threadID string, ids []string) ([]string, error) {
+	db := controllerDB(ctx, c.db)
+	settled := []constants.ChannelTaskStatus{constants.ChannelTaskStatusCompleted, constants.ChannelTaskStatusCancelled}
+	tasks := db.Model(&models.ChannelTask{}).Where("thread_id = ? AND status NOT IN ?", threadID, settled)
+	var owners []string
+	if err := tasks.Session(&gorm.Session{}).Where("id IN ? AND direct_input IS NOT NULL", ids).Pluck("id", &owners).Error; err != nil {
+		return nil, databaseError("list_channel_task_attachment_owners", "thread_id="+threadID, err)
+	}
+	started := db.Model(&models.ChannelTaskAttempt{}).Select("1").
+		Where("id = channel_task_follow_ups.delivered_attempt_id AND started_at IS NOT NULL")
+	var followUps []string
+	if err := db.Model(&models.ChannelTaskFollowUp{}).
+		Where("id IN ? AND task_id IN (?) AND NOT EXISTS (?)", ids, tasks.Select("id"), started).
+		Pluck("id", &followUps).Error; err != nil {
+		return nil, databaseError("list_channel_follow_up_attachment_owners", "thread_id="+threadID, err)
+	}
+	return append(owners, followUps...), nil
+}
+
+func (c *channelTaskController) DeletePendingFollowUp(ctx context.Context, threadID, submissionID string) ([]string, error) {
 	db := controllerDB(ctx, c.db)
 	tasks := db.Model(&models.ChannelTask{}).Select("id").Where("thread_id = ?", threadID)
-	if err := db.Where("task_id IN (?) AND delivered_at IS NULL", tasks).
+	var deleted []models.ChannelTaskFollowUp
+	if err := db.Clauses(clause.Returning{Columns: []clause.Column{{Name: "id"}}}).
+		Where("task_id IN (?) AND delivered_at IS NULL", tasks).
 		Where("json_extract(payload, '$.submissionId') = ?", submissionID).
-		Delete(&models.ChannelTaskFollowUp{}).Error; err != nil {
-		return databaseError("delete_pending_channel_follow_up", "thread_id="+threadID, err)
+		Delete(&deleted).Error; err != nil {
+		return nil, databaseError("delete_pending_channel_follow_up", "thread_id="+threadID, err)
 	}
-	return nil
+	ids := make([]string, 0, len(deleted))
+	for _, followUp := range deleted {
+		ids = append(ids, followUp.ID)
+	}
+	return ids, nil
 }
 
 // FindDeliveredFollowUp 从原投递关系定位需要停止的尝试。

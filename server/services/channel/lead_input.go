@@ -3,19 +3,15 @@ package channel
 import (
 	"context"
 	"errors"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxBot/server/internal/uploads"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
@@ -75,27 +71,11 @@ func (s *service) enqueueLeadInput(
 		}
 	}
 	committed := false
-	if request.ClaimAttachments != nil && len(input.Attachments) != 0 {
-		input.Attachments = slices.Clone(input.Attachments)
-		release, err := request.ClaimAttachments(&input)
-		if err != nil {
-			return models.ChannelLeadInput{}, err
-		}
-		defer func() { release(committed) }()
-		attachments, err := s.stageLeadInputAttachments(thread, queueID, request.Input.Attachments, input.Attachments)
-		if err != nil {
-			return models.ChannelLeadInput{}, err
-		}
-		if attachments.Rollback != nil {
-			defer func() {
-				if !committed {
-					if err := attachments.Rollback(); err != nil {
-						logx.Warnf("rollback lead input attachments: thread_id=%s input_id=%s error=%v", thread.ID, queueID, err)
-					}
-				}
-			}()
-		}
+	finishAttachments, err := s.prepareTeamInputAttachments(thread, queueID, &input, request.ClaimAttachments)
+	if err != nil {
+		return models.ChannelLeadInput{}, err
 	}
+	defer func() { finishAttachments(committed) }()
 	now := time.Now().UnixMilli()
 	queued := models.ChannelLeadInput{
 		ID:              queueID,
@@ -107,7 +87,7 @@ func (s *service) enqueueLeadInput(
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
-	err := request.AdmissionBoundary.Commit(ctx, func(commitContext context.Context) error {
+	err = request.AdmissionBoundary.Commit(ctx, func(commitContext context.Context) error {
 		err := s.transaction(commitContext, func(transactionContext context.Context) error {
 			if err := s.ensureThreadWritable(transactionContext, thread); err != nil {
 				return err
@@ -127,65 +107,6 @@ func (s *service) enqueueLeadInput(
 		return err
 	})
 	return queued, err
-}
-
-// stageLeadInputAttachments 在上传租约内复制队列所需的字节，原生派发仍沿用 Chat 附件接纳。
-func (s *service) stageLeadInputAttachments(thread models.ChannelThread, inputID string, original, resolved []execution.AttachmentInput) (workspace.PreparedAttachments, error) {
-	var files []workspace.AttachmentInput
-	var positions []int
-	for index, source := range original {
-		if uploads.IsReference(source.SourcePath) {
-			positions = append(positions, index)
-			files = append(files, workspace.AttachmentInput{SourcePath: resolved[index].SourcePath})
-		}
-	}
-	if len(files) == 0 {
-		return workspace.PreparedAttachments{}, nil
-	}
-	layout, err := chatstorage.NewLayout(s.managedFilesDirectory)
-	if err != nil {
-		return workspace.PreparedAttachments{}, err
-	}
-	directory, err := layout.TeamRoot(thread.ID)
-	if err != nil {
-		return workspace.PreparedAttachments{}, err
-	}
-	owner, err := workspace.ReadExecutionWorkspaceOwner(directory)
-	if err != nil {
-		return workspace.PreparedAttachments{}, err
-	}
-	if owner.Kind != constants.ThreadExecutionWorkspaceOwnerKind || owner.ThreadID != thread.ID {
-		return workspace.PreparedAttachments{}, status_error.ChatDirectoryOwnershipInvalid
-	}
-	if err := workspace.RemoveQueuedAttachments(directory, thread.LeadChatID, inputID); err != nil {
-		return workspace.PreparedAttachments{}, err
-	}
-	prepared, err := workspace.StageQueuedAttachments(directory, thread.LeadChatID, inputID, files)
-	if err != nil {
-		return workspace.PreparedAttachments{}, err
-	}
-	for index, position := range positions {
-		resolved[position].SourcePath = prepared.RuntimePaths[index]
-	}
-	return prepared, nil
-}
-
-// releaseLeadInputAttachments 回收队列副本；已接纳的附件由原 Chat 保存。
-func (s *service) releaseLeadInputAttachments(thread models.ChannelThread, inputID string) {
-	if s.managedFilesDirectory == "" {
-		return
-	}
-	layout, err := chatstorage.NewLayout(s.managedFilesDirectory)
-	if err == nil {
-		var directory string
-		directory, err = layout.TeamRoot(thread.ID)
-		if err == nil {
-			err = workspace.RemoveQueuedAttachments(directory, thread.LeadChatID, inputID)
-		}
-	}
-	if err != nil {
-		logx.Warnf("release lead input attachments: thread_id=%s input_id=%s error=%v", thread.ID, inputID, err)
-	}
 }
 
 // drainLeadInputs 在负责人空闲时按顺序把一条用户补充送入原 Chat。
@@ -336,7 +257,7 @@ func (s *service) readLeadInputReceipt(ctx context.Context, thread models.Channe
 
 // trackLeadInput 保留已接纳的工作。临时关联失败时由同一终态监听补齐队列交接。
 func (s *service) trackLeadInput(ctx context.Context, thread models.ChannelThread, inputID string, accepted models.Execution, capabilityToken string) *models.Execution {
-	s.releaseLeadInputAttachments(thread, inputID)
+	s.releaseTeamInputAttachments(thread, inputID)
 	if err := s.threads.UpdateLeadInputs(
 		context.WithoutCancel(ctx),
 		[]string{inputID},
@@ -414,7 +335,7 @@ func (s *service) failLeadInput(ctx context.Context, thread models.ChannelThread
 	})
 	if err == nil && failed {
 		input.Status, input.ErrorCode, input.UpdatedAt = constants.ChannelInputStatusFailed, code, now
-		s.releaseLeadInputAttachments(thread, input.ID)
+		s.releaseTeamInputAttachments(thread, input.ID)
 	}
 	return err
 }

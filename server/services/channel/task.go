@@ -115,6 +115,10 @@ func (s *service) CreateTask(
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}
+	finishAttachments, err := s.prepareTeamInputAttachments(thread, task.ID, directInput, input.claimAttachments)
+	if err != nil {
+		return TaskResult{}, err
+	}
 	err = s.transaction(ctx, func(transactionContext context.Context) error {
 		if writableErr := s.ensureThreadWritable(transactionContext, thread); writableErr != nil {
 			return writableErr
@@ -140,6 +144,7 @@ func (s *service) CreateTask(
 		}
 		return capability.Commit(transactionContext, map[string]any{"taskId": task.ID, "accepted": true})
 	})
+	finishAttachments(err == nil)
 	if err != nil {
 		return TaskResult{}, err
 	}
@@ -511,6 +516,11 @@ func (s *service) dispatchTask(
 			logx.Errorf("cancel uncommitted channel task execution failed: thread_id=%s task_id=%s attempt_id=%s execution_id=%s chat_id=%s error=%v", thread.ID, task.ID, attempt.ID, attempt.ExecutionID, member.ChatID, cancelErr)
 		}
 		return nil, s.rejectTaskDispatch(ctx, thread, attempt, err)
+	}
+	for _, followUp := range followUps {
+		if len(followUp.Payload.Attachments) > 0 {
+			s.releaseTeamInputAttachments(thread, followUp.ID)
+		}
 	}
 	s.watchAttempt(attempt, task.ThreadID, capabilityToken)
 	return &accepted.Execution, nil
