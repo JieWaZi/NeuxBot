@@ -188,16 +188,15 @@
   background: transparent;
 }
 :root[data-window-transparent="true"] .app-workspace-frame::before {
-  inset-inline-start: calc(var(--shell-sidebar-active-width) + 1px);
+  inset-inline-start: var(--shell-sidebar-body-width);
   background: var(--window-glass-card);
-}
-:root[data-window-transparent="true"] .app-workspace-frame[data-sidebar-body-hidden]::before {
-  inset-inline-start: 0;
 }
 
 /* 侧栏和正文各自只铺一次底色，正文底板不再压在侧栏下面。 */
 :root[data-window-transparent="true"] .app-context-sidebar {
   --surface-chrome: transparent;
+}
+:root[data-window-transparent="true"] .app-sidebar-body {
   background: var(--window-glass-sidebar);
 }
 :root[data-window-transparent="true"] .app-window-shell[data-workflow-canvas-shell] .app-scene-body-clip {

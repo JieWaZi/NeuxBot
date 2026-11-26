@@ -1,3 +1,4 @@
+import type { WorkspaceFileEditorCommands } from "@neuxbot/platform-contracts/workspace-file-editors";
 import type { GlobalEventDelivery } from "@neuxbot/platform-contracts/core-event-protocol";
 import type {
   FileDropEvent,
@@ -15,8 +16,6 @@ export type {
   WorkspaceResourceWrite,
   WorkspaceResourceImport,
   WorkspaceResourceChangeEvent,
-  WorkspaceGitChange,
-  WorkspaceGitChanges,
   ScopedGitStatus,
   ScopedGitLogEntry,
   WorkspaceGitBranch,
@@ -53,6 +52,7 @@ import type {
 } from "@neuxbot/platform-contracts/services";
 export type DesktopCommands = Omit<HostCommands, "stage_attachment"> &
   LocalPathCommands &
+  WorkspaceFileEditorCommands &
   DesktopStorageCommands &
   WindowAppearanceCommands &
   NotificationPreferenceCommands &

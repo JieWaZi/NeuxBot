@@ -153,7 +153,9 @@ func (m *Manager) subscribePhysicalWatch(allowed, target string, directory bool)
 			delete(source.listeners, signals)
 			last := len(source.listeners) == 0
 			if last {
-				delete(m.watches, key)
+				if m.watches[key] == source {
+					delete(m.watches, key)
+				}
 				close(source.stop)
 			}
 			m.watchMu.Unlock()
@@ -171,6 +173,9 @@ func (m *Manager) runPhysicalWatch(key physicalWatchKey, source *physicalWatch, 
 		m.watchMu.Lock()
 		defer m.watchMu.Unlock()
 		source.state = state
+		if state == "failed" && m.watches[key] == source {
+			delete(m.watches, key)
+		}
 		for listener := range source.listeners {
 			// 这里只传递“需重读”的信号，覆盖旧信号不会丢失文件事实。
 			select {
@@ -184,12 +189,13 @@ func (m *Manager) runPhysicalWatch(key physicalWatchKey, source *physicalWatch, 
 		select {
 		case <-source.stop:
 			return
-		case _, ok := <-watcher.Errors:
-			if !ok {
-				publish("failed")
-				return
+		case err, ok := <-watcher.Errors:
+			if ok {
+				fileError("observe-resource", err)
 			}
-			publish("recovering")
+			// 丢失目录创建事件时，原生监听也可能漏掉后续的文件变化。
+			publish("failed")
+			return
 		case event, ok := <-watcher.Events:
 			if !ok {
 				publish("failed")
@@ -204,6 +210,9 @@ func (m *Manager) runPhysicalWatch(key physicalWatchKey, source *physicalWatch, 
 			if accountPath(event.Name) || (key.directory && strings.Contains(filepath.ToSlash(event.Name)+"/", "/node_modules/")) {
 				continue
 			}
+			if key.directory && isGitSharedIndexChange(key.target, event.Name) {
+				continue
+			}
 			if event.Has(fsnotify.Create) && key.directory && watcher.AddRecursive == nil {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
 					if err = addTree(event.Name); err != nil {
@@ -215,6 +224,16 @@ func (m *Manager) runPhysicalWatch(key physicalWatchKey, source *physicalWatch, 
 			publish("changed")
 		}
 	}
+}
+
+// Git 读取分离索引也会续期共享缓存。工作树观察以实际索引、引用和文件事件为准。
+func isGitSharedIndexChange(root, path string) bool {
+	hash, found := strings.CutPrefix(filepath.Base(path), "sharedindex.")
+	if !found || (len(hash) != 40 && len(hash) != 64) || !commitRevision.MatchString(hash) {
+		return false
+	}
+	relative, err := filepath.Rel(root, path)
+	return err == nil && strings.Contains("/"+filepath.ToSlash(relative), "/.git/")
 }
 
 // Watch 使用文件系统事件观察冻结范围，调用方必须在订阅结束时调用返回的关闭函数。

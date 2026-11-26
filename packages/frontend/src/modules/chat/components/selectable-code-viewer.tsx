@@ -75,18 +75,6 @@ export function SelectableCodeViewer({
     };
   }, [content, highlightKey, language, theme]);
 
-  useEffect(() => {
-    if (!highlightLines) return;
-    const frame = window.requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLElement>(
-          `[data-selectable-code-viewer][data-file-name="${CSS.escape(fileName)}"] [data-line="${highlightLines.startLine}"]`,
-        )
-        ?.scrollIntoView({ block: "center" });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [fileName, highlightLines]);
-
   return (
     <pre
       data-file-name={fileName}

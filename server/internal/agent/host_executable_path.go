@@ -76,7 +76,7 @@ func hostPathGroups(home, inherited string) [][]string {
 		return [][]string{base}
 	}
 	if runtime.GOOS == "windows" {
-		// Match T3 Code's registry fallback while retaining the inherited order.
+		// Append discovered Windows paths after the inherited search order.
 		return [][]string{base, discovered.directories}
 	}
 	// OpenBot gives the login shell's active tool versions first choice.

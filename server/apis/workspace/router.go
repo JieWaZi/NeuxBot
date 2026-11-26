@@ -17,6 +17,7 @@ func init() {
 	Router.Register(&ResolveReference{})
 
 	Router.Register(&GitStatus{})
+	Router.Register(&GitComparison{})
 	Router.Register(&GitLog{})
 	Router.Register(&GitDiff{})
 	Router.Register(&GitShow{})
@@ -27,6 +28,7 @@ func init() {
 	Router.Register(&GitUnstage{})
 	Router.Register(&GitDiscard{})
 	Router.Register(&GitCommit{})
+	Router.Register(&GitAction{})
 	Router.Register(&GitCheckout{})
 
 	Router.Register(&OpenScope{})

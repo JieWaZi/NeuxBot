@@ -14,7 +14,14 @@ describe("共享动效合同", () => {
   });
 
   it("覆盖所有共享 data-motion 类别", () => {
-    for (const category of ["presence", "popup", "view", "overlay", "none"]) {
+    for (const category of [
+      "presence",
+      "popup",
+      "side-popup",
+      "view",
+      "overlay",
+      "none",
+    ]) {
       expect(styles).toContain(`[data-motion="${category}"]`);
     }
   });

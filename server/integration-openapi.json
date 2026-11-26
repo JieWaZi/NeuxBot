@@ -4763,7 +4763,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryCoreBudgetExceeded][40000000021]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
+            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryCoreBudgetExceeded][40000000021]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspaceGitTargetInvalid][40000007112]`\n* `[WorkspacePathInvalid][40000007102]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -4816,6 +4816,7 @@
               "[WorkflowRetryRequiresReadOnly][40000003008]",
               "[WorkflowSchemaInvalid][40000003002]",
               "[WorkflowSourceInvalid][40000003001]",
+              "[WorkspaceGitTargetInvalid][40000007112]",
               "[WorkspacePathInvalid][40000007102]"
             ]
           },
@@ -5029,7 +5030,7 @@
             ]
           },
           "422": {
-            "description": ">\n* `[KnowledgeCandidateInvalid][42200009501]`\n* `[KnowledgeEmbeddingNotConfigured][42200009503]`\n* `[KnowledgeUnsupported][42200009502]`\n* `[PluginCapabilityUnsupported][42200006501]`\n* `[PluginPackageUnsupported][42200006502]`\n* `[RuntimeInstallationUnsupported][42200007301]`\n* `[RuntimeMaintenanceUnsupported][42200007302]`\n",
+            "description": ">\n* `[KnowledgeCandidateInvalid][42200009501]`\n* `[KnowledgeEmbeddingNotConfigured][42200009503]`\n* `[KnowledgeUnsupported][42200009502]`\n* `[PluginCapabilityUnsupported][42200006501]`\n* `[PluginPackageUnsupported][42200006502]`\n* `[RuntimeInstallationUnsupported][42200007301]`\n* `[RuntimeMaintenanceUnsupported][42200007302]`\n* `[WorkspaceGitHubUnsupported][42200007113]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5044,7 +5045,8 @@
               "[PluginCapabilityUnsupported][42200006501]",
               "[PluginPackageUnsupported][42200006502]",
               "[RuntimeInstallationUnsupported][42200007301]",
-              "[RuntimeMaintenanceUnsupported][42200007302]"
+              "[RuntimeMaintenanceUnsupported][42200007302]",
+              "[WorkspaceGitHubUnsupported][42200007113]"
             ]
           },
           "429": {
@@ -5152,7 +5154,7 @@
             ]
           },
           "502": {
-            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProbeFailed][50200000005]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
+            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProbeFailed][50200000005]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n* `[WorkspaceGitHubRequestFailed][50200007115]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5177,11 +5179,12 @@
               "[PluginDistributionUnavailable][50200006502]",
               "[PluginOAuthMetadataUnavailable][50200006505]",
               "[PluginOAuthServiceUnavailable][50200006504]",
-              "[RuntimeInstallationFailed][50200007301]"
+              "[RuntimeInstallationFailed][50200007301]",
+              "[WorkspaceGitHubRequestFailed][50200007115]"
             ]
           },
           "503": {
-            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n",
+            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n* `[WorkspaceGitHubCLIUnavailable][50300007114]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5196,7 +5199,8 @@
               "[IntegrationListenerError][50300009601]",
               "[ReadingExecutionInterrupted][50300009202]",
               "[ReadingProjectionIncomplete][50300009201]",
-              "[TerminalUnavailable][50300007108]"
+              "[TerminalUnavailable][50300007108]",
+              "[WorkspaceGitHubCLIUnavailable][50300007114]"
             ]
           },
           "504": {
@@ -5269,7 +5273,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryCoreBudgetExceeded][40000000021]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
+            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryCoreBudgetExceeded][40000000021]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspaceGitTargetInvalid][40000007112]`\n* `[WorkspacePathInvalid][40000007102]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5322,6 +5326,7 @@
               "[WorkflowRetryRequiresReadOnly][40000003008]",
               "[WorkflowSchemaInvalid][40000003002]",
               "[WorkflowSourceInvalid][40000003001]",
+              "[WorkspaceGitTargetInvalid][40000007112]",
               "[WorkspacePathInvalid][40000007102]"
             ]
           },
@@ -5535,7 +5540,7 @@
             ]
           },
           "422": {
-            "description": ">\n* `[KnowledgeCandidateInvalid][42200009501]`\n* `[KnowledgeEmbeddingNotConfigured][42200009503]`\n* `[KnowledgeUnsupported][42200009502]`\n* `[PluginCapabilityUnsupported][42200006501]`\n* `[PluginPackageUnsupported][42200006502]`\n* `[RuntimeInstallationUnsupported][42200007301]`\n* `[RuntimeMaintenanceUnsupported][42200007302]`\n",
+            "description": ">\n* `[KnowledgeCandidateInvalid][42200009501]`\n* `[KnowledgeEmbeddingNotConfigured][42200009503]`\n* `[KnowledgeUnsupported][42200009502]`\n* `[PluginCapabilityUnsupported][42200006501]`\n* `[PluginPackageUnsupported][42200006502]`\n* `[RuntimeInstallationUnsupported][42200007301]`\n* `[RuntimeMaintenanceUnsupported][42200007302]`\n* `[WorkspaceGitHubUnsupported][42200007113]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5550,7 +5555,8 @@
               "[PluginCapabilityUnsupported][42200006501]",
               "[PluginPackageUnsupported][42200006502]",
               "[RuntimeInstallationUnsupported][42200007301]",
-              "[RuntimeMaintenanceUnsupported][42200007302]"
+              "[RuntimeMaintenanceUnsupported][42200007302]",
+              "[WorkspaceGitHubUnsupported][42200007113]"
             ]
           },
           "429": {
@@ -5658,7 +5664,7 @@
             ]
           },
           "502": {
-            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProbeFailed][50200000005]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
+            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProbeFailed][50200000005]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n* `[WorkspaceGitHubRequestFailed][50200007115]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5683,11 +5689,12 @@
               "[PluginDistributionUnavailable][50200006502]",
               "[PluginOAuthMetadataUnavailable][50200006505]",
               "[PluginOAuthServiceUnavailable][50200006504]",
-              "[RuntimeInstallationFailed][50200007301]"
+              "[RuntimeInstallationFailed][50200007301]",
+              "[WorkspaceGitHubRequestFailed][50200007115]"
             ]
           },
           "503": {
-            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n",
+            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n* `[WorkspaceGitHubCLIUnavailable][50300007114]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5702,7 +5709,8 @@
               "[IntegrationListenerError][50300009601]",
               "[ReadingExecutionInterrupted][50300009202]",
               "[ReadingProjectionIncomplete][50300009201]",
-              "[TerminalUnavailable][50300007108]"
+              "[TerminalUnavailable][50300007108]",
+              "[WorkspaceGitHubCLIUnavailable][50300007114]"
             ]
           },
           "504": {
@@ -5775,7 +5783,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryCoreBudgetExceeded][40000000021]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
+            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryCoreBudgetExceeded][40000000021]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspaceGitTargetInvalid][40000007112]`\n* `[WorkspacePathInvalid][40000007102]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5828,6 +5836,7 @@
               "[WorkflowRetryRequiresReadOnly][40000003008]",
               "[WorkflowSchemaInvalid][40000003002]",
               "[WorkflowSourceInvalid][40000003001]",
+              "[WorkspaceGitTargetInvalid][40000007112]",
               "[WorkspacePathInvalid][40000007102]"
             ]
           },
@@ -6041,7 +6050,7 @@
             ]
           },
           "422": {
-            "description": ">\n* `[KnowledgeCandidateInvalid][42200009501]`\n* `[KnowledgeEmbeddingNotConfigured][42200009503]`\n* `[KnowledgeUnsupported][42200009502]`\n* `[PluginCapabilityUnsupported][42200006501]`\n* `[PluginPackageUnsupported][42200006502]`\n* `[RuntimeInstallationUnsupported][42200007301]`\n* `[RuntimeMaintenanceUnsupported][42200007302]`\n",
+            "description": ">\n* `[KnowledgeCandidateInvalid][42200009501]`\n* `[KnowledgeEmbeddingNotConfigured][42200009503]`\n* `[KnowledgeUnsupported][42200009502]`\n* `[PluginCapabilityUnsupported][42200006501]`\n* `[PluginPackageUnsupported][42200006502]`\n* `[RuntimeInstallationUnsupported][42200007301]`\n* `[RuntimeMaintenanceUnsupported][42200007302]`\n* `[WorkspaceGitHubUnsupported][42200007113]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6056,7 +6065,8 @@
               "[PluginCapabilityUnsupported][42200006501]",
               "[PluginPackageUnsupported][42200006502]",
               "[RuntimeInstallationUnsupported][42200007301]",
-              "[RuntimeMaintenanceUnsupported][42200007302]"
+              "[RuntimeMaintenanceUnsupported][42200007302]",
+              "[WorkspaceGitHubUnsupported][42200007113]"
             ]
           },
           "429": {
@@ -6164,7 +6174,7 @@
             ]
           },
           "502": {
-            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProbeFailed][50200000005]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
+            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProbeFailed][50200000005]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n* `[WorkspaceGitHubRequestFailed][50200007115]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6189,11 +6199,12 @@
               "[PluginDistributionUnavailable][50200006502]",
               "[PluginOAuthMetadataUnavailable][50200006505]",
               "[PluginOAuthServiceUnavailable][50200006504]",
-              "[RuntimeInstallationFailed][50200007301]"
+              "[RuntimeInstallationFailed][50200007301]",
+              "[WorkspaceGitHubRequestFailed][50200007115]"
             ]
           },
           "503": {
-            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n",
+            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n* `[WorkspaceGitHubCLIUnavailable][50300007114]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6208,7 +6219,8 @@
               "[IntegrationListenerError][50300009601]",
               "[ReadingExecutionInterrupted][50300009202]",
               "[ReadingProjectionIncomplete][50300009201]",
-              "[TerminalUnavailable][50300007108]"
+              "[TerminalUnavailable][50300007108]",
+              "[WorkspaceGitHubCLIUnavailable][50300007114]"
             ]
           },
           "504": {
@@ -6383,7 +6395,7 @@
             "description": ""
           },
           "400": {
-            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryCoreBudgetExceeded][40000000021]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
+            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryCoreBudgetExceeded][40000000021]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspaceGitTargetInvalid][40000007112]`\n* `[WorkspacePathInvalid][40000007102]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6436,6 +6448,7 @@
               "[WorkflowRetryRequiresReadOnly][40000003008]",
               "[WorkflowSchemaInvalid][40000003002]",
               "[WorkflowSourceInvalid][40000003001]",
+              "[WorkspaceGitTargetInvalid][40000007112]",
               "[WorkspacePathInvalid][40000007102]"
             ]
           },
@@ -6649,7 +6662,7 @@
             ]
           },
           "422": {
-            "description": ">\n* `[KnowledgeCandidateInvalid][42200009501]`\n* `[KnowledgeEmbeddingNotConfigured][42200009503]`\n* `[KnowledgeUnsupported][42200009502]`\n* `[PluginCapabilityUnsupported][42200006501]`\n* `[PluginPackageUnsupported][42200006502]`\n* `[RuntimeInstallationUnsupported][42200007301]`\n* `[RuntimeMaintenanceUnsupported][42200007302]`\n",
+            "description": ">\n* `[KnowledgeCandidateInvalid][42200009501]`\n* `[KnowledgeEmbeddingNotConfigured][42200009503]`\n* `[KnowledgeUnsupported][42200009502]`\n* `[PluginCapabilityUnsupported][42200006501]`\n* `[PluginPackageUnsupported][42200006502]`\n* `[RuntimeInstallationUnsupported][42200007301]`\n* `[RuntimeMaintenanceUnsupported][42200007302]`\n* `[WorkspaceGitHubUnsupported][42200007113]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6664,7 +6677,8 @@
               "[PluginCapabilityUnsupported][42200006501]",
               "[PluginPackageUnsupported][42200006502]",
               "[RuntimeInstallationUnsupported][42200007301]",
-              "[RuntimeMaintenanceUnsupported][42200007302]"
+              "[RuntimeMaintenanceUnsupported][42200007302]",
+              "[WorkspaceGitHubUnsupported][42200007113]"
             ]
           },
           "429": {
@@ -6772,7 +6786,7 @@
             ]
           },
           "502": {
-            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProbeFailed][50200000005]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n",
+            "description": ">\n* `[AIAccountModelsResponseInvalid][50200000004]`\n* `[AIAccountModelsUnavailable][50200000003]`\n* `[IMPlatformUnavailable][50200004001]`\n* `[IMProtocolInvalid][50200004002]`\n* `[KnowledgeEmbeddingResponseInvalid][50200009602]`\n* `[KnowledgeEmbeddingUnavailable][50200009601]`\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n* `[MCPConnectorProbeFailed][50200000005]`\n* `[MCPConnectorProtocolInvalid][50200000002]`\n* `[MemoryEmbeddingUnavailable][50200000001]`\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDependencyUnavailable][50200006503]`\n* `[PluginDistributionUnavailable][50200006502]`\n* `[PluginOAuthMetadataUnavailable][50200006505]`\n* `[PluginOAuthServiceUnavailable][50200006504]`\n* `[RuntimeInstallationFailed][50200007301]`\n* `[WorkspaceGitHubRequestFailed][50200007115]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6797,11 +6811,12 @@
               "[PluginDistributionUnavailable][50200006502]",
               "[PluginOAuthMetadataUnavailable][50200006505]",
               "[PluginOAuthServiceUnavailable][50200006504]",
-              "[RuntimeInstallationFailed][50200007301]"
+              "[RuntimeInstallationFailed][50200007301]",
+              "[WorkspaceGitHubRequestFailed][50200007115]"
             ]
           },
           "503": {
-            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n",
+            "description": ">\n* `[AgentConnectionUnavailable][50300009001]`\n* `[DatabaseBusy][50300001001]`\n* `[IMServiceUnavailable][50300004001]`\n* `[IntegrationListenerError][50300009601]`\n* `[ReadingExecutionInterrupted][50300009202]`\n* `[ReadingProjectionIncomplete][50300009201]`\n* `[TerminalUnavailable][50300007108]`\n* `[WorkspaceGitHubCLIUnavailable][50300007114]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6816,7 +6831,8 @@
               "[IntegrationListenerError][50300009601]",
               "[ReadingExecutionInterrupted][50300009202]",
               "[ReadingProjectionIncomplete][50300009201]",
-              "[TerminalUnavailable][50300007108]"
+              "[TerminalUnavailable][50300007108]",
+              "[WorkspaceGitHubCLIUnavailable][50300007114]"
             ]
           },
           "504": {

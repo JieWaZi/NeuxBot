@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
+import { FileReferenceProvider } from "@/shared/workspace/file-reference-link";
 import { WorkspaceFileBrowser } from "./workspace-file-browser";
 import { workspaceFileDragType } from "../model/workspace-file-drag";
 
@@ -12,6 +13,7 @@ const {
   listWorkspaceResourceDirectory,
   searchWorkspaceFiles,
   searchWorkspaceResourceFiles,
+  resolveWorkspaceResourceReference,
   openWorkspaceResourceScope,
   statWorkspaceResource,
   renameWorkspaceResource,
@@ -49,7 +51,7 @@ const {
           ],
   ),
   searchWorkspaceFiles: vi.fn(
-    async (...args: [string, string, number?, string?]) => {
+    async (...args: [string, string, number?, string?, AbortSignal?]) => {
       void args;
       return [
         {
@@ -67,8 +69,18 @@ const {
         name: string;
         relativePath: string;
         isDirectory: boolean;
+        canonicalPath?: string;
       }[];
     },
+  ),
+  resolveWorkspaceResourceReference: vi.fn(
+    async (_chatId: string, path: string, baseDirectory: string) => ({
+      status: "resolved" as const,
+      canonicalPath: path.replace("shortcut.ts", "implementation.ts"),
+      baseDirectory,
+      workspaceRoot: baseDirectory,
+      sourceRoots: [],
+    }),
   ),
   searchWorkspaceResourceFiles: vi.fn(
     async (
@@ -77,8 +89,9 @@ const {
       _limit: number,
       _scopePath: string,
       _root?: string,
+      _signal?: AbortSignal,
     ): Promise<{ name: string; relativePath: string; path: string }[]> => {
-      void [_chatId, _query, _limit, _scopePath, _root];
+      void [_chatId, _query, _limit, _scopePath, _root, _signal];
       return [];
     },
   ),
@@ -126,14 +139,18 @@ vi.mock("@/shared/platform", () => ({
     query: string,
     limit?: number,
     scopePath?: string,
-  ) => searchWorkspaceFiles(root, query, limit, scopePath),
+    signal?: AbortSignal,
+  ) => searchWorkspaceFiles(root, query, limit, scopePath, signal),
   searchWorkspaceResourceFiles: (
     chatId: string,
     query: string,
     limit: number,
     scopePath: string,
     root?: string,
-  ) => searchWorkspaceResourceFiles(chatId, query, limit, scopePath, root),
+    signal?: AbortSignal,
+  ) =>
+    searchWorkspaceResourceFiles(chatId, query, limit, scopePath, root, signal),
+  resolveWorkspaceResourceReference,
   openWorkspaceResourceScope,
   statWorkspaceResource,
   renameWorkspaceResource,
@@ -146,6 +163,58 @@ vi.mock("@/shared/platform", () => ({
 }));
 
 describe("WorkspaceFileBrowser", () => {
+  it("用已授权的目录条目定位链接对应的文件，渲染时不逐项解析", async () => {
+    const root = "/tmp/file-tree-project";
+    const canonicalPath = `${root}/src/implementation.ts`;
+    listWorkspaceResourceDirectory.mockResolvedValueOnce([
+      {
+        name: "shortcut.ts",
+        relativePath: "shortcut.ts",
+        canonicalPath,
+        isDirectory: false,
+      },
+      {
+        name: "any.ts",
+        relativePath: "any.ts",
+        canonicalPath: `${root}/any.ts`,
+        isDirectory: false,
+      },
+    ]);
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <FileReferenceProvider
+          context={{
+            chatId: "tree-project",
+            baseDirectory: root,
+            workspaceRoot: root,
+            sourceRoots: [],
+          }}
+        >
+          <WorkspaceFileBrowser
+            activePath={canonicalPath}
+            onOpenFile={vi.fn()}
+            query=""
+            rootPath={root}
+            scopeChatId="tree-project"
+            scopePath=""
+          />
+        </FileReferenceProvider>
+      </QueryClientProvider>,
+    );
+
+    const selected = await screen.findByRole("treeitem", {
+      name: "shortcut.ts",
+    });
+    expect(resolveWorkspaceResourceReference).not.toHaveBeenCalled();
+    expect(selected).toHaveAttribute("aria-current", "page");
+    expect(
+      queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ["workspace-directory"] }),
+    ).toHaveLength(1);
+  });
+
   it("从真实根目录懒加载文件夹并保留相对路径", async () => {
     const user = userEvent.setup();
     const onOpenFile = vi.fn();
@@ -163,9 +232,10 @@ describe("WorkspaceFileBrowser", () => {
       </QueryClientProvider>,
     );
 
-    expect(
-      await screen.findByRole("button", { name: "share" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "share" })).toHaveClass(
+      "min-h-row-compact",
+      "type-ui",
+    );
     expect(
       screen.getByRole("button", { name: "share" }).querySelector("img"),
     ).toBeNull();
@@ -187,7 +257,9 @@ describe("WorkspaceFileBrowser", () => {
       "share/src",
     );
     await user.click(await screen.findByRole("button", { name: "src" }));
-    await user.click(await screen.findByRole("treeitem", { name: "main.ts" }));
+    const file = await screen.findByRole("treeitem", { name: "main.ts" });
+    expect(file).toHaveClass("min-h-row-compact", "type-ui");
+    await user.click(file);
 
     expect(listWorkspaceDirectory).toHaveBeenNthCalledWith(1, "/tmp/bot", "");
     expect(listWorkspaceDirectory).toHaveBeenNthCalledWith(
@@ -227,11 +299,32 @@ describe("WorkspaceFileBrowser", () => {
         "main",
         200,
         "",
+        expect.any(AbortSignal),
       ),
     );
     expect(
       await screen.findByRole("treeitem", { name: /main\.ts/ }),
     ).toBeInTheDocument();
+  });
+
+  it("卸载文件树会取消尚未完成的搜索", async () => {
+    const queryClient = new QueryClient();
+    searchWorkspaceFiles.mockImplementationOnce(() => new Promise(() => {}));
+    const { unmount } = render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceFileBrowser
+          onOpenFile={vi.fn()}
+          query="main"
+          rootPath="/tmp/bot"
+          scopePath=""
+        />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(searchWorkspaceFiles).toHaveBeenCalled());
+    const signal = searchWorkspaceFiles.mock.lastCall?.[4];
+    expect(signal?.aborted).toBe(false);
+    unmount();
+    expect(signal?.aborted).toBe(true);
   });
 
   it("文件树条目提供拖入聊天框所需的文件身份", async () => {
@@ -318,6 +411,7 @@ describe("WorkspaceFileBrowser", () => {
         200,
         "",
         "/tmp/bot",
+        expect.any(AbortSignal),
       ),
     );
   });

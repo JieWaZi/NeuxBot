@@ -11,8 +11,10 @@ export function useWorkspaceConfirmation() {
   const pending = useRef<((value: boolean) => void) | undefined>(undefined);
   useEffect(
     () => () => {
-      pending.current?.(false);
+      if (!pending.current) return;
+      pending.current(false);
       pending.current = undefined;
+      setRequest(undefined);
     },
     [],
   );

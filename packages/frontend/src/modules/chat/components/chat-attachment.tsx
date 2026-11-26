@@ -24,6 +24,7 @@ export type ChatFileOpenRequest = {
   path: string;
   rootPath?: string;
   sourceChatId?: string;
+  fileSource?: "project" | "chat";
 };
 
 function sourcePathPreviewOf(
@@ -152,7 +153,7 @@ export function ChatMessageAttachments({
               <button
                 type="button"
                 className="max-w-40 truncate text-left"
-                onClick={() => onOpenFile({ name, path })}
+                onClick={() => onOpenFile({ name, path, fileSource: "chat" })}
               >
                 {label}
               </button>

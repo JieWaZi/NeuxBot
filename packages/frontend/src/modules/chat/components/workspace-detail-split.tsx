@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 const initialSidebarWidth = 240;
+export const fileTreeSidebarRatio = 0.4;
 // 分隔线只占 1px；拖拽命中区覆盖两侧，不额外挤占内容宽度。
 const separatorWidth = 1;
 const keyboardStep = 16;

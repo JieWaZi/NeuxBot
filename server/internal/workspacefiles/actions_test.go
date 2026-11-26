@@ -3,13 +3,51 @@ package workspacefiles
 import (
 	"context"
 	"fmt"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/fsnotify/fsnotify"
 )
+
+func TestPhysicalWatchStopsAfterLosingNativeEvents(t *testing.T) {
+	m := New()
+	key := physicalWatchKey{directory: true}
+	states := make(chan string, 1)
+	source := &physicalWatch{
+		listeners: map[chan string]struct{}{states: {}},
+		stop:      make(chan struct{}),
+		done:      make(chan struct{}),
+	}
+	m.watches = map[physicalWatchKey]*physicalWatch{key: source}
+	defer close(source.stop)
+	watchErrors := make(chan error, 1)
+	watchErrors <- fsnotify.ErrEventOverflow
+	go m.runPhysicalWatch(key, source, &resourceWatcher{
+		Events: make(chan fsnotify.Event),
+		Errors: watchErrors,
+		Close:  func() error { return nil },
+	}, nil)
+	select {
+	case state := <-states:
+		if state != "failed" {
+			t.Fatalf("native event loss must terminate the unreliable watch: %s", state)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("event loss was not reported")
+	}
+	select {
+	case <-source.done:
+	case <-time.After(time.Second):
+		t.Fatal("native watch was not released")
+	}
+	if m.watches[key] != nil {
+		t.Fatal("future subscriptions would reuse the failed native watch")
+	}
+}
 
 func TestDirectoryImportAndResolve(t *testing.T) {
 	m, s, root := fixture(t)

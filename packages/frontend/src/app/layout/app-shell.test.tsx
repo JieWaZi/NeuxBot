@@ -480,7 +480,7 @@ vi.mock("./partner-navigation-layout", async () => {
       }>;
     }) => (
       <SceneChromePortalProvider>
-        <div data-sidebar-history-slot>
+        <div data-app-sidebar-toolbar>
           {sidebarToolbar}
           {notificationBell}
         </div>
@@ -1771,7 +1771,7 @@ describe("AppShell 伙伴导航", () => {
   });
 
   it.each([false, true])(
-    "设置与聊天保留唯一通知入口，旧侧栏收起偏好被忽略（旧值=%s）",
+    "设置与聊天保留唯一通知入口及侧栏收起偏好（收起=%s）",
     async (globalSidebarCollapsed) => {
       const user = userEvent.setup();
       storage.set(
@@ -1785,7 +1785,7 @@ describe("AppShell 伙伴导航", () => {
         screen.getAllByRole("button", { name: "通知，打开任务看板" }),
       ).toHaveLength(1);
       expect(screen.getByTestId("sidebar-collapsed")).toHaveTextContent(
-        "false",
+        String(globalSidebarCollapsed),
       );
       await user.click(
         within(
@@ -1813,11 +1813,11 @@ describe("AppShell 伙伴导航", () => {
         name: "通知，打开任务看板",
       });
       expect(activeBell).toHaveAttribute("aria-current", "page");
-      const historySlot = activeBell.closest("[data-sidebar-history-slot]");
-      expect(historySlot).not.toBeNull();
-      const historyButtons = historySlot?.querySelectorAll("button");
-      expect(historyButtons?.[1]).toHaveAccessibleName("前进");
-      expect(historyButtons?.[2]).toBe(activeBell);
+      const toolbar = activeBell.closest("[data-app-sidebar-toolbar]");
+      expect(toolbar).not.toBeNull();
+      const toolbarButtons = toolbar?.querySelectorAll("button");
+      expect(toolbarButtons?.[1]).toHaveAccessibleName("前进");
+      expect(toolbarButtons?.[2]).toBe(activeBell);
       await user.click(activeBell);
       expect(
         document.querySelectorAll('[data-route-scene-id="work-board"]'),

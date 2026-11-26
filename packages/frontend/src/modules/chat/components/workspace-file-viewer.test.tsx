@@ -15,6 +15,10 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import { ContentVisibility } from "@/shared/lib/content-visibility";
 import { WorkspaceFileViewer } from "./workspace-file-viewer";
 
+const editorTargets = vi.hoisted(() => ({
+  list: vi.fn(async () => ["vscode", "cursor", "file-manager"] as const),
+  open: vi.fn<(input: unknown) => Promise<boolean>>(async () => true),
+}));
 const nativeView = vi.hoisted(() => ({
   create: vi.fn().mockResolvedValue("html-preview"),
   close: vi.fn().mockResolvedValue(undefined),
@@ -141,6 +145,8 @@ vi.mock("@/shared/platform", async () => {
     resolveFileReferencePath: async (request: FileReferenceRequest) =>
       fakeFileReference(request),
     isDesktopRuntime: () => true,
+    listWorkspaceFileOpenTargets: editorTargets.list,
+    openWorkspaceFileTarget: editorTargets.open,
     hasPlatformService: () => true,
     createBrowserView: nativeView.create,
     closeBrowserView: nativeView.close,
@@ -257,7 +263,7 @@ describe("WorkspaceFileViewer", () => {
     vi.restoreAllMocks();
   });
 
-  it("Markdown 在同一查看器切换代码与预览，代码查看不进入编辑状态", async () => {
+  it("项目 Markdown 的代码与预览用无常驻底色的按钮切换", async () => {
     const user = userEvent.setup();
     readWorkspaceFile.mockResolvedValueOnce({
       name: "guide.md",
@@ -270,14 +276,21 @@ describe("WorkspaceFileViewer", () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <TooltipProvider>
-          <WorkspaceFileViewer rootPath="/tmp/project" path="guide.md" />
+          <WorkspaceFileViewer
+            rootPath="/tmp/project"
+            path="guide.md"
+            projectPreview
+          />
         </TooltipProvider>
       </QueryClientProvider>,
     );
     expect(
       await screen.findByRole("heading", { name: "使用指南" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "代码" }));
+    const showCode = screen.getByRole("button", { name: "代码" });
+    expect(showCode).toHaveAttribute("aria-pressed", "true");
+    expect(showCode).not.toHaveClass("bg-button-fill");
+    await user.click(showCode);
     expect(
       screen.queryByRole("heading", { name: "使用指南" }),
     ).not.toBeInTheDocument();
@@ -289,6 +302,107 @@ describe("WorkspaceFileViewer", () => {
     expect(
       await screen.findByRole("heading", { name: "使用指南" }),
     ).toBeInTheDocument();
+  });
+
+  it("Markdown 文件行号定位切到源码并高亮范围，仍可返回预览", async () => {
+    const user = userEvent.setup();
+    readWorkspaceFile.mockResolvedValueOnce({
+      name: "guide.md",
+      relativePath: "guide.md",
+      kind: "text",
+      mediaType: "text/markdown",
+      content: "# 使用指南\n\n第一步\n第二步",
+      size: 30,
+    });
+    const client = new QueryClient();
+    const viewer = (highlightLines?: {
+      startLine: number;
+      endLine: number;
+    }) => (
+      <QueryClientProvider client={client}>
+        <WorkspaceFileViewer
+          rootPath="/tmp/project"
+          path="guide.md"
+          highlightLines={highlightLines}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(viewer());
+    await screen.findByRole("heading", { name: "使用指南" });
+    await user.click(screen.getByRole("button", { name: "代码" }));
+    await user.click(screen.getByRole("button", { name: "预览" }));
+    await screen.findByRole("heading", { name: "使用指南" });
+
+    view.rerender(viewer({ startLine: 3, endLine: 4 }));
+    await waitFor(() =>
+      expect(
+        Array.from(
+          view.container.querySelectorAll("[data-line].bg-primary\\/12"),
+        ).map((line) => line.getAttribute("data-line")),
+      ).toEqual(["3", "4"]),
+    );
+    await user.click(screen.getByRole("button", { name: "预览" }));
+    expect(
+      await screen.findByRole("heading", { name: "使用指南" }),
+    ).toBeVisible();
+  });
+
+  it("项目源码工具栏保留换行与正文，隐藏新编辑和冗余动作", async () => {
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <WorkspaceFileViewer
+          rootPath="/tmp/project"
+          path="src/main.ts"
+          projectPreview
+        />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("export const bot = true;")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "编辑文本" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "复制文件内容" })).toBeNull();
+    expect(screen.queryByText("25 B")).toBeNull();
+    const wrap = screen.getByRole("button", { name: "自动换行" });
+    await user.click(wrap);
+    expect(wrap).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("项目文件可选已发现的编辑器，随后用它打开同一授权文件", async () => {
+    const user = userEvent.setup();
+    const preference = "bot.workspace-file-open-target";
+    localStorage.removeItem(preference);
+    editorTargets.open.mockClear();
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <WorkspaceFileViewer
+            rootPath="/tmp/project"
+            path="guide.md"
+            scopeChatId="chat-1"
+            projectPreview
+            highlightLines={{ startLine: 4, endLine: 6 }}
+          />
+        </QueryClientProvider>,
+      );
+      expect(
+        await screen.findByRole("button", { name: "在 VS Code 中打开" }),
+      ).toBeVisible();
+      await user.click(screen.getByRole("button", { name: "选择外部编辑器" }));
+      await user.click(screen.getByRole("menuitemradio", { name: "Cursor" }));
+      expect(editorTargets.open).not.toHaveBeenCalled();
+      await user.click(
+        await screen.findByRole("button", { name: "在 Cursor 中打开" }),
+      );
+      expect(editorTargets.open).toHaveBeenCalledExactlyOnceWith({
+        chatId: "chat-1",
+        root: "/tmp/project",
+        relativePath: "guide.md",
+        line: 4,
+        target: "cursor",
+      });
+    } finally {
+      localStorage.removeItem(preference);
+    }
   });
 
   it("只读产出保留代码与预览切换但没有编辑入口", async () => {

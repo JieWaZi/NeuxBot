@@ -87,7 +87,7 @@ describe("ChatBrowserView", () => {
       />,
     );
     expect(screen.getByRole("button", { name: "文件" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "改动" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "差异" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "终端" })).toBeNull();
   });
 

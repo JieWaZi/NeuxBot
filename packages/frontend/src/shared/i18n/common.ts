@@ -379,6 +379,8 @@ export const commonZh = {
   appNavigation: {
     modules: "模块导航",
     more: "更多模块",
+    collapseSidebar: "收起左侧栏",
+    expandSidebar: "展开左侧栏",
     resizeSidebar: "调整模块侧栏宽度",
     pinModule: "固定{{name}}",
   },
@@ -997,6 +999,8 @@ export const commonEn = {
   appNavigation: {
     modules: "Module navigation",
     more: "More modules",
+    collapseSidebar: "Collapse left sidebar",
+    expandSidebar: "Expand left sidebar",
     resizeSidebar: "Resize module sidebar",
     pinModule: "Pin {{name}}",
   },

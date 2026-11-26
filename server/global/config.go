@@ -769,6 +769,9 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		return mapCoreError("initialize_execution_service", status_error.CoreChatInitializationFailed, err)
 	}
 	ExecutionService = executionCore
+	if err := agent.RecoverEphemeralScratch(workspaceGitScratchRoot(configuration)); err != nil {
+		logx.Warnf("recover workspace git scratch: error=%v", err)
+	}
 	if err := loadPartnerReview(ctx, configuration, skills); err != nil {
 		logx.Warnf("partner review unavailable: error=%v", err)
 	}

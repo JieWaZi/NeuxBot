@@ -8,8 +8,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Read fresh Machine and User PATH entries as T3 Code does. Windows expands
-// registry variables in the new environment block instead of using stale process values.
+// Windows builds a fresh user environment block from the machine and user
+// settings, expanding registry variables for PATH.
 func readHostExecutablePath(ctx context.Context, _ string, _ environmentSnapshot) ([]string, bool) {
 	if ctx.Err() != nil {
 		return nil, false

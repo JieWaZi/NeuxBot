@@ -5,12 +5,18 @@ import {
   ChatHistoryNavigationRow,
   ChatForkMenuItem,
 } from "@/modules/chat";
-import { Folder, LoaderCircle, MessageSquareText } from "lucide-react";
+import {
+  Folder,
+  LoaderCircle,
+  MessageSquareText,
+  PanelLeft,
+} from "lucide-react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   lazy,
   Suspense,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -55,6 +61,7 @@ import { chatDraftHref, chatHref } from "@/shared/lib/chat-navigation";
 import { Button } from "@/shared/ui/button";
 import { CornerLauncherButton } from "@/shared/ui/corner-launcher-button";
 import { ResourceInfiniteScroll } from "@/shared/ui/resource-infinite-scroll";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import {
   clampContextSidebarWidth,
   defaultContextSidebarWidth,
@@ -229,6 +236,7 @@ function PartnerNavigationLayoutContent({
 }: PartnerNavigationLayoutProps) {
   const navigate = useNavigate();
   const { t } = useTranslation("common");
+  const sidebarBodyId = useId();
   const appScenes = useOptionalAppSceneWorkspace();
   const openNewOwnerChat = (owner: ChatSceneOwner) => {
     if (appScenes?.openNewChat?.(owner)) return;
@@ -304,6 +312,7 @@ function PartnerNavigationLayoutContent({
   });
   const selectedRailItem = navigationEntityByKey.get(selectedRailKey);
   const resizeCleanup = useRef<() => void>(() => undefined);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
   const [contextSidebarWidth, setContextSidebarWidth] = useState(() =>
     clampContextSidebarWidth(preferences.contextSidebarWidth),
   );
@@ -370,6 +379,21 @@ function PartnerNavigationLayoutContent({
   const sidebar = settingsLayout ?? moduleSidebar;
   const pageSidebar = Boolean(sidebar);
   const hasSidebar = pageSidebar || partnerContext;
+  const sidebarCollapsed = hasSidebar && preferences.globalSidebarCollapsed;
+  const sidebarExpanded = hasSidebar && !sidebarCollapsed;
+  const sidebarToggleLabel = t(
+    sidebarCollapsed
+      ? "appNavigation.expandSidebar"
+      : "appNavigation.collapseSidebar",
+  );
+  const toggleSidebar = () => {
+    resizeCleanup.current();
+    setSidebarResizing(false);
+    onPreferencesChange((current) => ({
+      ...current,
+      globalSidebarCollapsed: !current.globalSidebarCollapsed,
+    }));
+  };
   const resizeSidebar = (value: number, commit: boolean) => {
     const width = clampContextSidebarWidth(value);
     setContextSidebarWidth(width);
@@ -383,6 +407,7 @@ function PartnerNavigationLayoutContent({
   const beginContextResize = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     resizeCleanup.current();
+    setSidebarResizing(true);
     const startX = event.clientX;
     const startWidth = contextSidebarWidth;
     resizeCleanup.current = trackHorizontalDrag({
@@ -393,6 +418,7 @@ function PartnerNavigationLayoutContent({
       onCommit: (width) => resizeSidebar(width, true),
       onFinish: () => {
         resizeCleanup.current = () => undefined;
+        setSidebarResizing(false);
       },
     });
   };
@@ -429,14 +455,21 @@ function PartnerNavigationLayoutContent({
         <div
           data-app-workspace-frame
           data-page-sidebar={pageSidebar || undefined}
-          data-sidebar-body-hidden={!hasSidebar || undefined}
           className={cn(
-            "app-workspace-frame relative isolate grid min-h-0 min-w-0 grid-cols-[var(--shell-sidebar-active-width)_1px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden",
+            "app-workspace-frame duration-layout ease-ui relative isolate grid min-h-0 min-w-0 grid-cols-[var(--shell-sidebar-body-width)_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden motion-reduce:transition-none",
+            hasSidebar && !sidebarResizing
+              ? "transition-[--shell-sidebar-body-width]"
+              : "transition-none",
           )}
           style={
             {
               "--shell-context-width": `${contextSidebarWidth}px`,
-              "--shell-sidebar-active-width": `${contextSidebarWidth}px`,
+              "--shell-sidebar-body-width": sidebarExpanded
+                ? `${contextSidebarWidth + 1}px`
+                : "0px",
+              "--shell-sidebar-toolbar-min-width": hasSidebar
+                ? "var(--shell-sidebar-compact-width)"
+                : "var(--shell-context-width)",
               "--shell-navigation-leading-inset": `${navigationInset}px`,
               "--shell-sidebar-header-inset": nativeDarwin ? "24px" : "12px",
               "--shell-sidebar-header-height": "38px",
@@ -444,11 +477,11 @@ function PartnerNavigationLayoutContent({
           }
         >
           <div
-            className="app-context-sidebar col-start-1 row-start-1 grid min-h-0 min-w-0 grid-rows-[var(--shell-sidebar-header-height)_minmax(0,1fr)]"
+            className="app-context-sidebar col-start-1 row-start-1 grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[var(--shell-sidebar-header-height)_minmax(0,1fr)]"
             data-app-context-sidebar
           >
             <div
-              className="app-sidebar-topbar flex min-w-0 items-center justify-end"
+              className="app-sidebar-topbar flex min-w-0 items-center justify-between"
               data-app-sidebar-toolbar
               data-desktop-drag-region
             >
@@ -458,169 +491,196 @@ function PartnerNavigationLayoutContent({
                 data-desktop-no-drag-region
               >
                 {sidebarToolbar}
+              </div>
+              <div
+                className="flex shrink-0 items-center"
+                data-desktop-no-drag-region
+              >
+                {hasSidebar ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        aria-controls={sidebarBodyId}
+                        aria-expanded={sidebarExpanded}
+                        aria-label={sidebarToggleLabel}
+                        className="shrink-0"
+                        data-desktop-no-drag-region
+                        onClick={toggleSidebar}
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <PanelLeft aria-hidden="true" strokeWidth={1.5} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{sidebarToggleLabel}</TooltipContent>
+                  </Tooltip>
+                ) : null}
                 {notificationBell}
               </div>
             </div>
             <div
-              hidden={
-                !partnerContext || pageSidebar || showPartnerSidebarNavigation
-              }
-              aria-hidden={
-                !partnerContext ||
-                pageSidebar ||
-                showPartnerSidebarNavigation ||
-                undefined
-              }
-              inert={
-                !partnerContext || pageSidebar || showPartnerSidebarNavigation
-              }
-              data-sidebar-entity-body
-              className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain"
+              className="app-sidebar-body relative min-h-0 min-w-0 overflow-hidden"
+              aria-hidden={!sidebarExpanded || undefined}
+              hidden={!hasSidebar}
+              id={sidebarBodyId}
+              inert={!sidebarExpanded}
             >
-              <EntityNavigation
-                collapsed={false}
-                entityStatus={entityStatus}
-                mode={preferences.entityMode}
-                onManageEntities={onManageEntities}
-                onModeChange={(entityMode) =>
-                  onPreferencesChange((current) => ({
-                    ...current,
-                    entityMode,
-                  }))
-                }
-                onReorder={updateOrder}
-                onSelectPartner={onSelectPartner}
-                onSelectTeam={onSelectTeam}
-                onShowcaseWaker={(waker, origin) =>
-                  setShowcase(captureShowcase(waker, origin))
-                }
-                selectedKey={selectedRailKey}
-                items={visibleRailItems}
-                wakerGroups={preferences.wakerGroups}
-                renderTeamRow={(item, row) => (
-                  <TeamNavigationMenu
-                    key={item.key}
-                    detail={item.team}
-                    onNewChat={() =>
-                      openNewOwnerChat({ kind: "team", id: item.id })
-                    }
-                    onDeleted={() => {
-                      onPreferencesChange((current) =>
-                        current.currentRailKey === item.key
-                          ? { ...current, currentRailKey: "" }
-                          : current,
-                      );
-                      if (
-                        location.pathname === `/teams/${item.id}` ||
-                        location.pathname.startsWith(`/teams/${item.id}/`)
-                      )
-                        navigate("/chat", { replace: true });
-                    }}
-                  >
-                    {row}
-                  </TeamNavigationMenu>
-                )}
-                renderWakerRow={(item, row) => (
-                  <WakerNavigationMenu
-                    key={item.key}
-                    waker={item.waker}
-                    wakerId={item.id}
-                    groups={preferences.wakerGroups ?? []}
-                    onNewChat={() =>
-                      openNewOwnerChat({ kind: "waker", id: item.id })
-                    }
-                    onMove={(groupName) => moveWaker(item.id, groupName)}
-                    onCopied={(newId) => {
-                      onPreferencesChange((current) => {
-                        const groups = current.wakerGroups ?? [];
-                        const sourceGroup = groups.find((group) =>
-                          group.wakerIds.includes(item.id),
-                        );
-                        return sourceGroup
-                          ? {
-                              ...current,
-                              wakerGroups: moveWakerToNavigationGroup(
-                                groups,
-                                newId,
-                                sourceGroup.name,
-                              ),
-                            }
-                          : current;
-                      });
-                    }}
-                    onDeleted={() => {
-                      moveWaker(item.id, "");
-                      if (
-                        selectedRailKey === item.key &&
-                        (location.pathname === "/chat" || activeChatId)
-                      )
-                        navigate("/wakers", { replace: true });
-                    }}
-                  >
-                    {row}
-                  </WakerNavigationMenu>
-                )}
-              />
-            </div>
-            {sidebar || showPartnerSidebarNavigation ? (
               <div
-                className="absolute inset-x-0 top-(--shell-titlebar-height) bottom-0 overflow-x-hidden overflow-y-auto overscroll-contain"
-                data-sidebar-page-nav
+                hidden={
+                  !partnerContext || pageSidebar || showPartnerSidebarNavigation
+                }
+                aria-hidden={
+                  !partnerContext ||
+                  pageSidebar ||
+                  showPartnerSidebarNavigation ||
+                  undefined
+                }
+                inert={
+                  !partnerContext || pageSidebar || showPartnerSidebarNavigation
+                }
+                data-sidebar-entity-body
+                className="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain"
               >
-                {sidebar ?? (
-                  <Suspense fallback={null}>
-                    <PartnerContextSidebar partnerId={selectedPartnerId} />
-                  </Suspense>
-                )}
+                <EntityNavigation
+                  collapsed={false}
+                  entityStatus={entityStatus}
+                  mode={preferences.entityMode}
+                  onManageEntities={onManageEntities}
+                  onModeChange={(entityMode) =>
+                    onPreferencesChange((current) => ({
+                      ...current,
+                      entityMode,
+                    }))
+                  }
+                  onReorder={updateOrder}
+                  onSelectPartner={onSelectPartner}
+                  onSelectTeam={onSelectTeam}
+                  onShowcaseWaker={(waker, origin) =>
+                    setShowcase(captureShowcase(waker, origin))
+                  }
+                  selectedKey={selectedRailKey}
+                  items={visibleRailItems}
+                  wakerGroups={preferences.wakerGroups}
+                  renderTeamRow={(item, row) => (
+                    <TeamNavigationMenu
+                      key={item.key}
+                      detail={item.team}
+                      onNewChat={() =>
+                        openNewOwnerChat({ kind: "team", id: item.id })
+                      }
+                      onDeleted={() => {
+                        onPreferencesChange((current) =>
+                          current.currentRailKey === item.key
+                            ? { ...current, currentRailKey: "" }
+                            : current,
+                        );
+                        if (
+                          location.pathname === `/teams/${item.id}` ||
+                          location.pathname.startsWith(`/teams/${item.id}/`)
+                        )
+                          navigate("/chat", { replace: true });
+                      }}
+                    >
+                      {row}
+                    </TeamNavigationMenu>
+                  )}
+                  renderWakerRow={(item, row) => (
+                    <WakerNavigationMenu
+                      key={item.key}
+                      waker={item.waker}
+                      wakerId={item.id}
+                      groups={preferences.wakerGroups ?? []}
+                      onNewChat={() =>
+                        openNewOwnerChat({ kind: "waker", id: item.id })
+                      }
+                      onMove={(groupName) => moveWaker(item.id, groupName)}
+                      onCopied={(newId) => {
+                        onPreferencesChange((current) => {
+                          const groups = current.wakerGroups ?? [];
+                          const sourceGroup = groups.find((group) =>
+                            group.wakerIds.includes(item.id),
+                          );
+                          return sourceGroup
+                            ? {
+                                ...current,
+                                wakerGroups: moveWakerToNavigationGroup(
+                                  groups,
+                                  newId,
+                                  sourceGroup.name,
+                                ),
+                              }
+                            : current;
+                        });
+                      }}
+                      onDeleted={() => {
+                        moveWaker(item.id, "");
+                        if (
+                          selectedRailKey === item.key &&
+                          (location.pathname === "/chat" || activeChatId)
+                        )
+                          navigate("/wakers", { replace: true });
+                      }}
+                    >
+                      {row}
+                    </WakerNavigationMenu>
+                  )}
+                />
+              </div>
+              {sidebar || showPartnerSidebarNavigation ? (
+                <div
+                  className="absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-contain"
+                  data-sidebar-page-nav
+                >
+                  {sidebar ?? (
+                    <Suspense fallback={null}>
+                      <PartnerContextSidebar partnerId={selectedPartnerId} />
+                    </Suspense>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            {sidebarExpanded ? (
+              <div
+                className="absolute end-0 top-(--shell-titlebar-height) bottom-0 z-10"
+                onDoubleClick={() =>
+                  resizeSidebar(defaultContextSidebarWidth, true)
+                }
+              >
+                <VerticalResizeHandle
+                  appearance="hover"
+                  className="h-full"
+                  ariaLabel={t("appNavigation.resizeSidebar")}
+                  ariaValueMin={contextSidebarWidthRange.min}
+                  ariaValueMax={contextSidebarWidthRange.max}
+                  ariaValueNow={contextSidebarWidth}
+                  onMouseDown={beginContextResize}
+                  onKeyDown={(event) => {
+                    let next: number | undefined;
+                    if (event.key === "Home") {
+                      event.preventDefault();
+                      resizeSidebar(contextSidebarWidthRange.min, true);
+                      return;
+                    }
+                    if (event.key === "End") next = 400;
+                    else if (event.key === "ArrowRight")
+                      next = contextSidebarWidth + 12;
+                    else if (event.key === "ArrowLeft")
+                      next = contextSidebarWidth - 12;
+                    if (next === undefined) return;
+                    event.preventDefault();
+                    resizeSidebar(next, true);
+                  }}
+                />
               </div>
             ) : null}
           </div>
-          {hasSidebar ? (
-            <div
-              className="relative col-start-2 row-start-1 mt-(--shell-titlebar-height) min-h-0"
-              onDoubleClick={() =>
-                resizeSidebar(defaultContextSidebarWidth, true)
-              }
-            >
-              <VerticalResizeHandle
-                appearance="hover"
-                className="h-full"
-                ariaLabel={t("appNavigation.resizeSidebar")}
-                ariaValueMin={contextSidebarWidthRange.min}
-                ariaValueMax={contextSidebarWidthRange.max}
-                ariaValueNow={contextSidebarWidth}
-                onMouseDown={beginContextResize}
-                onKeyDown={(event) => {
-                  let next: number | undefined;
-                  if (event.key === "Home") {
-                    event.preventDefault();
-                    resizeSidebar(contextSidebarWidthRange.min, true);
-                    return;
-                  }
-                  if (event.key === "End") next = 400;
-                  else if (event.key === "ArrowRight")
-                    next = contextSidebarWidth + 12;
-                  else if (event.key === "ArrowLeft")
-                    next = contextSidebarWidth - 12;
-                  if (next === undefined) return;
-                  event.preventDefault();
-                  resizeSidebar(next, true);
-                }}
-              />
-            </div>
-          ) : null}
           <section
             aria-label={t("sceneWorkspace")}
-            data-content-spans-sidebar={!hasSidebar || undefined}
-            className={cn(
-              "relative row-start-1 grid min-h-0 min-w-0 grid-rows-[var(--shell-titlebar-height)_minmax(0,1fr)] overflow-hidden",
-              hasSidebar ? "col-start-3" : "col-span-3 col-start-1",
-            )}
+            data-content-spans-sidebar={!sidebarExpanded || undefined}
+            className="relative col-start-2 row-start-1 grid min-h-0 min-w-0 grid-rows-[var(--shell-titlebar-height)_minmax(0,1fr)] overflow-hidden"
           >
-            <div
-              className="app-content-header min-w-0"
-              data-sidebar-offset={!hasSidebar || undefined}
-            >
+            <div className="app-content-header min-w-0">
               <SceneChromeHost>{renderTitlebar?.(null)}</SceneChromeHost>
             </div>
             <div

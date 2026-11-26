@@ -281,7 +281,22 @@ describe("ChatWorkspaceSurface right workbench", () => {
     expect(onOpenFile).toHaveBeenCalledWith({
       name: attachment.name,
       path: attachment.path,
+      fileSource: "chat",
     });
+  });
+
+  it("会话摘要贴住聊天右边线，关闭后焦点回到工具栏按钮", async () => {
+    const user = userEvent.setup();
+    renderHarness();
+    const trigger = screen.getByRole("button", { name: "查看摘要" });
+    await user.click(trigger);
+    const drawer = await screen.findByRole("dialog");
+    expect(drawer.parentElement).toContainElement(
+      screen.getByTestId("contract-chat-thread"),
+    );
+    expect(drawer).toHaveClass("absolute", "top-2", "right-2");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it.each([320, 1000, 1400])(
@@ -451,6 +466,13 @@ describe("ChatWorkspaceSurface right workbench", () => {
     expect(screen.getByTestId("chat-page-layout")).not.toContainElement(
       summary,
     );
+    await user.click(summary);
+    const drawer = await screen.findByRole("dialog");
+    expect(drawer.parentElement).toContainElement(
+      screen.getByTestId("contract-chat-thread"),
+    );
+    expect(strip).not.toContainElement(drawer);
+    await user.keyboard("{Escape}");
     const accessory = strip?.querySelector("[data-scene-chrome-accessory]");
     if (!accessory) throw new Error("工作台顶栏未挂载");
     await user.click(screen.getByRole("button", { name: "交换左右窗格" }));

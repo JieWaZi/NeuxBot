@@ -425,7 +425,6 @@ function TeamChatView({
     codeReferenceOnly,
     codeReferenceRequest,
     fileSource,
-    openedCodeReference,
     query: workspaceQuery,
     runtimeId,
     selectedCodeReferences,
@@ -1351,7 +1350,6 @@ function TeamChatView({
     selectedWakerId: selectedWakerID,
     supportedPermissions,
     updateExecutionSelection,
-    gitWorkspaceDirectories,
     workspaceDirectory,
     workspaceLabel,
   });
@@ -1676,7 +1674,6 @@ function TeamChatView({
       onAddCodeReference={addCodeReference}
       onDismissRightPanel={() => setChatRightPanel(undefined)}
       onOpenRightPanel={() => setChatRightPanel("workspace")}
-      openedCodeReference={openedCodeReference}
       gitRoots={gitWorkspaceDirectories}
       renderTeamMembers={renderTeamMembers}
       showActivityIndicator={!teamMainChat}

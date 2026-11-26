@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -7,37 +7,10 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { usesNativeModelCatalog } from "@/shared/api/runtime-queries";
 import "@/shared/i18n";
 
-const { listWorkspaceGitRepositories } = vi.hoisted(() => ({
-  listWorkspaceGitRepositories: vi.fn(async () => ({
-    repositories: [
-      {
-        directory: "/tmp/source-repo",
-        gitRoot: "/tmp/source-repo",
-        label: "source-repo",
-        branch: "main",
-      },
-    ],
-  })),
+vi.mock("@/shared/platform", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isDesktopRuntime: () => true,
 }));
-
-vi.mock("@/shared/platform", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...(actual as object),
-    isDesktopRuntime: () => true,
-    hasPlatformService: () => true,
-    listWorkspaceGitRepositories,
-    listWorkspaceGitBranches: vi.fn(async () => ({
-      isGitRepo: true,
-      branches: [{ name: "main", isCurrent: true, isRemote: false }],
-    })),
-    previewWorkspaceGitCheckout: vi.fn(async () => ({
-      canCheckout: true,
-      conflicts: [],
-    })),
-    checkoutWorkspaceGitBranch: vi.fn(async () => ({ branch: "main" })),
-  };
-});
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import {
   useChatComposerControls,
@@ -113,7 +86,6 @@ function renderControls(
   onChange: (patch: ChatExecutionSelectionPatch) => void,
   availableRuntimes = runtimes,
   activeChatId?: string,
-  gitWorkspaceDirectories?: string[],
   simplified = false,
 ) {
   return render(
@@ -122,7 +94,6 @@ function renderControls(
         <TooltipProvider delayDuration={0}>
           <Controls
             activeChatId={activeChatId}
-            gitWorkspaceDirectories={gitWorkspaceDirectories}
             onChange={onChange}
             availableRuntimes={availableRuntimes}
             simplified={simplified}
@@ -151,13 +122,11 @@ const runtimes = ["kimi", "cursor", "pi", "claude", "codex", "workbuddy"].map(
 
 function Controls({
   activeChatId,
-  gitWorkspaceDirectories,
   onChange,
   availableRuntimes = runtimes,
   simplified,
 }: {
   activeChatId?: string;
-  gitWorkspaceDirectories?: string[];
   onChange: (patch: ChatExecutionSelectionPatch) => void;
   availableRuntimes?: typeof runtimes;
   simplified: boolean;
@@ -188,7 +157,6 @@ function Controls({
     supportedPermissions: new Set(["default"]),
     selectedReasoning: "medium",
     historicalRuntimeDisabled: false,
-    gitWorkspaceDirectories,
     workspaceDirectory: "/managed/chat-workspace",
     workspaceLabel: "Work",
     onPickDirectory: () => {},
@@ -209,7 +177,7 @@ function Controls({
 
 it("将带可访问名称的权限和模型图标依次放在同一工具栏", async () => {
   const user = userEvent.setup();
-  renderControls(vi.fn(), runtimes, undefined, undefined, true);
+  renderControls(vi.fn(), runtimes, undefined, true);
 
   const permission = screen.getByRole("button", { name: "执行权限：默认权限" });
   const model = screen.getByTestId("composer-model-control");
@@ -304,29 +272,12 @@ it("目录刷新失败时用感叹号提示并允许选择已有模型", async (
   expect(onModel).toHaveBeenCalledExactlyOnceWith(runtime, "system", models[1]);
 });
 
-it("已有对话时用全部源目录查询 Git 仓库", async () => {
-  listWorkspaceGitRepositories.mockClear();
-  renderControls(vi.fn(), runtimes, "chat-1", [
-    "/tmp/source-repo",
-    "/tmp/other-repo",
-  ]);
-
-  await waitFor(() =>
-    expect(listWorkspaceGitRepositories).toHaveBeenCalledWith([
-      "/tmp/source-repo",
-      "/tmp/other-repo",
-    ]),
-  );
-  await waitFor(() =>
-    expect(
-      screen.getByTestId("composer-workspace-control"),
-    ).toBeInTheDocument(),
-  );
-  await waitFor(() =>
-    expect(screen.getByTestId("composer-branch-control")).toHaveTextContent(
-      "main",
-    ),
-  );
+it("已有对话的输入框不展示 Git 分支控件", () => {
+  renderControls(vi.fn(), runtimes, "chat-1");
+  expect(screen.getByTestId("composer-workspace-control")).toBeInTheDocument();
+  expect(
+    screen.queryByTestId("composer-branch-control"),
+  ).not.toBeInTheDocument();
 });
 
 it("已有对话时锁定工作区选择并提示开启新对话", async () => {
@@ -612,50 +563,3 @@ it("有效目录后台刷新只占用刷新按钮，不锁模型与推理选择"
   expect(select).toHaveBeenCalledExactlyOnceWith(runtime, "system", models[1]);
   expect(refresh).not.toHaveBeenCalled();
 });
-
-it.each([false, true])(
-  "紧凑模式为 %s 时，同名分支只在打开菜单后展示目标仓库路径",
-  async (simplified) => {
-    const user = userEvent.setup();
-    listWorkspaceGitRepositories.mockResolvedValueOnce({
-      repositories: [
-        {
-          directory: "/tmp/one-multiple",
-          gitRoot: "/tmp/one-multiple",
-          label: "repo",
-          branch: "main",
-        },
-        {
-          directory: "/tmp/two-multiple",
-          gitRoot: "/tmp/two-multiple",
-          label: "repo",
-          branch: "main",
-        },
-      ],
-    });
-    renderControls(
-      vi.fn(),
-      runtimes,
-      "chat-branches",
-      ["/tmp/one-multiple", "/tmp/two-multiple"],
-      simplified,
-    );
-    await waitFor(() =>
-      expect(screen.getAllByTestId("composer-branch-control")).toHaveLength(2),
-    );
-    const controls = screen.getAllByTestId("composer-branch-control");
-    for (const control of controls) {
-      expect(control).toHaveTextContent(/^main$/);
-      expect(control).toHaveAttribute("title", "main");
-    }
-    if (simplified)
-      expect(
-        screen.queryByTestId("composer-workspace-control"),
-      ).not.toBeInTheDocument();
-    expect(screen.queryByText("/tmp/two-multiple")).not.toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: "main (/tmp/two-multiple)" }),
-    );
-    expect(screen.getByText("/tmp/two-multiple")).toBeVisible();
-  },
-);

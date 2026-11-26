@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { workspaceFileOpenTargets } from "@neuxbot/platform-contracts/workspace-file-editors";
 import { notificationPreferencesSchema } from "@neuxbot/platform-contracts/workspace-attention";
 import { globalEventSubscriptionSchema } from "./core-event-protocol";
 
@@ -52,6 +53,16 @@ export const commandSchemas = {
     fileName: text,
   }),
   open_workspace_file: z.object(file),
+  list_workspace_file_open_targets: z.undefined(),
+  open_workspace_file_target: z
+    .object({
+      root,
+      relativePath: z.string().min(1),
+      target: z.enum(workspaceFileOpenTargets),
+      chatId: z.string().min(1).optional(),
+      line: z.int().positive().optional(),
+    })
+    .strict(),
   reveal_local_path: z
     .object({
       path: z

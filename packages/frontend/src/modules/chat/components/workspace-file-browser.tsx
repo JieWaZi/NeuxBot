@@ -1,10 +1,10 @@
 import { useWorkspaceConfirmation } from "./use-workspace-confirmation";
 import {
-  parseReference,
+  resolveFileReference,
   type ResolvedFileReference,
 } from "@/shared/workspace/file-reference";
-import { useFileReference } from "@/shared/workspace/file-reference-link";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useFileReferenceContext } from "@/shared/workspace/file-reference-link";
+import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
   FileText,
@@ -16,6 +16,10 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { workspaceFileDragType } from "../model/workspace-file-drag";
+import {
+  matchesWorkspacePath,
+  workspacePathAtRoot,
+} from "../model/project-files-scope";
 
 import { WorkspaceFileTypeIcon } from "@/shared/workspace/workspace-file-type-icon";
 import {
@@ -52,6 +56,7 @@ import { Spinner } from "@/shared/ui/spinner";
 type WorkspaceFileBrowserProps = {
   active?: boolean;
   activePath?: string;
+  folderReveal?: { path: string };
   isPathDirty?: (
     path: string,
     file?: ResolvedFileReference,
@@ -78,11 +83,33 @@ type WorkspaceFileBrowserProps = {
   scopePath: string;
 };
 
+export const workspaceFileBrowserKeys = {
+  directories: (chatId: string | undefined, root: string) =>
+    ["workspace-directory", chatId ?? "", root] as const,
+  searches: (chatId: string | undefined, root: string) =>
+    ["workspace-file-search", chatId ?? "", root] as const,
+};
+
+export function workspaceDirectoryOptions(
+  chatId: string | undefined,
+  rootPath: string,
+  path: string,
+) {
+  return queryOptions({
+    queryKey: [...workspaceFileBrowserKeys.directories(chatId, rootPath), path],
+    queryFn: () =>
+      chatId && hasPlatformService("workspace")
+        ? listWorkspaceResourceDirectory(chatId, path, rootPath)
+        : listWorkspaceDirectory(rootPath, path),
+  });
+}
+
 // Shallow lazy tree, flat search results, and resource selection kept separate
 // from preview.
 export function WorkspaceFileBrowser({
   active = true,
   activePath,
+  folderReveal,
   isPathDirty,
   onOpenFile,
   onPathDeleted,
@@ -102,22 +129,16 @@ export function WorkspaceFileBrowser({
     return () => window.clearTimeout(timeoutID);
   }, [query]);
   const rootQuery = useQuery({
-    queryKey: ["workspace-directory", scopeChatId ?? "", rootPath, scopePath],
-    queryFn: () =>
-      scopeChatId && hasPlatformService("workspace")
-        ? listWorkspaceResourceDirectory(scopeChatId, scopePath, rootPath)
-        : listWorkspaceDirectory(rootPath, scopePath),
+    ...workspaceDirectoryOptions(scopeChatId, rootPath, scopePath),
     enabled: active && Boolean(rootPath) && !normalizedQuery,
   });
   const searchQuery = useQuery({
     queryKey: [
-      "workspace-file-search",
-      scopeChatId ?? "",
-      rootPath,
+      ...workspaceFileBrowserKeys.searches(scopeChatId, rootPath),
       scopePath,
       normalizedQuery,
     ],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       scopeChatId && hasPlatformService("workspace")
         ? searchWorkspaceResourceFiles(
             scopeChatId,
@@ -125,8 +146,15 @@ export function WorkspaceFileBrowser({
             200,
             scopePath,
             rootPath,
+            signal,
           )
-        : searchWorkspaceFiles(rootPath, normalizedQuery, 200, scopePath),
+        : searchWorkspaceFiles(
+            rootPath,
+            normalizedQuery,
+            200,
+            scopePath,
+            signal,
+          ),
     enabled: active && Boolean(rootPath) && Boolean(normalizedQuery),
   });
   const workspaceEvents = useWorkspaceQueryEvents(
@@ -190,6 +218,7 @@ export function WorkspaceFileBrowser({
         {results.map((entry) => (
           <WorkspaceFileButton
             activePath={activePath}
+            canonicalPath={entry.path}
             key={entry.relativePath}
             name={entry.name}
             path={entry.relativePath}
@@ -216,13 +245,14 @@ export function WorkspaceFileBrowser({
     );
   }
   return (
-    <div className="mt-2 grid gap-0.5" role="tree">
+    <div className="grid" role="tree">
       {entries.map((entry) => (
         <WorkspaceTreeEntry
           active={active}
           activePath={activePath}
           depth={0}
           entry={entry}
+          folderReveal={folderReveal}
           key={entry.relativePath}
           onOpenFile={onOpenFile}
           onPathDeleted={onPathDeleted}
@@ -236,24 +266,12 @@ export function WorkspaceFileBrowser({
   );
 }
 
-function WorkspaceTreeEntry({
-  active,
-  activePath,
-  defaultExpanded = false,
-  depth,
-  entry,
-  onOpenFile,
-  onPathDeleted,
-  onPathRenamed,
-  isPathDirty,
-  rootPath,
-  scopeChatId,
-}: {
+type WorkspaceTreeEntryProps = {
   active: boolean;
   activePath?: string;
-  defaultExpanded?: boolean;
   depth: number;
   entry: WorkspaceDirectoryEntry;
+  folderReveal?: { path: string };
   onOpenFile: (file: { name: string; path: string }) => void;
   onPathDeleted?: (
     path: string,
@@ -276,11 +294,58 @@ function WorkspaceTreeEntry({
   ) => boolean;
   rootPath: string;
   scopeChatId?: string;
-}) {
+};
+
+function WorkspaceTreeEntry(props: WorkspaceTreeEntryProps) {
+  const { entry, ...row } = props;
+  if (entry.isDirectory) return <WorkspaceDirectoryRow {...props} />;
+  return (
+    <WorkspaceFileButton
+      activePath={row.activePath}
+      canonicalPath={entry.canonicalPath}
+      depth={row.depth}
+      name={entry.name}
+      path={entry.relativePath}
+      onOpenFile={row.onOpenFile}
+      onPathDeleted={row.onPathDeleted}
+      onPathRenamed={row.onPathRenamed}
+      isPathDirty={row.isPathDirty}
+      rootPath={row.rootPath}
+      scopeChatId={row.scopeChatId}
+    />
+  );
+}
+
+function WorkspaceDirectoryRow({
+  active,
+  activePath,
+  depth,
+  entry,
+  folderReveal,
+  onOpenFile,
+  onPathDeleted,
+  onPathRenamed,
+  isPathDirty,
+  rootPath,
+  scopeChatId,
+}: WorkspaceTreeEntryProps) {
   const { t } = useTranslation("chat");
   const queryClient = useQueryClient();
   const confirmation = useWorkspaceConfirmation();
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [override, setOverride] = useState<{
+    folderReveal?: { path: string };
+    open: boolean;
+  }>();
+  const directoryPath = workspacePathAtRoot(rootPath, entry.relativePath);
+  const revealAncestor = matchesWorkspacePath(
+    folderReveal?.path,
+    directoryPath,
+    true,
+  );
+  const expanded =
+    override && (!revealAncestor || override.folderReveal === folderReveal)
+      ? override.open
+      : revealAncestor || matchesWorkspacePath(activePath, directoryPath, true);
   const [dropActive, setDropActive] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [nextName, setNextName] = useState(entry.name);
@@ -358,38 +423,9 @@ function WorkspaceTreeEntry({
     }
   };
   const childrenQuery = useQuery({
-    queryKey: [
-      "workspace-directory",
-      scopeChatId ?? "",
-      rootPath,
-      entry.relativePath,
-    ],
-    queryFn: () =>
-      scopeChatId && hasPlatformService("workspace")
-        ? listWorkspaceResourceDirectory(
-            scopeChatId,
-            entry.relativePath,
-            rootPath,
-          )
-        : listWorkspaceDirectory(rootPath, entry.relativePath),
-    enabled: active && entry.isDirectory && expanded,
+    ...workspaceDirectoryOptions(scopeChatId, rootPath, entry.relativePath),
+    enabled: active && expanded,
   });
-  if (!entry.isDirectory) {
-    return (
-      <WorkspaceFileButton
-        activePath={activePath}
-        depth={depth}
-        name={entry.name}
-        path={entry.relativePath}
-        onOpenFile={onOpenFile}
-        onPathDeleted={onPathDeleted}
-        onPathRenamed={onPathRenamed}
-        isPathDirty={isPathDirty}
-        rootPath={rootPath}
-        scopeChatId={scopeChatId}
-      />
-    );
-  }
   return (
     <div role="treeitem" aria-expanded={expanded}>
       {confirmation.dialog}
@@ -447,10 +483,14 @@ function WorkspaceTreeEntry({
       >
         <FileTreeRow
           role="button"
+          density="compact"
           directory
           expanded={expanded}
           depth={depth}
-          onClick={() => setExpanded((current) => !current)}
+          data-revealed-directory={
+            matchesWorkspacePath(folderReveal?.path, directoryPath) || undefined
+          }
+          onClick={() => setOverride({ folderReveal, open: !expanded })}
         >
           <span className="truncate">{entry.name}</span>
         </FileTreeRow>
@@ -495,14 +535,14 @@ function WorkspaceTreeEntry({
         <div role="group">
           {childrenQuery.isPending ? (
             <div
-              className="text-muted-foreground type-caption min-h-row-default flex items-center gap-2"
+              className="text-muted-foreground type-caption min-h-row-compact flex items-center gap-2"
               style={{ paddingLeft: `${40 + depth * 16}px` }}
             >
               <Spinner />
             </div>
           ) : childrenQuery.isError ? (
             <div
-              className="text-destructive type-caption min-h-row-default flex items-center gap-2 pr-2"
+              className="text-destructive type-caption min-h-row-compact flex items-center gap-2 pr-2"
               style={{ paddingLeft: `${40 + depth * 16}px` }}
             >
               <span className="min-w-0 flex-1 truncate">
@@ -523,6 +563,7 @@ function WorkspaceTreeEntry({
                 activePath={activePath}
                 depth={depth + 1}
                 entry={child}
+                folderReveal={folderReveal}
                 key={child.relativePath}
                 onOpenFile={onOpenFile}
                 onPathDeleted={onPathDeleted}
@@ -576,6 +617,7 @@ function WorkspaceTreeEntry({
 
 function WorkspaceFileButton({
   activePath,
+  canonicalPath,
   depth = 0,
   isPathDirty,
   name,
@@ -588,6 +630,7 @@ function WorkspaceFileButton({
   secondary,
 }: {
   activePath?: string;
+  canonicalPath?: string;
   depth?: number;
   isPathDirty?: (
     path: string,
@@ -621,15 +664,20 @@ function WorkspaceFileButton({
   const [renameOpen, setRenameOpen] = useState(false);
   const [nextName, setNextName] = useState(name);
   const [renaming, setRenaming] = useState(false);
-  const candidate = parseReference(
-    `${rootPath.replace(/[\\/]+$/, "")}/${path}`,
-    "path",
+  const referenceContext = useFileReferenceContext();
+  const absolutePath = workspacePathAtRoot(rootPath, path);
+  const selected = matchesWorkspacePath(
+    activePath,
+    canonicalPath ?? absolutePath,
   );
-  const query = useFileReference(
-    candidate?.kind === "file" ? candidate : undefined,
-  );
-  const file = query.data?.status === "resolved" ? query.data.file : undefined;
-  const active = activePath === (file?.canonicalPath ?? path);
+  const resolveMutationFile = async () => {
+    if (!referenceContext.workspaceRoot || !absolutePath) return undefined;
+    const result = await resolveFileReference(
+      { kind: "file", path: absolutePath, raw: absolutePath },
+      referenceContext,
+    );
+    return result.status === "resolved" ? result.file : undefined;
+  };
   const refreshTree = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["workspace-directory"] }),
@@ -638,12 +686,13 @@ function WorkspaceFileButton({
   };
   const renameFile = async () => {
     if (!scopeChatId || renaming) return;
-    if (isPathDirty?.(path, file, rootPath)) {
-      toast.error(t("workspace.saveBeforeFileOperation"));
-      return;
-    }
     setRenaming(true);
     try {
+      const file = await resolveMutationFile();
+      if (isPathDirty?.(path, file, rootPath)) {
+        toast.error(t("workspace.saveBeforeFileOperation"));
+        return;
+      }
       const scope = await openWorkspaceResourceScope(scopeChatId);
       const resource = await statWorkspaceResource(scope.id, path, rootPath);
       if (!resource) throw new Error(t("workspace.fileLoadError"));
@@ -674,11 +723,12 @@ function WorkspaceFileButton({
   };
   const deleteFile = async () => {
     if (!scopeChatId) return;
-    if (isPathDirty?.(path, file, rootPath)) {
-      toast.error(t("workspace.saveBeforeFileOperation"));
-      return;
-    }
     try {
+      const file = await resolveMutationFile();
+      if (isPathDirty?.(path, file, rootPath)) {
+        toast.error(t("workspace.saveBeforeFileOperation"));
+        return;
+      }
       const scope = await openWorkspaceResourceScope(scopeChatId);
       const resource = await statWorkspaceResource(scope.id, path, rootPath);
       if (!resource) throw new Error(t("workspace.fileLoadError"));
@@ -704,8 +754,9 @@ function WorkspaceFileButton({
     <div className="group hover:bg-muted flex min-w-0 items-center rounded-sm">
       {confirmation.dialog}
       <FileTreeRow
+        density="compact"
         depth={depth}
-        selected={active}
+        selected={selected}
         icon={
           <WorkspaceFileTypeIcon isDirectory={false} name={name} size={16} />
         }
@@ -717,15 +768,15 @@ function WorkspaceFileButton({
             JSON.stringify({ chatId: scopeChatId, rootPath, path }),
           );
         }}
-        title={file?.canonicalPath ?? path}
-        aria-current={active ? "page" : undefined}
+        title={canonicalPath ?? path}
+        aria-current={selected ? "page" : undefined}
         onClick={() => onOpenFile({ name, path })}
       >
         <span className="min-w-0">
-          <span className="type-body block truncate">{name}</span>
+          <span className="block truncate">{name}</span>
           {secondary && secondary !== name ? (
             <span className="text-muted-foreground type-caption block truncate">
-              {file?.displayPath ?? secondary}
+              {canonicalPath ?? secondary}
             </span>
           ) : null}
         </span>

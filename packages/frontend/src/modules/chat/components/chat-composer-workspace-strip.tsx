@@ -9,7 +9,6 @@ export const composerContextControlClassName =
   "text-muted-foreground type-caption hover:bg-action-quiet-hover hover:text-content-secondary duration-quick ease-ui inline-flex h-[18px] min-w-0 items-center justify-center gap-1 rounded-full border-0 bg-transparent px-1.5 py-0 font-normal whitespace-nowrap transition-[background-color,color] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-default disabled:opacity-55 [&_svg]:size-icon-xs [&_svg]:shrink-0";
 
 type ChatComposerWorkspaceStripProps = {
-  branchControl?: ReactNode;
   className?: string;
   permissionControl?: ReactNode;
   workspaceControl?: ReactNode;
@@ -17,9 +16,8 @@ type ChatComposerWorkspaceStripProps = {
   workspaceLabel?: string;
 };
 
-/** Composer 上下文条：目录、Git 分支与权限。 */
+/** Composer 上下文条：目录与权限。 */
 export function ChatComposerWorkspaceStrip({
-  branchControl,
   className,
   permissionControl,
   workspaceControl,
@@ -62,7 +60,6 @@ export function ChatComposerWorkspaceStrip({
                   </TooltipContent>
                 </Tooltip>
               ) : null)}
-            {branchControl}
           </span>
         </div>
       ) : (

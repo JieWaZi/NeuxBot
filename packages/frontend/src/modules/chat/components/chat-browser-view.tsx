@@ -234,7 +234,7 @@ export function ChatBrowserView({
             <div className="grid gap-4 sm:grid-cols-2">
               {(
                 [
-                  ["changes", FileDiff, t("workspace.changes")],
+                  ["changes", FileDiff, t("workspace.diffTab")],
                   ...(onOpenTerminal
                     ? ([["terminal", TerminalSquare, t("terminal")]] as const)
                     : []),

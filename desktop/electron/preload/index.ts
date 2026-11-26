@@ -75,6 +75,10 @@ const bridge: DesktopBridge = {
     ipcRenderer.invoke("bot:preview_desktop_storage", args),
   clear_desktop_storage: (args) =>
     ipcRenderer.invoke("bot:clear_desktop_storage", args),
+  list_workspace_file_open_targets: (args) =>
+    ipcRenderer.invoke("bot:list_workspace_file_open_targets", args),
+  open_workspace_file_target: (args) =>
+    ipcRenderer.invoke("bot:open_workspace_file_target", args),
   open_workspace_file: (args) =>
     ipcRenderer.invoke("bot:open_workspace_file", args),
   reveal_local_path: (args) =>

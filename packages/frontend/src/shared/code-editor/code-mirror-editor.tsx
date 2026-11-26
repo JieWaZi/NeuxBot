@@ -13,7 +13,8 @@ type CodeMirrorEditorProps = {
   label: string;
   dark: boolean;
   readOnly?: boolean;
-  targetLine?: number;
+  wrap?: boolean;
+  targetRange?: { startLine: number; endLine: number };
   onChange?: (value: string) => void;
   onSave?: () => void;
   onCancel?: () => void;
@@ -26,7 +27,8 @@ export function CodeMirrorEditor({
   label,
   dark,
   readOnly = false,
-  targetLine,
+  wrap = true,
+  targetRange,
   onChange,
   onSave,
   onCancel,
@@ -35,6 +37,7 @@ export function CodeMirrorEditor({
   const viewRef = useRef<EditorView | null>(null);
   const themeRef = useRef<CmThemeCompartment | null>(null);
   const languageRef = useRef<Compartment | null>(null);
+  const wrapRef = useRef<Compartment | null>(null);
   const [mountedValue] = useState(initialValue);
   const callbacks = useRef({ onChange, onSave, onCancel });
 
@@ -47,12 +50,14 @@ export function CodeMirrorEditor({
     if (!host) return;
     const theme = new CmThemeCompartment();
     const language = new Compartment();
+    const wrapping = new Compartment();
     themeRef.current = theme;
     languageRef.current = language;
+    wrapRef.current = wrapping;
     const state = EditorState.create({
       doc: mountedValue,
       extensions: [
-        EditorView.lineWrapping,
+        wrapping.of(wrap ? EditorView.lineWrapping : []),
         lineNumbers(),
         history(),
         EditorState.readOnly.of(readOnly),
@@ -113,6 +118,7 @@ export function CodeMirrorEditor({
       viewRef.current = null;
       themeRef.current = null;
       languageRef.current = null;
+      wrapRef.current = null;
     };
     // Theme, language and label updates never recreate the document or undo history.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,20 +140,33 @@ export function CodeMirrorEditor({
   }, [path]);
 
   useEffect(() => {
+    const view = viewRef.current;
+    const wrapping = wrapRef.current;
+    if (view && wrapping)
+      view.dispatch({
+        effects: wrapping.reconfigure(wrap ? EditorView.lineWrapping : []),
+      });
+  }, [wrap]);
+
+  useEffect(() => {
     viewRef.current?.contentDOM.setAttribute("aria-label", label);
   }, [label]);
 
   useEffect(() => {
     const view = viewRef.current;
-    if (!view || !targetLine) return;
-    const line = view.state.doc.line(
-      Math.min(Math.max(1, targetLine), view.state.doc.lines),
+    if (!view || !targetRange) return;
+    const { doc } = view.state;
+    const first = doc.line(
+      Math.min(Math.max(1, targetRange.startLine), doc.lines),
+    );
+    const last = doc.line(
+      Math.min(Math.max(first.number, targetRange.endLine), doc.lines),
     );
     view.dispatch({
-      selection: { anchor: line.from, head: line.to },
-      effects: EditorView.scrollIntoView(line.from, { y: "center" }),
+      selection: { anchor: first.from, head: last.to },
+      effects: EditorView.scrollIntoView(first.from, { y: "center" }),
     });
-  }, [targetLine]);
+  }, [targetRange]);
 
   return <div ref={hostRef} className="h-full min-h-0 w-full" />;
 }

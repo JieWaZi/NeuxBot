@@ -26,6 +26,12 @@ import { useTranslation } from "react-i18next";
 
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/shared/ui/context-menu";
 
 import type { WorkbenchTab } from "./workbench-model";
 import type {
@@ -44,7 +50,6 @@ function tabIcon(kind: WorkbenchTab["kind"]) {
     case "file":
       return Files;
     case "changes":
-    case "git-diff":
       return FileDiff;
     case "browser":
       return Globe;
@@ -90,6 +95,8 @@ type PaneTabStripProps = {
   trailing?: ReactNode;
   draggedTabId: React.RefObject<string>;
   onClose: (tab: WorkbenchTab) => void | Promise<void>;
+  onCloseOthers: (tab: WorkbenchTab) => void;
+  onCloseAll: () => void;
   onDragStateChange: (dragging: boolean) => void;
   onFocus: (tab: WorkbenchTab) => void;
   onFocusPane: (paneId: string) => void;
@@ -105,6 +112,8 @@ export function WorkbenchPaneTabStrip({
   trailing,
   draggedTabId,
   onClose,
+  onCloseOthers,
+  onCloseAll,
   onDragStateChange,
   onFocus,
   onFocusPane,
@@ -125,6 +134,7 @@ export function WorkbenchPaneTabStrip({
     const tab = tabs.find((item) => item.id === id);
     return tab ? [tab] : [];
   });
+  const closableCount = tabs.filter((tab) => tab.closeable !== false).length;
   const onKeyDown = (
     event: KeyboardEvent<HTMLButtonElement>,
     tab: WorkbenchTab,
@@ -211,78 +221,102 @@ export function WorkbenchPaneTabStrip({
       >
         {ordered.map((tab) => {
           const Icon = tabIcon(tab.kind);
+          const title =
+            tab.kind === "changes"
+              ? t("workspace.diffTab")
+              : tab.kind === "files" && tab.fileSource === "chat"
+                ? t("workspace.chatFiles")
+                : tab.title;
           const selected = pane.activeTabId === tab.id;
           return (
-            <div
-              key={tab.id}
-              className="shell-header-tab"
-              data-selected={selected || undefined}
-              draggable
-              onDragStart={(event) => {
-                draggedTabId.current = tab.id;
-                onDragStateChange(true);
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData(dragMime, tab.id);
-                event.dataTransfer.setData("text/plain", tab.id);
-              }}
-              onDragEnd={() => {
-                draggedTabId.current = "";
-                onDragStateChange(false);
-              }}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                const source =
-                  draggedTabId.current || event.dataTransfer.getData(dragMime);
-                if (source && source !== tab.id)
-                  onMove(source, pane.id, tab.id);
-                draggedTabId.current = "";
-                onDragStateChange(false);
-              }}
-            >
-              <button
-                id={`workbench-tab-${tab.id}`}
-                ref={(node) => {
-                  if (node) buttons.current.set(tab.id, node);
-                  else buttons.current.delete(tab.id);
-                }}
-                type="button"
-                role="tab"
-                title={tab.title}
-                aria-selected={selected}
-                tabIndex={selected ? 0 : -1}
-                aria-controls={`workbench-panel-${tab.id}`}
-                aria-keyshortcuts="Delete Backspace Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Alt+Shift+ArrowUp Alt+Shift+ArrowDown"
-                className="shell-header-tab-select"
-                onClick={() => onFocus(tab)}
-                onFocus={() => onFocusPane(pane.id)}
-                onBlur={() => {
-                  const request = pendingCloseFocus.current;
-                  if (request?.tabId === tab.id) request.cancelled = true;
-                }}
-                onAuxClick={(event) => {
-                  if (event.button === 1 && tab.closeable !== false)
-                    onClose(tab);
-                }}
-                onKeyDown={(event) => onKeyDown(event, tab)}
-              >
-                <Icon className="size-icon-sm shrink-0" strokeWidth={1.5} />
-                <span className="min-w-0 flex-1 truncate">{tab.title}</span>
-              </button>
-              {tab.closeable !== false ? (
-                <button
-                  type="button"
-                  aria-label={t("workbench.closeTab", { title: tab.title })}
-                  title={t("workbench.closeTab", { title: tab.title })}
-                  className="shell-header-tab-close"
-                  draggable={false}
-                  onClick={() => onClose(tab)}
+            <ContextMenu key={tab.id} modal={false}>
+              <ContextMenuTrigger asChild>
+                <div
+                  className="shell-header-tab"
+                  data-selected={selected || undefined}
+                  draggable
+                  onDragStart={(event) => {
+                    draggedTabId.current = tab.id;
+                    onDragStateChange(true);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData(dragMime, tab.id);
+                    event.dataTransfer.setData("text/plain", tab.id);
+                  }}
+                  onDragEnd={() => {
+                    draggedTabId.current = "";
+                    onDragStateChange(false);
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const source =
+                      draggedTabId.current ||
+                      event.dataTransfer.getData(dragMime);
+                    if (source && source !== tab.id)
+                      onMove(source, pane.id, tab.id);
+                    draggedTabId.current = "";
+                    onDragStateChange(false);
+                  }}
                 >
-                  <X className="size-icon-sm" strokeWidth={1.5} />
-                </button>
-              ) : null}
-            </div>
+                  <button
+                    id={`workbench-tab-${tab.id}`}
+                    ref={(node) => {
+                      if (node) buttons.current.set(tab.id, node);
+                      else buttons.current.delete(tab.id);
+                    }}
+                    type="button"
+                    role="tab"
+                    title={title}
+                    aria-selected={selected}
+                    tabIndex={selected ? 0 : -1}
+                    aria-controls={`workbench-panel-${tab.id}`}
+                    aria-keyshortcuts="Delete Backspace Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Alt+Shift+ArrowUp Alt+Shift+ArrowDown"
+                    className="shell-header-tab-select"
+                    onClick={() => onFocus(tab)}
+                    onFocus={() => onFocusPane(pane.id)}
+                    onBlur={() => {
+                      const request = pendingCloseFocus.current;
+                      if (request?.tabId === tab.id) request.cancelled = true;
+                    }}
+                    onAuxClick={(event) => {
+                      if (event.button === 1 && tab.closeable !== false)
+                        onClose(tab);
+                    }}
+                    onKeyDown={(event) => onKeyDown(event, tab)}
+                  >
+                    <Icon className="size-icon-sm shrink-0" strokeWidth={1.5} />
+                    <span className="min-w-0 flex-1 truncate">{title}</span>
+                  </button>
+                  {tab.closeable !== false ? (
+                    <button
+                      type="button"
+                      aria-label={t("workbench.closeTab", { title })}
+                      title={t("workbench.closeTab", { title })}
+                      className="shell-header-tab-close"
+                      draggable={false}
+                      onClick={() => onClose(tab)}
+                    >
+                      <X className="size-icon-sm" strokeWidth={1.5} />
+                    </button>
+                  ) : null}
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem
+                  disabled={closableCount <= Number(tab.closeable !== false)}
+                  onSelect={() => onCloseOthers(tab)}
+                >
+                  {t("common:sceneTabs.closeOthers")}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={!closableCount}
+                  onSelect={onCloseAll}
+                >
+                  {t("workbench.closeAllTabs")}
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           );
         })}
       </div>

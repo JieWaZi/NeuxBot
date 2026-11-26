@@ -27,7 +27,7 @@
 
 `openclaw acp` 将 NeuxBot 的 ACP 请求转发给运行中的 Gateway。Gateway 决定 agent、模型、工具及工作区。新会话的 `cwd` 是 Gateway 主机上的路径，通过 session key 或 label 绑定的会话沿用 Gateway 已有目录。可用同机 Gateway 验证普通聊天、取消、两轮以上续聊和冷恢复。首版若允许远端 Gateway，需要先定义远端目录与 NeuxBot 本地授权的对应关系。OpenClaw 的 `/acp spawn` 则由 OpenClaw 启动外部智能体。 [桥接模式与工作目录](https://docs.openclaw.ai/cli/acp) · [OpenClaw 启动外部 ACP 智能体](https://docs.openclaw.ai/tools/acp-agents)
 
-桥模式会拒绝非空的会话 `mcpServers`，也没有标准模型选择选项。OpenClaw 接入应以 Gateway 原生模型与工具为初始能力，在会话接纳时校验连接器和项目授权。NeuxBot 现有用户连接器、插件连接器与内部能力各自有独立配置，不能为让会话启动而丢弃已选连接器。OpenClaw 官方文档也记录了 T3 Code 注入自身 MCP 后无法启动普通对话的实例。 [MCP 限制与公开复现](https://docs.openclaw.ai/cli/acp#t3-code-compatibility)
+桥模式会拒绝非空的会话 `mcpServers`，也没有标准模型选择选项。OpenClaw 接入应以 Gateway 原生模型与工具为初始能力，在会话接纳时校验连接器和项目授权。NeuxBot 现有用户连接器、插件连接器与内部能力各自有独立配置，不能为让会话启动而丢弃已选连接器。 [OpenClaw ACP 文档](https://docs.openclaw.ai/cli/acp)
 
 ### Antigravity CLI
 

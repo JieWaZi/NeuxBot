@@ -28,6 +28,59 @@ func gitRun(t *testing.T, r string, args ...string) string {
 	}
 	return strings.TrimSpace(string(b))
 }
+
+func TestGitBranchesSearchAndLimit(t *testing.T) {
+	m, scope, repo := gitFixture(t)
+	gitRun(t, repo, "branch", "Topic-local")
+	gitRun(t, repo, "update-ref", "refs/remotes/origin/other", "HEAD")
+	gitRun(t, repo, "update-ref", "refs/remotes/origin/a-topic", "HEAD")
+	gitRun(t, repo, "update-ref", "refs/remotes/origin/z-topic", "HEAD")
+	gitRun(t, repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/other")
+	limit := 2
+	first, err := m.Branches(t.Context(), scope.subject, scope.ID, "", repo, "", &limit)
+	if err != nil || !first.HasMore || len(first.Branches) != 2 || first.Branches[0].Name != "main" || !first.Branches[0].IsCurrent || first.Branches[1].Name != "Topic-local" {
+		t.Fatalf("initial branches: %+v %v", first, err)
+	}
+	match, err := m.Branches(t.Context(), scope.subject, scope.ID, "", repo, "  tOpIc ", &limit)
+	if err != nil || !match.HasMore || len(match.Branches) != 2 || match.Branches[0].Name != "Topic-local" || match.Branches[1].Name != "origin/a-topic" {
+		t.Fatalf("matching branches: %+v %v", match, err)
+	}
+	late, err := m.Branches(t.Context(), scope.subject, scope.ID, "", repo, "Z-TOPIC", &limit)
+	if err != nil || late.HasMore || len(late.Branches) != 1 || late.Branches[0].Name != "origin/z-topic" || !late.Branches[0].IsRemote {
+		t.Fatalf("branch outside initial results: %+v %v", late, err)
+	}
+	none, err := m.Branches(t.Context(), scope.subject, scope.ID, "", repo, "*topic*", &limit)
+	if err != nil || none.HasMore || len(none.Branches) != 0 {
+		t.Fatalf("literal query: %+v %v", none, err)
+	}
+	legacy, err := m.Branches(t.Context(), scope.subject, scope.ID, "", repo, "", nil)
+	if err != nil || legacy.HasMore || len(legacy.Branches) != 5 {
+		t.Fatalf("legacy listing: %+v %v", legacy, err)
+	}
+	preview, err := m.PreviewCheckout(t.Context(), scope.subject, scope.ID, "", repo, "origin/z-topic")
+	if err != nil || !preview.CanCheckout {
+		t.Fatalf("checkout preview outside initial results: %+v %v", preview, err)
+	}
+}
+
+func TestGitBranchesRejectInvalidSearch(t *testing.T) {
+	m, scope, repo := gitFixture(t)
+	for _, limit := range []int{-1, 0, 201} {
+		if _, err := m.Branches(t.Context(), scope.subject, scope.ID, "", repo, "", &limit); err != status_error.BadRequest {
+			t.Fatalf("limit %d: %v", limit, err)
+		}
+	}
+	for _, query := range []string{strings.Repeat("a", 257), "main\x00"} {
+		if _, err := m.Branches(t.Context(), scope.subject, scope.ID, "", repo, query, nil); err != status_error.BadRequest {
+			t.Fatalf("query %q: %v", query, err)
+		}
+	}
+	limit := 100
+	if _, err := m.Branches(t.Context(), "web:other", scope.ID, "", repo, "main", &limit); err != status_error.WorkspaceScopeInvalid {
+		t.Fatalf("foreign subject: %v", err)
+	}
+}
+
 func TestGitScopeStatusStageCommitAndDiscard(t *testing.T) {
 	m, s, r := gitFixture(t)
 	ctx := context.Background()
@@ -47,7 +100,7 @@ func TestGitScopeStatusStageCommitAndDiscard(t *testing.T) {
 	if e != nil || !strings.Contains(diff, "modified") || strings.Contains(diff, "\x1b[") {
 		t.Fatalf("%s %v", diff, e)
 	}
-	if e = m.ChangeIndex(ctx, "web:one", s.ID, "", "", "note.txt", "stage"); e != nil {
+	if e = m.ChangeIndex(ctx, "web:one", GitIndexRequest{ScopeID: s.ID, RelativePath: "note.txt"}, "stage"); e != nil {
 		t.Fatal(e)
 	}
 	if e = m.Commit(ctx, "web:one", s.ID, "", "", "change"); e != nil {
@@ -62,7 +115,11 @@ func TestGitScopeStatusStageCommitAndDiscard(t *testing.T) {
 		t.Fatalf("%q %v", shown, e)
 	}
 	os.WriteFile(filepath.Join(r, "note.txt"), []byte("discard\n"), 0600)
-	if e = m.ChangeIndex(ctx, "web:one", s.ID, "", "", "note.txt", "discard"); e != nil {
+	preview, e := m.Comparison(ctx, s.subject, s.ID, "", r, ":unstaged", "note.txt", false, nil)
+	if e != nil || preview.WorktreeVersion == "" {
+		t.Fatalf("discard preview = %+v %v", preview, e)
+	}
+	if e = m.ChangeIndex(ctx, "web:one", GitIndexRequest{ScopeID: s.ID, RelativePath: "note.txt", ExpectedWorktreeVersion: preview.WorktreeVersion}, "discard"); e != nil {
 		t.Fatal(e)
 	}
 	b, _ := os.ReadFile(filepath.Join(r, "note.txt"))
@@ -71,7 +128,7 @@ func TestGitScopeStatusStageCommitAndDiscard(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(r, "*.txt"), []byte("literal\n"), 0600)
 	os.WriteFile(filepath.Join(r, "other.txt"), []byte("other\n"), 0600)
-	if e = m.ChangeIndex(ctx, "web:one", s.ID, "", "", "*.txt", "stage"); e != nil {
+	if e = m.ChangeIndex(ctx, "web:one", GitIndexRequest{ScopeID: s.ID, RelativePath: "*.txt"}, "stage"); e != nil {
 		t.Fatal(e)
 	}
 	if got := gitRun(t, r, "diff", "--cached", "--name-only"); got != "*.txt" {
@@ -98,6 +155,19 @@ func TestGitCheckoutRefusesConflictingChanges(t *testing.T) {
 	}
 }
 
+func TestGitStatusFindsBranchCommitsWithoutUpstream(t *testing.T) {
+	m, scope, root := gitFixture(t)
+	gitRun(t, root, "remote", "add", "origin", "https://github.com/example/project.git")
+	gitRun(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+	gitRun(t, root, "switch", "-c", "feature")
+	gitRun(t, root, "commit", "--allow-empty", "-m", "feature commit")
+
+	status, err := m.Status(context.Background(), "web:one", scope.ID, "", "")
+	if err != nil || status.Upstream != "" || status.DefaultBranch != "main" || status.Ahead != 0 || status.AheadOfDefault != 1 {
+		t.Fatalf("%+v %v", status, err)
+	}
+}
+
 func TestGitDiscoversFrozenProjectRoots(t *testing.T) {
 	_, _, project := gitFixture(t)
 	root := t.TempDir()
@@ -116,6 +186,33 @@ func TestGitDiscoversFrozenProjectRoots(t *testing.T) {
 	os.Symlink(foreign, filepath.Join(root, "projects", "foreign"))
 	if _, err = m.Status(context.Background(), "desktop", scope.ID, "", foreign); err != status_error.WorkspacePathInvalid {
 		t.Fatalf("unfrozen: %v", err)
+	}
+}
+
+func TestGitScopeSkipsRepositoriesCapturingChatMetadata(t *testing.T) {
+	root := t.TempDir()
+	private := filepath.Join(root, "private", "chat")
+	project := filepath.Join(root, "public")
+	for _, directory := range []string{private, project} {
+		if err := os.MkdirAll(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, directory := range []string{root, private, project} {
+		gitRun(t, directory, "init", "-b", "main")
+	}
+	m := New()
+	scope, err := m.OpenChat("subject", "chat", root, private, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := m.Status(t.Context(), scope.subject, scope.ID, "", "")
+	actual, _ := filepath.EvalSymlinks(project)
+	if err != nil || len(status.Repositories) != 1 || status.Repositories[0] != actual {
+		t.Fatalf("repository scope exposes Chat metadata: %+v %v", status, err)
+	}
+	if _, err = m.Status(t.Context(), scope.subject, scope.ID, "", root); err != status_error.WorkspacePathInvalid {
+		t.Fatalf("explicit repository contains Chat metadata: %v", err)
 	}
 }
 

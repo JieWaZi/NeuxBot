@@ -21,6 +21,7 @@ const segmentedControlVariants = cva("items-stretch", {
     appearance: {
       segments: segmentTrack,
       icons: shellTrack,
+      "compact-icons": `${segmentTrack} h-control-sm`,
       shell: shellTrack,
       "catalog-form":
         "segmented-control-catalog-form relative isolate inline-flex w-fit",
@@ -66,6 +67,8 @@ const segmentedOptionVariants = cva(
           "[&_svg]:size-icon-md h-full items-center justify-center gap-1.5 rounded-control-inner px-2",
         icons:
           "[&_svg]:size-icon-md h-full w-control-md shrink-0 items-center justify-center rounded-control-inner focus-visible:ring-inset",
+        "compact-icons":
+          "[&_svg]:size-icon-sm h-full w-control-sm shrink-0 items-center justify-center rounded-control-inner focus-visible:ring-inset",
         shell:
           "[&_svg]:size-icon-md h-full items-center justify-center gap-1.5 rounded-control-inner px-2",
         "catalog-form": "segmented-control-catalog-form-option catalog-focus",
@@ -124,10 +127,13 @@ export function SegmentedControl<T extends string>({
   trailingAction,
   value,
 }: SegmentedControlProps<T>) {
-  const iconOnly = appearance === "icons";
-  const isShell = iconOnly || appearance === "shell";
+  const iconOnly = appearance === "icons" || appearance === "compact-icons";
+  const isShell = appearance === "icons" || appearance === "shell";
   const isSegments =
-    isShell || appearance === "segments" || appearance === "catalog-form";
+    isShell ||
+    iconOnly ||
+    appearance === "segments" ||
+    appearance === "catalog-form";
   const controlSize = iconOnly || appearance === "catalog-form" ? null : size;
   const segmentRefs = useRef(new Map<string, HTMLButtonElement>());
   const tabStop = options.some((option) => option.value === value)

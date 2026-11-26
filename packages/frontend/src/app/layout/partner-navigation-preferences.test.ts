@@ -8,6 +8,7 @@ import {
   readPartnerNavigationPreferences,
   rememberTeamThread,
   reconcilePartnerOrder,
+  writePartnerNavigationPreferences,
   type PartnerNavigationPreferences,
 } from "./partner-navigation-preferences";
 
@@ -137,19 +138,16 @@ it("保留手动侧栏宽度与自动任务取消固定偏好", () => {
   expect(pinnedAppModules(saved.railPins)).toEqual(["usage"]);
 });
 
-it("忽略旧收起字段，并把过小旧宽度钳制到216，不丢弃实体顺序", () => {
-  window.localStorage.setItem(
-    "bot.partner-navigation",
-    JSON.stringify({
-      contextSidebarWidth: 88,
-      globalSidebarCollapsed: true,
-      sidebarCollapsed: true,
-      railOrder: ["waker:b"],
-    }),
-  );
+it("恢复用户的收起选择，并保留实体顺序和已钳制的展开宽度", () => {
+  writePartnerNavigationPreferences({
+    ...preferences,
+    contextSidebarWidth: 88,
+    globalSidebarCollapsed: true,
+    railOrder: ["waker:b"],
+  });
   expect(readPartnerNavigationPreferences()).toMatchObject({
     contextSidebarWidth: 216,
-    globalSidebarCollapsed: false,
+    globalSidebarCollapsed: true,
     railOrder: ["waker:b"],
   });
 });

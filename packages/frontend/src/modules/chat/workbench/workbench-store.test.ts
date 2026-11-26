@@ -44,6 +44,48 @@ function persistedState() {
 }
 
 describe("工作台状态恢复", () => {
+  it("关闭旧 Git 补丁标签时保留 Diff、浏览器和分屏", () => {
+    const { state } = persistedState();
+    if (state.layout.kind !== "split" || state.layout.second.kind !== "pane")
+      throw new Error("缺少测试分屏");
+    const tabs = [
+      ...state.tabs,
+      {
+        id: "diff",
+        kind: "changes",
+        contentId: "page:changes",
+        occurrenceId: "diff",
+        navigationRevision: 1,
+        title: "改动",
+      },
+      {
+        id: "legacy-patch",
+        kind: "git-diff",
+        contentId: "git-diff:legacy",
+        occurrenceId: "legacy-patch",
+        navigationRevision: 1,
+        title: "a.ts",
+      },
+    ];
+    state.layout.second.tabIds.push("diff", "legacy-patch");
+    state.layout.second.activeTabId = "legacy-patch";
+    state.focusedPaneId = state.layout.second.id;
+
+    const restored = restoreWorkbenchState({ state: { ...state, tabs } });
+    if (!restored) throw new Error("旧布局恢复失败");
+
+    expect(restored?.tabs.map((tab) => tab.kind)).toEqual([
+      "browser",
+      "terminal",
+      "changes",
+    ]);
+    expect(restored?.layout.kind).toBe("split");
+    expect(restored?.focusedPaneId).toBe(state.focusedPaneId);
+    expect(
+      workbenchPaneById(restored.layout, state.focusedPaneId),
+    ).toMatchObject({ activeTabId: "diff" });
+  });
+
   it("未保存文件仍拥有工作区身份，草稿明确丢弃后才释放快照", async () => {
     const scope = "chat:dirty-retention";
     const key = `${scope}:file:document`;

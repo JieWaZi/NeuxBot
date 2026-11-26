@@ -31,6 +31,14 @@
   animation: dialog-out var(--duration-quick) var(--ease-ui-exit) both;
 }
 
+[data-motion="side-popup"][data-state="open"] {
+  animation: side-popup-in var(--duration-standard) var(--ease-ui) backwards;
+}
+
+[data-motion="side-popup"][data-state="closed"] {
+  animation: side-popup-out var(--duration-quick) var(--ease-ui-exit) both;
+}
+
 [data-motion="view"][data-state="open"] {
   animation: view-in var(--duration-standard) var(--ease-ui) both;
 }
@@ -192,6 +200,31 @@
   to {
     opacity: 0;
     transform: scale(0.985);
+  }
+}
+
+/* 裁剪跟随位移，保持右侧展开边界固定，并为其余三侧的阴影留空间。 */
+@keyframes side-popup-in {
+  from {
+    clip-path: inset(-2rem 100% -2rem -2rem);
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    clip-path: inset(-2rem 0 -2rem -2rem);
+    transform: translateX(0);
+  }
+}
+
+@keyframes side-popup-out {
+  from {
+    clip-path: inset(-2rem 0 -2rem -2rem);
+    transform: translateX(0);
+  }
+  to {
+    clip-path: inset(-2rem 100% -2rem -2rem);
+    opacity: 0;
+    transform: translateX(100%);
   }
 }
 

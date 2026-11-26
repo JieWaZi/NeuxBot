@@ -1,9 +1,24 @@
+import { cva, type VariantProps } from "class-variance-authority";
 import { ChevronRight } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/shared/lib/cn";
 
+const fileTreeRowVariants = cva(
+  "focus-visible:ring-ring hover:bg-muted grid min-w-0 flex-1 items-center gap-1 rounded-sm pr-2 text-left outline-none focus-visible:ring-2",
+  {
+    variants: {
+      density: {
+        default: "type-body min-h-row-default",
+        compact: "type-ui min-h-row-compact",
+      },
+    },
+    defaultVariants: { density: "default" },
+  },
+);
+
 /** 文件树的统一行密度、缩进、焦点与选中样式，不承载文件系统行为。 */
 export function FileTreeRow({
+  density,
   depth = 0,
   directory = false,
   expanded,
@@ -12,14 +27,15 @@ export function FileTreeRow({
   children,
   className,
   ...props
-}: Omit<ComponentProps<"button">, "children"> & {
-  depth?: number;
-  directory?: boolean;
-  expanded?: boolean;
-  selected?: boolean;
-  icon?: ReactNode;
-  children: ReactNode;
-}) {
+}: Omit<ComponentProps<"button">, "children"> &
+  VariantProps<typeof fileTreeRowVariants> & {
+    depth?: number;
+    directory?: boolean;
+    expanded?: boolean;
+    selected?: boolean;
+    icon?: ReactNode;
+    children: ReactNode;
+  }) {
   return (
     <button
       {...props}
@@ -28,7 +44,7 @@ export function FileTreeRow({
       aria-expanded={directory ? expanded : undefined}
       aria-selected={selected}
       className={cn(
-        "focus-visible:ring-ring type-body min-h-row-default hover:bg-muted grid min-w-0 flex-1 items-center gap-1 rounded-sm pr-2 text-left outline-none focus-visible:ring-2",
+        fileTreeRowVariants({ density }),
         directory && icon
           ? "grid-cols-[16px_16px_minmax(0,1fr)]"
           : "grid-cols-[16px_minmax(0,1fr)]",

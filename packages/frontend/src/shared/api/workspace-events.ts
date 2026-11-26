@@ -119,8 +119,7 @@ function refreshWorkspaceQuery(queryClient: QueryClient, queryHash: string) {
     return;
   }
   const prefix = String(query.queryKey[0]);
-  const isGit =
-    prefix.startsWith("scoped-git-") || prefix === "chat-summary-git-changes";
+  const isGit = prefix.startsWith("scoped-git-");
   const delay = isGit
     ? Math.max(
         0,
@@ -242,8 +241,6 @@ export function useWorkspaceQueryEvents(
   relativePath?: string,
 ) {
   const queryClient = useQueryClient();
-  const [errors, setErrors] = useState(new Map<string, Error>());
-  const [generation, setGeneration] = useState(0);
   const [visible, setVisible] = useState(
     document.visibilityState === "visible",
   );
@@ -256,6 +253,20 @@ export function useWorkspaceQueryEvents(
   }, []);
   const rootKey = [...new Set(roots.filter(Boolean))].sort().join("\0");
   const prefixKey = [...new Set(prefixes)].sort().join("\0");
+  const watchKey = JSON.stringify([
+    chatId,
+    rootKey,
+    relativePath,
+    active && visible,
+  ]);
+  const [watchErrors, setWatchErrors] = useState(() => ({
+    key: watchKey,
+    errors: new Map<string, Error>(),
+  }));
+  // 文件、会话或观察周期变化时，旧注册的错误不属于当前内容。
+  if (watchErrors.key !== watchKey) {
+    setWatchErrors({ key: watchKey, errors: new Map() });
+  }
   useEffect(() => {
     if (
       !active ||
@@ -274,29 +285,36 @@ export function useWorkspaceQueryEvents(
         queryPrefixes,
         relativePath,
       );
+    const setRootError = (root: string, error?: Error) =>
+      setWatchErrors((current) => {
+        if (current.key !== watchKey || (!error && !current.errors.has(root)))
+          return current;
+        const errors = new Map(current.errors);
+        if (error) errors.set(root, error);
+        else errors.delete(root);
+        return { key: watchKey, errors };
+      });
     const stops = rootPaths.map((root) =>
       subscribeWorkspaceEvents(
         chatId,
         root,
         (event) => {
+          // HTTP 登记回执只确认订阅身份。事件流内的恢复需重新对账。
           if (
-            event instanceof Error ||
-            event.state === "failed" ||
-            event.state === "recovering"
-          ) {
+            !(event instanceof Error) &&
+            event.state === "recovering" &&
+            event.sequence === 0
+          )
+            return;
+          if (event instanceof Error || event.state === "failed") {
             const error =
               event instanceof Error
                 ? event
                 : new Error(i18n.t("common:workspaceUpdatesUnavailable"));
-            setErrors((current) => new Map(current).set(root, error));
-            return;
+            setRootError(root, error);
+          } else if (event.state !== "recovering") {
+            setRootError(root);
           }
-          setErrors((current) => {
-            if (!current.has(root)) return current;
-            const next = new Map(current);
-            next.delete(root);
-            return next;
-          });
           // ready 后也对账一次，覆盖首次 Query 与注册观察之间发生的文件修改。
           refresh(root);
         },
@@ -309,20 +327,22 @@ export function useWorkspaceQueryEvents(
   }, [
     active,
     chatId,
-    generation,
     prefixKey,
     queryClient,
     rootKey,
     relativePath,
     visible,
+    watchKey,
   ]);
+  const { errors } = watchErrors;
   return {
     error: active
       ? roots.map((root) => errors.get(root)).find(Boolean)
       : undefined,
     errors,
-    retry: () => {
+    retry: (retryRoot?: string) => {
       for (const root of rootKey.split("\0")) {
+        if (retryRoot !== undefined && root !== retryRoot) continue;
         const subscription = subscriptions.get(
           `${chatId}\0${root}\0${relativePath ?? ""}`,
         );
@@ -333,7 +353,6 @@ export function useWorkspaceQueryEvents(
           subscription.start();
         }
       }
-      setGeneration((value) => value + 1);
     },
   };
 }

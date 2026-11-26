@@ -11,7 +11,7 @@ export type PartnerNavigationPreferences = {
   currentPartnerId: string;
   currentRailKey: string;
   entityMode: "team" | "waker";
-  /** 仅兼容旧偏好形状，读取时归一为 false；伙伴侧栏不再支持收起。 */
+  /** Shell 左侧栏的手动收起状态。 */
   globalSidebarCollapsed: boolean;
   lastTeamThreads: Record<string, string>;
   railExpanded: boolean;
@@ -164,7 +164,9 @@ export function readPartnerNavigationPreferences(): PartnerNavigationPreferences
             : "",
       entityMode:
         "entityMode" in value && value.entityMode === "team" ? "team" : "waker",
-      globalSidebarCollapsed: false,
+      globalSidebarCollapsed:
+        "globalSidebarCollapsed" in value &&
+        value.globalSidebarCollapsed === true,
       lastTeamThreads:
         "lastTeamThreads" in value ? stringRecord(value.lastTeamThreads) : {},
       railExpanded: "railExpanded" in value && value.railExpanded === true,

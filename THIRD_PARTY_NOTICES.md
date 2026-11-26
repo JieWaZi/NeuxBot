@@ -17,6 +17,36 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
+## 外部编辑器与文件管理器图标
+
+会话工作区使用来自 [T3 Code 固定源码](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/apps/web/src/components/Icons.tsx) 的 Visual Studio Code、VSCodium、Cursor 和 Zed 矢量标志识别本机打开目标。VS Code 与 VS Code Insiders 使用 [Microsoft 打开按钮规范](https://code.visualstudio.com/brand) 的蓝色标志，各自的应用名称保留在菜单和提示中。Zed 使用其[品牌规范](https://zed.dev/brand)的蓝色和白色。Finder 与 Windows 文件资源管理器的图标也取自同一版本的 T3 Code，随应用本地加载。相关应用的名称与标志归各自权利人。
+
+以下 MIT 许可适用于复用的 T3 Code 源码：
+
+```text
+MIT License
+
+Copyright (c) 2026 T3 Tools Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Material Icon Theme 文件图标
 
 工作区文件树、消息文件引用及共用文件展示使用 [material-extensions/vscode-material-icon-theme](https://github.com/material-extensions/vscode-material-icon-theme/tree/ced21b9b5241c1efa502a8c46ec7363a690a7058) 的精选 SVG，固定提交 `ced21b9b5241c1efa502a8c46ec7363a690a7058`。类型图标从上游原样复制，通用文件和目录图标通过本项目同步命令按同一提交的上游生成器路径及默认色生成。来源与更新命令见 [NOTICE](packages/frontend/src/shared/assets/material-icon-theme/NOTICE.md)，完整许可如下：

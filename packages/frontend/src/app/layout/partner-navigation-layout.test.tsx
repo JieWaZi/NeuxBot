@@ -25,6 +25,7 @@ import { SettingsContextSidebar } from "@/modules/settings/components/settings-c
 import type { GlobalEventObserver } from "@/shared/api/global-events";
 import { i18n } from "@/shared/i18n";
 import { configurePlatform, platform } from "@/shared/platform/provider";
+import { TooltipProvider } from "@/shared/ui/tooltip";
 import {
   useSceneWorkspace,
   WorkspaceProvider,
@@ -235,7 +236,7 @@ const initialPreferences: PartnerNavigationPreferences = {
   currentPartnerId: "waker-6",
   currentRailKey: "waker:waker-6",
   entityMode: "waker",
-  globalSidebarCollapsed: true,
+  globalSidebarCollapsed: false,
   lastTeamThreads: {},
   railExpanded: false,
   railOrder: wakers.map((waker) => `waker:${waker.id ?? ""}`),
@@ -482,6 +483,7 @@ function renderLayout({
         </WorkspaceProvider>
       </MemoryRouter>
     </QueryClientProvider>,
+    { wrapper: TooltipProvider },
   );
 }
 
@@ -554,7 +556,7 @@ describe("PartnerNavigationLayout", () => {
     );
   });
 
-  it("通知紧跟前进按钮，模块栏不重复显示通知", () => {
+  it("左栏顶栏将历史箭头靠左，侧栏开关和通知靠右", () => {
     renderLayout({
       sidebarToolbar: (
         <>
@@ -565,16 +567,27 @@ describe("PartnerNavigationLayout", () => {
       notificationBell: <button>通知入口</button>,
     });
     const bell = screen.getByRole("button", { name: "通知入口" });
-    const slot = bell.closest("[data-sidebar-history-slot]");
-    expect(slot).not.toBeNull();
-    expect(slot?.querySelectorAll("button")[1]).toHaveAccessibleName("前进");
-    expect(slot?.lastElementChild).toBe(bell);
+    const toolbar = bell.closest("[data-app-sidebar-toolbar]") as HTMLElement;
+    expect(toolbar).toHaveClass("justify-between");
+    const back = screen.getByRole("button", { name: "后退" });
+    const forward = screen.getByRole("button", { name: "前进" });
+    const toggle = screen.getByRole("button", { name: "收起左侧栏" });
+    expect(back.parentElement).toBe(toolbar.firstElementChild);
+    expect(forward.parentElement).toBe(back.parentElement);
+    expect(toggle.parentElement).toBe(toolbar.lastElementChild);
+    expect(bell.parentElement).toBe(toggle.parentElement);
+    expect(within(toolbar).getAllByRole("button")).toEqual([
+      back,
+      forward,
+      toggle,
+      bell,
+    ]);
     expect(
       screen.getByRole("navigation", { name: "模块导航" }),
     ).not.toContainElement(bell);
   });
 
-  it("Rail仍是整窗首列，正常伙伴列表始终显示且没有全局收起/展开按钮", () => {
+  it("模块栏位于整窗首列，展开的伙伴侧栏提供收起入口", () => {
     renderLayout({
       renderTitlebar: () => <header aria-label="内容顶栏">当前内容</header>,
       sidebarToolbar: <button>实体后退</button>,
@@ -589,9 +602,10 @@ describe("PartnerNavigationLayout", () => {
     );
     expect(screen.getByRole("radiogroup", { name: "身份列表" })).toBeVisible();
     expect(screen.getByRole("button", { name: "实体后退" })).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: /展开全局侧栏|收起全局侧栏/ }),
-    ).toBeNull();
+    expect(screen.getByRole("button", { name: "收起左侧栏" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 
   it.each([
@@ -667,36 +681,77 @@ describe("PartnerNavigationLayout", () => {
     expect(screen.getAllByRole("navigation", { name: "伙伴" })).toHaveLength(1);
   });
 
-  it("忽略旧fold偏好与窄窗口自动收起，搜索仍从正常列表工具打开", async () => {
+  it("收起隐藏左栏并释放正文空间，键盘展开恢复宽度与原导航", async () => {
     const user = userEvent.setup();
     renderLayout({
-      navigationPreferences: {
-        contextSidebarWidth: 88,
-        globalSidebarCollapsed: true,
-      },
+      navigationPreferences: { contextSidebarWidth: 300 },
+      sidebarToolbar: <button>实体后退</button>,
+      notificationBell: <button>通知入口</button>,
     });
-    const frame = document.querySelector(
-      "[data-app-workspace-frame]",
-    ) as HTMLElement;
-    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "216px" });
-    vi.spyOn(frame, "getBoundingClientRect").mockReturnValue(
-      new DOMRect(0, 0, 300, 700),
+    const frame = document.querySelector("[data-app-workspace-frame]");
+    const scene = screen.getByRole("region", { name: "场景工作区" });
+    const main = screen.getByText("主内容");
+    const rail = screen.getByRole("navigation", { name: "模块导航" });
+    const entityList = screen.getByRole("radiogroup", { name: "身份列表" });
+    const toggle = screen.getByRole("button", { name: "收起左侧栏" });
+    const bell = screen.getByRole("button", { name: "通知入口" });
+    const panelIcon = toggle.querySelector("svg");
+    const sceneClass = scene.className;
+    expect(frame).toHaveClass("duration-layout", "ease-ui");
+    expect(toggle.nextElementSibling).toBe(bell);
+    await user.click(toggle);
+    expect(screen.getByRole("button", { name: "展开左侧栏" })).toBe(toggle);
+    expect(toggle.querySelector("svg")).toBe(panelIcon);
+    expect(toggle.nextElementSibling).toBe(bell);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveFocus();
+    expect(screen.getByRole("button", { name: "实体后退" })).toBeVisible();
+    expect(bell).toBeVisible();
+    expect(screen.queryByRole("radiogroup", { name: "身份列表" })).toBeNull();
+    expect(entityList.closest("[inert]")).toHaveAttribute(
+      "id",
+      toggle.getAttribute("aria-controls"),
     );
-    fireEvent(window, new Event("resize"));
-    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "216px" });
-    expect(screen.getByRole("radiogroup", { name: "身份列表" })).toBeVisible();
+    expect(scene).toHaveAttribute("data-content-spans-sidebar");
+    expect(scene.className).toBe(sceneClass);
+    expect(frame).toHaveStyle({ "--shell-sidebar-body-width": "0px" });
     expect(
-      screen.queryByRole("button", { name: /展开全局侧栏|收起全局侧栏/ }),
+      screen.queryByRole("separator", { name: "调整模块侧栏宽度" }),
     ).toBeNull();
+    expect(screen.getByText("主内容")).toBe(main);
+    expect(screen.getByRole("navigation", { name: "模块导航" })).toBe(rail);
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("button", { name: "收起左侧栏" })).toBe(toggle);
+    expect(entityList).toBeVisible();
+    expect(scene).not.toHaveAttribute("data-content-spans-sidebar");
+    expect(frame).toHaveStyle({ "--shell-sidebar-body-width": "301px" });
+    expect(
+      screen.getByRole("separator", { name: "调整模块侧栏宽度" }),
+    ).toHaveAttribute("aria-valuenow", "300");
     await user.click(screen.getByRole("button", { name: "搜索伙伴" }));
     expect(screen.getByRole("searchbox", { name: "搜索伙伴" })).toHaveFocus();
+  });
+
+  it("跨模块保持收起状态，有侧栏页面可重新展开", async () => {
+    const user = userEvent.setup();
+    renderLayout({ navigationPreferences: { globalSidebarCollapsed: true } });
+    expect(screen.queryByRole("radiogroup", { name: "身份列表" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "用量统计" }));
+    expect(screen.queryByRole("button", { name: "展开左侧栏" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "资源库" }));
+    expect(screen.queryByRole("button", { name: "技能" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    expect(screen.queryByRole("navigation", { name: "设置菜单" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "展开左侧栏" }));
+    expect(screen.getByRole("navigation", { name: "设置菜单" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "资源库" }));
+    expect(screen.getByRole("button", { name: "技能" })).toBeVisible();
   });
 
   it("拖动到216px即停止，键盘Home/End仍调整正常宽度且不触发收起", () => {
     renderLayout({
       navigationPreferences: {
         contextSidebarWidth: 280,
-        globalSidebarCollapsed: true,
       },
     });
     const handle = screen.getByRole("separator", { name: "调整模块侧栏宽度" });
@@ -711,9 +766,7 @@ describe("PartnerNavigationLayout", () => {
     expect(handle).toHaveAttribute("aria-valuenow", "216");
     fireEvent.doubleClick(handle);
     expect(handle).toHaveAttribute("aria-valuenow", "248");
-    expect(
-      screen.queryByRole("button", { name: /展开全局侧栏|收起全局侧栏/ }),
-    ).toBeNull();
+    expect(screen.getByRole("button", { name: "收起左侧栏" })).toBeVisible();
   });
 
   it.each([
@@ -1055,13 +1108,15 @@ describe("PartnerNavigationLayout", () => {
         navigationPreferences: { contextSidebarWidth: 216 },
       });
       const frame = document.querySelector("[data-app-workspace-frame]");
-      expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "216px" });
+      expect(frame).toHaveStyle({ "--shell-sidebar-body-width": "217px" });
       const handle = screen.getByRole("separator", {
         name: "调整模块侧栏宽度",
       });
       fireEvent.mouseDown(handle, { clientX: 216 });
+      expect(frame).toHaveClass("transition-none");
       fireEvent.mouseUp(document, { clientX: 300 });
-      expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "300px" });
+      expect(frame).not.toHaveClass("transition-none");
+      expect(frame).toHaveStyle({ "--shell-sidebar-body-width": "301px" });
       expect(
         JSON.parse(
           screen.getByTestId("navigation-preferences").textContent || "{}",
@@ -1079,24 +1134,24 @@ describe("PartnerNavigationLayout", () => {
     renderLayout({ navigationPreferences: { contextSidebarWidth: 216 } });
     const frame = document.querySelector("[data-app-workspace-frame]");
     await user.click(screen.getByRole("button", { name: "资源库" }));
-    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "216px" });
+    expect(frame).toHaveStyle({ "--shell-sidebar-body-width": "217px" });
     const handle = screen.getByRole("separator", { name: "调整模块侧栏宽度" });
     fireEvent.mouseDown(handle, { clientX: 216 });
     fireEvent.mouseUp(document, { clientX: 300 });
     await user.click(screen.getByRole("button", { name: "设置" }));
-    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "300px" });
+    expect(frame).toHaveStyle({ "--shell-sidebar-body-width": "301px" });
     fireEvent.keyDown(
       screen.getByRole("separator", { name: "调整模块侧栏宽度" }),
       { key: "ArrowRight" },
     );
     await user.click(screen.getByRole("button", { name: "伙伴" }));
-    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "312px" });
+    expect(frame).toHaveStyle({ "--shell-sidebar-body-width": "313px" });
     await user.click(screen.getByRole("button", { name: "用量统计" }));
     expect(
       screen.queryByRole("separator", { name: "调整模块侧栏宽度" }),
     ).toBeNull();
     await user.click(screen.getByRole("button", { name: "资源库" }));
-    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "312px" });
+    expect(frame).toHaveStyle({ "--shell-sidebar-body-width": "313px" });
   });
 
   it("详情侧栏支持键盘切换原四个功能，并保持唯一选中入口", async () => {

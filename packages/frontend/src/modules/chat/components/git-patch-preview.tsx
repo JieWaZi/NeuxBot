@@ -1,175 +1,207 @@
 import { DiffFile } from "@git-diff-view/file";
 import { DiffModeEnum, DiffView } from "@git-diff-view/react";
 import "@git-diff-view/react/styles/diff-view-pure.css";
-import {
-  AlignJustify,
-  ChevronDown,
-  ChevronRight,
-  Columns2,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/shared/theme";
-import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 
-type Props = {
-  path: string;
-  patch: string;
-  fullHeight?: boolean;
-  diffMode?: DiffModeEnum;
-  onDiffModeChange?: (mode: DiffModeEnum) => void;
-};
+export type DiffMode = "split" | "unified";
 
-export function GitPatchDiffModeToggle({
-  mode,
-  onModeChange,
-}: {
-  mode: DiffModeEnum;
-  onModeChange: (mode: DiffModeEnum) => void;
-}) {
-  const { t } = useTranslation("chat");
-  const split = mode === DiffModeEnum.Split;
-  const nextMode = split ? DiffModeEnum.Unified : DiffModeEnum.Split;
-  const label = split ? t("workspace.diffUnified") : t("workspace.diffSplit");
-  return (
-    <Button
-      size="icon-sm"
-      variant="ghost"
-      aria-label={label}
-      title={label}
-      onClick={() => onModeChange(nextMode)}
-    >
-      {split ? <AlignJustify /> : <Columns2 />}
-    </Button>
-  );
+const patchPageLineLimit = 300;
+const hunkHeader = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/;
+
+function* splitHunkRows(rows: string[], firstPageRoom: number) {
+  let pageRoom = firstPageRoom;
+  let segment: string[] = [];
+
+  for (let index = 0; index < rows.length;) {
+    const row = rows[index];
+    if (row === undefined) break;
+    if (!row.startsWith("-")) {
+      segment.push(row);
+      index++;
+    } else {
+      let oldEnd = index;
+      while (rows[oldEnd]?.startsWith("-")) oldEnd++;
+      let newEnd = oldEnd;
+      while (rows[newEnd]?.startsWith("+")) newEnd++;
+
+      // 同一替换块的两侧一起分段，并排模式仍能对照新旧行。
+      let oldIndex = index;
+      let newIndex = oldEnd;
+      while (oldIndex < oldEnd || newIndex < newEnd) {
+        const room = pageRoom - segment.length;
+        const oldRemaining = oldEnd - oldIndex;
+        const newRemaining = newEnd - newIndex;
+        const newCount = Math.min(
+          newRemaining,
+          room - Math.min(oldRemaining, Math.ceil(room / 2)),
+        );
+        const oldCount = Math.min(oldRemaining, room - newCount);
+        segment.push(
+          ...rows.slice(oldIndex, oldIndex + oldCount),
+          ...rows.slice(newIndex, newIndex + newCount),
+        );
+        oldIndex += oldCount;
+        newIndex += newCount;
+        if (segment.length === pageRoom) {
+          yield segment;
+          segment = [];
+          pageRoom = patchPageLineLimit;
+        }
+      }
+      index = newEnd;
+    }
+
+    if (segment.length === pageRoom) {
+      yield segment;
+      segment = [];
+      pageRoom = patchPageLineLimit;
+    }
+  }
+  if (segment.length) yield segment;
 }
 
-/** 补丁视图复用共享 Diff 引擎，并在打开时按需加载。 */
-export function GitPatchPreview({
+function paginatePatch(patch: string) {
+  const lines = patch.split("\n");
+  if (lines.length <= patchPageLineLimit) return [patch];
+
+  const firstHunk = lines.findIndex((line) => hunkHeader.test(line));
+  if (firstHunk === -1) return [patch];
+
+  const fileHeader = lines.slice(0, firstHunk);
+  const pages: string[] = [];
+  let page: string[] = [];
+  let pageSize = 0;
+  const finishPage = () => {
+    pages.push([...fileHeader, ...page, ""].join("\n"));
+    page = [];
+    pageSize = 0;
+  };
+
+  for (let index = firstHunk; index < lines.length;) {
+    const header = hunkHeader.exec(lines[index++] ?? "");
+    if (!header) break;
+    const [, oldStart, oldLength, newStart, newLength, sectionTitle] = header;
+    let oldLine = Number(oldStart) + Number(oldLength === "0");
+    let newLine = Number(newStart) + Number(newLength === "0");
+    const rows: string[] = [];
+    while (index < lines.length) {
+      const row = lines[index];
+      if (row === undefined || hunkHeader.test(row)) break;
+      index++;
+      if (row.startsWith("\\ ") && rows.length) {
+        rows[rows.length - 1] += `\n${row}`;
+      } else if (/^[ +-]/.test(row)) {
+        rows.push(row);
+      }
+    }
+
+    for (const segment of splitHunkRows(rows, patchPageLineLimit - pageSize)) {
+      const oldCount = segment.filter((row) => !row.startsWith("+")).length;
+      const newCount = segment.filter((row) => !row.startsWith("-")).length;
+      // Unified Diff 的空行范围使用插入或删除点之前的行号。
+      const oldRange = `${oldLine - Number(oldCount === 0)},${oldCount}`;
+      const newRange = `${newLine - Number(newCount === 0)},${newCount}`;
+      page.push(`@@ -${oldRange} +${newRange} @@${sectionTitle}`, ...segment);
+      oldLine += oldCount;
+      newLine += newCount;
+      pageSize += segment.length;
+      if (pageSize === patchPageLineLimit) finishPage();
+    }
+  }
+  if (pageSize) finishPage();
+  return pages.length > 1 ? pages : [patch];
+}
+
+/** 此模块在已展开文件的补丁就绪后加载 Diff 引擎。 */
+export function GitPatchBody({
   path,
   patch,
-  fullHeight = false,
-  diffMode: controlledDiffMode,
-}: Props) {
-  const { resolvedTheme } = useTheme();
-  const mode = controlledDiffMode ?? DiffModeEnum.Unified;
-  const files = useMemo(() => {
-    const chunks = patch
-      .split(/(?=^diff --git )/m)
-      .filter((chunk) => chunk.startsWith("diff --git "));
-    return chunks.map((chunk, index) => {
-      const label = /^\+\+\+ b\/(.+)$/m.exec(chunk)?.[1] ?? path;
-      let added = 0;
-      let removed = 0;
-      for (const line of chunk.split("\n")) {
-        if (line.startsWith("+") && !line.startsWith("+++")) added++;
-        if (line.startsWith("-") && !line.startsWith("---")) removed++;
-      }
-      return { label, chunk, index, added, removed };
-    });
-  }, [patch, path]);
-
-  return (
-    <div
-      className={cn("min-w-0", fullHeight && "flex h-full min-h-0 flex-col")}
-    >
-      <div
-        className={cn(
-          "scrollbar-hidden min-w-0 overflow-auto",
-          fullHeight ? "min-h-0 flex-1" : "max-h-96",
-        )}
-      >
-        {files.map(({ label, chunk, index, added, removed }) => (
-          <GitPatchFile
-            key={`${path}:${index}:${chunk.length}`}
-            label={label}
-            chunk={chunk}
-            index={index}
-            path={path}
-            mode={mode}
-            theme={resolvedTheme}
-            initiallyExpanded={files.length === 1 && chunk.length < 75_000}
-            added={added}
-            removed={removed}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function GitPatchFile({
-  label,
-  chunk,
-  index,
-  path,
   mode,
-  theme,
-  initiallyExpanded,
-  added,
-  removed,
+  wrap,
 }: {
-  label: string;
-  chunk: string;
-  index: number;
   path: string;
-  mode: DiffModeEnum;
-  theme: "light" | "dark";
-  initiallyExpanded: boolean;
-  added: number;
-  removed: number;
+  patch: string;
+  mode: DiffMode;
+  wrap: boolean;
 }) {
-  const [expanded, setExpanded] = useState(initiallyExpanded);
+  const { resolvedTheme } = useTheme();
+  const { t } = useTranslation("chat");
+  const [page, setPage] = useState(0);
+  const pageTop = useRef<HTMLDivElement>(null);
+  const pages = useMemo(() => paginatePatch(patch), [patch]);
+  const pageIndex = Math.min(page, pages.length - 1);
+  const visiblePatch = pages[pageIndex] ?? patch;
   const file = useMemo(() => {
-    if (!expanded) return null;
-    const result = new DiffFile(
-      label,
-      "",
-      label,
-      "",
-      [chunk],
-      undefined,
-      undefined,
-      `${path}:${index}`,
-    );
-    result.initTheme(theme);
+    // 默认按内容标识缓存，同一路径的不同区段不能共用补全文本。
+    const result = new DiffFile(path, "", path, "", [visiblePatch]);
+    result.initTheme(resolvedTheme);
     result.init();
-    if (mode === DiffModeEnum.Split) result.buildSplitDiffLines();
+    if (mode === "split") result.buildSplitDiffLines();
     else result.buildUnifiedDiffLines();
     return result;
-  }, [chunk, expanded, index, label, mode, path, theme]);
+  }, [mode, path, resolvedTheme, visiblePatch]);
+
+  const view = (
+    <DiffView
+      key={pageIndex}
+      diffFile={file}
+      diffViewMode={
+        mode === "split" ? DiffModeEnum.Split : DiffModeEnum.Unified
+      }
+      diffViewTheme={resolvedTheme}
+      diffViewHighlight={patch.length < 40_000}
+      diffViewWrap={wrap}
+      diffViewFontSize={12}
+      className="workspace-diff-view [&_.diff-table-scroll-container]:scrollbar-hidden"
+    />
+  );
+
+  if (pages.length === 1) return view;
+
+  const changePage = (nextPage: number) => {
+    setPage(nextPage);
+    pageTop.current?.scrollIntoView?.({ block: "start" });
+  };
+
   return (
-    <section aria-label={label} className="border-border-subtle mb-2 border-b">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-        className="hover:bg-muted focus-visible:ring-ring type-caption min-h-row-default flex w-full min-w-0 items-center gap-2 px-2 text-left outline-none focus-visible:ring-2"
+    <div ref={pageTop} className="min-w-0">
+      <nav
+        aria-label={t("workspace.git.diffPreview")}
+        className="bg-surface-panel sticky top-0 z-20 flex flex-wrap items-center justify-between gap-1 px-3 py-1"
       >
-        {expanded ? (
-          <ChevronDown className="size-icon-sm shrink-0" />
-        ) : (
-          <ChevronRight className="size-icon-sm shrink-0" />
-        )}
-        <span className="min-w-0 flex-1 truncate" title={label}>
-          {label}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={pageIndex === 0}
+          onClick={() => changePage(pageIndex - 1)}
+        >
+          {t("workspace.git.patchPrevious")}
+        </Button>
+        <span
+          className="text-content-muted type-caption tabular-nums"
+          role="status"
+        >
+          {t("workspace.git.patchPage", {
+            page: pageIndex + 1,
+            total: pages.length,
+          })}
         </span>
-        <span className="text-success">+{added}</span>
-        <span className="text-destructive">-{removed}</span>
-      </button>
-      {file ? (
-        <DiffView
-          diffFile={file}
-          diffViewMode={mode}
-          diffViewTheme={theme}
-          diffViewHighlight={chunk.length < 40_000}
-          diffViewWrap={false}
-          diffViewFontSize={12}
-          className="workspace-diff-view [&_.diff-table-scroll-container]:scrollbar-hidden"
-        />
-      ) : null}
-    </section>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={pageIndex === pages.length - 1}
+          onClick={() => changePage(pageIndex + 1)}
+        >
+          {t("workspace.git.patchNext")}
+        </Button>
+      </nav>
+      {view}
+    </div>
   );
 }

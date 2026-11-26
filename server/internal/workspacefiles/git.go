@@ -34,6 +34,8 @@ type GitEntry struct {
 	UnstagedDeletedLines int `json:"unstagedDeletedLines"`
 	// LineCountUnavailable 表明二进制等条目不具有可靠行数。
 	LineCountUnavailable bool `json:"lineCountUnavailable,omitempty"`
+	// oldPath 是已识别重命名的原路径，用于撤销完整的暂存项。
+	oldPath string
 }
 
 // GitStatus 是选中仓库的工作树快照。
@@ -42,6 +44,26 @@ type GitStatus struct {
 	IsRepo bool `json:"isRepo"`
 	// Branch 是当前分支或分离头说明。
 	Branch string `json:"branch,omitempty"`
+	// HEAD 提交标识
+	Head string `json:"head"`
+	// 上游分支
+	Upstream string `json:"upstream"`
+	// 推送远端
+	Remote string `json:"remote"`
+	// 可选远端
+	Remotes []string `json:"remotes"`
+	// GitHub 推送远端
+	GitHub bool `json:"github"`
+	// 远端默认分支
+	DefaultBranch string `json:"defaultBranch,omitempty"`
+	// 领先提交数
+	Ahead int `json:"ahead"`
+	// 相对远端默认分支的独有提交数
+	AheadOfDefault int `json:"aheadOfDefault,omitempty"`
+	// 落后提交数
+	Behind int `json:"behind"`
+	// 暂存版本
+	Index string `json:"index"`
 	// Entries 是逐路径变更状态。
 	Entries []GitEntry `json:"entries"`
 	// Root 是本次选中的仓库根。
@@ -71,11 +93,20 @@ type boundedGitOutput struct {
 	buffer bytes.Buffer
 	// limit 限制单次命令输出字节数。
 	limit int
+	// keepPrefix 允许读取有界前缀，剩余内容在命令退出前丢弃。
+	keepPrefix bool
+	// truncated 标记实际输出超过上限。
+	truncated bool
 }
 
 func (w *boundedGitOutput) Write(value []byte) (int, error) {
 	if w.buffer.Len()+len(value) > w.limit {
-		return 0, io.ErrShortBuffer
+		if !w.keepPrefix {
+			return 0, io.ErrShortBuffer
+		}
+		w.truncated = true
+		w.buffer.Write(value[:w.limit-w.buffer.Len()])
+		return len(value), nil
 	}
 	return w.buffer.Write(value)
 }
@@ -84,13 +115,65 @@ func gitCommand(ctx context.Context, root string, args ...string) (string, error
 }
 
 func gitCommandExit(ctx context.Context, root string, diffExit bool, args ...string) (string, error) {
+	output := &boundedGitOutput{limit: 16 * 1024 * 1024}
+	if err := runGitCommand(ctx, root, diffExit, output, args...); err != nil {
+		return "", err
+	}
+	return output.buffer.String(), nil
+}
+
+func runGitCommand(ctx context.Context, root string, diffExit bool, output *boundedGitOutput, args ...string) error {
+	return runGitWithOptions(ctx, root, diffExit, output, gitCommandOptions{}, args...)
+}
+
+type gitCommandOptions struct {
+	// index 是由宿主创建的临时索引路径。
+	index string
+	// objects 指定可选的临时对象库。
+	objects string
+	// alternates 指定临时对象库能读取的现有对象库。
+	alternates string
+	// input 是由宿主编码的命令标准输入。
+	input string
+}
+
+func gitCommandWithOptions(ctx context.Context, root string, options gitCommandOptions, args ...string) (string, error) {
+	output := &boundedGitOutput{limit: 16 * 1024 * 1024}
+	if err := runGitWithOptions(ctx, root, false, output, options, args...); err != nil {
+		return "", err
+	}
+	return output.buffer.String(), nil
+}
+
+func runGitWithOptions(ctx context.Context, root string, diffExit bool, output *boundedGitOutput, options gitCommandOptions, args ...string) error {
 	timeout, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	command := exec.CommandContext(timeout, "git", append([]string{"-C", root, "--no-pager"}, args...)...)
-	output := &boundedGitOutput{limit: 16 * 1024 * 1024}
+	command := newWorkspaceGitCommand(timeout, root, options, args...)
 	stderr := &boundedGitOutput{limit: 64 * 1024}
 	command.Stdout = output
 	command.Stderr = stderr
+	if err := command.Run(); err != nil {
+		if ctx.Err() != nil {
+			return status_error.OperationCanceled
+		}
+		var exit *exec.ExitError
+		if diffExit && errors.As(err, &exit) && exit.ExitCode() == 1 && timeout.Err() == nil {
+			return nil
+		}
+		if args[0] == "push" {
+			// 远端失败可能回显带凭据的 URL。
+			logx.Errorf("workspace git operation failed: operation=%q error=%v", args[0], err)
+		} else {
+			logx.Errorf("workspace git operation failed: operation=%q error=%v stderr=%q", args[0], err, stderr.buffer.String())
+		}
+		return status_error.WorkspaceGitFailed
+	}
+	return nil
+}
+
+func newWorkspaceGitCommand(ctx context.Context, root string, options gitCommandOptions, args ...string) *exec.Cmd {
+	command := exec.CommandContext(ctx, "git", append([]string{"-C", root, "--no-pager"}, args...)...)
+	command.WaitDelay = time.Second
 	// 宿主遗留的 Git 路径变量不能覆盖已校验的仓库与索引。
 	for _, entry := range os.Environ() {
 		if !strings.HasPrefix(strings.ToUpper(entry), "GIT_") {
@@ -98,15 +181,16 @@ func gitCommandExit(ctx context.Context, root string, diffExit bool, args ...str
 		}
 	}
 	command.Env = append(command.Env, "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
-	if err := command.Run(); err != nil {
-		var exit *exec.ExitError
-		if diffExit && errors.As(err, &exit) && exit.ExitCode() == 1 && timeout.Err() == nil {
-			return output.buffer.String(), nil
-		}
-		logx.Errorf("workspace git operation failed: operation=%q error=%v stderr=%q", args[0], err, stderr.buffer.String())
-		return "", status_error.WorkspaceGitFailed
+	if options.index != "" {
+		command.Env = append(command.Env, "GIT_INDEX_FILE="+options.index)
 	}
-	return output.buffer.String(), nil
+	if options.objects != "" {
+		command.Env = append(command.Env, "GIT_OBJECT_DIRECTORY="+options.objects, "GIT_ALTERNATE_OBJECT_DIRECTORIES="+options.alternates)
+	}
+	if options.input != "" {
+		command.Stdin = strings.NewReader(options.input)
+	}
+	return command
 }
 
 func (m *Manager) repository(ctx context.Context, subject, id, root, selected string) (string, []string, error) {
@@ -141,7 +225,7 @@ func (m *Manager) repository(ctx context.Context, subject, id, root, selected st
 				return status_error.WorkspaceResourceTooLarge
 			}
 			relative, _ := filepath.Rel(searchRoot, name)
-			if accountPath(name) {
+			if !scope.allows(name) {
 				return filepath.SkipDir
 			}
 			if relative != "." && (entry.Name() == ".git" || entry.Name() == "node_modules" || strings.Count(relative, string(filepath.Separator)) > 4) {
@@ -152,7 +236,8 @@ func (m *Manager) repository(ctx context.Context, subject, id, root, selected st
 				if e != nil {
 					return e
 				}
-				if within(searchRoot, real) && !discovered[real] {
+				containsPrivate := scope.chatRoot != "" && within(real, filepath.Dir(scope.chatRoot))
+				if within(searchRoot, real) && !containsPrivate && !discovered[real] {
 					roots = append(roots, real)
 					discovered[real] = true
 				}
@@ -236,13 +321,42 @@ func (m *Manager) Status(ctx context.Context, subject, id, root, selected string
 	if err != nil {
 		return GitStatus{}, err
 	}
-	result := GitStatus{IsRepo: repo != "", Root: repo, Repositories: repositories, Entries: []GitEntry{}}
+	result := GitStatus{IsRepo: repo != "", Root: repo, Repositories: repositories, Entries: []GitEntry{}, Remotes: []string{}}
 	if repo == "" {
 		return result, nil
 	}
-	output, err := gitCommand(ctx, repo, "status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all")
+	output, err := gitCommand(ctx, repo, "status", "--porcelain=v2", "-z", "--branch", "--ahead-behind", "--untracked-files=all")
 	if err != nil {
 		return GitStatus{}, err
+	}
+	refs := parseGitRefs(output)
+	result.Branch, result.Head, result.Upstream = refs.branch, refs.head, refs.upstream
+	result.Ahead, result.Behind = refs.ahead, refs.behind
+	result.Index = refs.index
+	remotes, err := gitRemoteNames(ctx, repo)
+	if err != nil {
+		return GitStatus{}, err
+	}
+	result.Remotes = append(result.Remotes, remotes...)
+	result.Remote, err = preferredGitRemote(ctx, repo, refs, remotes)
+	if err != nil {
+		return GitStatus{}, err
+	}
+	if result.Remote != "" {
+		_, githubErr := githubPushRepository(ctx, repo, result.Remote)
+		result.GitHub = githubErr == nil
+		result.DefaultBranch, err = gitKnownDefaultBranch(ctx, repo, result.Remote)
+		if err != nil {
+			return GitStatus{}, err
+		}
+		if refs.head != "" && result.DefaultBranch != "" && refs.branch != result.DefaultBranch {
+			base := "refs/remotes/" + result.Remote + "/" + result.DefaultBranch
+			count, err := gitCommand(ctx, repo, "rev-list", "--count", base+".."+refs.head, "--")
+			if err != nil {
+				return GitStatus{}, err
+			}
+			result.AheadOfDefault, _ = strconv.Atoi(strings.TrimSpace(count))
+		}
 	}
 	staged, err := gitCommand(ctx, repo, "diff", "--cached", "--numstat", "-z", "--no-ext-diff")
 	if err != nil {
@@ -257,26 +371,45 @@ func (m *Manager) Status(ctx context.Context, subject, id, root, selected string
 	parts := strings.Split(output, "\x00")
 	for i := 0; i < len(parts); i++ {
 		part := parts[i]
-		if strings.HasPrefix(part, "## ") {
-			result.Branch = strings.SplitN(strings.TrimPrefix(part, "## "), "...", 2)[0]
-			result.Branch = strings.TrimPrefix(strings.TrimPrefix(result.Branch, "No commits yet on "), "Initial commit on ")
+		xy, name := parseGitStatusEntry(part)
+		if xy == "" {
 			continue
 		}
-		if len(part) < 4 {
-			continue
-		}
-		xy, name := part[:2], part[3:]
-		if strings.ContainsAny(xy, "RC") && i+1 < len(parts) {
+		var oldPath string
+		if strings.HasPrefix(part, "2 ") && i+1 < len(parts) {
 			i++
+			oldPath = parts[i]
 		}
 		a, b := stagedLines[name], unstagedLines[name]
-		entry := GitEntry{Path: name, XY: xy, StagedAddedLines: a.added, StagedDeletedLines: a.deleted, UnstagedAddedLines: b.added, UnstagedDeletedLines: b.deleted, LineCountUnavailable: a.unavailable || b.unavailable}
+		entry := GitEntry{Path: name, XY: xy, StagedAddedLines: a.added, StagedDeletedLines: a.deleted, UnstagedAddedLines: b.added, UnstagedDeletedLines: b.deleted, LineCountUnavailable: a.unavailable || b.unavailable, oldPath: oldPath}
 		if xy == "??" {
 			entry.LineCountUnavailable = true
 		}
 		result.Entries = append(result.Entries, entry)
 	}
 	return result, nil
+}
+
+func parseGitStatusEntry(line string) (string, string) {
+	if strings.HasPrefix(line, "? ") {
+		return "??", line[2:]
+	}
+	var count int
+	switch {
+	case strings.HasPrefix(line, "1 "):
+		count = 9
+	case strings.HasPrefix(line, "2 "):
+		count = 10
+	case strings.HasPrefix(line, "u "):
+		count = 11
+	default:
+		return "", ""
+	}
+	fields := strings.SplitN(line, " ", count)
+	if len(fields) != count || len(fields[1]) != 2 {
+		return "", ""
+	}
+	return strings.ReplaceAll(fields[1], ".", " "), fields[count-1]
 }
 
 func validGitPath(value string) bool {
@@ -327,8 +460,20 @@ func (m *Manager) Diff(ctx context.Context, subject, id, root, selected, relativ
 	return gitCommandExit(ctx, repo, true, "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--no-color", "--", os.DevNull, relative)
 }
 
-// Log 返回有界的提交历史。
+// Log 返回当前 HEAD 的有界提交历史。
 func (m *Manager) Log(ctx context.Context, subject, id, root, selected string, count, skip int) ([]GitLogEntry, error) {
+	return m.gitLog(ctx, subject, id, root, selected, "", count, skip)
+}
+
+// LogComparison 返回当前分支在比较基准共同祖先之后的有界提交历史。
+func (m *Manager) LogComparison(ctx context.Context, subject, id, root, selected, base string, count, skip int) ([]GitLogEntry, error) {
+	if base == "" {
+		base = gitComparisonAutoBase
+	}
+	return m.gitLog(ctx, subject, id, root, selected, base, count, skip)
+}
+
+func (m *Manager) gitLog(ctx context.Context, subject, id, root, selected, base string, count, skip int) ([]GitLogEntry, error) {
 	if count <= 0 || count > 200 {
 		count = 20
 	}
@@ -342,20 +487,31 @@ func (m *Manager) Log(ctx context.Context, subject, id, root, selected string, c
 	if repo == "" {
 		return []GitLogEntry{}, nil
 	}
-	// 尚无提交的仓库返回空历史，其他 Git 故障仍作为失败返回。
-	refs, err := gitCommand(ctx, repo, "rev-parse", "--is-inside-work-tree")
-	if err != nil {
-		return nil, err
+	var revision string
+	if base == "" {
+		head, _, err := comparisonGit(ctx, repo, gitCommandOptions{}, 512, true, "rev-parse", "--verify", "--quiet", "HEAD")
+		if err != nil {
+			return nil, err
+		}
+		revision = strings.TrimSpace(head)
+	} else {
+		if base == gitComparisonAutoBase {
+			base = ""
+		} else if strings.HasPrefix(base, ":") {
+			return nil, status_error.WorkspacePathInvalid
+		}
+		span, err := comparisonRange(ctx, repo, base)
+		if err != nil {
+			return nil, err
+		}
+		if span.head != "" {
+			revision = span.args[0] + ".." + span.head
+		}
 	}
-	_ = refs
-	heads, err := gitCommand(ctx, repo, "for-each-ref", "--count=1", "--format=%(objectname)")
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(heads) == "" {
+	if revision == "" {
 		return []GitLogEntry{}, nil
 	}
-	output, err := gitCommand(ctx, repo, "log", "--no-color", "--max-count="+strconv.Itoa(count), "--skip="+strconv.Itoa(skip), "--format=%h%x1f%H%x1f%s%x1f%an%x1f%aI%x1f%D%x1e")
+	output, err := gitCommand(ctx, repo, "log", "--no-color", "--no-notes", "--no-show-signature", "--max-count="+strconv.Itoa(count), "--skip="+strconv.Itoa(skip), "--format=%h%x1f%H%x1f%s%x1f%an%x1f%aI%x1f%D%x1e", revision, "--")
 	if err != nil {
 		return nil, err
 	}
@@ -407,16 +563,44 @@ func (m *Manager) CommitDiff(ctx context.Context, subject, id, root, selected, h
 	return gitCommand(ctx, repo, "show", "--no-color", "--format=", "-m", "--first-parent", "--no-ext-diff", "--no-textconv", hash, "--")
 }
 
-// ChangeIndex 修改暂存区或丢弃一个已跟踪文件的未暂存改动。
-func (m *Manager) ChangeIndex(ctx context.Context, subject, id, root, selected, relative, action string) error {
+// GitIndexRequest 是暂存区修改请求。
+type GitIndexRequest struct {
+	// 范围标识
+	ScopeID string `json:"scopeId" validate:"required"`
+	// 授权根目录
+	Root string `json:"root,omitempty"`
+	// 仓库目录
+	Repository string `json:"repository,omitempty"`
+	// 相对路径
+	RelativePath string `json:"relativePath" validate:"required"`
+	// 预期分支
+	ExpectedBranch *string `json:"expectedBranch,omitempty"`
+	// 预期提交
+	ExpectedHead *string `json:"expectedHead,omitempty"`
+	// 预期暂存版本
+	ExpectedIndex *string `json:"expectedIndex,omitempty"`
+	// 确认丢弃的未暂存补丁版本
+	ExpectedWorktreeVersion string `json:"expectedWorktreeVersion,omitempty"`
+	// 比较时忽略空白
+	IgnoreWhitespace bool `json:"ignoreWhitespace,omitempty"`
+}
+
+// ChangeIndex 核对用户确认时的仓库快照后修改单文件。
+func (m *Manager) ChangeIndex(ctx context.Context, subject string, request GitIndexRequest, action string) error {
+	relative := request.RelativePath
 	if !validGitPath(relative) {
 		return status_error.WorkspacePathInvalid
 	}
 	m.mutations.Lock()
 	defer m.mutations.Unlock()
-	snapshot, err := m.Status(ctx, subject, id, root, selected)
+	snapshot, err := m.Status(ctx, subject, request.ScopeID, request.Root, request.Repository)
 	if err != nil {
 		return err
+	}
+	if request.ExpectedBranch != nil && *request.ExpectedBranch != snapshot.Branch ||
+		request.ExpectedHead != nil && *request.ExpectedHead != snapshot.Head ||
+		request.ExpectedIndex != nil && *request.ExpectedIndex != snapshot.Index {
+		return status_error.WorkspaceResourceConflict
 	}
 	var entry *GitEntry
 	for i := range snapshot.Entries {
@@ -442,11 +626,25 @@ func (m *Manager) ChangeIndex(ctx context.Context, subject, id, root, selected, 
 			return status_error.WorkspaceResourceConflict
 		}
 		args = []string{"reset", "-q", "--", ":(literal)" + relative}
+		if entry.XY[0] == 'R' && validGitPath(entry.oldPath) {
+			args = append(args, ":(literal)"+entry.oldPath)
+		}
 	case "discard":
-		if !unstaged || entry.XY == "??" {
+		if !unstaged || entry.XY == "??" || request.ExpectedWorktreeVersion == "" {
 			return status_error.WorkspaceResourceConflict
 		}
-		args = []string{"restore", "--worktree", "--", ":(literal)" + relative}
+		branch := snapshot.Branch
+		if branch == detachedGitBranch {
+			branch = "HEAD"
+		}
+		_, version, _, err := worktreeComparisonPatch(ctx, snapshot.Root, relative, branch, snapshot.Head, request.IgnoreWhitespace)
+		if err != nil {
+			return err
+		}
+		if version != request.ExpectedWorktreeVersion {
+			return status_error.WorkspaceResourceConflict
+		}
+		args = []string{"restore", "--worktree", "--no-recurse-submodules", "--", comparisonPathspec(relative)}
 	default:
 		return status_error.WorkspacePathInvalid
 	}
@@ -488,6 +686,8 @@ type GitBranch struct {
 	IsCurrent bool `json:"isCurrent"`
 	// IsRemote 标识远程跟踪分支。
 	IsRemote bool `json:"isRemote"`
+	// ref 是用于实际 Git 操作的完整引用。
+	ref string
 }
 
 // GitBranches 返回分支选择器所需的仓库信息。
@@ -498,6 +698,8 @@ type GitBranches struct {
 	GitRoot string `json:"gitRoot,omitempty"`
 	// Branches 是可选择分支。
 	Branches []GitBranch `json:"branches"`
+	// HasMore 表示还有匹配分支。
+	HasMore bool `json:"hasMore,omitempty"`
 }
 
 // CheckoutConflict 描述可能被分支切换覆盖的本地文件。
@@ -518,8 +720,27 @@ type CheckoutPreview struct {
 	Conflicts []CheckoutConflict `json:"conflicts"`
 }
 
-// Branches 列出授权仓库的本地与远程跟踪分支。
-func (m *Manager) Branches(ctx context.Context, subject, id, root, selected string) (GitBranches, error) {
+const (
+	gitBranchQueryMaxBytes = 256
+	gitBranchSearchLimit   = 100
+	gitBranchMaxLimit      = 200
+)
+
+// Branches 列出授权仓库的本地与远程跟踪分支，可按名称筛选与限制结果数量。
+func (m *Manager) Branches(ctx context.Context, subject, id, root, selected, query string, limit *int) (GitBranches, error) {
+	if len(query) > gitBranchQueryMaxBytes || strings.ContainsRune(query, '\x00') {
+		return GitBranches{}, status_error.BadRequest
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+	maxResults := 0
+	if limit != nil {
+		if *limit < 1 || *limit > gitBranchMaxLimit {
+			return GitBranches{}, status_error.BadRequest
+		}
+		maxResults = *limit
+	} else if query != "" {
+		maxResults = gitBranchSearchLimit
+	}
 	repo, _, err := m.repository(ctx, subject, id, root, selected)
 	if err != nil {
 		return GitBranches{}, err
@@ -537,7 +758,10 @@ func (m *Manager) Branches(ctx context.Context, subject, id, root, selected stri
 		if len(fields) != 3 || strings.HasSuffix(fields[0], "/HEAD") {
 			continue
 		}
-		result.Branches = append(result.Branches, GitBranch{Name: fields[0], IsCurrent: fields[2] == "*", IsRemote: strings.HasPrefix(fields[1], "refs/remotes/")})
+		if query != "" && !strings.Contains(strings.ToLower(fields[0]), query) {
+			continue
+		}
+		result.Branches = append(result.Branches, GitBranch{Name: fields[0], IsCurrent: fields[2] == "*", IsRemote: strings.HasPrefix(fields[1], "refs/remotes/"), ref: fields[1]})
 	}
 	sort.Slice(result.Branches, func(i, j int) bool {
 		a, b := result.Branches[i], result.Branches[j]
@@ -549,31 +773,34 @@ func (m *Manager) Branches(ctx context.Context, subject, id, root, selected stri
 		}
 		return a.Name < b.Name
 	})
+	if maxResults > 0 && len(result.Branches) > maxResults {
+		result.Branches = result.Branches[:maxResults]
+		result.HasMore = true
+	}
 	return result, nil
 }
 
 // PreviewCheckout 比较目标分支与本地变化，真正切换仍由 Git 再次拒绝覆盖竞态。
 func (m *Manager) PreviewCheckout(ctx context.Context, subject, id, root, selected, branch string) (CheckoutPreview, error) {
-	branches, err := m.Branches(ctx, subject, id, root, selected)
+	branches, err := m.Branches(ctx, subject, id, root, selected, "", nil)
 	if err != nil {
 		return CheckoutPreview{}, err
 	}
-	found := false
 	for _, item := range branches.Branches {
 		if item.Name == branch {
-			found = true
-			break
+			return m.previewCheckout(ctx, subject, id, root, branches.GitRoot, item.ref)
 		}
 	}
-	if !found {
-		return CheckoutPreview{}, status_error.WorkspacePathInvalid
-	}
+	return CheckoutPreview{}, status_error.WorkspacePathInvalid
+}
+
+func (m *Manager) previewCheckout(ctx context.Context, subject, id, root, repo, ref string) (CheckoutPreview, error) {
 	result := CheckoutPreview{CanCheckout: true, Conflicts: []CheckoutConflict{}}
-	snapshot, err := m.Status(ctx, subject, id, root, branches.GitRoot)
+	snapshot, err := m.Status(ctx, subject, id, root, repo)
 	if err != nil {
 		return CheckoutPreview{}, err
 	}
-	changed, err := gitCommand(ctx, branches.GitRoot, "diff", "--name-only", "-z", "HEAD", branch, "--")
+	changed, err := gitCommand(ctx, repo, "diff", "--name-only", "-z", "HEAD", ref, "--")
 	if err != nil {
 		return CheckoutPreview{}, err
 	}
@@ -581,7 +808,7 @@ func (m *Manager) PreviewCheckout(ctx context.Context, subject, id, root, select
 	for _, name := range strings.Split(changed, "\x00") {
 		paths[name] = true
 	}
-	targetFiles, err := gitCommand(ctx, branches.GitRoot, "ls-tree", "-r", "--name-only", "-z", branch)
+	targetFiles, err := gitCommand(ctx, repo, "ls-tree", "-r", "--name-only", "-z", ref)
 	if err != nil {
 		return CheckoutPreview{}, err
 	}
@@ -599,11 +826,18 @@ func (m *Manager) PreviewCheckout(ctx context.Context, subject, id, root, select
 	return result, nil
 }
 
-// Checkout 按显式用户选择切换分支，可先提交本地修改；不会强制覆盖工作树。
+// Checkout 安全切换分支；旧复合提交参数需要改用独立提交入口。
 func (m *Manager) Checkout(ctx context.Context, subject, id, root, selected, branch, message string) (string, error) {
+	if strings.TrimSpace(message) != "" {
+		return "", status_error.WorkspaceResourceConflict
+	}
 	m.mutations.Lock()
 	defer m.mutations.Unlock()
-	branches, err := m.Branches(ctx, subject, id, root, selected)
+	return m.checkout(ctx, subject, id, root, selected, branch)
+}
+
+func (m *Manager) checkout(ctx context.Context, subject, id, root, selected, branch string) (string, error) {
+	branches, err := m.Branches(ctx, subject, id, root, selected, "", nil)
 	if err != nil {
 		return "", err
 	}
@@ -617,50 +851,44 @@ func (m *Manager) Checkout(ctx context.Context, subject, id, root, selected, bra
 	if chosen == nil {
 		return "", status_error.WorkspacePathInvalid
 	}
-	message = strings.TrimSpace(message)
-	if message != "" {
-		if len(message) > 4096 {
-			return "", status_error.WorkspacePathInvalid
-		}
-		if _, err = gitCommand(ctx, branches.GitRoot, "add", "-A"); err != nil {
-			return "", err
-		}
-		if _, err = gitCommand(ctx, branches.GitRoot, "commit", "-m", message); err != nil {
-			return "", err
-		}
-	} else {
-		preview, err := m.PreviewCheckout(ctx, subject, id, root, selected, branch)
-		if err != nil {
-			return "", err
-		}
-		if !preview.CanCheckout {
-			return "", status_error.WorkspaceResourceConflict
-		}
+	preview, err := m.previewCheckout(ctx, subject, id, root, branches.GitRoot, chosen.ref)
+	if err != nil {
+		return "", err
 	}
-	args := []string{"switch", "--quiet"}
+	if !preview.CanCheckout {
+		return "", status_error.WorkspaceResourceConflict
+	}
+	args := []string{"switch", "--quiet", "--no-overwrite-ignore", "--no-recurse-submodules"}
 	if chosen.IsRemote {
-		local := strings.SplitN(branch, "/", 2)
-		if len(local) != 2 {
-			return "", status_error.WorkspacePathInvalid
+		remote, local, found := strings.Cut(strings.TrimPrefix(chosen.ref, "refs/remotes/"), "/")
+		if !found {
+			return "", status_error.WorkspaceGitTargetInvalid
 		}
 		exists := false
 		for _, item := range branches.Branches {
-			if !item.IsRemote && item.Name == local[1] {
+			if item.ref == "refs/heads/"+local {
 				exists = true
 				break
 			}
 		}
 		if exists {
-			args = append(args, local[1])
+			trackedRemote, trackedBranch, err := gitUpstreamDestination(ctx, branches.GitRoot, local)
+			if err != nil {
+				return "", err
+			}
+			if trackedRemote != remote || trackedBranch != local {
+				return "", status_error.WorkspaceResourceConflict
+			}
+			args = append(args, "--no-guess", "--", local)
 		} else {
-			args = append(args, "--track", branch)
+			args = append(args, "--track", "--", chosen.ref)
 		}
 	} else {
-		args = append(args, branch)
+		args = append(args, "--no-guess", "--", strings.TrimPrefix(chosen.ref, "refs/heads/"))
 	}
 	if _, err = gitCommand(ctx, branches.GitRoot, args...); err != nil {
 		return "", err
 	}
-	current, err := gitCommand(ctx, branches.GitRoot, "rev-parse", "--abbrev-ref", "HEAD")
-	return strings.TrimSpace(current), err
+	current, err := gitCommand(ctx, branches.GitRoot, "symbolic-ref", "HEAD")
+	return strings.TrimPrefix(strings.TrimSuffix(current, "\n"), "refs/heads/"), err
 }

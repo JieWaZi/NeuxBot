@@ -410,7 +410,6 @@ function ChatView({
     fast,
     contextWindow,
     model,
-    openedCodeReference,
     permissionLevel,
     query: workspaceQuery,
     reasoning,
@@ -1507,7 +1506,6 @@ function ChatView({
     selectedWakerId: selectedWakerID,
     supportedPermissions,
     updateExecutionSelection,
-    gitWorkspaceDirectories,
     workspaceDirectory,
     workspaceLabel,
   });
@@ -1800,7 +1798,6 @@ function ChatView({
           onAddCodeReference={addCodeReference}
           onDismissRightPanel={() => setChatRightPanel(undefined)}
           onOpenRightPanel={() => setChatRightPanel("workspace")}
-          openedCodeReference={openedCodeReference}
           gitRoots={gitWorkspaceDirectories}
           workspace={workspace}
           fileWorkspaceProps={fileWorkspaceProps}

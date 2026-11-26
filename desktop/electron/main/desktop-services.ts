@@ -15,6 +15,10 @@ import { BrowserManager } from "./browser-manager";
 import { BrowserWebviewPolicy } from "./browser-webview-policy";
 import { authorizeBrowserRoot } from "./browser-workspace-root";
 import * as files from "./workspace-files";
+import {
+  openWorkspaceFileTarget,
+  workspaceFileOpenTargets,
+} from "./workspace-file-editor";
 import type { CoreEventClient } from "../shared/core-event-client";
 import type { loadNotificationPreferences } from "./notification-preferences";
 import {
@@ -138,6 +142,11 @@ export function installDesktopServices(
       });
       return result.canceled ? [] : result.filePaths;
     },
+    list_workspace_file_open_targets: workspaceFileOpenTargets,
+    open_workspace_file_target: async (input) =>
+      openWorkspaceFileTarget(await core.connection(), input, (target) =>
+        shell.showItemInFolder(target),
+      ),
     open_workspace_file: async ({ root, relativePath }) => {
       const error = await shell.openPath(
         await files.workspacePath(root, relativePath),

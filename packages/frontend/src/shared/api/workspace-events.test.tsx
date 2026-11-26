@@ -18,6 +18,7 @@ const { open, observe, registry } = vi.hoisted(() => ({
     callbacks: new Map<string, (event: WorkspaceResourceChangeEvent) => void>(),
     signals: new Map<string, AbortSignal>(),
     recovery: undefined as (() => void) | undefined,
+    initialState: "ready" as WorkspaceResourceChangeEvent["state"],
   },
 }));
 vi.mock("@/shared/api/global-events", () => ({
@@ -40,6 +41,7 @@ beforeEach(() => {
   registry.callbacks.clear();
   registry.signals.clear();
   registry.recovery = undefined;
+  registry.initialState = "ready";
   observe.mockImplementation(
     async (
       _scope: string,
@@ -54,7 +56,7 @@ beforeEach(() => {
         subscriptionId: root,
         sequence: 0,
         resource: null,
-        state: "ready",
+        state: registry.initialState,
       });
       return async () => {};
     },
@@ -73,6 +75,136 @@ it("相同授权根共享 IPC 订阅，最后一个消费者退出才取消观�
   stopB();
   expect(registry.signals.get("/workspace")?.aborted).toBe(true);
 });
+
+it("首次挂载的 recovering 不报错，真正失败时仍提示并在 ready 后恢复", async () => {
+  registry.initialState = "recovering";
+  const client = new QueryClient();
+  function Consumer() {
+    const { error } = useWorkspaceQueryEvents(
+      "chat",
+      ["/workspace"],
+      ["scoped-git-comparison"],
+    );
+    return error ? <p role="alert">{error.message}</p> : null;
+  }
+  render(
+    <QueryClientProvider client={client}>
+      <Consumer />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(observe).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+  const notify = registry.callbacks.get("/workspace");
+  expect(notify).toBeDefined();
+  act(() =>
+    notify?.({
+      subscriptionId: "/workspace",
+      sequence: 1,
+      state: "failed",
+      resource: null,
+    }),
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent("实时更新暂不可用");
+  act(() =>
+    notify?.({
+      subscriptionId: "/workspace",
+      sequence: 2,
+      state: "ready",
+      resource: null,
+    }),
+  );
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it.each(["recovering", "failed"] as const)(
+  "观察运行中收到 %s 后重新读取当前快照",
+  async (state) => {
+    registry.initialState = "recovering";
+    const client = new QueryClient();
+    let contents = "before";
+    function Consumer() {
+      useWorkspaceQueryEvents("chat", ["/workspace"], ["workspace-file"]);
+      const { data } = useQuery({
+        queryKey: ["workspace-file", "chat", "/workspace", "note.txt"],
+        queryFn: async () => contents,
+      });
+      return <span>{data}</span>;
+    }
+    render(
+      <QueryClientProvider client={client}>
+        <Consumer />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("before");
+    await waitFor(() => expect(observe).toHaveBeenCalledTimes(1));
+    const notify = registry.callbacks.get("/workspace");
+    contents = "ready";
+    act(() =>
+      notify?.({
+        subscriptionId: "/workspace",
+        sequence: 1,
+        resource: null,
+        state: "ready",
+      }),
+    );
+    await screen.findByText("ready");
+    contents = "after";
+    act(() =>
+      notify?.({
+        subscriptionId: "/workspace",
+        sequence: 2,
+        resource: null,
+        state,
+      }),
+    );
+    expect(await screen.findByText("after")).toBeVisible();
+  },
+);
+
+it("同目录换文件与重新激活时，当前观察不会显示上一轮的错误", async () => {
+  const client = new QueryClient();
+  function Preview({ path, active }: { path: string; active: boolean }) {
+    const { error } = useWorkspaceQueryEvents(
+      "chat",
+      ["/workspace"],
+      ["workspace-file"],
+      active,
+      path,
+    );
+    return error ? <p role="alert">{error.message}</p> : null;
+  }
+  const preview = (path: string, active = true) => (
+    <QueryClientProvider client={client}>
+      <Preview path={path} active={active} />
+    </QueryClientProvider>
+  );
+  const failed: WorkspaceResourceChangeEvent = {
+    subscriptionId: "/workspace",
+    sequence: 1,
+    state: "failed",
+    resource: null,
+  };
+  const view = render(preview("a.ts"));
+  await waitFor(() => expect(observe).toHaveBeenCalledTimes(1));
+  const reportOldFile = registry.callbacks.get("/workspace");
+  act(() => reportOldFile?.(failed));
+  expect(screen.getByRole("alert")).toBeVisible();
+
+  registry.initialState = "recovering";
+  view.rerender(preview("b.ts"));
+  await waitFor(() => expect(observe).toHaveBeenCalledTimes(2));
+  act(() => reportOldFile?.(failed));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+  act(() => registry.callbacks.get("/workspace")?.(failed));
+  expect(screen.getByRole("alert")).toBeVisible();
+  view.rerender(preview("b.ts", false));
+  view.rerender(preview("b.ts"));
+  await waitFor(() => expect(observe).toHaveBeenCalledTimes(3));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
 it("变化只失效对应根，等待没有周期查询；失效可重试且隐藏释放观察", async () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -92,7 +224,7 @@ it("变化只失效对应根，等待没有周期查询；失效可重试且隐�
     return (
       <>
         <span>{events.error?.message}</span>
-        <button onClick={events.retry}>重连</button>
+        <button onClick={() => events.retry()}>重连</button>
       </>
     );
   }

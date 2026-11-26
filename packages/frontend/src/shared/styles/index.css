@@ -421,8 +421,19 @@
 .app-module-rail {
   padding-block: calc(var(--shell-titlebar-height) + 4px) 12px;
 }
+/* 动画中的宽度同时驱动两列布局、标题栏和透明窗口底板。 */
+@property --shell-sidebar-body-width {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
 .app-workspace-frame {
   --shell-window-edge: 4px;
+  --shell-sidebar-toolbar-end-inset: 4px;
+  --shell-sidebar-compact-width: calc(
+    var(--shell-sidebar-header-inset) + var(--shell-titlebar-history-width) +
+      2 * var(--spacing-control-md) + var(--shell-sidebar-toolbar-end-inset)
+  );
   padding-inline-end: calc(var(--shell-window-edge) + 1px);
   padding-block-end: calc(var(--shell-window-edge) + 1px);
 }
@@ -440,10 +451,10 @@
 .app-context-sidebar {
   position: relative;
 }
-.app-context-sidebar::after {
+.app-sidebar-body::after {
   position: absolute;
-  inset-block: var(--shell-titlebar-height) 0;
-  right: 0;
+  inset-block: 0;
+  inset-inline-end: 0;
   width: 1px;
   background: var(--shell-separator);
   content: "";
@@ -452,11 +463,12 @@
 .app-sidebar-topbar {
   position: relative;
   z-index: 2;
-  padding-inline: var(--shell-sidebar-header-inset, 12px) 4px;
-}
-/* 本产品 Shell：页级导航与伙伴侧栏共用正文分隔，全宽正文场景仍隐藏。 */
-.app-workspace-frame[data-sidebar-body-hidden] .app-context-sidebar::after {
-  display: none;
+  inline-size: max(
+    calc(var(--shell-sidebar-body-width) - 1px),
+    var(--shell-sidebar-toolbar-min-width)
+  );
+  padding-inline: var(--shell-sidebar-header-inset, 12px)
+    var(--shell-sidebar-toolbar-end-inset);
 }
 /* 正文自身裁切，顶栏、resizer、Dock overlay 与右下历史均保持在裁切层之外。 */
 .app-scene-body-clip {
@@ -470,11 +482,18 @@
 }
 [data-sidebar-entity-body],
 [data-sidebar-page-nav] {
+  inline-size: var(--shell-context-width);
   border-start-start-radius: calc(var(--radius-xl) - 1px);
   border-end-start-radius: calc(var(--radius-xl) - 1px);
 }
-.app-content-header[data-sidebar-offset] {
-  margin-inline-start: calc(var(--shell-sidebar-active-width) + 1px);
+.app-content-header {
+  margin-inline-start: max(
+    0px,
+    calc(
+      var(--shell-sidebar-toolbar-min-width) + 1px -
+        var(--shell-sidebar-body-width)
+    )
+  );
 }
 .app-workspace-frame .app-sidebar-topbar::after {
   position: absolute;

@@ -10,7 +10,7 @@ export const PopoverAnchor = PopoverPrimitive.Anchor;
 export const PopoverClose = PopoverPrimitive.Close;
 
 type PopoverContentProps = ComponentProps<typeof PopoverPrimitive.Content> & {
-  variant?: "default" | "navigation" | "summary" | "selection";
+  variant?: "default" | "navigation" | "selection";
   width?: "default" | "compact" | "wide" | "trigger";
 };
 
@@ -37,11 +37,7 @@ export function PopoverContent({
             ? "flex min-h-0 w-auto overflow-hidden rounded-2xl p-1"
             : cn(
                 "overflow-y-auto",
-                variant === "summary"
-                  ? "rounded-2xl p-5"
-                  : variant === "selection"
-                    ? "rounded-xl p-3"
-                    : "rounded-lg p-3",
+                variant === "selection" ? "rounded-xl p-3" : "rounded-lg p-3",
                 width === "trigger"
                   ? "w-(--radix-popover-trigger-width)"
                   : width === "wide"

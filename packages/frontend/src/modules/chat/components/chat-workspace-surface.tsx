@@ -99,13 +99,15 @@ type ChatWorkspaceSurfaceProps = {
   onAddCodeReference: (reference: ChatCodeReference) => void;
   onDismissRightPanel: () => void;
   onOpenRightPanel: () => void;
-  openedCodeReference?: ChatCodeReference;
   gitRoots?: readonly string[];
   renderTeamMembers?: (onMemberOpened: () => void) => ReactNode;
   showActivityIndicator?: boolean;
   taskBoard?: ReactNode;
   workspace: SceneWorkspace;
-  fileWorkspaceProps?: Omit<WorkbenchFileWorkspaceProps, "active" | "ownerKey">;
+  fileWorkspaceProps?: Omit<
+    WorkbenchFileWorkspaceProps,
+    "active" | "file" | "onSelectFile"
+  >;
   changesProps?: Omit<ScopedGitChangesProps, "active">;
 };
 
@@ -134,7 +136,6 @@ export function ChatWorkspaceSurface({
   onAddCodeReference,
   onDismissRightPanel,
   onOpenRightPanel,
-  openedCodeReference,
   gitRoots = [],
   renderTeamMembers,
   // showActivityIndicator = true,
@@ -148,6 +149,7 @@ export function ChatWorkspaceSurface({
   const routeActive = useRouteSceneActive();
   const sceneActive = active && routeActive;
   const { identity, snapshot } = adapter;
+  const gitScopeKey = JSON.stringify([identity.scopeKey, identity.chatId]);
   const { snapshot: workbench, dispatch } = useWorkbench(identity.scopeKey);
   const defaultChatHistory = useContext(ChatHistoryContentContext);
   const history = chatHistory === undefined ? defaultChatHistory : chatHistory;
@@ -182,6 +184,7 @@ export function ChatWorkspaceSurface({
   }, [historyTabId, historyVisible, sceneActive, showHistoryLauncher]);
   const rightPanelOpen = Boolean(activeRightPanel);
   const layoutRef = useRef<HTMLDivElement>(null);
+  const [summaryPane, setSummaryPane] = useState<HTMLDivElement | null>(null);
   const [layoutWidth, setLayoutWidth] = useState(0);
   useLayoutEffect(() => {
     if (!layoutRef.current) return;
@@ -210,7 +213,21 @@ export function ChatWorkspaceSurface({
   const dragCleanup = useRef<(() => void) | undefined>(undefined);
   const lastVisibleWorkbenchScope = useRef<string | null>(null);
   const [isResizing, setIsResizing] = useState(false);
-  const [selectedChangesRoot, setSelectedChangesRoot] = useState<string>();
+  const [changesTarget, setChangesTarget] = useState<{
+    scopeKey: string;
+    root: string;
+    repository?: string;
+  }>();
+  const selectedChanges =
+    changesTarget?.scopeKey === gitScopeKey ? changesTarget : undefined;
+  const [comparisonBases, setComparisonBases] = useState<{
+    scopeKey: string;
+    repositories: Record<string, string>;
+  }>();
+  const comparisonBaseByRepository =
+    comparisonBases?.scopeKey === gitScopeKey
+      ? comparisonBases.repositories
+      : undefined;
   useEffect(() => () => dragCleanup.current?.(), []);
 
   useLayoutEffect(() => {
@@ -357,41 +374,49 @@ export function ChatWorkspaceSurface({
     sceneActive,
   ]);
 
-  const summary = showSummary ? (
-    <ChatSummary
-      key={identity.scopeKey}
-      chatId={identity.chatId}
-      chatFiles={fileWorkspaceProps?.chatFiles ?? []}
-      gitRoots={gitRoots}
-      workspaceDirectory={identity.workspaceDirectory}
-      directoryLabel={directoryLabel}
-      renderTeamMembers={renderTeamMembers}
-      onOpenChanges={(root) => {
-        setSelectedChangesRoot(root);
-        dispatch({
-          type: "open-page",
-          kind: "changes",
-          title: t("workspace.changes"),
-        });
-        onOpenRightPanel();
-      }}
-      onOpenFile={(file) =>
-        adapter.thread.onOpenFile?.({
-          name: file.name,
-          path: file.path,
-        })
-      }
-      onViewAllFiles={() => {
-        fileWorkspaceProps?.onFileSourceChange?.("chat");
-        dispatch({
-          type: "open-page",
-          kind: "files",
-          title: t("workspace.files"),
-        });
-        onOpenRightPanel();
-      }}
-    />
-  ) : undefined;
+  const chatPaneOpen =
+    !mainContent || Boolean(canvasInput) || mainContent.chatExpanded !== false;
+  const summary =
+    showSummary && chatPaneOpen && summaryPane ? (
+      <ChatSummary
+        key={gitScopeKey}
+        pane={summaryPane}
+        chatId={identity.chatId}
+        chatFiles={fileWorkspaceProps?.chatFiles ?? []}
+        gitRoots={gitRoots}
+        gitBusy={snapshot.isRunning}
+        comparisonBaseByRepository={comparisonBaseByRepository}
+        workspaceDirectory={identity.workspaceDirectory}
+        directoryLabel={directoryLabel}
+        renderTeamMembers={renderTeamMembers}
+        onOpenChanges={(root, repository) => {
+          setChangesTarget({ scopeKey: gitScopeKey, root, repository });
+          dispatch({
+            type: "open-page",
+            kind: "changes",
+            title: t("workspace.diffTab"),
+          });
+          onOpenRightPanel();
+        }}
+        onOpenFile={(file) =>
+          adapter.thread.onOpenFile?.({
+            name: file.name,
+            path: file.path,
+            fileSource: file.source,
+          })
+        }
+        onViewAllFiles={() => {
+          fileWorkspaceProps?.onFileSourceChange?.("chat");
+          dispatch({
+            type: "open-page",
+            kind: "files",
+            fileSource: "chat",
+            title: t("workspace.files"),
+          });
+          onOpenRightPanel();
+        }}
+      />
+    ) : undefined;
 
   return (
     <WorkbenchOpeningProvider
@@ -485,11 +510,7 @@ export function ChatWorkspaceSurface({
           <WorkspaceDetailSplit
             side="left"
             sidebarOnly={!mainContent || Boolean(canvasInput)}
-            sidebarOpen={
-              !mainContent ||
-              Boolean(canvasInput) ||
-              mainContent.chatExpanded !== false
-            }
+            sidebarOpen={chatPaneOpen}
             defaultSidebarRatio={1 / 3}
             resizeLabel={mainContent?.resizeLabel ?? t("workspace.resizePanel")}
             main={
@@ -512,6 +533,7 @@ export function ChatWorkspaceSurface({
             }
             sidebar={
               <div
+                ref={showSummary ? setSummaryPane : undefined}
                 className={cn(
                   "relative h-full min-h-0 min-w-0",
                   canvasInput !== undefined &&
@@ -632,12 +654,15 @@ export function ChatWorkspaceSurface({
                 }
                 onDismissRightPanel();
               }}
-              onOpenFile={(file) =>
-                adapter.thread.onOpenFile?.({ ...file, reference: file })
+              onOpenFile={(file, sourceChatId) =>
+                adapter.thread.onOpenFile?.({
+                  ...file,
+                  reference: file,
+                  sourceChatId,
+                })
               }
               onOpenURL={adapter.thread.onOpenLink}
               taskBoard={taskBoard}
-              openedCodeReference={openedCodeReference}
               scopeKey={identity.scopeKey}
               sourceRoots={adapter.thread.linkAdditionalWorkingDirectories}
               parentChatId={identity.chatId}
@@ -646,7 +671,28 @@ export function ChatWorkspaceSurface({
               fileWorkspaceProps={fileWorkspaceProps}
               changesProps={
                 changesProps
-                  ? { ...changesProps, preferredRoot: selectedChangesRoot }
+                  ? {
+                      ...changesProps,
+                      rootPath: gitRoots[0] ?? changesProps.rootPath,
+                      sourceRoots:
+                        gitRoots.length > 0
+                          ? gitRoots.slice(1)
+                          : changesProps.sourceRoots,
+                      preferredRoot: selectedChanges?.root,
+                      preferredRepository: selectedChanges?.repository,
+                      comparisonBaseByRepository:
+                        comparisonBaseByRepository ?? {},
+                      onComparisonBaseChange: (repository, base) =>
+                        setComparisonBases((previous) => ({
+                          scopeKey: gitScopeKey,
+                          repositories: {
+                            ...(previous?.scopeKey === gitScopeKey
+                              ? previous.repositories
+                              : {}),
+                            [repository]: base,
+                          },
+                        })),
+                    }
                   : undefined
               }
               visible={workbenchVisible && sceneActive}

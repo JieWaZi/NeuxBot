@@ -1,4 +1,5 @@
 import { i18n } from "@/shared/i18n";
+import type { WorkspaceFileOpenRequest } from "@neuxbot/platform-contracts/workspace-file-editors";
 import type {
   CoreConnection,
   FileDropEvent,
@@ -12,9 +13,14 @@ import type {
   WorkspaceResourceWrite,
   WorkspaceResourceImport,
   WorkspaceResourceChangeEvent,
-  WorkspaceGitChanges,
   ScopedGitStatus,
   ScopedGitLogEntry,
+  WorkspaceGitAction,
+  WorkspaceGitActionResult,
+  WorkspaceGitComparison,
+  WorkspaceGitTarget,
+  WorkspaceGitIndexObservation,
+  WorkspaceGitDiscardObservation,
   WorkspaceGitBranches,
   WorkspaceGitCheckoutPreview,
   WorkspaceGitCheckoutResult,
@@ -44,10 +50,13 @@ export type {
   WorkspaceResourceWrite,
   WorkspaceResourceImport,
   WorkspaceResourceChangeEvent,
-  WorkspaceGitChange,
-  WorkspaceGitChanges,
   ScopedGitStatus,
   ScopedGitLogEntry,
+  WorkspaceGitAction,
+  WorkspaceGitActionResult,
+  WorkspaceGitComparison,
+  WorkspaceGitTarget,
+  WorkspaceGitIndexObservation,
   WorkspaceGitBranch,
   WorkspaceGitBranches,
   WorkspaceGitCheckoutConflict,
@@ -130,12 +139,14 @@ export async function searchWorkspaceFiles(
   query: string,
   limit = 200,
   scopePath?: string,
+  signal?: AbortSignal,
 ): Promise<WorkspaceFileEntry[]> {
   return requirePlatformService("workspace").search_workspace_files({
     root,
     query,
     limit,
     scopePath,
+    signal,
   });
 }
 
@@ -194,6 +205,7 @@ export async function searchWorkspaceResourceFiles(
   limit: number,
   scopePath: string,
   root?: string,
+  signal?: AbortSignal,
 ): Promise<WorkspaceFileEntry[]> {
   const scope = await openWorkspaceResourceScope(chatId);
   return requirePlatformService("workspace").search_workspace_resource_files({
@@ -202,6 +214,7 @@ export async function searchWorkspaceResourceFiles(
     limit,
     scopePath,
     root,
+    signal,
   });
 }
 
@@ -543,14 +556,8 @@ export async function deleteChatWorkspaceFile(
   });
 }
 
-export async function getWorkspaceGitChanges(
-  root: string,
-): Promise<WorkspaceGitChanges> {
-  return requirePlatformService("git").get_workspace_git_changes({ root });
-}
-
 export async function getScopedGitStatus(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository?: string,
 ): Promise<ScopedGitStatus> {
@@ -561,8 +568,36 @@ export async function getScopedGitStatus(
   });
 }
 
+export async function getScopedGitComparison(
+  chatId: string | undefined,
+  root: string,
+  repository: string,
+  base?: string,
+  path?: string,
+  ignoreWhitespace?: boolean,
+  previousPath?: string,
+  signal?: AbortSignal,
+): Promise<WorkspaceGitComparison> {
+  return requirePlatformService("git").scoped_git_comparison({
+    chatId,
+    root,
+    repository,
+    base,
+    path,
+    ignoreWhitespace,
+    previousPath,
+    signal,
+  });
+}
+
+export async function runWorkspaceGitAction(
+  action: WorkspaceGitAction,
+): Promise<WorkspaceGitActionResult> {
+  return requirePlatformService("git").workspace_git_action(action);
+}
+
 export async function getScopedGitDiff(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   relativePath: string,
@@ -578,11 +613,12 @@ export async function getScopedGitDiff(
 }
 
 export async function getScopedGitLog(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   count = 20,
   skip = 0,
+  base?: string,
 ): Promise<ScopedGitLogEntry[]> {
   return requirePlatformService("git").scoped_git_log({
     chatId,
@@ -590,6 +626,7 @@ export async function getScopedGitLog(
     repository,
     count,
     skip,
+    base,
   });
 }
 
@@ -610,7 +647,7 @@ export async function getScopedGitFileAtRevision(
 }
 
 export async function getScopedGitCommitDiff(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   hash: string,
@@ -624,30 +661,34 @@ export async function getScopedGitCommitDiff(
 }
 
 export async function stageScopedGitFile(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   relativePath: string,
+  observation?: WorkspaceGitIndexObservation,
 ): Promise<void> {
   await requirePlatformService("git").scoped_git_stage({
     chatId,
     root,
     repository,
     relativePath,
+    ...observation,
   });
 }
 
 export async function unstageScopedGitFile(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   relativePath: string,
+  observation?: WorkspaceGitIndexObservation,
 ): Promise<void> {
   await requirePlatformService("git").scoped_git_unstage({
     chatId,
     root,
     repository,
     relativePath,
+    ...observation,
   });
 }
 
@@ -666,32 +707,44 @@ export async function commitScopedGitFiles(
 }
 
 export async function discardScopedGitFile(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   relativePath: string,
+  observation: WorkspaceGitDiscardObservation,
 ): Promise<boolean> {
   return requirePlatformService("git").scoped_git_discard({
     chatId,
     root,
     repository,
     relativePath,
+    ...observation,
   });
 }
 
 export async function listWorkspaceGitBranches(
   root: string,
+  target?: Pick<WorkspaceGitTarget, "chatId" | "repository"> & {
+    query?: string;
+    limit?: number;
+    signal?: AbortSignal;
+  },
 ): Promise<WorkspaceGitBranches> {
-  return requirePlatformService("git").list_workspace_git_branches({ root });
+  return requirePlatformService("git").list_workspace_git_branches({
+    root,
+    ...target,
+  });
 }
 
 export async function previewWorkspaceGitCheckout(
   root: string,
   branch: string,
+  target?: Pick<WorkspaceGitTarget, "chatId" | "repository">,
 ): Promise<WorkspaceGitCheckoutPreview> {
   return requirePlatformService("git").preview_workspace_git_checkout({
     root,
     branch,
+    ...target,
   });
 }
 
@@ -723,6 +776,22 @@ export async function readWorkspaceDiff(
     root,
     relativePath,
   });
+}
+
+export async function listWorkspaceFileOpenTargets() {
+  const host = platform().host;
+  if (
+    !host.list_workspace_file_open_targets ||
+    !host.open_workspace_file_target
+  )
+    return [];
+  return host.list_workspace_file_open_targets();
+}
+
+export async function openWorkspaceFileTarget(input: WorkspaceFileOpenRequest) {
+  const open = platform().host.open_workspace_file_target;
+  if (!open) throw new Error(i18n.t("common:errors.capabilityUnsupported"));
+  return open(input);
 }
 
 export async function openWorkspaceFile(

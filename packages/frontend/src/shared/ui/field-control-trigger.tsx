@@ -10,6 +10,8 @@ export const fieldControlTriggerVariants = cva(
     variants: {
       appearance: {
         default: null,
+        toolbar:
+          "border-transparent bg-transparent hover:border-transparent hover:bg-action-quiet-hover",
         settings:
           "border-resource-border bg-resource-raised text-resource-secondary hover:border-resource-border-strong hover:bg-resource-hover",
       },

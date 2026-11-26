@@ -27,7 +27,7 @@ func (*SearchFiles) Path() string { return "/search" }
 
 // Output 使用有界遍历搜索冻结范围。
 func (g *SearchFiles) Output(ctx *gin.Context) (interface{}, error) {
-	matches, err := files.Search(ctx, middleware.AuthSubject(ctx), g.ScopeID, g.Root, g.Query, g.ScopePath, g.Limit)
+	matches, err := files.Search(ctx.Request.Context(), middleware.AuthSubject(ctx), g.ScopeID, g.Root, g.Query, g.ScopePath, g.Limit)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

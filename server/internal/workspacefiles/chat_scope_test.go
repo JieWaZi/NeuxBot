@@ -82,7 +82,7 @@ func TestChatScopesSeparatePrivateFilesWithSharedAgentDirectory(t *testing.T) {
 	}
 }
 
-func TestSpaceListingHidesInternalFilesWithoutFilteringRealWorkingDirectory(t *testing.T) {
+func TestSpaceListingHidesManagedFilesOnlyInSpace(t *testing.T) {
 	base := t.TempDir()
 	cwd, private, project := filepath.Join(base, "Agents", "waker"), filepath.Join(base, "Conversations", "chat"), filepath.Join(base, "project")
 	if err := os.MkdirAll(private, 0700); err != nil {
@@ -119,8 +119,8 @@ func TestSpaceListingHidesInternalFilesWithoutFilteringRealWorkingDirectory(t *t
 		t.Fatalf("space search exposed internals: %+v %v", matches, err)
 	}
 	entries, err = m.List("subject", scope.ID, project, "")
-	if err != nil || len(entries) != 7 {
-		t.Fatalf("real working directory was filtered: %+v %v", entries, err)
+	if err != nil || len(entries) != 3 || entries[0].Name != ".neuxbot-skills.json" || entries[1].Name != "report.txt" || entries[2].Name != "workspace-owner.json" {
+		t.Fatalf("project listing: %+v %v", entries, err)
 	}
 }
 

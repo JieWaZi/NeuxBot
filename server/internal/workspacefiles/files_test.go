@@ -2,8 +2,10 @@ package workspacefiles
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -84,6 +86,75 @@ func TestFrozenProjectLinkAndRetarget(t *testing.T) {
 	}
 	if _, _, err = manager.Read("desktop", scope.ID, "", "project/note.txt"); err != status_error.WorkspacePathInvalid {
 		t.Fatalf("retarget: %v", err)
+	}
+}
+
+func TestListReportsCanonicalPathForAuthorizedLink(t *testing.T) {
+	manager, scope, root := fixture(t)
+	if err := os.Symlink("note.txt", filepath.Join(root, "alias.txt")); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(outside, []byte("secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "outside.txt")); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := manager.List("web:one", scope.ID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result []map[string]any
+	if err = json.Unmarshal(encoded, &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 2 || result[0]["relativePath"] != "alias.txt" || result[0]["canonicalPath"] != filepath.Join(scope.Root, "note.txt") {
+		t.Fatalf("directory entries: %s", encoded)
+	}
+}
+
+func TestWorkspaceBrowsingOmitsDotDirectories(t *testing.T) {
+	manager, scope, root := fixture(t)
+	for _, name := range []string{".settings/note.txt", "src/.cache/note.txt", "src/note.txt", ".gitignore"} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for directory, want := range map[string][]string{
+		"":    {"src", ".gitignore", "note.txt"},
+		"src": {"src/note.txt"},
+	} {
+		entries, err := manager.List(scope.subject, scope.ID, "", directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var paths []string
+		for _, entry := range entries {
+			paths = append(paths, entry.RelativePath)
+		}
+		if !slices.Equal(paths, want) {
+			t.Errorf("list %q: got %v, want %v", directory, paths, want)
+		}
+	}
+	matches, err := manager.Search(t.Context(), scope.subject, scope.ID, "", "", "", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	for _, match := range matches {
+		paths = append(paths, match.RelativePath)
+	}
+	if want := []string{".gitignore", "note.txt", "src/note.txt"}; !slices.Equal(paths, want) {
+		t.Errorf("search: got %v, want %v", paths, want)
 	}
 }
 

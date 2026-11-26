@@ -53,6 +53,8 @@ export function createDesktopPlatform(bridge: DesktopBridge): Platform {
       ...createCoreUploads(() => adapter.getConnection()),
       open_external_url: bridge.open_external_url,
       reveal_local_path: bridge.reveal_local_path,
+      list_workspace_file_open_targets: bridge.list_workspace_file_open_targets,
+      open_workspace_file_target: bridge.open_workspace_file_target,
       get_notification_preferences: bridge.get_notification_preferences,
       set_notification_preferences: bridge.set_notification_preferences,
       send_test_notification: bridge.send_test_notification,

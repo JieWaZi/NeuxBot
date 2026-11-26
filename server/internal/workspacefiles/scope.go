@@ -213,7 +213,7 @@ func safeRelative(value string) bool {
 func accountPath(value string) bool {
 	parts := strings.Split(filepath.ToSlash(value), "/")
 	for i := 0; i+1 < len(parts); i++ {
-		if parts[i] == "runtime" && parts[i+1] == "accounts" {
+		if strings.EqualFold(parts[i], "runtime") && strings.EqualFold(parts[i+1], "accounts") {
 			return true
 		}
 	}

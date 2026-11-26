@@ -3879,6 +3879,58 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  WorkspaceGitHubCLIUnavailable: {
+    code: 50300007114,
+    en: [
+      {
+        text: "GitHub CLI was not found; install gh and try again",
+      },
+    ],
+    zh: [
+      {
+        text: "未找到 GitHub CLI，请安装 gh 后重试",
+      },
+    ],
+  },
+  WorkspaceGitHubRequestFailed: {
+    code: 50200007115,
+    en: [
+      {
+        text: "the GitHub request failed; check gh authentication, the remote, and branches",
+      },
+    ],
+    zh: [
+      {
+        text: "GitHub 请求失败，请检查 gh 登录、远端和分支后重试",
+      },
+    ],
+  },
+  WorkspaceGitHubUnsupported: {
+    code: 42200007113,
+    en: [
+      {
+        text: "the selected push remote does not point to a single GitHub repository",
+      },
+    ],
+    zh: [
+      {
+        text: "所选推送远端未指向唯一的 GitHub 仓库",
+      },
+    ],
+  },
+  WorkspaceGitTargetInvalid: {
+    code: 40000007112,
+    en: [
+      {
+        text: "the Git remote or branch is invalid; select it again",
+      },
+    ],
+    zh: [
+      {
+        text: "Git 远端或分支无效，请重新选择",
+      },
+    ],
+  },
   WorkspacePathInvalid: {
     code: 40000007102,
     en: [

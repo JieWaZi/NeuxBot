@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
+import { Dialog, DialogDrawerContent } from "./dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,7 +42,7 @@ it("主菜单与子菜单都按剩余视口高度限制，并在内部滚动", (
   }
 });
 
-it.each(["default", "summary", "navigation"] as const)(
+it.each(["default", "navigation"] as const)(
   "%s Popover 由共享层限制剩余高度，导航保留独立列表滚动",
   (variant) => {
     render(
@@ -56,6 +57,24 @@ it.each(["default", "summary", "navigation"] as const)(
     );
   },
 );
+
+it("窗格抽屉为边缘留白并在剩余空间内滚动", () => {
+  render(
+    <Dialog defaultOpen modal={false}>
+      <DialogDrawerContent container={document.body} title="摘要">
+        内容
+      </DialogDrawerContent>
+    </Dialog>,
+  );
+  expect(screen.getByRole("dialog", { name: "摘要" })).toHaveClass(
+    "top-2",
+    "right-2",
+    "max-h-[calc(100%-1rem)]",
+    "max-w-[calc(100%-1rem)]",
+    "overflow-y-auto",
+    "overscroll-contain",
+  );
+});
 
 it("Select 的固定高度上限仍受剩余视口约束", () => {
   render(

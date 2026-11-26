@@ -955,7 +955,7 @@ function AppShellContent({
         type="button"
         variant="ghost"
       >
-        <PanelRight />
+        <PanelRight aria-hidden="true" strokeWidth={1.5} />
       </Button>
     ) : null;
 

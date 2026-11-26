@@ -52,7 +52,11 @@ const tabSchema = z.object({
   canonicalPath: z.string().optional(),
   fileChatId: z.string().optional(),
   rootPath: z.string().optional(),
+  fileSource: z.enum(["project", "chat"]).optional(),
   fileMode: z.enum(["preview", "diff"]).optional(),
+  fileRange: z
+    .object({ startLine: z.int().positive(), endLine: z.int().positive() })
+    .optional(),
   executionDiff: z
     .object({ chatId: z.string(), messageId: z.string() })
     .optional(),
@@ -61,9 +65,6 @@ const tabSchema = z.object({
   parentChatId: z.string().optional(),
   createRequestId: z.string().optional(),
   terminalSessionId: z.string().optional(),
-  gitRepository: z.string().optional(),
-  gitStaged: z.boolean().optional(),
-  gitCommitHash: z.string().optional(),
 });
 const nodeSchema: z.ZodType<WorkbenchNode> = z.lazy(() =>
   z.union([
@@ -147,15 +148,24 @@ export function restoreWorkbenchState(
   )
     return undefined;
 
-  return projectWorkbench({
+  const restored = projectWorkbench({
     ...emptyWorkbenchState(),
     ...state,
     side: state.side ?? "right",
-    tabs: state.tabs.map((tab) => ({
-      ...tab,
-      occurrenceId: crypto.randomUUID(),
-    })),
+    tabs: state.tabs.flatMap(({ kind, ...tab }) =>
+      kind === "git-diff"
+        ? []
+        : [{ ...tab, kind, occurrenceId: crypto.randomUUID() }],
+    ),
   });
+  // 旧补丁页使用普通关闭规则修复分屏和选中项。
+  return state.tabs
+    .filter((tab) => tab.kind === "git-diff")
+    .reduce(
+      (layout, tab) =>
+        reduceWorkbench(layout, { type: "close", tabId: tab.id }),
+      restored,
+    );
 }
 
 function readState(scopeKey: string): WorkbenchState {
@@ -286,6 +296,9 @@ export function useWorkbench(scopeKey: string) {
   );
   return {
     snapshot,
+    getSnapshot,
+    // 异步关闭完成前沿用同一份内存标签身份，切换范围时仍可核对原标签。
+    retainScope: () => store.subscribe(scopeKey, () => {}),
     dispatch: (command: WorkbenchCommand) => store.dispatch(scopeKey, command),
     bindToChat: (chatId: string) => store.bindScope(scopeKey, `chat:${chatId}`),
   };

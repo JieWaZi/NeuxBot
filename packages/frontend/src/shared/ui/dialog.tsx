@@ -9,6 +9,32 @@ import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
 
+/** 从指定窗格的右边缘展开，位置随窗格布局更新。 */
+export function DialogDrawerContent({
+  children,
+  container,
+  title,
+}: {
+  children: ReactNode;
+  container: HTMLElement;
+  title: ReactNode;
+}) {
+  return (
+    <DialogPrimitive.Portal container={container}>
+      <DialogPrimitive.Content
+        data-motion="side-popup"
+        className="border-border-default bg-surface-raised shadow-menu absolute top-2 right-2 z-50 max-h-[calc(100%-1rem)] w-80 max-w-[calc(100%-1rem)] overflow-y-auto overscroll-contain rounded-2xl border p-5 outline-none"
+      >
+        <NativeOverlayPresence />
+        <DialogPrimitive.Title className="sr-only">
+          {title}
+        </DialogPrimitive.Title>
+        {children}
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Portal>
+  );
+}
+
 type DialogContentProps = Omit<
   ComponentProps<typeof DialogPrimitive.Content>,
   "title"
@@ -138,12 +164,14 @@ export function DialogContent({
 
 export function DialogFooter({
   className,
+  variant = "default",
   ...props
-}: ComponentProps<"footer">) {
+}: ComponentProps<"footer"> & { variant?: "default" | "compact" }) {
   return (
     <footer
       className={cn(
-        "border-border mt-auto flex min-h-16 shrink-0 items-center justify-end gap-2 border-t px-6 py-3",
+        "mt-auto flex shrink-0 items-center justify-end gap-2 px-6 py-3",
+        variant === "compact" ? "flex-wrap" : "border-border min-h-16 border-t",
         className,
       )}
       {...props}

@@ -40,6 +40,8 @@ type Entry struct {
 	Name string `json:"name"`
 	// RelativePath 是所属授权根下的路径。
 	RelativePath string `json:"relativePath"`
+	// 真实路径
+	CanonicalPath string `json:"canonicalPath,omitempty"`
 	// IsDirectory 表明条目是否为目录。
 	IsDirectory bool `json:"isDirectory"`
 	// Size 是文件字节数，目录省略。
@@ -148,7 +150,7 @@ func (m *Manager) Read(subject, id, root, relative string) (Resource, []byte, er
 	return readResource(allowed, target, relative)
 }
 
-// List 返回有界且排序稳定的目录内容，隐藏未获准的链接和账号配置。
+// List 返回文件树的有界、稳定排序条目，省略点目录和未获准的路径。
 func (m *Manager) List(subject, id, root, relative string) ([]Entry, error) {
 	allowed, target, err := m.resolve(subject, id, root, relative, false)
 	if err != nil {
@@ -189,10 +191,10 @@ func (m *Manager) List(subject, id, root, relative string) ([]Entry, error) {
 			continue
 		}
 		info, err := os.Stat(actual)
-		if err != nil {
+		if err != nil || (info.IsDir() && strings.HasPrefix(item.Name(), ".")) {
 			continue
 		}
-		result = append(result, Entry{Name: item.Name(), RelativePath: child, IsDirectory: info.IsDir(), Size: info.Size()})
+		result = append(result, Entry{Name: item.Name(), RelativePath: child, CanonicalPath: actual, IsDirectory: info.IsDir(), Size: info.Size()})
 	}
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].IsDirectory != result[j].IsDirectory {
@@ -236,7 +238,7 @@ func (m *Manager) Search(ctx context.Context, subject, id, root, query, scopePat
 		}
 		for _, entry := range entries {
 			if entry.IsDirectory {
-				if entry.Name != ".git" && entry.Name != "node_modules" {
+				if entry.Name != "node_modules" {
 					pending = append(pending, entry.RelativePath)
 				}
 				continue
