@@ -38,10 +38,22 @@ import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { ContentLoadingState } from "@/shared/ui/content-loading-state";
 import { toast } from "@/shared/ui/sonner";
 import { cn } from "@/shared/lib/cn";
-import type { ResolvedFileReference } from "@/shared/workspace/file-reference";
+import {
+  fileName,
+  resolveFileReference,
+  type ResolvedFileReference,
+} from "@/shared/workspace/file-reference";
+import {
+  matchesWorkspacePath,
+  workspacePathAtRoot,
+} from "../model/project-files-scope";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
 import { useWorkbench } from "./workbench-store";
-import { workbenchPaneWithTab, type WorkbenchTab } from "./workbench-model";
+import {
+  workbenchPaneById,
+  workbenchPaneWithTab,
+  type WorkbenchTab,
+} from "./workbench-model";
 import type { WorkbenchDropZone, WorkbenchPane } from "./workbench-pane";
 import {
   WorkbenchPaneCanvas,
@@ -72,9 +84,6 @@ const ChatTerminalPanel = lazy(async () => ({
 const SideChatWorkbenchView = lazy(async () => ({
   default: (await import("./side-chat-workbench-view")).SideChatWorkbenchView,
 }));
-const GitDiffWorkbenchView = lazy(async () => ({
-  default: (await import("./git-diff-workbench-view")).GitDiffWorkbenchView,
-}));
 
 export type WorkbenchContentTab = {
   contentId: string;
@@ -92,18 +101,20 @@ type RightWorkbenchProps = {
   animateLayout?: boolean;
   onAddCodeReference: (reference: ChatCodeReference) => void;
   onDismiss: () => void;
-  onOpenFile?: (file: ResolvedFileReference) => void;
+  onOpenFile?: (file: ResolvedFileReference, sourceChatId?: string) => void;
   onOpenURL?: (url: string) => unknown;
   taskBoard?: ReactNode;
   onEmpty: () => void;
-  openedCodeReference?: ChatCodeReference;
   scopeKey: string;
   sourceRoots?: readonly string[];
   parentChatId?: string;
   terminalWorkingDirectory?: string;
   workspaceDirectory: string;
-  fileWorkspaceProps?: Omit<WorkbenchFileWorkspaceProps, "active" | "ownerKey">;
-  changesProps?: Omit<ScopedGitChangesProps, "active">;
+  fileWorkspaceProps?: Omit<
+    WorkbenchFileWorkspaceProps,
+    "active" | "file" | "onSelectFile"
+  >;
+  changesProps?: Omit<ScopedGitChangesProps, "active" | "onOpenFile">;
   visible: boolean;
 };
 
@@ -118,7 +129,6 @@ export function RightWorkbench({
   onOpenURL,
   taskBoard,
   onEmpty,
-  openedCodeReference,
   scopeKey,
   sourceRoots,
   parentChatId,
@@ -157,10 +167,21 @@ export function RightWorkbench({
   const [pendingCloseTabId, setPendingCloseTabId] = useState("");
   const snapshotRef = useRef(snapshot);
   const scopeRef = useRef(scopeKey);
+  const visibleRef = useRef(visible);
+  const fileOpenRequest = useRef(0);
+  const fileScopeChatId = fileWorkspaceProps?.scopeChatId ?? parentChatId;
+  const gitScopeChatId = changesProps?.scopeChatId ?? parentChatId;
+  useLayoutEffect(
+    () => () => {
+      fileOpenRequest.current += 1;
+    },
+    [scopeKey, fileScopeChatId, gitScopeChatId],
+  );
   useLayoutEffect(() => {
     snapshotRef.current = snapshot;
     scopeRef.current = scopeKey;
-  }, [scopeKey, snapshot]);
+    visibleRef.current = visible;
+  }, [scopeKey, snapshot, visible]);
   const chromePanes = paneHeaderGeometry(snapshot.layout);
   const pendingCloseTab = snapshot.tabs.find(
     (tab) => tab.id === pendingCloseTabId,
@@ -202,12 +223,103 @@ export function RightWorkbench({
     finishClose(tab.id);
   };
   const openPage = (kind: "files" | "changes") => {
-    if (kind === "files") fileWorkspaceProps?.onFileSourceChange?.("project");
-    dispatch({
-      type: "open-page",
-      kind,
-      title: kind === "files" ? t("workspace.files") : t("workspace.changes"),
-    });
+    if (kind === "files") {
+      fileWorkspaceProps?.onFileSourceChange?.("project");
+      dispatch({
+        type: "open-page",
+        kind,
+        fileSource: "project",
+        title: t("workspace.files"),
+      });
+    } else {
+      dispatch({ type: "open-page", kind, title: t("workspace.diffTab") });
+    }
+  };
+  const openScopedFile = async (
+    origin: WorkbenchTab,
+    file: { name: string; path: string },
+    rootPath?: string,
+    replaceBrowser = false,
+  ) => {
+    if (!file.path) return;
+    const path = workspacePathAtRoot(rootPath, file.path) ?? file.path;
+    const chatId = origin.kind === "changes" ? gitScopeChatId : fileScopeChatId;
+    const request = ++fileOpenRequest.current;
+    const pending = () =>
+      request === fileOpenRequest.current &&
+      snapshotRef.current.tabs.some((tab) => tab.id === origin.id);
+    try {
+      const result = await resolveFileReference(
+        { kind: "file", path, raw: path },
+        {
+          chatId,
+          baseDirectory: rootPath ?? "",
+          workspaceRoot: rootPath ?? "",
+          sourceRoots: rootPath
+            ? (fileWorkspaceProps?.sourceRoots ?? sourceRoots ?? [])
+            : [],
+        },
+      );
+      if (!pending()) return;
+      if (result.status !== "resolved") {
+        toast.error(t("fileReference.unavailable"));
+        return;
+      }
+      const draftKey = `${scopeKey}:${origin.id}`;
+      const pane = workbenchPaneWithTab(snapshotRef.current.layout, origin.id);
+      const replaceFilesTabId =
+        replaceBrowser &&
+        pane?.activeTabId === origin.id &&
+        !workbenchDocumentBuffers.isDirty(draftKey) &&
+        !workbenchDocumentBuffers.hasDirtyPrefix(`${draftKey}:file:`)
+          ? origin.id
+          : undefined;
+      if (replaceFilesTabId) {
+        workbenchDocumentBuffers.discard(draftKey);
+        workbenchDocumentBuffers.discardPrefix(`${draftKey}:file:`);
+      }
+      const focus = document.activeElement;
+      const focusFromOrigin = document
+        .getElementById(`workbench-panel-${origin.id}`)
+        ?.contains(focus);
+      dispatch({
+        type: "open-file",
+        path: result.file.path,
+        rootPath: result.file.rootPath,
+        canonicalPath: result.file.canonicalPath,
+        fileChatId: chatId,
+        title: file.name || result.file.name,
+        replaceFilesTabId,
+        paneId: pane?.id,
+      });
+      if (focusFromOrigin)
+        requestAnimationFrame(() => {
+          if (
+            !visibleRef.current ||
+            request !== fileOpenRequest.current ||
+            (document.activeElement !== focus &&
+              document.activeElement !== document.body)
+          )
+            return;
+          const { layout, focusedPaneId, tabs } = snapshotRef.current;
+          const targetId = workbenchPaneById(
+            layout,
+            focusedPaneId,
+          )?.activeTabId;
+          if (
+            targetId !== origin.id &&
+            tabs.some(
+              (tab) =>
+                tab.id === targetId &&
+                tab.kind === "file" &&
+                tab.canonicalPath === result.file.canonicalPath,
+            )
+          )
+            document.getElementById(`workbench-tab-${targetId}`)?.focus();
+        });
+    } catch {
+      if (pending()) toast.error(t("fileReference.unavailable"));
+    }
   };
   const openBrowser = (paneId: string) =>
     dispatch({
@@ -309,7 +421,7 @@ export function RightWorkbench({
             {changesProps ? (
               <DropdownMenuItem onSelect={() => openPage("changes")}>
                 <FileDiff />
-                {t("workspace.changes")}
+                {t("workspace.diffTab")}
               </DropdownMenuItem>
             ) : null}
             {parentChatId ? (
@@ -423,7 +535,8 @@ export function RightWorkbench({
         ? contentTab.content(active && visible, { scopeKey })
         : contentTab.content;
     }
-    if (tab.kind === "files")
+    if (tab.kind === "files") {
+      const fileSource = tab.fileSource ?? fileWorkspaceProps?.fileSource;
       return fileWorkspaceProps ? (
         <Suspense
           fallback={
@@ -434,13 +547,17 @@ export function RightWorkbench({
           }
         >
           <WorkbenchFileWorkspace
-            key={fileWorkspaceProps.fileSource}
+            key={fileSource}
             {...fileWorkspaceProps}
+            fileSource={fileSource ?? "project"}
             active={active && visible}
-            ownerKey={`${scopeKey}:${tab.id}`}
+            onSelectFile={(file, root) =>
+              void openScopedFile(tab, file, root, fileSource === "project")
+            }
           />
         </Suspense>
       ) : null;
+    }
     if (tab.kind === "changes")
       return changesProps ? (
         <Suspense
@@ -452,9 +569,17 @@ export function RightWorkbench({
           }
         >
           <ScopedGitChanges
-            key={changesProps.preferredRoot}
+            key={JSON.stringify([
+              scopeKey,
+              changesProps.preferredRoot,
+              changesProps.preferredRepository,
+              tab.navigationRevision,
+            ])}
             {...changesProps}
             active={active && visible}
+            onOpenFile={(root, path) =>
+              void openScopedFile(tab, { name: fileName(path), path }, root)
+            }
           />
         </Suspense>
       ) : null;
@@ -508,7 +633,48 @@ export function RightWorkbench({
           />
         </Suspense>
       );
-    if (tab.kind === "file" && tab.path && tab.rootPath)
+    if (tab.kind === "file" && tab.path && tab.rootPath) {
+      const { path, rootPath } = tab;
+      const chatId = tab.fileChatId ?? fileScopeChatId;
+      const canonicalPath =
+        tab.canonicalPath ?? workspacePathAtRoot(rootPath, path) ?? path;
+      const isProjectFile =
+        tab.fileMode !== "diff" &&
+        !tab.executionDiff &&
+        fileWorkspaceProps &&
+        [
+          fileWorkspaceProps.rootPath,
+          ...(fileWorkspaceProps.sourceRoots ?? []),
+        ].some((root) => matchesWorkspacePath(canonicalPath, root, true));
+      const renderFile = (toolbarTarget?: HTMLDivElement | null) => (
+        <WorkspaceFileViewer
+          active={active && visible}
+          highlightLines={tab.fileRange}
+          onAddCodeReference={onAddCodeReference}
+          onOpenFile={onOpenFile && ((file) => onOpenFile(file, chatId))}
+          onOpenURL={onOpenURL}
+          path={path}
+          rootPath={rootPath}
+          fileReference={
+            tab.canonicalPath
+              ? {
+                  path,
+                  rootPath,
+                  canonicalPath,
+                  name: tab.title,
+                  displayPath: path,
+                }
+              : undefined
+          }
+          draftKey={`${scopeKey}:${tab.id}`}
+          scopeChatId={chatId}
+          sourceRoots={fileWorkspaceProps?.sourceRoots ?? sourceRoots}
+          mode={tab.fileMode}
+          executionDiff={tab.executionDiff}
+          toolbarTarget={toolbarTarget}
+          showLineWrap={isProjectFile}
+        />
+      );
       return (
         <Suspense
           fallback={
@@ -518,31 +684,27 @@ export function RightWorkbench({
             />
           }
         >
-          <WorkspaceFileViewer
-            active={active && visible}
-            highlightLines={
-              openedCodeReference?.path === tab.path &&
-              openedCodeReference.startLine !== undefined &&
-              openedCodeReference.endLine !== undefined
-                ? {
-                    startLine: openedCodeReference.startLine,
-                    endLine: openedCodeReference.endLine,
-                  }
-                : undefined
-            }
-            onAddCodeReference={onAddCodeReference}
-            onOpenFile={onOpenFile}
-            onOpenURL={onOpenURL}
-            path={tab.path}
-            rootPath={tab.rootPath}
-            draftKey={`${scopeKey}:${tab.id}`}
-            scopeChatId={tab.fileChatId ?? parentChatId}
-            sourceRoots={sourceRoots}
-            mode={tab.fileMode}
-            executionDiff={tab.executionDiff}
-          />
+          {isProjectFile ? (
+            <WorkbenchFileWorkspace
+              {...fileWorkspaceProps}
+              active={active && visible}
+              file={{
+                path,
+                canonicalPath,
+                navigationRevision: tab.navigationRevision,
+                render: renderFile,
+              }}
+              fileSource="project"
+              onSelectFile={(file, root) =>
+                void openScopedFile(tab, file, root)
+              }
+            />
+          ) : (
+            renderFile()
+          )}
         </Suspense>
       );
+    }
     if (tab.kind === "sidechat")
       return (
         <Suspense
@@ -560,19 +722,6 @@ export function RightWorkbench({
               dispatch({ type: "bind-sidechat", tabId: tab.id, chatId })
             }
           />
-        </Suspense>
-      );
-    if (tab.kind === "git-diff")
-      return (
-        <Suspense
-          fallback={
-            <ContentLoadingState
-              label={t("common:pageLoading")}
-              className="h-full w-full"
-            />
-          }
-        >
-          <GitDiffWorkbenchView chatId={parentChatId} tab={tab} />
         </Suspense>
       );
     return null;

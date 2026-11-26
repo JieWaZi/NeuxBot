@@ -50,6 +50,8 @@ const submissionStopLifetime = time.Minute
 // reservation，再提交消息和执行事实；提交失败时释放 reservation，提交成功后由
 // launch 保证后台流程退出时释放。
 type executionRegistry struct {
+	// worktreeChange 串行化短时切换与新回合占位，避免从未核验的分支开始执行。
+	worktreeChange sync.Mutex
 	// mutex 保护生命周期状态和活跃执行集合。
 	mutex sync.Mutex
 	// active 按对话标识保存当前唯一活跃执行。
@@ -112,6 +114,8 @@ func (r *executionRegistry) reserve(
 	executionID string,
 	submissionID string,
 ) (context.Context, error) {
+	r.worktreeChange.Lock()
+	defer r.worktreeChange.Unlock()
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	if !r.started {

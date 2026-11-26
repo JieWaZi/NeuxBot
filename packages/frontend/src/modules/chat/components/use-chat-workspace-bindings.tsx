@@ -1,7 +1,7 @@
 import { i18n } from "@/shared/i18n";
 import { useWorkspaceQueryEvents } from "@/shared/api/workspace-events";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 
 import { useTranslation } from "react-i18next";
 import { toast } from "@/shared/ui/sonner";
@@ -13,7 +13,6 @@ import {
   fileName,
   parseReference,
   resolveFileReference,
-  type ResolvedFileReference,
 } from "@/shared/workspace/file-reference";
 
 import { workspaceFilesWithGenerated } from "../model/chat-workspace-files";
@@ -69,7 +68,10 @@ export function useChatWorkspaceBindings({
     activeChatId &&
     workspaceDirectory &&
     workspacePanelOpen &&
-    fileSource === "chat",
+    workbench.tabs.some(
+      (tab) =>
+        tab.kind === "files" && (tab.fileSource ?? fileSource) === "chat",
+    ),
   );
   const chatFilesQuery = useQuery({
     queryKey: ["chat-workspace-files", activeChatId, workspaceDirectory],
@@ -116,20 +118,21 @@ export function useChatWorkspaceBindings({
     },
     [activeChatId, chatFilesQuery],
   );
-  useEffect(() => {
+  useLayoutEffect(() => {
     openRequest.current += 1;
     return () => {
       openRequest.current += 1;
     };
-  }, [workspaceScopeKey]);
+  }, [workspaceScopeKey, activeChatId]);
   const openWorkspaceFile = useCallback(
     (
       file: ChatFileOpenRequest & {
         mode?: "preview" | "diff";
         executionDiff?: { chatId: string; messageId: string };
         layout?: "tab" | "split";
+        line?: number;
+        endLine?: number;
       },
-      onResolved?: (reference: ResolvedFileReference) => void,
     ) => {
       const rootPath = file.rootPath ?? workspaceDirectory;
       const request = ++openRequest.current;
@@ -147,10 +150,11 @@ export function useChatWorkspaceBindings({
       }
       const candidate = parseReference(file.path, "path");
       if (candidate?.kind !== "file") return;
+      const fileChatId = file.sourceChatId ?? activeChatId;
       const result = file.reference
         ? Promise.resolve({ status: "resolved" as const, file: file.reference })
         : resolveFileReference(candidate, {
-            chatId: file.sourceChatId ?? activeChatId,
+            chatId: fileChatId,
             baseDirectory: rootPath,
             workspaceRoot: rootPath,
             sourceRoots: additionalWorkingDirectories ?? [],
@@ -163,7 +167,20 @@ export function useChatWorkspaceBindings({
             toast.error(t(`fileReference.${result.status}`));
             return;
           }
-          onResolved?.(result.file);
+          const startLine = file.line ?? result.file.line;
+          const endLine = file.endLine ?? result.file.endLine;
+          const fileRange =
+            startLine !== undefined &&
+            Number.isSafeInteger(startLine) &&
+            startLine > 0
+              ? {
+                  startLine,
+                  endLine:
+                    endLine !== undefined && Number.isSafeInteger(endLine)
+                      ? Math.max(startLine, endLine)
+                      : startLine,
+                }
+              : undefined;
           dispatchWorkbench({
             type: "open-file",
             path: result.file.path,
@@ -171,7 +188,8 @@ export function useChatWorkspaceBindings({
             rootPath: result.file.rootPath,
             title: file.name || fileName(result.file.canonicalPath),
             mode: file.mode,
-            fileChatId: file.sourceChatId,
+            fileRange,
+            fileChatId,
           });
           onOpenWorkbench?.();
         })
@@ -240,24 +258,19 @@ export function useChatWorkspaceBindings({
   const openCodeReference = useCallback(
     (reference: ChatCodeReference) => {
       if (!reference.path) return;
-      openWorkspaceFile(
-        {
-          name: fileName(reference.path),
-          path: reference.path,
-          mode: "preview",
-        },
-        (file) => {
-          updateViewState({
-            openedCodeReference: { ...reference, path: file.canonicalPath },
-          });
-        },
-      );
+      openWorkspaceFile({
+        name: fileName(reference.path),
+        path: reference.path,
+        mode: "preview",
+        line: reference.startLine,
+        endLine: reference.endLine,
+      });
     },
-    [openWorkspaceFile, updateViewState],
+    [openWorkspaceFile],
   );
   const fileWorkspaceProps: Omit<
     WorkbenchFileWorkspaceProps,
-    "active" | "ownerKey"
+    "active" | "file" | "onSelectFile"
   > = {
     rootPath: workspaceDirectory,
     scopeChatId: activeChatId,
@@ -279,15 +292,6 @@ export function useChatWorkspaceBindings({
     onFileSourceChange: (source) => updateViewState({ fileSource: source }),
     onDownloadChatFile: downloadChatFile,
     onDeleteChatFile: deleteChatFile,
-    onOpenFileReference: (file) =>
-      openWorkspaceFile({
-        name: fileName(file.canonicalPath),
-        path: file.path,
-        rootPath: file.rootPath,
-        reference: file,
-      }),
-    onOpenURL: openBrowserLink,
-    onAddCodeReference: addCodeReference,
     isPathDirty: (path, file, affectedRoot) =>
       workbench.tabs.some(
         (tab) =>
@@ -333,7 +337,9 @@ export function useChatWorkspaceBindings({
     onQueryChange: (nextQuery) => updateViewState({ query: nextQuery }),
     rootPath: workspaceDirectory,
     scopeChatId: activeChatId,
-    sourceRoots: additionalWorkingDirectories,
+    sourceRoots: activeChatId
+      ? additionalWorkingDirectories
+      : (draftWorkingDirectories ?? additionalWorkingDirectories),
   };
 
   return {

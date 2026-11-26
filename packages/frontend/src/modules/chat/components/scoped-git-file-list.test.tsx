@@ -5,43 +5,41 @@ import { expect, it, vi } from "vitest";
 import "@/shared/i18n";
 import { ScopedGitFileList } from "./scoped-git-file-list";
 
-it("文件选择覆盖整行，暂存与丢弃操作不会同时选中文件", async () => {
+it("暂存和丢弃独立于展开补丁与打开普通文件", async () => {
   const user = userEvent.setup();
-  const onSelect = vi.fn();
-  const onAction = vi.fn();
+  const onOpenFile = vi.fn();
+  const onToggle = vi.fn();
+  const onStage = vi.fn();
   const onDiscard = vi.fn();
   render(
     <ScopedGitFileList
-      title="工作区"
-      entries={[
-        {
-          path: "src/main.ts",
-          xy: " M",
-          stagedAddedLines: 0,
-          stagedDeletedLines: 0,
-          unstagedAddedLines: 44,
-          unstagedDeletedLines: 2,
-        },
-      ]}
-      staged={false}
+      group={{
+        id: ":unstaged",
+        title: "工作区",
+        files: [
+          { path: "src/main.ts", status: "M", addedLines: 44, deletedLines: 2 },
+        ],
+      }}
       busy={false}
-      onSelect={onSelect}
-      onAction={onAction}
+      expanded={() => false}
+      onOpenFile={onOpenFile}
+      onToggle={onToggle}
+      onStage={onStage}
       onDiscard={onDiscard}
+      renderPatch={() => null}
     />,
   );
-  const row = screen.getByRole("button", { name: /^src\/main.ts/ });
-  expect(row).toHaveClass("absolute", "inset-0");
-  await user.click(row);
-  expect(onSelect).toHaveBeenCalledExactlyOnceWith({
-    path: "src/main.ts",
-    staged: false,
-  });
   await user.click(screen.getByRole("button", { name: "暂存 src/main.ts" }));
   await user.click(
     screen.getByRole("button", { name: "丢弃 src/main.ts 的未暂存改动" }),
   );
-  expect(onAction).toHaveBeenCalledExactlyOnceWith("src/main.ts");
+  expect(onStage).toHaveBeenCalledExactlyOnceWith("src/main.ts");
   expect(onDiscard).toHaveBeenCalledExactlyOnceWith("src/main.ts");
-  expect(onSelect).toHaveBeenCalledTimes(1);
+  expect(onOpenFile).not.toHaveBeenCalled();
+  expect(onToggle).not.toHaveBeenCalled();
+
+  await user.click(screen.getByRole("button", { name: "展开 src/main.ts" }));
+  expect(onToggle).toHaveBeenCalledTimes(1);
+  await user.click(screen.getByRole("button", { name: "src/main.ts" }));
+  expect(onOpenFile).toHaveBeenCalledExactlyOnceWith("src/main.ts");
 });

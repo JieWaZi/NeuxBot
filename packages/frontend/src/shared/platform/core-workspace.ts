@@ -10,7 +10,6 @@ import type {
   WorkspaceResourceRead,
   WorkspaceResourceChangeEvent,
   WorkspaceFileContent,
-  WorkspaceGitChanges,
   FileReferenceResolution,
 } from "@neuxbot/platform-contracts/resources";
 import * as api from "@/shared/api/generated/sdk.gen";
@@ -65,6 +64,17 @@ const chatFilesSchema = z.object({
 const gitStatusSchema = z.object({
   isRepo: z.boolean(),
   branch: z.string().optional(),
+  head: z.string().optional(),
+  index: z.string().optional(),
+  upstream: z.string().optional(),
+  remote: z.string().optional(),
+  remotes: z.array(z.string()).optional(),
+  github: z.boolean().optional(),
+  defaultBranch: z.string().optional(),
+  ahead: z.number().optional(),
+  aheadOfDefault: z.number().optional(),
+  behind: z.number().optional(),
+  truncated: z.boolean().optional(),
   root: z.string().optional(),
   repositories: z
     .string()
@@ -85,6 +95,36 @@ const gitStatusSchema = z.object({
     )
     .nullable()
     .transform((value) => value ?? []),
+});
+const gitComparisonSchema = z.object({
+  root: z.string(),
+  branch: z.string(),
+  baseRef: z.string().optional(),
+  entries: z
+    .array(
+      z.object({
+        path: z.string(),
+        oldPath: z.string().optional(),
+        status: z.string(),
+        addedLines: z.number(),
+        deletedLines: z.number(),
+        lineCountUnavailable: z.boolean().optional(),
+      }),
+    )
+    .nullable()
+    .transform((value) => value ?? []),
+  content: z.string().optional(),
+  truncated: z.boolean().optional(),
+});
+const gitActionSchema = z.object({
+  branch: z.string().optional(),
+  base: z.string().optional(),
+  commit: z.string().optional(),
+  pushed: z.boolean().optional(),
+  prUrl: z.string().optional(),
+  failedStep: z.string().optional(),
+  error: z.string().optional(),
+  errorMessage: z.string().optional(),
 });
 const gitLogSchema = z
   .array(
@@ -591,16 +631,47 @@ export function createCoreWorkspaceServices(
     },
   };
   async function gitArgs(args: {
-    chatId: string;
+    chatId?: string;
     root: string;
     repository?: string;
   }) {
     const { chatId, ...rest } = args;
-    return { ...rest, scopeId: (await chatScope(chatId)).id };
+    const current = chatId
+      ? await chatScope(chatId)
+      : await draftScope(args.root);
+    return { ...rest, scopeId: current.id };
   }
   const git: GitService = {
     async scoped_git_status(args) {
       return readGitStatus(await gitArgs(args));
+    },
+    async scoped_git_comparison({
+      chatId,
+      root,
+      repository,
+      base,
+      path,
+      ignoreWhitespace,
+    }) {
+      return readGit(
+        ["comparison", repository || root, base, path, ignoreWhitespace],
+        async () => {
+          const query = await gitArgs({ chatId, root, repository });
+          const { data } = await api.gitComparison({
+            query: { ...query, base, path, ignoreWhitespace },
+            throwOnError: true,
+          });
+          return gitComparisonSchema.parse(data);
+        },
+      );
+    },
+    async workspace_git_action({ chatId, root, repository, ...action }) {
+      const target = await gitArgs({ chatId, root, repository });
+      const { data } = await api.gitAction({
+        body: { ...target, ...action },
+        throwOnError: true,
+      });
+      return gitActionSchema.parse(data);
     },
     async scoped_git_diff(args) {
       return readGit(
@@ -616,7 +687,7 @@ export function createCoreWorkspaceServices(
     },
     async scoped_git_log(args) {
       return readGit(
-        ["log", args.repository || args.root, args.count, args.skip],
+        ["log", args.repository || args.root, args.count, args.skip, args.base],
         async () => {
           const { data } = await api.gitLog({
             query: { ...args, ...(await gitArgs(args)) },
@@ -696,45 +767,18 @@ export function createCoreWorkspaceServices(
       });
       return true;
     },
-    async get_workspace_git_changes({ root }): Promise<WorkspaceGitChanges> {
-      const current = await draftScope(root);
-      const data = await readGitStatus({ scopeId: current.id, root });
-      const files = (data.entries ?? []).map((entry) => ({
-        path: entry.path,
-        name: basename(entry.path),
-        status: (entry.xy === "??"
-          ? "untracked"
-          : entry.xy.includes("D")
-            ? "deleted"
-            : entry.xy.includes("A")
-              ? "added"
-              : "modified") as "untracked" | "deleted" | "added" | "modified",
-        addedLines: entry.stagedAddedLines + entry.unstagedAddedLines,
-        deletedLines: entry.stagedDeletedLines + entry.unstagedDeletedLines,
-        gitRoot: data.root ?? root,
-      }));
-      return {
-        isGitRepo: data.isRepo,
-        branch: data.branch,
-        files,
-        totalAddedLines: files.reduce((n, f) => n + f.addedLines, 0),
-        totalDeletedLines: files.reduce((n, f) => n + f.deletedLines, 0),
-      };
-    },
-    async list_workspace_git_branches({ root }) {
-      return readGit(["branches", root], async () => {
-        const current = await draftScope(root);
+    async list_workspace_git_branches(args) {
+      return readGit(["branches", args.repository || args.root], async () => {
         const { data } = await api.gitBranches({
-          query: { scopeId: current.id, root },
+          query: await gitArgs(args),
           throwOnError: true,
         });
         return branchesSchema.parse(data);
       });
     },
-    async preview_workspace_git_checkout({ root, branch }) {
-      const current = await draftScope(root);
+    async preview_workspace_git_checkout({ branch, ...args }) {
       const { data } = await api.gitCheckoutPreview({
-        query: { scopeId: current.id, root, branch },
+        query: { ...(await gitArgs(args)), branch },
         throwOnError: true,
       });
       return checkoutPreviewSchema.parse(data);

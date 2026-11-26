@@ -12,16 +12,11 @@ import type {
   GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption as RuntimeModelOption,
   GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption as RuntimeReasoningOption,
 } from "@/shared/api/generated/types.gen";
-import {
-  hasPlatformService,
-  listWorkspaceGitRepositories,
-} from "@/shared/platform";
 import type { PermissionLevel } from "@/shared/lib/runtime-permissions";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { WorkspaceScopePicker } from "@/shared/ui/workspace-scope-picker";
 import { OverflowText } from "@/shared/ui/overflow-text";
-import { ChatComposerBranchSelector } from "./chat-composer-branch-selector";
 import { ExecutionPicker } from "@/shared/ui/execution-picker";
 import { ChatEffortEffects } from "./chat-effort-effects";
 import { isMaximumReasoning } from "@/shared/lib/runtime-reasoning";
@@ -81,7 +76,6 @@ type ChatComposerControlsProps = {
   supportedPermissions: ReadonlySet<PermissionLevel>;
   updateExecutionSelection: (patch: ChatExecutionSelectionPatch) => void;
   /** Git 分支查询目录；已有对话时优先用源目录而非受管工作区。 */
-  gitWorkspaceDirectories?: readonly string[];
   workspaceDirectory: string;
   workspaceLabel: string;
 };
@@ -129,7 +123,6 @@ export function useChatComposerControls({
   selectedWakerId,
   supportedPermissions,
   updateExecutionSelection,
-  gitWorkspaceDirectories,
   workspaceDirectory,
   workspaceLabel,
 }: ChatComposerControlsProps) {
@@ -155,38 +148,6 @@ export function useChatComposerControls({
           reasoningOptions: [],
         }))
       : (selectedRuntime?.models ?? []));
-  const gitDirectories = (
-    gitWorkspaceDirectories !== undefined
-      ? gitWorkspaceDirectories
-      : workspaceDirectory
-        ? [workspaceDirectory]
-        : []
-  ).filter(Boolean);
-  const gitRepositoriesQuery = useQuery({
-    queryKey: ["workspace-git-repositories", gitDirectories],
-    queryFn: () => listWorkspaceGitRepositories(gitDirectories),
-    enabled: gitDirectories.length > 0 && hasPlatformService("git"),
-    staleTime: 3000,
-  });
-  const gitRepositories = gitRepositoriesQuery.data?.repositories ?? [];
-  const branchRepositories = gitRepositories.flatMap((repository) =>
-    repository.branch ? [{ ...repository, branch: repository.branch }] : [],
-  );
-  const renderBranchControls = (simplified: boolean) =>
-    branchRepositories.map((repository) => (
-      <ChatComposerBranchSelector
-        key={repository.gitRoot}
-        className={
-          simplified
-            ? "max-w-28 min-w-0"
-            : cn(stripControlClassName, "max-w-36 px-1.5")
-        }
-        currentBranch={repository.branch}
-        gitRoot={repository.directory}
-        showRepositoryPath={gitRepositories.length > 1}
-      />
-    ));
-
   const workspaceLocked = workspaceReadOnly || Boolean(activeChatId);
   const workspaceControl = workspaceLocked ? (
     <span
@@ -242,11 +203,6 @@ export function useChatComposerControls({
   );
   const renderComposerSettings = (simplified: boolean) => (
     <>
-      {simplified && branchRepositories.length ? (
-        <div className="flex min-w-0 flex-wrap justify-end gap-1">
-          {renderBranchControls(true)}
-        </div>
-      ) : null}
       {simplified ? renderPermissionControl(true) : null}
       <ExecutionPicker
         iconOnly={simplified}
@@ -327,7 +283,6 @@ export function useChatComposerControls({
 
   const renderContextStrip = () => (
     <ChatComposerWorkspaceStrip
-      branchControl={renderBranchControls(false)}
       permissionControl={renderPermissionControl(false)}
       workspaceControl={workspaceControl}
       workspaceDirectory={workspaceDirectory}

@@ -147,10 +147,6 @@ export function createCoreWorkspaceServices(
       },
     },
     git: {
-      get_workspace_git_changes: (...args) =>
-        load().then((services) =>
-          services.git.get_workspace_git_changes(...args),
-        ),
       list_workspace_git_branches: (...args) =>
         load().then((services) =>
           services.git.list_workspace_git_branches(...args),
@@ -171,6 +167,10 @@ export function createCoreWorkspaceServices(
         load().then((services) => services.git.read_workspace_diff(...args)),
       scoped_git_status: (...args) =>
         load().then((services) => services.git.scoped_git_status(...args)),
+      scoped_git_comparison: (...args) =>
+        load().then((services) => services.git.scoped_git_comparison(...args)),
+      workspace_git_action: (...args) =>
+        load().then((services) => services.git.workspace_git_action(...args)),
       scoped_git_diff: (...args) =>
         load().then((services) => services.git.scoped_git_diff(...args)),
       scoped_git_log: (...args) =>

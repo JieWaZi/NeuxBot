@@ -1,7 +1,13 @@
 package workspace
 
 import (
+	"strings"
+
 	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspacefiles"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -33,11 +39,17 @@ func (*GitCheckout) Path() string { return "/git/checkout" }
 
 // Output 按当前工作树状态执行一次明确修改。
 func (g *GitCheckout) Output(ctx *gin.Context) (interface{}, error) {
-	branch, err := files.Checkout(ctx, middleware.AuthSubject(ctx), g.Body.ScopeID, g.Body.Root, g.Body.Repository, g.Body.Branch, g.Body.CommitMessage)
+	if strings.TrimSpace(g.Body.CommitMessage) != "" {
+		return nil, ginx.WithStack(status_error.WorkspaceResourceConflict)
+	}
+	result, err := files.RunGitAction(ctx, middleware.AuthSubject(ctx), workspacefiles.GitActionRequest{
+		ScopeID: g.Body.ScopeID, Root: g.Body.Root, Repository: g.Body.Repository,
+		Branch: g.Body.Branch, Action: constants.GitActionCheckout,
+	}, nil, global.WithIdleWorktreeChange)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	return GitCheckoutResponse{Branch: branch}, nil
+	return GitCheckoutResponse{Branch: result.Branch}, nil
 }
 
 // 分支切换响应

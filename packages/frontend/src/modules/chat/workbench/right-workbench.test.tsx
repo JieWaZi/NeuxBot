@@ -9,9 +9,16 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import "@/shared/i18n";
 import * as platform from "@/shared/platform";
+import { parseReference } from "@/shared/workspace/file-reference";
+import {
+  FileReferenceProvider,
+  ReferenceLink,
+} from "@/shared/workspace/file-reference-link";
+import { useChatWorkspaceBindings } from "../components/use-chat-workspace-bindings";
 import { workbenchDocumentBuffers } from "./document-buffers";
 import { RightWorkbench } from "./right-workbench";
 import { WorkbenchProvider, useWorkbench } from "./workbench-store";
@@ -24,7 +31,34 @@ vi.mock("../components/chat-terminal-panel", () => ({
   ChatTerminalPanel: () => <div />,
 }));
 vi.mock("../components/workspace-file-viewer", () => ({
-  WorkspaceFileViewer: () => <div />,
+  WorkspaceFileViewer: ({
+    scopeChatId,
+    highlightLines,
+  }: {
+    scopeChatId?: string;
+    highlightLines?: { startLine: number; endLine: number };
+  }) => (
+    <div
+      data-testid="file-preview"
+      data-chat-id={scopeChatId}
+      data-start-line={highlightLines?.startLine}
+      data-end-line={highlightLines?.endLine}
+    />
+  ),
+}));
+vi.mock("../components/workspace-file-browser", () => ({
+  WorkspaceFileBrowser: ({
+    onOpenFile,
+  }: {
+    onOpenFile: (file: { name: string; path: string }) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() => onOpenFile({ name: "note.md", path: "docs/note.md" })}
+    >
+      note.md
+    </button>
+  ),
 }));
 
 const scopeKey = "chat:right-header";
@@ -41,40 +75,123 @@ function state() {
   return JSON.parse(screen.getByTestId("state").textContent ?? "{}");
 }
 
-function Harness(overrides: Partial<ComponentProps<typeof RightWorkbench>>) {
+function Harness({
+  withMarkdownReferences,
+  ...overrides
+}: Partial<ComponentProps<typeof RightWorkbench>> & {
+  withMarkdownReferences?: boolean;
+}) {
+  const queryClient = new QueryClient();
   return (
-    <WorkbenchProvider>
-      <State />
-      <RightWorkbench
-        scopeKey={scopeKey}
-        parentBusy={false}
-        visible
-        workspaceDirectory="/workspace"
-        parentChatId="chat-1"
-        terminalWorkingDirectory="/workspace"
-        fileWorkspaceProps={{
-          rootPath: "/workspace",
-          scopePath: "/workspace",
-          chatFiles: [],
-          fileSource: "chat",
-          onFileSourceChange,
-          onDownloadChatFile: async () => {},
-          onDeleteChatFile: async () => true,
-        }}
-        changesProps={{ query: "", rootPath: "/workspace" }}
-        taskBoard={<div />}
-        onAddCodeReference={() => {}}
-        onDismiss={() => {}}
-        onEmpty={onEmpty}
-        {...overrides}
-      />
-    </WorkbenchProvider>
+    <QueryClientProvider client={queryClient}>
+      <WorkbenchProvider>
+        <State />
+        {withMarkdownReferences ? <MarkdownReferences /> : null}
+        <RightWorkbench
+          scopeKey={scopeKey}
+          parentBusy={false}
+          visible
+          workspaceDirectory="/workspace"
+          parentChatId="chat-1"
+          terminalWorkingDirectory="/workspace"
+          fileWorkspaceProps={{
+            rootPath: "/workspace",
+            scopePath: "/workspace",
+            chatFiles: [],
+            fileSource: "project",
+            onFileSourceChange,
+            onDownloadChatFile: async () => {},
+            onDeleteChatFile: async () => true,
+          }}
+          changesProps={{ query: "", rootPath: "/workspace" }}
+          taskBoard={<div />}
+          onAddCodeReference={() => {}}
+          onDismiss={() => {}}
+          onEmpty={onEmpty}
+          {...overrides}
+        />
+      </WorkbenchProvider>
+    </QueryClientProvider>
   );
 }
 
-function mount(overrides: Partial<ComponentProps<typeof RightWorkbench>> = {}) {
+function mount(overrides: Parameters<typeof Harness>[0] = {}) {
   return render(<Harness {...overrides} />);
 }
+
+function MarkdownReferences() {
+  const binding = useChatWorkspaceBindings({
+    activeChatId: "chat-1",
+    fileSource: "project",
+    query: "",
+    updateViewState: () => {},
+    workspaceDirectory: "/workspace",
+    workspaceFiles: [],
+    workspacePanelOpen: true,
+    workspaceScopeKey: scopeKey,
+  });
+  return (
+    <FileReferenceProvider
+      context={{
+        chatId: "chat-1",
+        baseDirectory: "/workspace",
+        workspaceRoot: "/workspace",
+        sourceRoots: [],
+      }}
+      onOpenFile={(file) =>
+        binding.openAttachmentFile({ ...file, reference: file })
+      }
+    >
+      {["#L7-L9", "#L12"].map((location) => {
+        const reference = parseReference(`docs/note.md${location}`);
+        if (!reference) throw new Error("缺少测试文件引用");
+        return (
+          <ReferenceLink key={location} reference={reference}>
+            {location}
+          </ReferenceLink>
+        );
+      })}
+    </FileReferenceProvider>
+  );
+}
+
+function teamFiles(chatId: string) {
+  return {
+    scopeChatId: chatId,
+    rootPath: "/workspace",
+    scopePath: "",
+    chatFiles: [
+      {
+        name: "note.md",
+        path: "attachments/turn/note.md",
+        source: "chat" as const,
+      },
+    ],
+    fileSource: "chat" as const,
+    onDownloadChatFile: async () => {},
+    onDeleteChatFile: async () => true,
+  };
+}
+
+function restoreChatFilesPage() {
+  const persisted = JSON.parse(localStorage.getItem(storageKey) ?? "{}");
+  persisted.state.tabs[0] = {
+    ...persisted.state.tabs[0],
+    kind: "files",
+    title: "文件",
+    contentId: "page:files:chat",
+    fileSource: "chat",
+  };
+  localStorage.setItem(storageKey, JSON.stringify(persisted));
+}
+
+const memberAttachmentResolution = {
+  status: "resolved" as const,
+  canonicalPath: "/conversations/member-a/attachments/turn/note.md",
+  baseDirectory: "/conversations/member-a/attachments",
+  workspaceRoot: "/conversations/member-a/attachments",
+  sourceRoots: [],
+};
 
 beforeEach(() => {
   onEmpty.mockClear();
@@ -133,7 +250,7 @@ describe("右侧工作台顶栏", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["浏览器", "终端", "文件", "改动", "侧聊", "看板"]);
+    ).toEqual(["浏览器", "终端", "文件", "差异", "侧聊", "看板"]);
     await user.click(within(menu).getByRole("menuitem", { name: "浏览器" }));
     expect(screen.getByRole("tab", { name: "新标签页" })).toHaveAttribute(
       "aria-selected",
@@ -439,5 +556,164 @@ describe("右侧工作台顶栏", () => {
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(screen.getByRole("tab", { name: "First" })).toBeInTheDocument();
     expect(workbenchDocumentBuffers.isDirty(`${scopeKey}:one`)).toBe(true);
+  });
+
+  it("文件浏览器打开规范路径后复用已编辑的文件标签", async () => {
+    const user = userEvent.setup();
+    const stored = JSON.parse(localStorage.getItem(storageKey) ?? "{}");
+    stored.state.tabs[0] = {
+      ...stored.state.tabs[0],
+      kind: "file",
+      title: "note.md",
+      contentId: "neuxbot-resource://file/absolute/workspace/docs/note.md",
+      path: "docs/note.md",
+      canonicalPath: "/workspace/docs/note.md",
+      rootPath: "/workspace",
+    };
+    localStorage.setItem(storageKey, JSON.stringify(stored));
+    const key = `${scopeKey}:one`;
+    workbenchDocumentBuffers.begin(key, "saved");
+    workbenchDocumentBuffers.change(key, "dirty");
+    const resolve = vi
+      .spyOn(platform, "resolveWorkspaceResourceReference")
+      .mockResolvedValue({
+        status: "resolved",
+        canonicalPath: "/workspace/docs/note.md",
+        baseDirectory: "/workspace",
+        workspaceRoot: "/workspace",
+        sourceRoots: [],
+      });
+    try {
+      mount();
+      await user.click(screen.getByRole("button", { name: "添加工作台标签" }));
+      await user.click(screen.getByRole("menuitem", { name: "文件" }));
+      await user.click(await screen.findByRole("button", { name: "note.md" }));
+      await waitFor(() =>
+        expect(state().tabs.map(({ id }: { id: string }) => id)).toEqual([
+          "one",
+          "two",
+        ]),
+      );
+      expect(screen.getByRole("tab", { name: "note.md" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await waitFor(() =>
+        expect(screen.getByRole("tab", { name: "note.md" })).toHaveFocus(),
+      );
+      expect(workbenchDocumentBuffers.get(key)?.text).toBe("dirty");
+    } finally {
+      resolve.mockRestore();
+    }
+  });
+
+  it("聊天 Markdown 文件链接保留行范围，并复用同一文件标签", async () => {
+    const user = userEvent.setup();
+    const resolve = vi
+      .spyOn(platform, "resolveWorkspaceResourceReference")
+      .mockResolvedValue({
+        status: "resolved",
+        canonicalPath: "/workspace/docs/note.md",
+        workspaceRoot: "/workspace",
+        baseDirectory: "/workspace",
+        sourceRoots: [],
+      });
+    try {
+      mount({ withMarkdownReferences: true });
+      await user.click(screen.getByRole("link", { name: "#L7-L9" }));
+      const preview = await screen.findByTestId("file-preview");
+      expect(preview).toHaveAttribute("data-start-line", "7");
+      expect(preview).toHaveAttribute("data-end-line", "9");
+      const fileTab = screen.getByRole("tab", { name: "note.md" });
+
+      await user.click(screen.getByRole("link", { name: "#L12" }));
+
+      await waitFor(() =>
+        expect(preview).toHaveAttribute("data-start-line", "12"),
+      );
+      expect(preview).toHaveAttribute("data-end-line", "12");
+      expect(screen.getByRole("tab", { name: "note.md" })).toBe(fileTab);
+    } finally {
+      resolve.mockRestore();
+    }
+  });
+
+  it("团队工作台切换成员后，已打开的附件仍以原成员会话读取", async () => {
+    const user = userEvent.setup();
+    restoreChatFilesPage();
+    const resolve = vi
+      .spyOn(platform, "resolveWorkspaceResourceReference")
+      .mockResolvedValue(memberAttachmentResolution);
+    try {
+      const view = mount({
+        parentChatId: "member-a",
+        fileWorkspaceProps: teamFiles("member-a"),
+      });
+      await user.click(
+        await screen.findByRole("treeitem", { name: "note.md" }),
+      );
+      expect(await screen.findByTestId("file-preview")).toHaveAttribute(
+        "data-chat-id",
+        "member-a",
+      );
+
+      view.rerender(
+        <Harness
+          parentChatId="member-b"
+          fileWorkspaceProps={teamFiles("member-b")}
+        />,
+      );
+
+      expect(screen.getByTestId("file-preview")).toHaveAttribute(
+        "data-chat-id",
+        "member-a",
+      );
+    } finally {
+      resolve.mockRestore();
+    }
+  });
+
+  it("团队工作台切换成员时丢弃原成员尚未完成的附件打开请求", async () => {
+    const user = userEvent.setup();
+    restoreChatFilesPage();
+    let finish: (result: typeof memberAttachmentResolution) => void = () => {};
+    const pending = new Promise<typeof memberAttachmentResolution>(
+      (resolve) => {
+        finish = resolve;
+      },
+    );
+    const resolve = vi
+      .spyOn(platform, "resolveWorkspaceResourceReference")
+      .mockReturnValue(pending);
+    try {
+      const view = mount({
+        parentChatId: "member-a",
+        fileWorkspaceProps: teamFiles("member-a"),
+      });
+      await user.click(
+        await screen.findByRole("treeitem", { name: "note.md" }),
+      );
+      expect(resolve).toHaveBeenCalledWith(
+        "member-a",
+        "attachments/turn/note.md",
+        "",
+      );
+
+      view.rerender(
+        <Harness
+          parentChatId="member-b"
+          fileWorkspaceProps={teamFiles("member-b")}
+        />,
+      );
+      await act(async () => finish(memberAttachmentResolution));
+
+      expect(screen.queryByRole("tab", { name: "note.md" })).toBeNull();
+      expect(screen.getByRole("tab", { name: "会话文件" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    } finally {
+      resolve.mockRestore();
+    }
   });
 });

@@ -1,56 +1,30 @@
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 
-import { GitPatchPreview } from "./git-patch-preview";
-
-const { init } = vi.hoisted(() => ({ init: vi.fn() }));
+import { GitPatchBody } from "./git-patch-preview";
 
 vi.mock("@/shared/theme", () => ({
   useTheme: () => ({ resolvedTheme: "light" }),
 }));
-vi.mock("@git-diff-view/file", () => ({
-  DiffFile: class {
-    initTheme() {}
-    init() {
-      init();
-    }
-    buildUnifiedDiffLines() {}
-    buildSplitDiffLines() {}
-  },
-}));
-vi.mock("@git-diff-view/react", () => ({
-  DiffModeEnum: { Unified: "unified", Split: "split" },
-  DiffView: () => <div data-testid="rendered-diff" />,
-}));
 
-describe("GitPatchPreview", () => {
-  beforeEach(() => init.mockClear());
+afterEach(() => vi.restoreAllMocks());
 
-  it("多文件提交只在展开对应文件后初始化 Diff", async () => {
-    const user = userEvent.setup();
-    const patch = ["src/a.ts", "src/b.ts"]
-      .map(
-        (path) =>
-          `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1 +1 @@\n-old\n+new\n`,
-      )
-      .join("");
-    render(<GitPatchPreview path="commit" patch={patch} />);
+it("真实 Diff 引擎统一和并排均渲染完整文件补丁", () => {
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    measureText: (text: string) => ({ width: text.length * 8 }),
+  } as CanvasRenderingContext2D);
+  const path = "src/changed.ts";
+  const patch =
+    "diff --git a/src/changed.ts b/src/changed.ts\n" +
+    "--- a/src/changed.ts\n+++ b/src/changed.ts\n" +
+    "@@ -1 +1 @@\n-old content\n+new content\n";
+  const { container, rerender } = render(
+    <GitPatchBody mode="unified" patch={patch} path={path} wrap={false} />,
+  );
+  expect(container).toHaveTextContent("old content");
+  expect(container).toHaveTextContent("new content");
 
-    expect(init).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("rendered-diff")).toBeNull();
-    await user.click(screen.getByRole("button", { name: /src\/a.ts/ }));
-    expect(init).toHaveBeenCalledTimes(1);
-    expect(screen.getAllByTestId("rendered-diff")).toHaveLength(1);
-  });
-
-  it("单个超大文件默认折叠，明确展开后才渲染", async () => {
-    const user = userEvent.setup();
-    const patch = `diff --git a/src/large.ts b/src/large.ts\n--- a/src/large.ts\n+++ b/src/large.ts\n@@ -1 +1 @@\n-old\n+${"a".repeat(75_000)}\n`;
-    render(<GitPatchPreview path="src/large.ts" patch={patch} />);
-
-    expect(init).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: /src\/large.ts/ }));
-    expect(init).toHaveBeenCalledTimes(1);
-  });
+  rerender(<GitPatchBody mode="split" patch={patch} path={path} wrap />);
+  expect(container).toHaveTextContent("old content");
+  expect(container).toHaveTextContent("new content");
 });

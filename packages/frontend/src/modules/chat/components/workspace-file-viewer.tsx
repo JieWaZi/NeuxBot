@@ -21,6 +21,7 @@ import {
   X,
   ZoomIn,
   ZoomOut,
+  WrapText,
 } from "lucide-react";
 import {
   lazy,
@@ -59,6 +60,7 @@ import {
 } from "@/shared/platform";
 import { readScopedFilePreview } from "../workbench/scoped-file-loader";
 import { workbenchDocumentBuffers } from "../workbench/document-buffers";
+import type { FileLineRange } from "../workbench/workbench-model";
 import { WorkspaceMarkdownOutline } from "../workbench/editor/workspace-markdown-outline";
 import { WorkspaceMarkdownPreview } from "../workbench/editor/workspace-markdown-preview";
 import { Button } from "@/shared/ui/button";
@@ -67,7 +69,12 @@ import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
 import { cn } from "@/shared/lib/cn";
 import { ContentVisibility } from "@/shared/lib/content-visibility";
 import { Spinner } from "@/shared/ui/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/shared/ui/tooltip";
 import { useWorkspaceQueryEvents } from "@/shared/api/workspace-events";
 import { useTheme } from "@/shared/theme";
 import type {
@@ -89,6 +96,7 @@ type WorkspaceFileViewerProps = {
   readOnly?: boolean;
   toolbarAccessory?: ReactNode;
   toolbarTarget?: HTMLElement | null;
+  showLineWrap?: boolean;
   fileView?: WorkspaceFileView;
   fileReference?: ResolvedFileReference;
   onOpenFile?: (file: ResolvedFileReference) => void;
@@ -109,7 +117,7 @@ type WorkspaceFileViewerProps = {
     endLine: number;
     content: string;
   }) => void;
-  highlightLines?: { startLine: number; endLine: number };
+  highlightLines?: FileLineRange;
 };
 
 // File loading remains outside the renderer and one viewer handles code, text,
@@ -118,7 +126,9 @@ export function WorkspaceFileViewer(props: WorkspaceFileViewerProps) {
   const parentVisible = useContext(ContentVisibility);
   return (
     <ContentVisibility value={parentVisible && props.active !== false}>
-      <WorkspaceFileViewerContent {...props} />
+      <TooltipProvider>
+        <WorkspaceFileViewerContent {...props} />
+      </TooltipProvider>
     </ContentVisibility>
   );
 }
@@ -128,6 +138,7 @@ function WorkspaceFileViewerContent({
   readOnly = false,
   toolbarAccessory,
   toolbarTarget,
+  showLineWrap = false,
   mode = "preview",
   fileView,
   fileReference,
@@ -170,6 +181,7 @@ function WorkspaceFileViewerContent({
   const [copied, setCopied] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
   const [diffMode, setDiffMode] = useState(DiffModeEnum.Unified);
+  const [wrapLines, setWrapLines] = useState(false);
   const codeContainerRef = useRef<HTMLDivElement>(null);
   const pointerSelectingRef = useRef(false);
   const [textSelection, setTextSelection] = useState<{
@@ -265,10 +277,11 @@ function WorkspaceFileViewerContent({
   const [viewChoice, setViewChoice] = useState<{
     fileKey: string;
     view: WorkspaceFileView;
+    reveal?: FileLineRange;
   }>();
   const preferredView =
     fileView ??
-    (viewChoice?.fileKey === fileKey
+    (viewChoice?.fileKey === fileKey && viewChoice.reveal === highlightLines
       ? viewChoice.view
       : editing && /\.(?:md|markdown)$/i.test(path)
         ? "code"
@@ -297,7 +310,7 @@ function WorkspaceFileViewerContent({
     editing && renderingPreview && /\.(?:md|markdown)$/i.test(path);
   const selectFileView = (view: WorkspaceFileView) => {
     setTextSelection(undefined);
-    setViewChoice({ fileKey, view });
+    setViewChoice({ fileKey, view, reveal: highlightLines });
     onFileViewChange?.(view);
   };
   const hasOutline = Boolean(
@@ -406,7 +419,7 @@ function WorkspaceFileViewerContent({
     mode === "diff" ? (diff?.relativePath ?? path) : file?.relativePath;
 
   useEffect(() => {
-    if (!highlightLines || !codeContainerRef.current) return;
+    if (!active || !highlightLines || currentView !== "code" || editing) return;
     let frame = 0;
     let attempts = 0;
     const findLine = (root: ParentNode): HTMLElement | null => {
@@ -435,7 +448,7 @@ function WorkspaceFileViewerContent({
     };
     frame = window.requestAnimationFrame(scroll);
     return () => window.cancelAnimationFrame(frame);
-  }, [highlightLines, currentView, file?.content]);
+  }, [active, highlightLines, currentView, editing, file?.content]);
 
   useEffect(() => {
     const captureTextSelection = () => {
@@ -614,6 +627,26 @@ function WorkspaceFileViewerContent({
           {fileReference?.displayPath ?? currentPath ?? path}
         </span>
       ) : null}
+      {isDesktopRuntime() ? (
+        <WorkspaceViewerAction
+          label={t("workspace.openDefaultApp")}
+          onClick={() => {
+            void (
+              scopeChatId && hasPlatformService("workspace")
+                ? openWorkspaceResourceExternal(scopeChatId, path, rootPath)
+                : openWorkspaceFile(rootPath, path)
+            ).catch((cause: unknown) =>
+              setSaveAsError(
+                cause instanceof Error
+                  ? cause.message
+                  : t("workspace.fileLoadError"),
+              ),
+            );
+          }}
+        >
+          <ExternalLink />
+        </WorkspaceViewerAction>
+      ) : null}
       {mode === "preview" && adapter.views.length > 1 ? (
         <WorkspaceViewerAction
           label={t(
@@ -627,6 +660,18 @@ function WorkspaceFileViewerContent({
           }
         >
           <Eye />
+        </WorkspaceViewerAction>
+      ) : null}
+      {showLineWrap &&
+      mode === "preview" &&
+      file?.kind === "text" &&
+      (editing ? !markdownDraftPreview : !renderingPreview) ? (
+        <WorkspaceViewerAction
+          label={t("workspace.wrapFileLines")}
+          pressed={wrapLines}
+          onClick={() => setWrapLines((wrap) => !wrap)}
+        >
+          <WrapText />
         </WorkspaceViewerAction>
       ) : null}
       {htmlPreviewActive && hasPlatformService("browser") ? (
@@ -776,26 +821,6 @@ function WorkspaceFileViewerContent({
           </WorkspaceViewerAction>
         </>
       ) : null}
-      {isDesktopRuntime() ? (
-        <WorkspaceViewerAction
-          label={t("workspace.openDefaultApp")}
-          onClick={() => {
-            void (
-              scopeChatId && hasPlatformService("workspace")
-                ? openWorkspaceResourceExternal(scopeChatId, path, rootPath)
-                : openWorkspaceFile(rootPath, path)
-            ).catch((cause: unknown) =>
-              setSaveAsError(
-                cause instanceof Error
-                  ? cause.message
-                  : t("workspace.fileLoadError"),
-              ),
-            );
-          }}
-        >
-          <ExternalLink />
-        </WorkspaceViewerAction>
-      ) : null}
       {scopeChatId && hasPlatformService("workspace") && mode === "preview" ? (
         <WorkspaceViewerAction
           label={t("workspace.downloadFile")}
@@ -937,6 +962,12 @@ function WorkspaceFileViewerContent({
                     path={currentPath ?? path}
                     label={t("workspace.fileEditor")}
                     dark={resolvedTheme === "dark"}
+                    wrap={showLineWrap ? wrapLines : undefined}
+                    targetRange={
+                      active && !markdownDraftPreview
+                        ? highlightLines
+                        : undefined
+                    }
                     onChange={(value) => {
                       draftRevision.current += 1;
                       setDraft(value);
@@ -985,7 +1016,14 @@ function WorkspaceFileViewerContent({
               <span>{t("workspace.binaryFileUnsupported")}</span>
             </WorkspaceViewerState>
           ) : (file?.content?.length ?? 0) > MAX_PREVIEW_CHARS ? (
-            <pre className="text-foreground type-body p-3 font-mono break-words whitespace-pre-wrap">
+            <pre
+              className={cn(
+                "text-foreground type-body p-3 font-mono",
+                showLineWrap && !wrapLines
+                  ? "whitespace-pre"
+                  : "break-words whitespace-pre-wrap",
+              )}
+            >
               {file?.content?.slice(0, MAX_PREVIEW_CHARS)}
               <span className="text-muted-foreground mt-3 block font-sans">
                 {t("workspace.fileTruncated", {
@@ -1021,7 +1059,7 @@ function WorkspaceFileViewerContent({
               fileName={currentPath ?? path}
               highlightLines={highlightLines}
               theme={resolvedTheme}
-              wrap={false}
+              wrap={wrapLines}
             />
           ) : (
             <WorkspaceViewerState>

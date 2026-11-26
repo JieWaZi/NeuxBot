@@ -20,6 +20,8 @@ type GitLog struct {
 	Count int `in:"query" name:"count"`
 	// 跳过条数
 	Skip int `in:"query" name:"skip"`
+	// 比较基准
+	Base string `in:"query" name:"base"`
 }
 
 // Path 返回仓库操作地址。
@@ -27,7 +29,15 @@ func (*GitLog) Path() string { return "/git/log" }
 
 // Output 在认证主体的冻结工作范围内执行操作。
 func (g *GitLog) Output(ctx *gin.Context) (interface{}, error) {
-	value, err := files.Log(ctx, middleware.AuthSubject(ctx), g.ScopeID, g.Root, g.Repository, g.Count, g.Skip)
+	subject := middleware.AuthSubject(ctx)
+	if g.Base != "" {
+		value, err := files.LogComparison(ctx, subject, g.ScopeID, g.Root, g.Repository, g.Base, g.Count, g.Skip)
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		return value, nil
+	}
+	value, err := files.Log(ctx, subject, g.ScopeID, g.Root, g.Repository, g.Count, g.Skip)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

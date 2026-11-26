@@ -15,8 +15,6 @@ export type {
   WorkspaceResourceWrite,
   WorkspaceResourceImport,
   WorkspaceResourceChangeEvent,
-  WorkspaceGitChange,
-  WorkspaceGitChanges,
   ScopedGitStatus,
   ScopedGitLogEntry,
   WorkspaceGitBranch,

@@ -835,6 +835,18 @@ const (
 	// @errZH 当前会话无权操作此终端
 	// @errEN terminal session is not authorized
 	TerminalForbidden StatusError = http.StatusForbidden*1e8 + 7111
+	// @errZH Git 远端或分支无效，请重新选择
+	// @errEN the Git remote or branch is invalid; select it again
+	WorkspaceGitTargetInvalid StatusError = http.StatusBadRequest*1e8 + 7112
+	// @errZH 所选推送远端未指向唯一的 GitHub 仓库
+	// @errEN the selected push remote does not point to a single GitHub repository
+	WorkspaceGitHubUnsupported StatusError = http.StatusUnprocessableEntity*1e8 + 7113
+	// @errZH 未找到 GitHub CLI，请安装 gh 后重试
+	// @errEN GitHub CLI was not found; install gh and try again
+	WorkspaceGitHubCLIUnavailable StatusError = http.StatusServiceUnavailable*1e8 + 7114
+	// @errZH GitHub 请求失败，请检查 gh 登录、远端和分支后重试
+	// @errEN the GitHub request failed; check gh authentication, the remote, and branches
+	WorkspaceGitHubRequestFailed StatusError = http.StatusBadGateway*1e8 + 7115
 )
 
 const (

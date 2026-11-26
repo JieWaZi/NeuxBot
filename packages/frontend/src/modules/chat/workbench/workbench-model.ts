@@ -34,6 +34,8 @@ export type WorkbenchContentReference = {
   ids: Record<string, string>;
 };
 
+export type FileLineRange = { startLine: number; endLine: number };
+
 /** 每个 Chat 有独立工作台；标签身份、内容身份和挂载实例分别维护。 */
 export type WorkbenchTab = {
   id: string;
@@ -45,7 +47,6 @@ export type WorkbenchTab = {
     | "terminal"
     | "file"
     | "sidechat"
-    | "git-diff"
     | "task-board"
     | "content";
   contentId: string;
@@ -57,7 +58,10 @@ export type WorkbenchTab = {
   path?: string;
   canonicalPath?: string;
   rootPath?: string;
+  fileSource?: "project" | "chat";
   fileMode?: "preview" | "diff";
+  fileRange?: FileLineRange;
+  /** 读取与编辑此文件所使用的授权会话。 */
   fileChatId?: string;
   executionDiff?: { chatId: string; messageId: string };
   url?: string;
@@ -65,9 +69,6 @@ export type WorkbenchTab = {
   parentChatId?: string;
   createRequestId?: string;
   terminalSessionId?: string;
-  gitRepository?: string;
-  gitStaged?: boolean;
-  gitCommitHash?: string;
 };
 
 export type WorkbenchState = {
@@ -91,9 +92,11 @@ export type WorkbenchCommand =
   | { type: "register-content"; contentId: string; title: string }
   | {
       type: "open-page";
-      kind: "files" | "changes" | "chat-history";
+      kind: "files";
       title: string;
+      fileSource?: "project" | "chat";
     }
+  | { type: "open-page"; kind: "changes" | "chat-history"; title: string }
   | { type: "open-task-board"; title: string; paneId?: string }
   | {
       type: "open-browser";
@@ -111,19 +114,13 @@ export type WorkbenchCommand =
       rootPath: string;
       title: string;
       mode?: "preview" | "diff";
+      fileRange?: FileLineRange;
       fileChatId?: string;
       executionDiff?: { chatId: string; messageId: string };
+      replaceFilesTabId?: string;
+      paneId?: string;
     }
   | { type: "open-sidechat"; title: string; parentChatId?: string }
-  | {
-      type: "open-git-diff";
-      title: string;
-      rootPath: string;
-      repository: string;
-      path?: string;
-      staged?: boolean;
-      commitHash?: string;
-    }
   | { type: "bind-sidechat"; tabId: string; chatId: string }
   | { type: "bind-terminal"; tabId: string; sessionId: string }
   | { type: "update-browser-url"; tabId: string; url: string }
@@ -316,6 +313,7 @@ export function reduceWorkbench(
     title: string,
     extra: Partial<WorkbenchTab> = {},
     targetPaneId?: string,
+    beforeTabId?: string,
   ): WorkbenchState => {
     const existing = state.tabs.find((tab) => tab.contentId === contentId);
     if (existing) {
@@ -351,7 +349,7 @@ export function reduceWorkbench(
       workbenchPaneById(state.layout, state.focusedPaneId)?.id ||
       workbenchPanes(state.layout)[0]?.id ||
       "pane:root";
-    const layout = insertTabInPane(state.layout, paneId, tab.id);
+    const layout = insertTabInPane(state.layout, paneId, tab.id, beforeTabId);
     return projectWorkbench({
       ...state,
       layout,
@@ -406,6 +404,13 @@ export function reduceWorkbench(
       };
     }
     case "open-page":
+      if (command.kind === "files")
+        return open(
+          "files",
+          command.fileSource === "chat" ? "page:files:chat" : "page:files",
+          command.title,
+          { fileSource: command.fileSource },
+        );
       return open(command.kind, `page:${command.kind}`, command.title);
     case "open-task-board":
       return open(
@@ -457,33 +462,56 @@ export function reduceWorkbench(
         rootPath: command.rootPath,
       });
     }
-    case "open-file":
-      return open(
+    case "open-file": {
+      const browser = state.tabs.find(
+        (tab) =>
+          tab.id === command.replaceFilesTabId &&
+          tab.kind === "files" &&
+          tab.closeable !== false,
+      );
+      const browserPane = browser
+        ? workbenchPaneWithTab(state.layout, browser.id)
+        : undefined;
+      const address = command.canonicalPath
+        ? absoluteFileAddress(command.canonicalPath)
+        : sessionFileAddress(
+            command.fileChatId ?? command.rootPath,
+            command.path,
+          );
+      const contentId = command.executionDiff?.messageId
+        ? `${address}?diff=${encodeURIComponent(command.executionDiff.messageId)}`
+        : address;
+      const existing =
+        state.tabs.find((tab) => tab.contentId === contentId) ??
+        (command.canonicalPath &&
+        !command.executionDiff &&
+        command.mode !== "diff"
+          ? state.tabs.find(
+              (tab) =>
+                tab.kind === "file" &&
+                tab.fileMode !== "diff" &&
+                tab.canonicalPath === command.canonicalPath,
+            )
+          : undefined);
+      const opened = open(
         "file",
-        `${
-          command.fileChatId
-            ? sessionFileAddress(
-                command.fileChatId,
-                command.canonicalPath ?? command.path,
-              )
-            : command.canonicalPath
-              ? absoluteFileAddress(command.canonicalPath)
-              : sessionFileAddress(command.rootPath, command.path)
-        }${
-          command.executionDiff?.messageId
-            ? `?diff=${encodeURIComponent(command.executionDiff.messageId)}`
-            : ""
-        }`,
+        existing?.contentId ?? contentId,
         command.title,
         {
+          contentId,
           path: command.path,
           canonicalPath: command.canonicalPath,
           rootPath: command.rootPath,
           fileMode: command.mode,
-          fileChatId: command.fileChatId,
+          fileRange: command.fileRange,
+          fileChatId: command.fileChatId ?? existing?.fileChatId,
           executionDiff: command.executionDiff,
         },
+        browserPane?.id ?? command.paneId,
+        browser?.id,
       );
+      return browser ? closeWorkbenchTab(opened, browser.id) : opened;
+    }
     case "open-sidechat": {
       const sidechatId = mint();
       return open("sidechat", `sidechat:${sidechatId}`, command.title, {
@@ -491,26 +519,6 @@ export function reduceWorkbench(
         createRequestId: mint(),
       });
     }
-    case "open-git-diff":
-      return open(
-        "git-diff",
-        "git-diff:" +
-          JSON.stringify([
-            command.rootPath,
-            command.repository,
-            command.path,
-            command.staged,
-            command.commitHash,
-          ]),
-        command.title,
-        {
-          rootPath: command.rootPath,
-          gitRepository: command.repository,
-          path: command.path,
-          gitStaged: command.staged,
-          gitCommitHash: command.commitHash,
-        },
-      );
     case "bind-sidechat":
       return {
         ...state,

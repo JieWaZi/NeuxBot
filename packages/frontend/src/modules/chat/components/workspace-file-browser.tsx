@@ -16,6 +16,10 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { workspaceFileDragType } from "../model/workspace-file-drag";
+import {
+  matchesWorkspacePath,
+  workspacePathAtRoot,
+} from "../model/project-files-scope";
 
 import { WorkspaceFileTypeIcon } from "@/shared/workspace/workspace-file-type-icon";
 import {
@@ -52,6 +56,7 @@ import { Spinner } from "@/shared/ui/spinner";
 type WorkspaceFileBrowserProps = {
   active?: boolean;
   activePath?: string;
+  expandedPaths?: ReadonlySet<string>;
   isPathDirty?: (
     path: string,
     file?: ResolvedFileReference,
@@ -78,11 +83,19 @@ type WorkspaceFileBrowserProps = {
   scopePath: string;
 };
 
+export const workspaceFileBrowserKeys = {
+  directories: (chatId: string | undefined, root: string) =>
+    ["workspace-directory", chatId ?? "", root] as const,
+  searches: (chatId: string | undefined, root: string) =>
+    ["workspace-file-search", chatId ?? "", root] as const,
+};
+
 // Shallow lazy tree, flat search results, and resource selection kept separate
 // from preview.
 export function WorkspaceFileBrowser({
   active = true,
   activePath,
+  expandedPaths,
   isPathDirty,
   onOpenFile,
   onPathDeleted,
@@ -102,7 +115,10 @@ export function WorkspaceFileBrowser({
     return () => window.clearTimeout(timeoutID);
   }, [query]);
   const rootQuery = useQuery({
-    queryKey: ["workspace-directory", scopeChatId ?? "", rootPath, scopePath],
+    queryKey: [
+      ...workspaceFileBrowserKeys.directories(scopeChatId, rootPath),
+      scopePath,
+    ],
     queryFn: () =>
       scopeChatId && hasPlatformService("workspace")
         ? listWorkspaceResourceDirectory(scopeChatId, scopePath, rootPath)
@@ -111,9 +127,7 @@ export function WorkspaceFileBrowser({
   });
   const searchQuery = useQuery({
     queryKey: [
-      "workspace-file-search",
-      scopeChatId ?? "",
-      rootPath,
+      ...workspaceFileBrowserKeys.searches(scopeChatId, rootPath),
       scopePath,
       normalizedQuery,
     ],
@@ -223,6 +237,7 @@ export function WorkspaceFileBrowser({
           activePath={activePath}
           depth={0}
           entry={entry}
+          expandedPaths={expandedPaths}
           key={entry.relativePath}
           onOpenFile={onOpenFile}
           onPathDeleted={onPathDeleted}
@@ -239,9 +254,9 @@ export function WorkspaceFileBrowser({
 function WorkspaceTreeEntry({
   active,
   activePath,
-  defaultExpanded = false,
   depth,
   entry,
+  expandedPaths,
   onOpenFile,
   onPathDeleted,
   onPathRenamed,
@@ -251,9 +266,9 @@ function WorkspaceTreeEntry({
 }: {
   active: boolean;
   activePath?: string;
-  defaultExpanded?: boolean;
   depth: number;
   entry: WorkspaceDirectoryEntry;
+  expandedPaths?: ReadonlySet<string>;
   onOpenFile: (file: { name: string; path: string }) => void;
   onPathDeleted?: (
     path: string,
@@ -280,7 +295,17 @@ function WorkspaceTreeEntry({
   const { t } = useTranslation("chat");
   const queryClient = useQueryClient();
   const confirmation = useWorkspaceConfirmation();
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [override, setOverride] = useState<{
+    paths?: ReadonlySet<string>;
+    open: boolean;
+  }>();
+  const directoryPath = workspacePathAtRoot(rootPath, entry.relativePath);
+  const expanded =
+    override && override.paths === expandedPaths
+      ? override.open
+      : expandedPaths
+        ? Boolean(directoryPath && expandedPaths.has(directoryPath))
+        : matchesWorkspacePath(activePath, directoryPath, true);
   const [dropActive, setDropActive] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [nextName, setNextName] = useState(entry.name);
@@ -359,9 +384,7 @@ function WorkspaceTreeEntry({
   };
   const childrenQuery = useQuery({
     queryKey: [
-      "workspace-directory",
-      scopeChatId ?? "",
-      rootPath,
+      ...workspaceFileBrowserKeys.directories(scopeChatId, rootPath),
       entry.relativePath,
     ],
     queryFn: () =>
@@ -450,7 +473,7 @@ function WorkspaceTreeEntry({
           directory
           expanded={expanded}
           depth={depth}
-          onClick={() => setExpanded((current) => !current)}
+          onClick={() => setOverride({ paths: expandedPaths, open: !expanded })}
         >
           <span className="truncate">{entry.name}</span>
         </FileTreeRow>
@@ -523,6 +546,7 @@ function WorkspaceTreeEntry({
                 activePath={activePath}
                 depth={depth + 1}
                 entry={child}
+                expandedPaths={expandedPaths}
                 key={child.relativePath}
                 onOpenFile={onOpenFile}
                 onPathDeleted={onPathDeleted}
@@ -629,7 +653,10 @@ function WorkspaceFileButton({
     candidate?.kind === "file" ? candidate : undefined,
   );
   const file = query.data?.status === "resolved" ? query.data.file : undefined;
-  const active = activePath === (file?.canonicalPath ?? path);
+  const active = matchesWorkspacePath(
+    activePath,
+    file?.canonicalPath ?? workspacePathAtRoot(rootPath, path),
+  );
   const refreshTree = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["workspace-directory"] }),

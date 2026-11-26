@@ -123,6 +123,8 @@ func (v StatusError) Key() string {
 		return "RuntimeWorkspaceScopeUnsupported"
 	case TerminalInvalid:
 		return "TerminalInvalid"
+	case WorkspaceGitTargetInvalid:
+		return "WorkspaceGitTargetInvalid"
 	case AgentInputInvalid:
 		return "AgentInputInvalid"
 	case KnowledgeInvalid:
@@ -407,6 +409,8 @@ func (v StatusError) Key() string {
 		return "PluginCapabilityUnsupported"
 	case PluginPackageUnsupported:
 		return "PluginPackageUnsupported"
+	case WorkspaceGitHubUnsupported:
+		return "WorkspaceGitHubUnsupported"
 	case RuntimeInstallationUnsupported:
 		return "RuntimeInstallationUnsupported"
 	case RuntimeMaintenanceUnsupported:
@@ -601,6 +605,8 @@ func (v StatusError) Key() string {
 		return "PluginOAuthServiceUnavailable"
 	case PluginOAuthMetadataUnavailable:
 		return "PluginOAuthMetadataUnavailable"
+	case WorkspaceGitHubRequestFailed:
+		return "WorkspaceGitHubRequestFailed"
 	case RuntimeInstallationFailed:
 		return "RuntimeInstallationFailed"
 	case KnowledgeRemoteUnreachable:
@@ -617,6 +623,8 @@ func (v StatusError) Key() string {
 		return "IMServiceUnavailable"
 	case TerminalUnavailable:
 		return "TerminalUnavailable"
+	case WorkspaceGitHubCLIUnavailable:
+		return "WorkspaceGitHubCLIUnavailable"
 	case AgentConnectionUnavailable:
 		return "AgentConnectionUnavailable"
 	case ReadingProjectionIncomplete:
@@ -699,6 +707,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkspacePathInvalid:                 "workspace path is invalid",
 			RuntimeWorkspaceScopeUnsupported:     "{{if .MaxDirectories}}the selected agent supports up to {{.MaxDirectories}} project directories; adjust the workspace scope{{else}}the selected agent cannot use the requested workspace scope{{end}}",
 			TerminalInvalid:                      "terminal request is invalid",
+			WorkspaceGitTargetInvalid:            "the Git remote or branch is invalid; select it again",
 			AgentInputInvalid:                    "command input does not satisfy the operation contract",
 			KnowledgeInvalid:                     "invalid knowledge request",
 			IntegrationInvalid:                   "integration name, expiration or grants are invalid",
@@ -841,6 +850,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			ReadingTargetLimitExceeded:           "too many awaiting-view targets; narrow the filter",
 			PluginCapabilityUnsupported:          "plugin capability is unsupported by the current target",
 			PluginPackageUnsupported:             "This plugin package is unsupported. Reinstall it from the plugin catalog.",
+			WorkspaceGitHubUnsupported:           "the selected push remote does not point to a single GitHub repository",
 			RuntimeInstallationUnsupported:       "installing this agent is unsupported on this platform",
 			RuntimeMaintenanceUnsupported:        "this program cannot be safely maintained; use its official installation method",
 			KnowledgeCandidateInvalid:            "knowledge execution or candidate is not eligible for publication",
@@ -938,6 +948,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginDependencyUnavailable:          "required plugin dependencies could not be prepared; check the network and retry",
 			PluginOAuthServiceUnavailable:        "unable to reach the plugin authorization service; try again later",
 			PluginOAuthMetadataUnavailable:       "the plugin service did not provide readable authorization metadata",
+			WorkspaceGitHubRequestFailed:         "the GitHub request failed; check gh authentication, the remote, and branches",
 			RuntimeInstallationFailed:            "agent program maintenance failed; retry the operation",
 			KnowledgeRemoteUnreachable:           "remote knowledge service is unreachable",
 			KnowledgeRemoteIncompatible:          "remote knowledge service protocol is incompatible",
@@ -946,6 +957,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			DatabaseBusy:                         "processing other data; please try again later",
 			IMServiceUnavailable:                 "im integration service is unavailable",
 			TerminalUnavailable:                  "terminal service is unavailable",
+			WorkspaceGitHubCLIUnavailable:        "GitHub CLI was not found; install gh and try again",
 			AgentConnectionUnavailable:           "capability connection is unavailable or its protocol does not match",
 			ReadingProjectionIncomplete:          "the conversation reading index is unavailable; wait for recovery or refresh",
 			IntegrationListenerError:             "integration listener or configuration update failed",
@@ -994,6 +1006,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkspacePathInvalid:                 "工作区路径不合法",
 			RuntimeWorkspaceScopeUnsupported:     "{{if .MaxDirectories}}当前智能体最多支持 {{.MaxDirectories}} 个项目目录，请调整工作范围{{else}}当前智能体无法接入所选工作范围{{end}}",
 			TerminalInvalid:                      "终端请求无效",
+			WorkspaceGitTargetInvalid:            "Git 远端或分支无效，请重新选择",
 			AgentInputInvalid:                    "软件能力命令参数不符合契约",
 			KnowledgeInvalid:                     "知识请求参数不合法",
 			IntegrationInvalid:                   "API 集成名称、有效期或授权范围无效",
@@ -1136,6 +1149,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			ReadingTargetLimitExceeded:           "待查看工作过多，请缩小筛选范围",
 			PluginCapabilityUnsupported:          "当前运行目标尚不支持该插件声明的能力",
 			PluginPackageUnsupported:             "当前插件包不受支持，请从插件目录重新安装",
+			WorkspaceGitHubUnsupported:           "所选推送远端未指向唯一的 GitHub 仓库",
 			RuntimeInstallationUnsupported:       "当前平台暂不支持安装此智能体",
 			RuntimeMaintenanceUnsupported:        "无法安全维护此程序，请使用其官方安装方式操作",
 			KnowledgeCandidateInvalid:            "知识执行或候选未满足发布条件",
@@ -1233,6 +1247,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginDependencyUnavailable:          "插件所需程序暂时无法准备，请检查网络后重试",
 			PluginOAuthServiceUnavailable:        "无法连接插件授权服务，请稍后重试",
 			PluginOAuthMetadataUnavailable:       "插件服务未提供可读取的授权元数据",
+			WorkspaceGitHubRequestFailed:         "GitHub 请求失败，请检查 gh 登录、远端和分支后重试",
 			RuntimeInstallationFailed:            "智能体程序维护失败，请重试",
 			KnowledgeRemoteUnreachable:           "远端知识服务连接失败",
 			KnowledgeRemoteIncompatible:          "远端知识服务响应不符合支持的协议",
@@ -1241,6 +1256,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			DatabaseBusy:                         "正在处理其他数据，请稍后重试",
 			IMServiceUnavailable:                 "IM 集成服务当前不可用",
 			TerminalUnavailable:                  "终端服务不可用",
+			WorkspaceGitHubCLIUnavailable:        "未找到 GitHub CLI，请安装 gh 后重试",
 			AgentConnectionUnavailable:           "软件能力连接不可用或协议不匹配",
 			ReadingProjectionIncomplete:          "会话阅读索引暂不可用，请等待恢复或刷新",
 			IntegrationListenerError:             "API 服务监听或配置保存失败，原配置仍然有效",

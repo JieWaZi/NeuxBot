@@ -99,13 +99,15 @@ type ChatWorkspaceSurfaceProps = {
   onAddCodeReference: (reference: ChatCodeReference) => void;
   onDismissRightPanel: () => void;
   onOpenRightPanel: () => void;
-  openedCodeReference?: ChatCodeReference;
   gitRoots?: readonly string[];
   renderTeamMembers?: (onMemberOpened: () => void) => ReactNode;
   showActivityIndicator?: boolean;
   taskBoard?: ReactNode;
   workspace: SceneWorkspace;
-  fileWorkspaceProps?: Omit<WorkbenchFileWorkspaceProps, "active" | "ownerKey">;
+  fileWorkspaceProps?: Omit<
+    WorkbenchFileWorkspaceProps,
+    "active" | "file" | "onSelectFile"
+  >;
   changesProps?: Omit<ScopedGitChangesProps, "active">;
 };
 
@@ -134,7 +136,6 @@ export function ChatWorkspaceSurface({
   onAddCodeReference,
   onDismissRightPanel,
   onOpenRightPanel,
-  openedCodeReference,
   gitRoots = [],
   renderTeamMembers,
   // showActivityIndicator = true,
@@ -148,6 +149,7 @@ export function ChatWorkspaceSurface({
   const routeActive = useRouteSceneActive();
   const sceneActive = active && routeActive;
   const { identity, snapshot } = adapter;
+  const gitScopeKey = JSON.stringify([identity.scopeKey, identity.chatId]);
   const { snapshot: workbench, dispatch } = useWorkbench(identity.scopeKey);
   const defaultChatHistory = useContext(ChatHistoryContentContext);
   const history = chatHistory === undefined ? defaultChatHistory : chatHistory;
@@ -210,7 +212,21 @@ export function ChatWorkspaceSurface({
   const dragCleanup = useRef<(() => void) | undefined>(undefined);
   const lastVisibleWorkbenchScope = useRef<string | null>(null);
   const [isResizing, setIsResizing] = useState(false);
-  const [selectedChangesRoot, setSelectedChangesRoot] = useState<string>();
+  const [changesTarget, setChangesTarget] = useState<{
+    scopeKey: string;
+    root: string;
+    repository?: string;
+  }>();
+  const selectedChanges =
+    changesTarget?.scopeKey === gitScopeKey ? changesTarget : undefined;
+  const [comparisonBases, setComparisonBases] = useState<{
+    scopeKey: string;
+    repositories: Record<string, string>;
+  }>();
+  const comparisonBaseByRepository =
+    comparisonBases?.scopeKey === gitScopeKey
+      ? comparisonBases.repositories
+      : undefined;
   useEffect(() => () => dragCleanup.current?.(), []);
 
   useLayoutEffect(() => {
@@ -359,19 +375,21 @@ export function ChatWorkspaceSurface({
 
   const summary = showSummary ? (
     <ChatSummary
-      key={identity.scopeKey}
+      key={gitScopeKey}
       chatId={identity.chatId}
       chatFiles={fileWorkspaceProps?.chatFiles ?? []}
       gitRoots={gitRoots}
+      gitBusy={snapshot.isRunning}
+      comparisonBaseByRepository={comparisonBaseByRepository}
       workspaceDirectory={identity.workspaceDirectory}
       directoryLabel={directoryLabel}
       renderTeamMembers={renderTeamMembers}
-      onOpenChanges={(root) => {
-        setSelectedChangesRoot(root);
+      onOpenChanges={(root, repository) => {
+        setChangesTarget({ scopeKey: gitScopeKey, root, repository });
         dispatch({
           type: "open-page",
           kind: "changes",
-          title: t("workspace.changes"),
+          title: t("workspace.diffTab"),
         });
         onOpenRightPanel();
       }}
@@ -386,6 +404,7 @@ export function ChatWorkspaceSurface({
         dispatch({
           type: "open-page",
           kind: "files",
+          fileSource: "chat",
           title: t("workspace.files"),
         });
         onOpenRightPanel();
@@ -632,12 +651,15 @@ export function ChatWorkspaceSurface({
                 }
                 onDismissRightPanel();
               }}
-              onOpenFile={(file) =>
-                adapter.thread.onOpenFile?.({ ...file, reference: file })
+              onOpenFile={(file, sourceChatId) =>
+                adapter.thread.onOpenFile?.({
+                  ...file,
+                  reference: file,
+                  sourceChatId,
+                })
               }
               onOpenURL={adapter.thread.onOpenLink}
               taskBoard={taskBoard}
-              openedCodeReference={openedCodeReference}
               scopeKey={identity.scopeKey}
               sourceRoots={adapter.thread.linkAdditionalWorkingDirectories}
               parentChatId={identity.chatId}
@@ -646,7 +668,28 @@ export function ChatWorkspaceSurface({
               fileWorkspaceProps={fileWorkspaceProps}
               changesProps={
                 changesProps
-                  ? { ...changesProps, preferredRoot: selectedChangesRoot }
+                  ? {
+                      ...changesProps,
+                      rootPath: gitRoots[0] ?? changesProps.rootPath,
+                      sourceRoots:
+                        gitRoots.length > 0
+                          ? gitRoots.slice(1)
+                          : changesProps.sourceRoots,
+                      preferredRoot: selectedChanges?.root,
+                      preferredRepository: selectedChanges?.repository,
+                      comparisonBaseByRepository:
+                        comparisonBaseByRepository ?? {},
+                      onComparisonBaseChange: (repository, base) =>
+                        setComparisonBases((previous) => ({
+                          scopeKey: gitScopeKey,
+                          repositories: {
+                            ...(previous?.scopeKey === gitScopeKey
+                              ? previous.repositories
+                              : {}),
+                            [repository]: base,
+                          },
+                        })),
+                    }
                   : undefined
               }
               visible={workbenchVisible && sceneActive}

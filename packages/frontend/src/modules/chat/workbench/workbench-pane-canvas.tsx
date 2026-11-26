@@ -44,7 +44,6 @@ function tabIcon(kind: WorkbenchTab["kind"]) {
     case "file":
       return Files;
     case "changes":
-    case "git-diff":
       return FileDiff;
     case "browser":
       return Globe;
@@ -211,6 +210,12 @@ export function WorkbenchPaneTabStrip({
       >
         {ordered.map((tab) => {
           const Icon = tabIcon(tab.kind);
+          const title =
+            tab.kind === "changes"
+              ? t("workspace.diffTab")
+              : tab.kind === "files" && tab.fileSource === "chat"
+                ? t("workspace.chatFiles")
+                : tab.title;
           const selected = pane.activeTabId === tab.id;
           return (
             <div
@@ -249,7 +254,7 @@ export function WorkbenchPaneTabStrip({
                 }}
                 type="button"
                 role="tab"
-                title={tab.title}
+                title={title}
                 aria-selected={selected}
                 tabIndex={selected ? 0 : -1}
                 aria-controls={`workbench-panel-${tab.id}`}
@@ -268,13 +273,13 @@ export function WorkbenchPaneTabStrip({
                 onKeyDown={(event) => onKeyDown(event, tab)}
               >
                 <Icon className="size-icon-sm shrink-0" strokeWidth={1.5} />
-                <span className="min-w-0 flex-1 truncate">{tab.title}</span>
+                <span className="min-w-0 flex-1 truncate">{title}</span>
               </button>
               {tab.closeable !== false ? (
                 <button
                   type="button"
-                  aria-label={t("workbench.closeTab", { title: tab.title })}
-                  title={t("workbench.closeTab", { title: tab.title })}
+                  aria-label={t("workbench.closeTab", { title })}
+                  title={t("workbench.closeTab", { title })}
                   className="shell-header-tab-close"
                   draggable={false}
                   onClick={() => onClose(tab)}

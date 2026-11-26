@@ -17,6 +17,8 @@ vi.mock("@/shared/api/generated/sdk.gen", () => ({
   statFile: vi.fn(),
   deleteFile: vi.fn(),
   gitStatus: vi.fn(),
+  gitAction: vi.fn(),
+  gitComparison: vi.fn(),
   gitDiff: vi.fn(),
   gitLog: vi.fn(),
   gitShow: vi.fn(),
@@ -33,6 +35,82 @@ const resource = {
   mediaType: "text/plain",
 };
 describe("Core 文件和 Git 适配", () => {
+  it("组合操作沿用聊天的范围句柄并保留已完成步骤", async () => {
+    vi.mocked(api.openScope).mockResolvedValue({ data: scope } as never);
+    vi.mocked(api.gitAction).mockResolvedValue({
+      data: {
+        branch: "feature",
+        commit: "123abc",
+        failedStep: "push",
+        error: "WorkspaceGitFailed",
+      },
+    } as never);
+    const { git } = createCoreWorkspaceServices(platform().host);
+    await expect(
+      git.workspace_git_action({
+        chatId: "chat",
+        root: "/workspace",
+        repository: "/workspace/repo",
+        action: "commit_push",
+        message: "",
+        expectedIndex: "confirmed-index",
+      }),
+    ).resolves.toEqual({
+      branch: "feature",
+      commit: "123abc",
+      failedStep: "push",
+      error: "WorkspaceGitFailed",
+    });
+    expect(api.openScope).toHaveBeenCalledWith({
+      body: { chatId: "chat" },
+      throwOnError: true,
+    });
+    expect(api.openDraftScope).not.toHaveBeenCalled();
+    expect(api.gitAction).toHaveBeenCalledWith({
+      body: {
+        scopeId: "scope",
+        root: "/workspace",
+        repository: "/workspace/repo",
+        action: "commit_push",
+        message: "",
+        expectedIndex: "confirmed-index",
+      },
+      throwOnError: true,
+    });
+  });
+
+  it("草稿 Diff 沿用显式目录并传递比较方式", async () => {
+    vi.mocked(api.openDraftScope).mockResolvedValue({ data: scope } as never);
+    vi.mocked(api.gitComparison).mockResolvedValue({
+      data: {
+        root: "/workspace",
+        branch: "feature",
+        baseRef: "origin/main",
+        entries: [],
+      },
+    } as never);
+    const { git } = createCoreWorkspaceServices(platform().host);
+    await git.scoped_git_comparison({
+      root: "/workspace",
+      repository: "/workspace",
+      base: "origin/main",
+      path: "README.md",
+      ignoreWhitespace: true,
+    });
+    expect(api.openScope).not.toHaveBeenCalled();
+    expect(api.gitComparison).toHaveBeenCalledWith({
+      query: {
+        scopeId: "scope",
+        root: "/workspace",
+        repository: "/workspace",
+        base: "origin/main",
+        path: "README.md",
+        ignoreWhitespace: true,
+      },
+      throwOnError: true,
+    });
+  });
+
   it("分支候选不把普通目录下的子仓库当成当前工作目录", async () => {
     vi.mocked(api.openDraftScope).mockResolvedValue({ data: scope } as never);
     vi.mocked(api.gitStatus).mockResolvedValue({
@@ -227,7 +305,7 @@ it("Git 实际状态请求跨摘要和详情串行，完成后至少一秒再读
     const { git } = createCoreWorkspaceServices(platform().host);
     const first = git.scoped_git_status({ chatId: "chat", root: "/workspace" });
     await vi.advanceTimersByTimeAsync(0);
-    const second = git.get_workspace_git_changes({ root: "/workspace" });
+    const second = git.scoped_git_status({ root: "/workspace" });
     await vi.advanceTimersByTimeAsync(500);
     expect(api.gitStatus).toHaveBeenCalledTimes(1);
     finish?.({ data: status } as never);

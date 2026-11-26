@@ -1,93 +1,126 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
-import { ScopedGitChanges } from "./scoped-git-changes";
+import { TooltipProvider } from "@/shared/ui/tooltip";
+import {
+  ScopedGitChanges,
+  type ScopedGitChangesProps,
+} from "./scoped-git-changes";
 
+const chatId = "a".repeat(32);
+const root = "/tmp/bot";
+const testPath = "src/main.test.ts";
+const changedPath = "src/main.ts";
+const hash = "1234567890abcdef1234567890abcdef12345678";
 const {
-  gitState,
   discardScopedGitFile,
   getScopedGitStatus,
-  getScopedGitDiff,
+  getScopedGitBranchesForScope,
+  getScopedGitComparison,
   stageScopedGitFile,
-  commitScopedGitFiles,
-  getScopedGitCommitDiff,
+  unstageScopedGitFile,
   getScopedGitLog,
-} = vi.hoisted(() => ({
-  discardScopedGitFile: vi.fn(async () => true),
-  gitState: { xy: " M", untracked: false },
-  getScopedGitStatus: vi.fn(async () => ({
-    isRepo: true,
-    branch: "main",
-    root: "/tmp/bot",
-    repositories: ["/tmp/bot"],
-    entries: [
-      ...(gitState.xy
-        ? [
-            {
-              path: "src/main.ts",
-              xy: gitState.xy,
-              stagedAddedLines: 1,
-              stagedDeletedLines: 1,
-              unstagedAddedLines: 2,
-              unstagedDeletedLines: 1,
-            },
-          ]
-        : []),
-      ...(gitState.untracked
-        ? [
-            {
-              path: "new.txt",
-              xy: "??",
-              stagedAddedLines: 0,
-              stagedDeletedLines: 0,
-              unstagedAddedLines: 3,
-              unstagedDeletedLines: 0,
-            },
-          ]
-        : []),
-    ],
-  })),
-  getScopedGitDiff: vi.fn(
-    async () =>
-      "diff --git a/src/main.ts b/src/main.ts\n--- a/src/main.ts\n+++ b/src/main.ts\n@@ -1 +1 @@\n-old line\n+new line\n",
-  ),
-  stageScopedGitFile: vi.fn(async () => {
-    gitState.xy = "M ";
-  }),
-  commitScopedGitFiles: vi.fn(async () => {
-    gitState.xy = "";
-  }),
-  getScopedGitCommitDiff: vi.fn(
-    async () =>
-      "diff --git a/src/main.ts b/src/main.ts\n--- a/src/main.ts\n+++ b/src/main.ts\n@@ -1 +1 @@\n-old line\n+new line\n",
-  ),
-  getScopedGitLog: vi.fn(async () => [
-    {
-      hash: "1234567",
-      hashFull: "1234567890abcdef1234567890abcdef12345678",
-      subject: "initial",
-      author: "Test",
-      date: "2026-09-28",
-      refs: "HEAD -> main",
-    },
-  ]),
-}));
+  gitState,
+} = vi.hoisted(() => {
+  const state = { staged: false };
+  return {
+    gitState: state,
+    discardScopedGitFile: vi.fn(async () => true),
+    getScopedGitStatus: vi.fn(async () => ({
+      isRepo: true,
+      branch: "main",
+      head: "observed-head",
+      index: "observed-index",
+      root: "/tmp/bot",
+      repositories: ["/tmp/bot"],
+      entries: [],
+    })),
+    getScopedGitBranchesForScope: vi.fn(async () => ({
+      isGitRepo: true,
+      gitRoot: "/tmp/bot",
+      branches: [
+        { name: "main", isCurrent: true, isRemote: false },
+        { name: "release", isCurrent: false, isRemote: false },
+      ],
+    })),
+    getScopedGitComparison: vi.fn(
+      async (
+        _chat: string,
+        selectedRoot: string,
+        _repo: string,
+        base?: string,
+        path?: string,
+      ) => ({
+        root: selectedRoot,
+        branch: "main",
+        baseRef: base ?? "origin/main",
+        entries:
+          base === "HEAD" || (base === ":staged" && !state.staged)
+            ? []
+            : [
+                {
+                  path: "src/main.ts",
+                  status: "M",
+                  addedLines: 2,
+                  deletedLines: 1,
+                  lineCountUnavailable: false,
+                },
+                ...(base
+                  ? []
+                  : [
+                      {
+                        path: "src/main.test.ts",
+                        status: "A",
+                        addedLines: 1,
+                        deletedLines: 0,
+                        lineCountUnavailable: false,
+                      },
+                    ]),
+              ].filter((entry) => !path || entry.path === path),
+        content: path
+          ? "diff --git a/" +
+            path +
+            " b/" +
+            path +
+            "\n--- a/" +
+            path +
+            "\n+++ b/" +
+            path +
+            "\n@@ -1 +1 @@\n-old line\n+new line\n"
+          : undefined,
+      }),
+    ),
+    stageScopedGitFile: vi.fn(async () => {
+      state.staged = true;
+    }),
+    unstageScopedGitFile: vi.fn(async () => {
+      state.staged = false;
+    }),
+    getScopedGitLog: vi.fn(async () => [
+      {
+        hash: "1234567",
+        hashFull: "1234567890abcdef1234567890abcdef12345678",
+        subject: "initial",
+        author: "Test",
+        date: "2026-09-28",
+        refs: "HEAD -> main",
+      },
+    ]),
+  };
+});
 
 vi.mock("@/shared/platform", () => ({
   isDesktopRuntime: () => false,
   hasPlatformService: () => false,
   getScopedGitStatus,
-  getScopedGitDiff,
+  listWorkspaceGitBranches: getScopedGitBranchesForScope,
+  getScopedGitComparison,
   getScopedGitLog,
-  getScopedGitCommitDiff,
   stageScopedGitFile,
-  commitScopedGitFiles,
-  unstageScopedGitFile: vi.fn(async () => {
-    gitState.xy = " M";
-  }),
+  unstageScopedGitFile,
   discardScopedGitFile,
 }));
 vi.mock("@/shared/theme", () => ({
@@ -95,278 +128,244 @@ vi.mock("@/shared/theme", () => ({
 }));
 vi.mock("@git-diff-view/react", () => ({
   DiffModeEnum: { Unified: "unified", Split: "split" },
-  DiffView: ({ diffViewMode }: { diffViewMode: string }) => (
-    <div data-testid="git-patch-preview" data-mode={diffViewMode} />
+  DiffView: ({
+    diffViewMode,
+    diffViewWrap,
+  }: {
+    diffViewMode: string;
+    diffViewWrap: boolean;
+  }) => (
+    <div
+      data-testid="git-patch-preview"
+      data-mode={diffViewMode}
+      data-wrap={diffViewWrap}
+    />
   ),
 }));
 
-describe("ScopedGitChanges", () => {
-  it("默认仓库复用发现时的状态快照，不再重复请求同一仓库", async () => {
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
+function renderChanges(props: Partial<ScopedGitChangesProps> = {}) {
+  const onOpenFile = vi.fn();
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <TooltipProvider>
         <ScopedGitChanges
           query=""
-          rootPath="/tmp/bot"
-          scopeChatId={"a".repeat(32)}
+          rootPath={root}
+          scopeChatId={chatId}
+          onOpenFile={onOpenFile}
+          {...props}
         />
-      </QueryClientProvider>,
-    );
-    await screen.findByText("src/main.ts");
-    expect(getScopedGitStatus).toHaveBeenCalledTimes(1);
-  });
+      </TooltipProvider>
+    </QueryClientProvider>,
+  );
+  return { user: userEvent.setup(), onOpenFile };
+}
 
+describe("ScopedGitChanges", () => {
   beforeEach(() => {
-    gitState.xy = " M";
-    gitState.untracked = false;
+    gitState.staged = false;
     vi.clearAllMocks();
   });
-  it("文件行只显示增删行数，未跟踪文件按新增行展示", async () => {
-    gitState.untracked = true;
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <ScopedGitChanges
-          query=""
-          rootPath="/tmp/bot"
-          scopeChatId={"a".repeat(32)}
-        />
-      </QueryClientProvider>,
-    );
 
-    const changes = await screen.findByRole("complementary", {
-      name: "改动文件",
-    });
-    expect(changes).toHaveTextContent("src/main.ts+2-1");
-    expect(changes).toHaveTextContent("new.txt+3-0");
-    expect(changes).not.toHaveTextContent("修改");
-    expect(changes).not.toHaveTextContent("未跟踪");
-    await user.click(screen.getByText("new.txt"));
+  it("先读取比较元数据，展开才请求单文件补丁，文件名打开普通文件", async () => {
+    const { user, onOpenFile } = renderChanges();
+
+    const main = await screen.findByRole("main", { name: "Git Diff 预览" });
+    const file = await within(main).findByRole("button", { name: changedPath });
+    expect(getScopedGitStatus).toHaveBeenCalledTimes(1);
+    expect(getScopedGitComparison.mock.calls.map((args) => args[4])).toEqual([
+      undefined,
+    ]);
+    expect(screen.queryByTestId("git-patch-preview")).toBeNull();
+
+    await user.click(file);
+    expect(onOpenFile).toHaveBeenCalledWith(root, changedPath);
+    await user.click(
+      within(main).getByRole("button", { name: "展开 " + changedPath }),
+    );
     expect(await screen.findByTestId("git-patch-preview")).toBeInTheDocument();
-    expect(getScopedGitDiff).toHaveBeenCalledWith(
-      "a".repeat(32),
-      "/tmp/bot",
-      "/tmp/bot",
-      "new.txt",
+    expect(getScopedGitComparison).toHaveBeenLastCalledWith(
+      chatId,
+      root,
+      root,
+      undefined,
+      changedPath,
       false,
     );
-  });
-  it("Diff 复用顶部工具栏并占满预览区，不提供单文件全屏入口", async () => {
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <ScopedGitChanges
-          query=""
-          rootPath="/tmp/bot"
-          scopeChatId={"a".repeat(32)}
-        />
-      </QueryClientProvider>,
-    );
 
-    await user.click(await screen.findByText("src/main.ts"));
-    expect(
-      await screen.findByTestId("git-patch-preview", {}, { timeout: 5000 }),
-    ).toBeInTheDocument();
-    const toolbar = screen
-      .getByRole("button", { name: "历史" })
-      .closest("header");
-    if (!toolbar) throw new Error("缺少 Git 工具栏");
-    await user.click(within(toolbar).getByRole("button", { name: "分栏" }));
-    expect(
-      within(toolbar).getByRole("button", { name: "统一" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "在标签中打开 Diff" }),
-    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: "分栏" }));
+    await user.click(screen.getByRole("button", { name: "自动换行" }));
     expect(screen.getByTestId("git-patch-preview")).toHaveAttribute(
       "data-mode",
       "split",
     );
+    expect(screen.getByTestId("git-patch-preview")).toHaveAttribute(
+      "data-wrap",
+      "true",
+    );
+
+    await user.click(screen.getByRole("button", { name: "隐藏空白改动" }));
+    await waitFor(() =>
+      expect(getScopedGitComparison).toHaveBeenCalledWith(
+        chatId,
+        root,
+        root,
+        undefined,
+        undefined,
+        true,
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "隐藏测试文件" }));
+    expect(within(main).queryByRole("button", { name: testPath })).toBeNull();
+  });
+
+  it("改动树定位并展开对应行，工具栏可以折叠全部补丁", async () => {
+    const { user } = renderChanges();
+    const tree = await screen.findByRole("complementary", { name: "改动文件" });
     const main = screen.getByRole("main", { name: "Git Diff 预览" });
-    expect(within(main).getAllByText("src/main.ts")).toHaveLength(1);
-    expect(main.querySelector(".max-h-96")).toBeNull();
-    expect(getScopedGitStatus).toHaveBeenCalledWith("a".repeat(32), "/tmp/bot");
-    expect(getScopedGitDiff).toHaveBeenCalledWith(
-      "a".repeat(32),
-      "/tmp/bot",
-      "/tmp/bot",
-      "src/main.ts",
+    const stop = await within(tree).findByRole("button", { name: "main.ts" });
+    await user.click(stop);
+    expect(stop).toHaveAttribute("aria-current", "true");
+    expect(await screen.findByTestId("git-patch-preview")).toBeInTheDocument();
+    expect(
+      within(main).getByRole("button", { name: "折叠 " + changedPath }),
+    ).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "折叠全部文件" }));
+    expect(screen.queryByTestId("git-patch-preview")).toBeNull();
+  });
+
+  it("草稿显式目录可读取比较，选基准只更新该仓库的审查范围", async () => {
+    const { user } = renderChanges({ scopeChatId: undefined });
+    const base = await screen.findByRole("combobox", { name: "比较基准" });
+    await user.click(base);
+    await user.click(await screen.findByRole("option", { name: "release" }));
+    expect(base).toHaveTextContent("release");
+    await waitFor(() =>
+      expect(getScopedGitComparison).toHaveBeenCalledWith(
+        undefined,
+        root,
+        root,
+        "release",
+        undefined,
+        false,
+      ),
+    );
+    expect(stageScopedGitFile).not.toHaveBeenCalled();
+    expect(unstageScopedGitFile).not.toHaveBeenCalled();
+  });
+
+  it("未提交仅读取 HEAD 到工作树净差异，不将相互抵消的两份补丁显示出来", async () => {
+    gitState.staged = true;
+    const { user } = renderChanges();
+    await user.click(
+      await screen.findByRole("combobox", { name: "Diff 来源" }),
+    );
+    await user.click(screen.getByRole("option", { name: "未提交" }));
+    const view = screen.getByRole("main", { name: "Git Diff 预览" });
+    expect(
+      await within(view).findByText("没有可显示的差异"),
+    ).toBeInTheDocument();
+    expect(getScopedGitComparison).toHaveBeenCalledWith(
+      chatId,
+      root,
+      root,
+      "HEAD",
+      undefined,
       false,
     );
-  });
-
-  it("暂存后才允许提交，成功后清空提交说明", async () => {
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <ScopedGitChanges
-          query=""
-          rootPath="/tmp/bot"
-          scopeChatId={"a".repeat(32)}
-        />
-      </QueryClientProvider>,
-    );
-
-    const commit = await screen.findByRole("button", {
-      name: "提交已暂存文件",
-    });
-    expect(commit).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "暂存 src/main.ts" }));
     expect(
-      await screen.findByRole("button", { name: "取消暂存 src/main.ts" }),
-    ).toBeInTheDocument();
-    await user.type(
-      screen.getByRole("textbox", { name: "提交说明" }),
-      "change",
-    );
-    await user.click(commit);
-    expect(commitScopedGitFiles).toHaveBeenCalledWith(
-      "a".repeat(32),
-      "/tmp/bot",
-      "/tmp/bot",
-      "change",
-    );
+      getScopedGitComparison.mock.calls.some(
+        (args) => args[3] === ":staged" || args[3] === ":unstaged",
+      ),
+    ).toBe(false);
     expect(
-      await screen.findByText("当前工作树没有文件改动"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "提交说明" })).toHaveValue("");
-  });
-
-  it("点击历史提交可读取提交 Diff", async () => {
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <ScopedGitChanges
-          query=""
-          rootPath="/tmp/bot"
-          scopeChatId={"a".repeat(32)}
-        />
-      </QueryClientProvider>,
-    );
-    await screen.findByRole("button", { name: "历史" });
-    expect(getScopedGitLog).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "历史" }));
-    await user.click(await screen.findByRole("button", { name: /initial/ }));
-    expect(await screen.findByTestId("git-patch-preview")).toBeInTheDocument();
-    const main = screen.getByRole("main", { name: "Git 历史预览" });
-    expect(main.querySelector(".max-h-96")).toBeNull();
-    expect(getScopedGitCommitDiff).toHaveBeenCalledWith(
-      "a".repeat(32),
-      "/tmp/bot",
-      "/tmp/bot",
-      "1234567890abcdef1234567890abcdef12345678",
-    );
-  });
-
-  it("单仓库只显示一条工具栏，改动列表与预览共享可调整的宽度", async () => {
-    const user = userEvent.setup();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <ScopedGitChanges
-          query=""
-          rootPath="/tmp/bot"
-          scopeChatId={"a".repeat(32)}
-        />
-      </QueryClientProvider>,
-    );
-
-    await screen.findByText("src/main.ts");
-    expect(screen.queryByRole("combobox", { name: "Git 仓库" })).toBeNull();
-    expect(screen.queryByText("/tmp/bot")).toBeNull();
-    const list = screen.getByRole("complementary", { name: "改动文件" });
-    expect(list).not.toHaveClass("absolute");
-    expect(
-      screen.getByRole("separator", { name: "调整分屏比例" }),
-    ).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "隐藏改动列表" }));
-    expect(
-      screen.queryByRole("complementary", { name: "改动文件" }),
+      within(view).queryByRole("button", { name: "取消暂存 " + changedPath }),
     ).toBeNull();
-    await user.click(screen.getByRole("button", { name: "显示改动列表" }));
-    expect(
-      screen.getByRole("complementary", { name: "改动文件" }),
-    ).toBeVisible();
   });
 
-  it("提交失败时保留输入与已暂存文件", async () => {
-    const user = userEvent.setup();
-    gitState.xy = "M ";
-    commitScopedGitFiles.mockRejectedValueOnce(new Error("hook failed"));
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <ScopedGitChanges
-          query=""
-          rootPath="/tmp/bot"
-          scopeChatId={"a".repeat(32)}
-        />
-      </QueryClientProvider>,
+  it("暂存与工作区保留暂存、取消暂存和确认丢弃", async () => {
+    const { user } = renderChanges();
+    await user.click(
+      await screen.findByRole("combobox", { name: "Diff 来源" }),
     );
-    await user.type(
-      await screen.findByRole("textbox", { name: "提交说明" }),
-      "keep me",
+    await user.click(screen.getByRole("option", { name: "暂存与工作区" }));
+
+    await user.click(
+      await screen.findByRole("button", { name: "暂存 " + changedPath }),
     );
-    await user.click(screen.getByRole("button", { name: "提交已暂存文件" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("hook failed");
-    expect(screen.getByRole("textbox", { name: "提交说明" })).toHaveValue(
-      "keep me",
+    await user.click(
+      await screen.findByRole("button", { name: "取消暂存 " + changedPath }),
     );
-    expect(
-      screen.getByRole("button", { name: "取消暂存 src/main.ts" }),
-    ).toBeInTheDocument();
-  });
-  it("Git 丢弃先确认，取消不执行", async () => {
-    const user = userEvent.setup();
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <ScopedGitChanges
-          query=""
-          rootPath="/tmp/bot"
-          scopeChatId={"a".repeat(32)}
-        />
-      </QueryClientProvider>,
+    await waitFor(() =>
+      expect(unstageScopedGitFile).toHaveBeenCalledWith(
+        chatId,
+        root,
+        root,
+        changedPath,
+        {
+          expectedBranch: "main",
+          expectedHead: "observed-head",
+          expectedIndex: "observed-index",
+        },
+      ),
     );
     const discard = await screen.findByRole("button", {
-      name: "丢弃 src/main.ts 的未暂存改动",
+      name: "丢弃 " + changedPath + " 的未暂存改动",
     });
     await user.click(discard);
     expect(discardScopedGitFile).not.toHaveBeenCalled();
-    expect(screen.getByRole("dialog")).toHaveTextContent("修改将丢失");
-    await user.click(screen.getByRole("button", { name: "取消" }));
-    expect(discardScopedGitFile).not.toHaveBeenCalled();
-    await user.click(discard);
     await user.click(screen.getByRole("button", { name: "确认丢弃" }));
     await waitFor(() =>
       expect(discardScopedGitFile).toHaveBeenCalledWith(
-        "a".repeat(32),
-        "/tmp/bot",
-        "/tmp/bot",
-        "src/main.ts",
+        chatId,
+        root,
+        root,
+        changedPath,
+        {
+          expectedBranch: "main",
+          expectedHead: "observed-head",
+          expectedIndex: "observed-index",
+        },
       ),
+    );
+    expect(screen.queryByRole("textbox", { name: "提交说明" })).toBeNull();
+  });
+
+  it("提交选择的文件差异单独加载", async () => {
+    const { user } = renderChanges();
+    await user.click(
+      await screen.findByRole("combobox", { name: "Diff 来源" }),
+    );
+    await user.click(screen.getByRole("option", { name: "提交历史" }));
+    await waitFor(() =>
+      expect(getScopedGitLog).toHaveBeenCalledWith(
+        chatId,
+        root,
+        root,
+        100,
+        0,
+        ":auto",
+      ),
+    );
+    await user.click(await screen.findByRole("combobox", { name: "提交历史" }));
+    await user.click(await screen.findByRole("option", { name: /initial/ }));
+
+    const main = screen.getByRole("main", { name: "Git Diff 预览" });
+    await user.click(
+      await within(main).findByRole("button", { name: "展开 " + changedPath }),
+    );
+    expect(await screen.findByTestId("git-patch-preview")).toBeInTheDocument();
+    expect(getScopedGitComparison).toHaveBeenCalledWith(
+      chatId,
+      root,
+      root,
+      ":commit:" + hash,
+      changedPath,
+      false,
     );
   });
 });

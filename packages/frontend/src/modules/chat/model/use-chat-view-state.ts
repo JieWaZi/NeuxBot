@@ -8,7 +8,6 @@ export type ChatViewState = {
   codeReferenceRequest?: ChatCodeReference;
   fileSource: "chat" | "project";
   model: string;
-  openedCodeReference?: ChatCodeReference;
   permissionLevel?: PermissionLevel;
   query: string;
   reasoning?: string;

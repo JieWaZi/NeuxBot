@@ -11,10 +11,13 @@ import type {
   WorkspaceResourceWrite,
   WorkspaceResourceImport,
   WorkspaceResourceChangeEvent,
-  WorkspaceGitChange,
-  WorkspaceGitChanges,
   ScopedGitStatus,
   ScopedGitLogEntry,
+  WorkspaceGitTarget,
+  WorkspaceGitIndexObservation,
+  WorkspaceGitComparison,
+  WorkspaceGitAction,
+  WorkspaceGitActionResult,
   WorkspaceGitBranch,
   WorkspaceGitBranches,
   WorkspaceGitCheckoutConflict,
@@ -265,16 +268,12 @@ export type WorkspaceCommands = {
 };
 
 export type GitCommands = {
-  get_workspace_git_changes: {
-    args: { root: string };
-    result: WorkspaceGitChanges;
-  };
   list_workspace_git_branches: {
-    args: { root: string };
+    args: WorkspaceGitTarget;
     result: WorkspaceGitBranches;
   };
   preview_workspace_git_checkout: {
-    args: { root: string; branch: string };
+    args: WorkspaceGitTarget & { branch: string };
     result: WorkspaceGitCheckoutPreview;
   };
   checkout_workspace_git_branch: {
@@ -290,12 +289,24 @@ export type GitCommands = {
     result: WorkspaceDiffContent;
   };
   scoped_git_status: {
-    args: { chatId: string; root: string; repository?: string };
+    args: WorkspaceGitTarget;
     result: ScopedGitStatus;
+  };
+  scoped_git_comparison: {
+    args: WorkspaceGitTarget & {
+      base?: string;
+      path?: string;
+      ignoreWhitespace?: boolean;
+    };
+    result: WorkspaceGitComparison;
+  };
+  workspace_git_action: {
+    args: WorkspaceGitAction;
+    result: WorkspaceGitActionResult;
   };
   scoped_git_diff: {
     args: {
-      chatId: string;
+      chatId?: string;
       root: string;
       repository: string;
       relativePath: string;
@@ -305,11 +316,12 @@ export type GitCommands = {
   };
   scoped_git_log: {
     args: {
-      chatId: string;
+      chatId?: string;
       root: string;
       repository: string;
       count: number;
       skip: number;
+      base?: string;
     };
     result: ScopedGitLogEntry[];
   };
@@ -324,25 +336,25 @@ export type GitCommands = {
     result: string | null;
   };
   scoped_git_commit_diff: {
-    args: { chatId: string; root: string; repository: string; hash: string };
+    args: { chatId?: string; root: string; repository: string; hash: string };
     result: string;
   };
   scoped_git_stage: {
     args: {
-      chatId: string;
+      chatId?: string;
       root: string;
       repository: string;
       relativePath: string;
-    };
+    } & WorkspaceGitIndexObservation;
     result: void;
   };
   scoped_git_unstage: {
     args: {
-      chatId: string;
+      chatId?: string;
       root: string;
       repository: string;
       relativePath: string;
-    };
+    } & WorkspaceGitIndexObservation;
     result: void;
   };
   scoped_git_commit: {
@@ -351,11 +363,11 @@ export type GitCommands = {
   };
   scoped_git_discard: {
     args: {
-      chatId: string;
+      chatId?: string;
       root: string;
       repository: string;
       relativePath: string;
-    };
+    } & WorkspaceGitIndexObservation;
     result: boolean;
   };
 };

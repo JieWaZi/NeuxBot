@@ -218,33 +218,102 @@ describe("right workbench tab domain", () => {
     });
   });
 
-  it("Git 差异标签按仓库、文件和暂存状态区分并复用身份", () => {
+  it("文件浏览器打开已存在的规范文件时关闭浏览器并复用原标签", () => {
     const mint = mintSequence();
     const command = {
-      type: "open-git-diff" as const,
-      title: "src/报告 #1.ts",
-      rootPath: "/workspace",
-      repository: "/workspace/project",
-      path: "src/报告 #1.ts",
-      staged: false,
+      type: "open-file" as const,
+      title: "report.ts",
+      rootPath: "/workspace/project",
+      canonicalPath: "/workspace/project/src/report.ts",
+      path: "src/report.ts",
     };
     const first = reduceWorkbench(emptyWorkbenchState(), command, mint);
-    const reopened = reduceWorkbench(first, command, mint);
-    const staged = reduceWorkbench(
-      reopened,
-      { ...command, staged: true },
+    const withBrowser = reduceWorkbench(
+      first,
+      { type: "open-page", kind: "files", title: "文件" },
+      mint,
+    );
+    const reopened = reduceWorkbench(
+      withBrowser,
+      {
+        ...command,
+        rootPath: "/workspace",
+        path: "project/src/report.ts",
+        replaceFilesTabId: withBrowser.tabs[1]?.id,
+      },
       mint,
     );
     expect(reopened.tabs).toHaveLength(1);
     expect(reopened.tabs[0]).toMatchObject({
-      kind: "git-diff",
+      kind: "file",
+      id: first.tabs[0]?.id,
       occurrenceId: first.tabs[0]?.occurrenceId,
       navigationRevision: 2,
     });
-    expect(staged.tabs).toHaveLength(2);
-    expect(staged.tabs[1]).toMatchObject({
-      gitRepository: "/workspace/project",
-      gitStaged: true,
+    expect(focusedTabId(reopened)).toBe(first.tabs[0]?.id);
+  });
+
+  it("在浏览器所属分屏的原位置打开新文件", () => {
+    const mint = mintSequence();
+    const browser = reduceWorkbench(
+      emptyWorkbenchState(),
+      { type: "open-page", kind: "files", title: "文件" },
+      mint,
+    );
+    const neighbor = reduceWorkbench(
+      browser,
+      { type: "open-browser", title: "网页", newTab: true },
+      mint,
+    );
+    const split = reduceWorkbench(
+      neighbor,
+      {
+        type: "move-tab",
+        tabId: neighbor.tabs[1]?.id ?? "",
+        targetPaneId: "pane:root",
+        zone: "left",
+      },
+      mint,
+    );
+    const selected = reduceWorkbench(
+      split,
+      {
+        type: "open-file",
+        title: "report.ts",
+        rootPath: "/workspace",
+        path: "src/report.ts",
+        canonicalPath: "/workspace/src/report.ts",
+        replaceFilesTabId: browser.tabs[0]?.id,
+      },
+      mint,
+    );
+    expect(selected.tabs.map((tab) => tab.kind)).toEqual(["browser", "file"]);
+    expect(workbenchPaneById(selected.layout, "pane:root")?.tabIds).toEqual([
+      selected.tabs[1]?.id,
+    ]);
+    expect(focusedTabId(selected)).toBe(selected.tabs[1]?.id);
+  });
+
+  it("不同成员各自授权打开同一项目路径时复用规范文件标签", () => {
+    const command = {
+      type: "open-file" as const,
+      title: "report.ts",
+      path: "src/report.ts",
+      canonicalPath: "/workspace/src/report.ts",
+      rootPath: "/workspace",
+    };
+    const first = reduceWorkbench(emptyWorkbenchState(), {
+      ...command,
+      fileChatId: "member-a",
+    });
+    const second = reduceWorkbench(first, {
+      ...command,
+      fileChatId: "member-b",
+    });
+    expect(second.tabs).toHaveLength(1);
+    expect(second.tabs[0]).toMatchObject({
+      id: first.tabs[0]?.id,
+      fileChatId: "member-b",
     });
   });
 

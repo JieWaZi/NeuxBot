@@ -12,9 +12,13 @@ import type {
   WorkspaceResourceWrite,
   WorkspaceResourceImport,
   WorkspaceResourceChangeEvent,
-  WorkspaceGitChanges,
   ScopedGitStatus,
   ScopedGitLogEntry,
+  WorkspaceGitAction,
+  WorkspaceGitActionResult,
+  WorkspaceGitComparison,
+  WorkspaceGitTarget,
+  WorkspaceGitIndexObservation,
   WorkspaceGitBranches,
   WorkspaceGitCheckoutPreview,
   WorkspaceGitCheckoutResult,
@@ -44,10 +48,13 @@ export type {
   WorkspaceResourceWrite,
   WorkspaceResourceImport,
   WorkspaceResourceChangeEvent,
-  WorkspaceGitChange,
-  WorkspaceGitChanges,
   ScopedGitStatus,
   ScopedGitLogEntry,
+  WorkspaceGitAction,
+  WorkspaceGitActionResult,
+  WorkspaceGitComparison,
+  WorkspaceGitTarget,
+  WorkspaceGitIndexObservation,
   WorkspaceGitBranch,
   WorkspaceGitBranches,
   WorkspaceGitCheckoutConflict,
@@ -543,14 +550,8 @@ export async function deleteChatWorkspaceFile(
   });
 }
 
-export async function getWorkspaceGitChanges(
-  root: string,
-): Promise<WorkspaceGitChanges> {
-  return requirePlatformService("git").get_workspace_git_changes({ root });
-}
-
 export async function getScopedGitStatus(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository?: string,
 ): Promise<ScopedGitStatus> {
@@ -561,8 +562,32 @@ export async function getScopedGitStatus(
   });
 }
 
+export async function getScopedGitComparison(
+  chatId: string | undefined,
+  root: string,
+  repository: string,
+  base?: string,
+  path?: string,
+  ignoreWhitespace?: boolean,
+): Promise<WorkspaceGitComparison> {
+  return requirePlatformService("git").scoped_git_comparison({
+    chatId,
+    root,
+    repository,
+    base,
+    path,
+    ignoreWhitespace,
+  });
+}
+
+export async function runWorkspaceGitAction(
+  action: WorkspaceGitAction,
+): Promise<WorkspaceGitActionResult> {
+  return requirePlatformService("git").workspace_git_action(action);
+}
+
 export async function getScopedGitDiff(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   relativePath: string,
@@ -578,11 +603,12 @@ export async function getScopedGitDiff(
 }
 
 export async function getScopedGitLog(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   count = 20,
   skip = 0,
+  base?: string,
 ): Promise<ScopedGitLogEntry[]> {
   return requirePlatformService("git").scoped_git_log({
     chatId,
@@ -590,6 +616,7 @@ export async function getScopedGitLog(
     repository,
     count,
     skip,
+    base,
   });
 }
 
@@ -610,7 +637,7 @@ export async function getScopedGitFileAtRevision(
 }
 
 export async function getScopedGitCommitDiff(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   hash: string,
@@ -624,30 +651,34 @@ export async function getScopedGitCommitDiff(
 }
 
 export async function stageScopedGitFile(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   relativePath: string,
+  observation?: WorkspaceGitIndexObservation,
 ): Promise<void> {
   await requirePlatformService("git").scoped_git_stage({
     chatId,
     root,
     repository,
     relativePath,
+    ...observation,
   });
 }
 
 export async function unstageScopedGitFile(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   relativePath: string,
+  observation?: WorkspaceGitIndexObservation,
 ): Promise<void> {
   await requirePlatformService("git").scoped_git_unstage({
     chatId,
     root,
     repository,
     relativePath,
+    ...observation,
   });
 }
 
@@ -666,32 +697,40 @@ export async function commitScopedGitFiles(
 }
 
 export async function discardScopedGitFile(
-  chatId: string,
+  chatId: string | undefined,
   root: string,
   repository: string,
   relativePath: string,
+  observation?: WorkspaceGitIndexObservation,
 ): Promise<boolean> {
   return requirePlatformService("git").scoped_git_discard({
     chatId,
     root,
     repository,
     relativePath,
+    ...observation,
   });
 }
 
 export async function listWorkspaceGitBranches(
   root: string,
+  target?: Pick<WorkspaceGitTarget, "chatId" | "repository">,
 ): Promise<WorkspaceGitBranches> {
-  return requirePlatformService("git").list_workspace_git_branches({ root });
+  return requirePlatformService("git").list_workspace_git_branches({
+    root,
+    ...target,
+  });
 }
 
 export async function previewWorkspaceGitCheckout(
   root: string,
   branch: string,
+  target?: Pick<WorkspaceGitTarget, "chatId" | "repository">,
 ): Promise<WorkspaceGitCheckoutPreview> {
   return requirePlatformService("git").preview_workspace_git_checkout({
     root,
     branch,
+    ...target,
   });
 }
 

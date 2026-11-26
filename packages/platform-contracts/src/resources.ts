@@ -80,28 +80,20 @@ export type WorkspaceResourceChangeEvent = {
   resource: WorkspaceResourceStat | null;
 };
 
-export type WorkspaceGitChange = {
-  path: string;
-  name: string;
-  status: "modified" | "added" | "deleted" | "untracked";
-  addedLines: number;
-  deletedLines: number;
-  gitRoot: string;
-};
-
-export type WorkspaceGitChanges = {
-  isGitRepo: boolean;
-  /** 当前 HEAD 所在分支；detached HEAD 时为短 commit hash。 */
-  branch?: string;
-  files: WorkspaceGitChange[];
-  totalAddedLines: number;
-  totalDeletedLines: number;
-};
-
 /** Git porcelain 快照，保留暂存区与工作区各自的状态字母。 */
 export type ScopedGitStatus = {
   isRepo: boolean;
   branch?: string;
+  head?: string;
+  index?: string;
+  upstream?: string;
+  remote?: string;
+  remotes?: string[];
+  github?: boolean;
+  defaultBranch?: string;
+  ahead?: number;
+  aheadOfDefault?: number;
+  behind?: number;
   entries: {
     path: string;
     xy: string;
@@ -114,6 +106,68 @@ export type ScopedGitStatus = {
   truncated?: boolean;
   root?: string;
   repositories?: string[];
+};
+
+export type WorkspaceGitTarget = {
+  chatId?: string;
+  root: string;
+  repository?: string;
+};
+
+export type WorkspaceGitIndexObservation = {
+  expectedBranch?: string;
+  expectedHead?: string;
+  expectedIndex?: string;
+};
+
+export type WorkspaceGitComparison = {
+  root: string;
+  branch: string;
+  baseRef?: string;
+  entries: {
+    path: string;
+    oldPath?: string;
+    status: string;
+    addedLines: number;
+    deletedLines: number;
+    lineCountUnavailable?: boolean;
+  }[];
+  content?: string;
+  truncated?: boolean;
+};
+
+export type WorkspaceGitAction = WorkspaceGitTarget & {
+  action:
+    | "commit"
+    | "push"
+    | "push_pr"
+    | "commit_push"
+    | "create_pr"
+    | "commit_push_pr"
+    | "find_pr"
+    | "create_branch"
+    | "checkout";
+  message?: string;
+  filePaths?: string[];
+  expectedBranch?: string;
+  expectedHead?: string;
+  expectedIndex?: string;
+  expectedUpstream?: string;
+  expectedRemoteBranch?: string;
+  remote?: string;
+  base?: string;
+  branch?: string;
+};
+
+export type WorkspaceGitActionResult = {
+  branch?: string;
+  base?: string;
+  commit?: string;
+  pushed?: boolean;
+  prUrl?: string;
+  failedStep?: string;
+  error?: string;
+  errorMessage?: string;
 };
 
 export type ScopedGitLogEntry = {

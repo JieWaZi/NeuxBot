@@ -119,8 +119,7 @@ function refreshWorkspaceQuery(queryClient: QueryClient, queryHash: string) {
     return;
   }
   const prefix = String(query.queryKey[0]);
-  const isGit =
-    prefix.startsWith("scoped-git-") || prefix === "chat-summary-git-changes";
+  const isGit = prefix.startsWith("scoped-git-");
   const delay = isGit
     ? Math.max(
         0,

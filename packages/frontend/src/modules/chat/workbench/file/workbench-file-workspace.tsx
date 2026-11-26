@@ -1,9 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  ChevronsDownUp,
+  ChevronsUpDown,
   Download,
   Folders,
   FolderOpen,
   MoreHorizontal,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
 import {
@@ -15,12 +18,13 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { WorkspaceFileBrowser } from "../../components/workspace-file-browser";
-import { WorkspaceFileViewer } from "../../components/workspace-file-viewer";
+import {
+  WorkspaceFileBrowser,
+  workspaceFileBrowserKeys,
+} from "../../components/workspace-file-browser";
 import { WorkspaceDetailSplit } from "../../components/workspace-detail-split";
 import {
   fileName,
-  isAbsoluteFilePath,
   parseReference,
   resolveFileReference,
   type ResolvedFileReference,
@@ -28,10 +32,10 @@ import {
 import { FileReferenceProvider } from "@/shared/workspace/file-reference-link";
 import { WorkspaceFileTypeIcon } from "@/shared/workspace/workspace-file-type-icon";
 import type { WorkspaceFile } from "@/shared/workspace/types";
-import type { WorkspaceFileView } from "@/shared/workspace/workspace-tab";
 import {
   importDroppedWorkspaceFiles,
   hasPlatformService,
+  type WorkspaceDirectoryEntry,
 } from "@/shared/platform";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
@@ -47,31 +51,32 @@ import { Spinner } from "@/shared/ui/spinner";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { FileTreeRow } from "@/shared/ui/file-tree-row";
 import { toast } from "@/shared/ui/sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/shared/ui/tooltip";
 
-import { workbenchDocumentBuffers } from "../document-buffers";
 import {
   workingDirectoryRoots,
   workspacePathAtRoot,
   matchesWorkspacePath,
 } from "../../model/project-files-scope";
 
-export type FileWorkspaceSelection = {
-  name: string;
-  path: string;
-  rootPath: string;
-  canonicalPath: string;
-  reference?: ResolvedFileReference;
-};
-
 export type WorkbenchFileWorkspaceProps = {
   active?: boolean;
-  ownerKey: string;
   rootPath: string;
   scopeChatId?: string;
   scopePath: string;
   sourceRoots?: readonly string[];
   spaceRootAvailable?: boolean;
-  initialFile?: FileWorkspaceSelection;
+  file?: {
+    path: string;
+    canonicalPath: string;
+    navigationRevision: number;
+    render: (toolbarTarget: HTMLDivElement | null) => ReactNode;
+  };
   chatFiles: WorkspaceFile[];
   fileSource: "project" | "chat";
   chatFilesLoading?: boolean;
@@ -80,16 +85,7 @@ export type WorkbenchFileWorkspaceProps = {
   onFileSourceChange?: (source: "project" | "chat") => void;
   onDownloadChatFile: (file: WorkspaceFile) => Promise<void>;
   onDeleteChatFile: (file: WorkspaceFile) => Promise<boolean>;
-  onOpenFileReference?: (file: ResolvedFileReference) => void;
-  onOpenURL?: (url: string) => unknown;
-  onAddCodeReference?: (reference: {
-    id: string;
-    path: string;
-    startLine: number;
-    endLine: number;
-    content: string;
-  }) => void;
-  onSelectedFileChange?: (file: FileWorkspaceSelection | undefined) => void;
+  onSelectFile?: (file: { name: string; path: string }, root?: string) => void;
   onPathDeleted?: (
     path: string,
     file?: ResolvedFileReference,
@@ -111,35 +107,16 @@ export type WorkbenchFileWorkspaceProps = {
   ) => boolean;
 };
 
-export function fileWorkspaceDraftPrefix(ownerKey: string): string {
-  return `${ownerKey}:file:`;
-}
-
-export function hasDirtyFileWorkspaceDrafts(ownerKey: string): boolean {
-  return workbenchDocumentBuffers.hasDirtyPrefix(
-    fileWorkspaceDraftPrefix(ownerKey),
-  );
-}
-
-export function discardFileWorkspaceDrafts(ownerKey: string): void {
-  workbenchDocumentBuffers.discardPrefix(fileWorkspaceDraftPrefix(ownerKey));
-}
-
-function draftKey(ownerKey: string, canonicalPath: string): string {
-  return `${fileWorkspaceDraftPrefix(ownerKey)}${canonicalPath}`;
-}
-
 type ChatFileDeleteError = "deleteFileError" | "saveBeforeFileOperation";
 
 export function WorkbenchFileWorkspace({
   active = true,
-  ownerKey,
   rootPath,
   scopeChatId,
   scopePath,
   sourceRoots,
   spaceRootAvailable = true,
-  initialFile,
+  file,
   chatFiles,
   fileSource,
   chatFilesLoading = false,
@@ -147,29 +124,30 @@ export function WorkbenchFileWorkspace({
   onRetryChatFiles,
   onDownloadChatFile,
   onDeleteChatFile,
-  onOpenFileReference,
-  onOpenURL,
-  onAddCodeReference,
-  onSelectedFileChange,
+  onSelectFile,
   onPathDeleted,
   onPathRenamed,
   isPathDirty,
 }: WorkbenchFileWorkspaceProps) {
   const { t } = useTranslation("chat");
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState(initialFile);
-  const [fileViews, setFileViews] = useState<Map<string, WorkspaceFileView>>(
-    () => new Map(),
-  );
   const [treeOpen, setTreeOpen] = useState(true);
+  const treeViewport = useRef<HTMLDivElement>(null);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(
     null,
   );
   const [query, setQuery] = useState("");
   const [dropActive, setDropActive] = useState(false);
   const [directorySource, setDirectorySource] = useState<"space" | "working">(
-    "space",
+    () =>
+      file && !matchesWorkspacePath(file.canonicalPath, rootPath, true)
+        ? "working"
+        : "space",
   );
+  const [treeExpansion, setTreeExpansion] = useState<{
+    paths: ReadonlySet<string>;
+    workingRootsExpanded: boolean;
+  }>();
   const workingRoots = workingDirectoryRoots(
     spaceRootAvailable ? rootPath : "",
     spaceRootAvailable ? sourceRoots : [rootPath, ...(sourceRoots ?? [])],
@@ -177,114 +155,66 @@ export function WorkbenchFileWorkspace({
   const browseWorking =
     (!spaceRootAvailable || directorySource === "working") &&
     workingRoots.length > 0;
-  const selectRequest = useRef(0);
-  const visitedFiles = useRef(new Map<string, FileWorkspaceSelection>());
+  const directoryRoots = browseWorking ? workingRoots : [rootPath];
+  const treeActive = active && (!file || treeOpen);
+  const isProject = fileSource === "project";
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleChatFiles = chatFiles.filter((file) =>
+    `${file.name} ${file.path}`.toLocaleLowerCase().includes(normalizedQuery),
+  );
+
+  const revealPath = file?.canonicalPath;
+  const revealRevision = file?.navigationRevision;
   useEffect(() => {
-    if (selected) visitedFiles.current.set(selected.canonicalPath, selected);
-  }, [selected]);
+    const tree = treeViewport.current;
+    if (!tree || !treeActive || !revealPath) return;
+    const scrollSelectedFile = () => {
+      const row = tree.querySelector<HTMLElement>(
+        'button[aria-current="page"]',
+      );
+      if (!row) return false;
+      row.scrollIntoView({ block: "nearest", inline: "nearest" });
+      return true;
+    };
+    if (scrollSelectedFile()) return;
+    // Ancestors and the selected row can arrive in separate lazy directory reads.
+    const observer = new MutationObserver(() => {
+      if (scrollSelectedFile()) observer.disconnect();
+    });
+    observer.observe(tree, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["aria-current"],
+    });
+    return () => observer.disconnect();
+  }, [treeActive, revealPath, revealRevision]);
 
-  const selectFile = (
-    file: { name: string; path: string },
-    fileRoot = fileSource === "chat" ? "" : rootPath,
-  ) => {
-    const candidate = parseReference(
-      fileRoot && !isAbsoluteFilePath(file.path)
-        ? `${fileRoot.replace(/[\\/]+$/, "")}/${file.path}`
-        : file.path,
-      "path",
-    );
-    if (candidate?.kind !== "file") return;
-    const request = ++selectRequest.current;
-    void resolveFileReference(candidate, {
-      chatId: scopeChatId,
-      baseDirectory: fileRoot,
-      workspaceRoot: fileRoot,
-      sourceRoots: fileRoot ? (sourceRoots ?? []) : [],
-    })
-      .then((result) => {
-        if (request !== selectRequest.current) return;
-        if (result.status !== "resolved") {
-          toast.error(t("fileReference.unavailable"));
-          return;
-        }
-        const next = {
-          name: file.name || fileName(result.file.canonicalPath),
-          path: result.file.path,
-          rootPath: result.file.rootPath,
-          canonicalPath: result.file.canonicalPath,
-          reference: result.file,
-        };
-        visitedFiles.current.set(next.canonicalPath, next);
-        setSelected(next);
-        onSelectedFileChange?.(next);
-      })
-      .catch(() => {
-        if (request === selectRequest.current)
-          toast.error(t("fileReference.unavailable"));
+  const refreshTree = () => {
+    for (const root of directoryRoots) {
+      void queryClient.invalidateQueries({
+        queryKey: workspaceFileBrowserKeys.directories(scopeChatId, root),
       });
-  };
-
-  const isDirtyPath = (
-    path: string,
-    file?: ResolvedFileReference,
-    affectedRoot?: string,
-  ) => {
-    const externalDirty = isPathDirty?.(path, file, affectedRoot);
-    if (externalDirty) return true;
-    const target =
-      file?.canonicalPath ??
-      workspacePathAtRoot(affectedRoot ?? rootPath, path);
-    for (const opened of visitedFiles.current.values()) {
-      if (
-        matchesWorkspacePath(opened.canonicalPath, target, true) &&
-        workbenchDocumentBuffers.isDirty(
-          draftKey(ownerKey, opened.canonicalPath),
-        )
-      )
-        return true;
-    }
-    return false;
-  };
-
-  const handlePathDeleted: NonNullable<
-    WorkbenchFileWorkspaceProps["onPathDeleted"]
-  > = (path, file, directory, affectedRoot) => {
-    onPathDeleted?.(path, file, directory, affectedRoot);
-    const target =
-      file?.canonicalPath ??
-      workspacePathAtRoot(affectedRoot ?? rootPath, path);
-    if (
-      selected &&
-      matchesWorkspacePath(selected.canonicalPath, target, directory)
-    ) {
-      setSelected(undefined);
-      onSelectedFileChange?.(undefined);
+      void queryClient.invalidateQueries({
+        queryKey: workspaceFileBrowserKeys.searches(scopeChatId, root),
+      });
     }
   };
-
-  const handlePathRenamed: NonNullable<
-    WorkbenchFileWorkspaceProps["onPathRenamed"]
-  > = (oldPath, newPath, name, file, directory, affectedRoot) => {
-    onPathRenamed?.(oldPath, newPath, name, file, directory, affectedRoot);
-    const operationRoot = affectedRoot ?? file?.rootPath ?? rootPath;
-    const oldCanonical =
-      file?.canonicalPath ?? workspacePathAtRoot(operationRoot, oldPath);
-    const newCanonical = workspacePathAtRoot(operationRoot, newPath);
-    if (
-      !selected ||
-      !oldCanonical ||
-      !newCanonical ||
-      !matchesWorkspacePath(selected.canonicalPath, oldCanonical, directory)
-    )
-      return;
-    const suffix = selected.canonicalPath.slice(oldCanonical.length);
-    selectFile(
-      {
-        name: directory ? selected.name : name,
-        path: `${newCanonical}${suffix}`,
-      },
-      operationRoot,
-    );
+  const expandFileTree = () => {
+    const paths = new Set<string>();
+    // 展开已读取的目录。子目录继续按需读取，避免递归遍历整个工作区。
+    for (const root of directoryRoots) {
+      const queries = queryClient.getQueriesData<WorkspaceDirectoryEntry[]>({
+        queryKey: workspaceFileBrowserKeys.directories(scopeChatId, root),
+      });
+      for (const [, entries] of queries) {
+        for (const entry of entries ?? []) {
+          const path = workspacePathAtRoot(root, entry.relativePath);
+          if (entry.isDirectory && path) paths.add(path);
+        }
+      }
+    }
+    setTreeExpansion({ paths, workingRootsExpanded: true });
   };
 
   const deleteChatFile = async (
@@ -300,15 +230,10 @@ export function WorkbenchFileWorkspace({
         sourceRoots: [],
       });
       if (resolved.status !== "resolved") return "deleteFileError";
-      if (isDirtyPath(file.path, resolved.file))
+      if (isPathDirty?.(file.path, resolved.file))
         return "saveBeforeFileOperation";
       if (!(await onDeleteChatFile(file))) return "deleteFileError";
-      handlePathDeleted(
-        file.path,
-        resolved.file,
-        false,
-        resolved.file.rootPath,
-      );
+      onPathDeleted?.(file.path, resolved.file, false, resolved.file.rootPath);
     } catch {
       return "deleteFileError";
     }
@@ -343,7 +268,10 @@ export function WorkbenchFileWorkspace({
           );
         if (result.imported.length)
           await queryClient.invalidateQueries({
-            queryKey: ["workspace-directory", scopeChatId, directory],
+            queryKey: workspaceFileBrowserKeys.directories(
+              scopeChatId,
+              directory,
+            ),
           });
       })
       .catch((cause: unknown) =>
@@ -354,26 +282,6 @@ export function WorkbenchFileWorkspace({
         ),
       );
   };
-
-  const treeToggle = (
-    <Button
-      aria-label={
-        treeOpen ? t("workspace.hideFileTree") : t("workspace.showFileTree")
-      }
-      title={
-        treeOpen ? t("workspace.hideFileTree") : t("workspace.showFileTree")
-      }
-      size="icon-sm"
-      variant="ghost"
-      onClick={() => setTreeOpen((current) => !current)}
-    >
-      <Folders />
-    </Button>
-  );
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const visibleChatFiles = chatFiles.filter((file) =>
-    `${file.name} ${file.path}`.toLocaleLowerCase().includes(normalizedQuery),
-  );
 
   const directoryTree = (directory: string, directoryScope = "") => (
     <FileReferenceProvider
@@ -401,12 +309,13 @@ export function WorkbenchFileWorkspace({
         onDrop={(event) => handleDrop(event, directory, directoryScope)}
       >
         <WorkspaceFileBrowser
-          active={active}
-          activePath={selected?.canonicalPath}
-          isPathDirty={isDirtyPath}
-          onOpenFile={(file) => selectFile(file, directory)}
-          onPathDeleted={handlePathDeleted}
-          onPathRenamed={handlePathRenamed}
+          active={treeActive}
+          activePath={file?.canonicalPath}
+          expandedPaths={treeExpansion?.paths}
+          isPathDirty={isPathDirty}
+          onOpenFile={(entry) => onSelectFile?.(entry, directory)}
+          onPathDeleted={onPathDeleted}
+          onPathRenamed={onPathRenamed}
           query={query}
           rootPath={directory}
           scopeChatId={scopeChatId}
@@ -416,189 +325,250 @@ export function WorkbenchFileWorkspace({
     </FileReferenceProvider>
   );
 
-  return (
-    <FileReferenceProvider
-      context={{
-        chatId: scopeChatId,
-        baseDirectory: rootPath,
-        workspaceRoot: rootPath,
-        sourceRoots: sourceRoots ?? [],
-      }}
+  const tree = (
+    <aside
+      aria-label={t(isProject ? "workspace.fileTree" : "workspace.chatFiles")}
+      className="bg-surface-panel flex h-full min-h-0 min-w-0 flex-col"
     >
+      <div className="grid shrink-0 gap-2 px-2 py-2">
+        {isProject &&
+        spaceRootAvailable &&
+        rootPath &&
+        workingRoots.length > 0 ? (
+          <SegmentedControl
+            ariaLabel={t("workspace.directories")}
+            size="sm"
+            distribution="fill"
+            value={browseWorking ? "working" : "space"}
+            options={[
+              { value: "space", label: t("workspace.spaceDirectory") },
+              { value: "working", label: t("workspace.workingDirectory") },
+            ]}
+            onValueChange={setDirectorySource}
+          />
+        ) : null}
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <div className="basis-field-search-min min-w-0 grow">
+            <SearchField
+              aria-label={t("workspace.searchFiles")}
+              placeholder={t("workspace.searchFilesPlaceholder")}
+              size="sm"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          {isProject ? (
+            <div className="ml-auto flex min-w-0 flex-wrap items-center">
+              <FileTreeAction
+                label={t("workspace.refreshFileTree")}
+                onClick={refreshTree}
+              >
+                <RefreshCw />
+              </FileTreeAction>
+              <FileTreeAction
+                disabled={Boolean(normalizedQuery)}
+                label={t("workspace.expandFileTree")}
+                onClick={expandFileTree}
+              >
+                <ChevronsUpDown />
+              </FileTreeAction>
+              <FileTreeAction
+                disabled={Boolean(normalizedQuery)}
+                label={t("workspace.collapseFileTree")}
+                onClick={() =>
+                  setTreeExpansion({
+                    paths: new Set(),
+                    workingRootsExpanded: false,
+                  })
+                }
+              >
+                <ChevronsDownUp />
+              </FileTreeAction>
+            </div>
+          ) : null}
+        </div>
+      </div>
       <div
-        className="bg-surface-scene @container relative flex h-full min-h-0 min-w-0 flex-col"
+        ref={treeViewport}
+        className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2"
+      >
+        {isProject ? (
+          browseWorking ? (
+            workingRoots.length === 1 ? (
+              directoryTree(workingRoots[0] ?? "")
+            ) : (
+              <div className="grid gap-0.5">
+                {workingRoots.map((directory) => (
+                  <WorkingDirectoryRoot
+                    key={directory}
+                    directory={directory}
+                    searching={Boolean(normalizedQuery)}
+                    containsFile={matchesWorkspacePath(
+                      file?.canonicalPath,
+                      directory,
+                      true,
+                    )}
+                    expansion={treeExpansion}
+                  >
+                    {directoryTree(directory)}
+                  </WorkingDirectoryRoot>
+                ))}
+              </div>
+            )
+          ) : (
+            directoryTree(rootPath, scopePath)
+          )
+        ) : chatFilesLoading ? (
+          <div
+            role="status"
+            className="flex min-h-44 items-center justify-center"
+          >
+            <Spinner aria-label={t("workspace.chatFilesLoading")} />
+          </div>
+        ) : chatFilesError ? (
+          <EmptyState
+            density="compact"
+            icon={FolderOpen}
+            title={t("workspace.chatFilesLoadError")}
+            actions={
+              onRetryChatFiles ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={onRetryChatFiles}
+                >
+                  {t("workspace.retry")}
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : visibleChatFiles.length ? (
+          <div role="tree" className="grid gap-1">
+            {visibleChatFiles.map((file) => (
+              <ChatFileRow
+                key={file.path}
+                file={file}
+                onSelect={() => onSelectFile?.(file)}
+                onDownload={() => onDownloadChatFile(file)}
+                onDelete={() => deleteChatFile(file)}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            density="compact"
+            icon={FolderOpen}
+            title={t(
+              normalizedQuery
+                ? "workspace.noMatchingChatFiles"
+                : "workspace.noChatFiles",
+            )}
+          />
+        )}
+      </div>
+    </aside>
+  );
+
+  if (!file) return <TooltipProvider>{tree}</TooltipProvider>;
+
+  return (
+    <TooltipProvider>
+      <div
+        className="bg-surface-scene relative flex h-full min-h-0 min-w-0 flex-col"
         data-workbench-file-workspace
       >
         <header className="border-border-subtle h-row-navigation flex min-w-0 shrink-0 items-center gap-1 border-b px-3">
-          <span
+          <nav
+            aria-label={t("workspace.fileBreadcrumb")}
             className="text-muted-foreground type-ui min-w-0 flex-1 truncate"
-            title={selected?.canonicalPath ?? rootPath}
+            title={file.canonicalPath}
           >
-            {selected?.name ?? "/"}
-          </span>
-          <div
-            ref={setToolbarTarget}
-            className="scrollbar-hidden flex min-w-0 items-center overflow-x-auto"
-          />
-          {treeToggle}
+            {file.path
+              .replaceAll("\\", "/")
+              .split("/")
+              .filter(Boolean)
+              .join(" / ")}
+          </nav>
+          <div ref={setToolbarTarget} className="flex min-w-0 items-center" />
+          <FileTreeAction
+            label={t(
+              treeOpen ? "workspace.hideFileTree" : "workspace.showFileTree",
+            )}
+            pressed={treeOpen}
+            onClick={() => setTreeOpen((open) => !open)}
+          >
+            <Folders />
+          </FileTreeAction>
         </header>
         <WorkspaceDetailSplit
           sidebarOpen={treeOpen}
           resizeLabel={t("workbench.resizeSplit")}
           main={
             <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-              {selected ? (
-                <WorkspaceFileViewer
-                  key={selected.canonicalPath}
-                  active={active}
-                  path={selected.path}
-                  rootPath={selected.rootPath}
-                  fileReference={selected.reference}
-                  fileView={fileViews.get(selected.canonicalPath)}
-                  onFileViewChange={(view) =>
-                    setFileViews((current) =>
-                      new Map(current).set(selected.canonicalPath, view),
-                    )
-                  }
-                  draftKey={draftKey(ownerKey, selected.canonicalPath)}
-                  scopeChatId={scopeChatId}
-                  sourceRoots={sourceRoots}
-                  onOpenFile={onOpenFileReference}
-                  onOpenURL={onOpenURL}
-                  onAddCodeReference={onAddCodeReference}
-                  toolbarTarget={toolbarTarget}
-                />
-              ) : (
-                <div className="grid h-full place-items-center">
-                  <EmptyState
-                    icon={FolderOpen}
-                    title={t("workspace.chooseFile")}
-                    description={t("workspace.chooseFileDescription")}
-                  />
-                </div>
-              )}
+              {file.render(toolbarTarget)}
             </div>
           }
-          sidebar={
-            <aside
-              aria-label={t("workspace.fileTree")}
-              className="bg-surface-panel flex h-full min-h-0 min-w-0 flex-col"
-            >
-              <div className="grid shrink-0 gap-2 px-2 py-2">
-                {fileSource === "project" &&
-                spaceRootAvailable &&
-                rootPath &&
-                workingRoots.length > 0 ? (
-                  <SegmentedControl
-                    ariaLabel={t("workspace.directories")}
-                    size="sm"
-                    distribution="fill"
-                    value={browseWorking ? "working" : "space"}
-                    options={[
-                      { value: "space", label: t("workspace.spaceDirectory") },
-                      {
-                        value: "working",
-                        label: t("workspace.workingDirectory"),
-                      },
-                    ]}
-                    onValueChange={setDirectorySource}
-                  />
-                ) : null}
-                <SearchField
-                  aria-label={t("workspace.searchFiles")}
-                  placeholder={t("workspace.searchFilesPlaceholder")}
-                  size="sm"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </div>
-              <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2">
-                {fileSource === "project" ? (
-                  browseWorking ? (
-                    workingRoots.length === 1 ? (
-                      directoryTree(workingRoots[0] ?? "")
-                    ) : (
-                      <div role="tree" className="grid gap-0.5">
-                        {workingRoots.map((directory) => (
-                          <WorkingDirectoryRoot
-                            key={directory}
-                            directory={directory}
-                            searching={Boolean(normalizedQuery)}
-                          >
-                            {directoryTree(directory)}
-                          </WorkingDirectoryRoot>
-                        ))}
-                      </div>
-                    )
-                  ) : (
-                    directoryTree(rootPath, scopePath)
-                  )
-                ) : chatFilesLoading ? (
-                  <div
-                    role="status"
-                    className="flex min-h-44 items-center justify-center"
-                  >
-                    <Spinner aria-label={t("workspace.chatFilesLoading")} />
-                  </div>
-                ) : chatFilesError ? (
-                  <EmptyState
-                    density="compact"
-                    icon={FolderOpen}
-                    title={t("workspace.chatFilesLoadError")}
-                    actions={
-                      onRetryChatFiles ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={onRetryChatFiles}
-                        >
-                          {t("workspace.retry")}
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                ) : visibleChatFiles.length ? (
-                  <div role="tree" className="grid gap-1">
-                    {visibleChatFiles.map((file) => (
-                      <ChatFileRow
-                        key={file.path}
-                        file={file}
-                        onSelect={() => selectFile(file)}
-                        onDownload={() => onDownloadChatFile(file)}
-                        onDelete={() => deleteChatFile(file)}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState
-                    density="compact"
-                    icon={FolderOpen}
-                    title={
-                      normalizedQuery
-                        ? t("workspace.noMatchingChatFiles")
-                        : t("workspace.noChatFiles")
-                    }
-                  />
-                )}
-              </div>
-            </aside>
-          }
+          sidebar={tree}
         />
       </div>
-    </FileReferenceProvider>
+    </TooltipProvider>
+  );
+}
+
+function FileTreeAction({
+  children,
+  disabled,
+  label,
+  onClick,
+  pressed,
+}: {
+  children: ReactNode;
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+  pressed?: boolean;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label={label}
+          aria-pressed={pressed}
+          disabled={disabled}
+          size="icon-sm"
+          variant="ghost"
+          className="shrink-0"
+          onClick={onClick}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
 function WorkingDirectoryRoot({
   directory,
   searching,
+  containsFile,
+  expansion,
   children,
 }: {
   directory: string;
   searching: boolean;
+  containsFile: boolean;
+  expansion?: { workingRootsExpanded: boolean };
   children: ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [override, setOverride] = useState<{
+    expansion?: typeof expansion;
+    open: boolean;
+  }>();
+  const expanded =
+    override && override.expansion === expansion
+      ? override.open
+      : (expansion?.workingRootsExpanded ?? containsFile);
   return (
     <div>
       <div className="flex min-w-0">
@@ -607,7 +577,7 @@ function WorkingDirectoryRoot({
           expanded={expanded || searching}
           role="button"
           title={directory}
-          onClick={() => setExpanded((current) => !current)}
+          onClick={() => setOverride({ expansion, open: !expanded })}
         >
           <span className="truncate">
             {fileName(directory.replace(/[\\/]+$/, ""))}

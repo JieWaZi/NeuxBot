@@ -291,6 +291,49 @@ describe("WorkspaceFileViewer", () => {
     ).toBeInTheDocument();
   });
 
+  it("Markdown 文件行号定位切到源码并高亮范围，仍可返回预览", async () => {
+    const user = userEvent.setup();
+    readWorkspaceFile.mockResolvedValueOnce({
+      name: "guide.md",
+      relativePath: "guide.md",
+      kind: "text",
+      mediaType: "text/markdown",
+      content: "# 使用指南\n\n第一步\n第二步",
+      size: 30,
+    });
+    const client = new QueryClient();
+    const viewer = (highlightLines?: {
+      startLine: number;
+      endLine: number;
+    }) => (
+      <QueryClientProvider client={client}>
+        <WorkspaceFileViewer
+          rootPath="/tmp/project"
+          path="guide.md"
+          highlightLines={highlightLines}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(viewer());
+    await screen.findByRole("heading", { name: "使用指南" });
+    await user.click(screen.getByRole("button", { name: "代码" }));
+    await user.click(screen.getByRole("button", { name: "预览" }));
+    await screen.findByRole("heading", { name: "使用指南" });
+
+    view.rerender(viewer({ startLine: 3, endLine: 4 }));
+    await waitFor(() =>
+      expect(
+        Array.from(
+          view.container.querySelectorAll("[data-line].bg-primary\\/12"),
+        ).map((line) => line.getAttribute("data-line")),
+      ).toEqual(["3", "4"]),
+    );
+    await user.click(screen.getByRole("button", { name: "预览" }));
+    expect(
+      await screen.findByRole("heading", { name: "使用指南" }),
+    ).toBeVisible();
+  });
+
   it("只读产出保留代码与预览切换但没有编辑入口", async () => {
     readWorkspaceFile.mockResolvedValueOnce({
       name: "report.md",
