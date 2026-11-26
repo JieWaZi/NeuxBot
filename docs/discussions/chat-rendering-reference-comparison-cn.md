@@ -1,0 +1,45 @@
+# 聊天渲染稳定性源码对照
+
+对照 OpenBot 普通伙伴聊天、T3 Code Web 聊天和 Nuphos 桌面任务聊天。下文依据三个固定提交的源码，行为结论的范围限于这些入口和版本。
+
+## OpenBot
+
+- 打开伙伴聊天时请求最新一页，目标为 50 条，后端尽量保留完整轮组。读取期间保留已有消息，过期请求或落后于当前 `revision` 的页面不能覆盖消息。实时快照与增量也比较 `revision`，同帧同一消息的连续增量合并。快照按消息 ID 更新既有对象，内容和顺序都相同则继续使用原数组。首次加载的历史行不做入场动画。 [打开聊天](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/src/renderer/src/features/conversation/conversation-context.tsx#L245-L265) · [实时增量](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/src/renderer/src/features/conversation/conversation-context.tsx#L529-L573) · [快照](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/src/renderer/src/features/conversation/conversation-context.tsx#L627-L663) · [分页](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/src/renderer/src/features/conversation/conversation-context.tsx#L735-L772)
+- 乐观发送交接时将权威消息 ID 映射到原行的 key，虚拟器继续使用该 key 和已测量高度。短列表完整渲染，超过 100 行启用虚拟化，回落到 90 行才退出。跟随最新期间补偿视口缩小和内容增高，用户上滚后停止跟随。主聊天切换身份会重置跟随，另有首次未读定位。 [行身份交接](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/src/renderer/src/features/conversation/conversation-scope.ts#L740-L773) · [行 key 与索引](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/src/renderer/src/features/conversation/stores/scroll-store.ts#L294-L301) · [虚拟器](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/packages/ui/src/features/conversation/createChatVirtualizer.ts#L34-L109) · [尺寸变化](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/src/renderer/src/features/conversation/conversation-scope.ts#L1549-L1578) · [切换与定位](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/src/renderer/src/features/conversation/conversation-scope.ts#L1757-L1844) · [用户滚动](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/src/renderer/src/features/conversation/conversation-scope.ts#L2155-L2201)
+- 分页游标携带轮组、轮内排名、`created_at`、`ordinal` 和 `message_id`，末项为同序时的确定性排序键。日期分隔读取相邻消息的 `createdAt`。 [分页排序](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/src/backend/database/conversation-queries.ts#L676-L711) · [日期分隔](https://github.com/nightly-labs/openbot/blob/c22549534075806abc2231c54c710474bb870afd/src/renderer/src/features/conversation/ConversationTimeline.tsx#L827-L858)
+
+## T3 Code
+
+- 用按环境和线程缓存的投影及 `snapshotSequence` 恢复。支持分页快照的服务端可以直接用 WebSocket 返回有界首屏，其他路径可以通过 HTTP 先取快照。暖恢复传 `afterSequence`，应用时忽略已处理序号，并在同步完成标记到达后合并回放批次。 [缓存与游标](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/packages/client-runtime/src/state/threads.ts#L263-L321) · [去重](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/packages/client-runtime/src/state/threads.ts#L543-L573) · [回放提交](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/packages/client-runtime/src/state/threads.ts#L725-L778) · [首屏与订阅](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/packages/client-runtime/src/state/threads.ts#L1101-L1191)
+- 本地轮项按 `ordinal` 排列，同序时按 ID 决定先后。更新同 ID 同 `ordinal` 的项目保留原位置及其他行对象，列表用 `row.id` 作 key。时间标签分别采用用户消息 `createdAt` 和已完成助手消息 `updatedAt`。 [更新与排序](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/packages/client-runtime/src/state/orchestrationV2Projection.ts#L201-L259) · [行 key](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/apps/web/src/components/chat/MessagesTimeline.tsx#L1653-L1664) · [用户时间](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/apps/web/src/components/chat/TimelineUserMessageRow.tsx#L861-L872) · [助手时间](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/apps/web/src/components/chat/TimelineAssistantRows.tsx#L237-L250)
+- 切换线程时复用 LegendList，在绘制前开始按已保存的行 ID 和行内偏移恢复，测量后再用实际 DOM 位置校正。恢复期间关闭会抢占位置的列表锚定，阅读历史时让自动跟随交出控制权，用户滚动或导航可中止恢复。 [绘制前恢复](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/apps/web/src/components/chat/MessagesTimeline.tsx#L802-L853) · [测量校正](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/apps/web/src/components/chat/useTimelinePositionRestore.ts#L79-L149) · [列表跟随及锚定](https://github.com/pingdotgg/t3code/blob/20a3bed88020972cafe0b646daaa93d061e44384/apps/web/src/components/chat/MessagesTimeline.tsx#L1496-L1534)
+
+## Nuphos
+
+- 首次读取最近 30 条。已有任务缓存的消息数和 transcript 版本均与会话列表一致，且缓存没有活动执行时，可直接显示。打开已加载的标签页也会递增打开请求序号，阻止之前的慢响应换走当前聊天。后台检测到记录变化后按存储索引拼接消息尾部，提交前校验同一会话、未在流式执行、当前消息数组仍是发起对账时所用的基线。 [缓存与首屏](https://github.com/nuphos/nuphos/blob/2c2f2e27fab0a9098de430734f05079680ff71c8/apps/desktop/src/components/agent/panel/taskTranscript.ts#L11-L43) · [已加载标签](https://github.com/nuphos/nuphos/blob/2c2f2e27fab0a9098de430734f05079680ff71c8/apps/desktop/src/components/agent/panel/openConversation.ts#L75-L88) · [切换请求](https://github.com/nuphos/nuphos/blob/2c2f2e27fab0a9098de430734f05079680ff71c8/apps/desktop/src/components/agent/panel/openConversation.ts#L214-L254) · [尾部对账](https://github.com/nuphos/nuphos/blob/2c2f2e27fab0a9098de430734f05079680ff71c8/apps/desktop/src/components/agent/panel/useConversationCatchUp.ts#L191-L244)
+- 已打开的聊天通过 React `Activity` 保留挂载，切换时隐藏其他标签页。历史使用 `content-visibility: auto` 和内在尺寸缓存，末条实时布局。向上翻页时记录第一条已渲染消息的 ID 和纵坐标，插入旧页后在布局阶段补回坐标差。用户滚动意图会取消等待中的底部补偿。 [标签页保留](https://github.com/nuphos/nuphos/blob/2c2f2e27fab0a9098de430734f05079680ff71c8/apps/desktop/src/components/agent/panel/Conversation.tsx#L211-L233) · [历史行布局](https://github.com/nuphos/nuphos/blob/2c2f2e27fab0a9098de430734f05079680ff71c8/apps/desktop/src/components/agent/panel/status.ts#L137-L146) · [滚动意图](https://github.com/nuphos/nuphos/blob/2c2f2e27fab0a9098de430734f05079680ff71c8/apps/desktop/src/components/agent/panel/useConversationScroll.ts#L67-L102) · [翻页锚点](https://github.com/nuphos/nuphos/blob/2c2f2e27fab0a9098de430734f05079680ff71c8/apps/desktop/src/components/agent/panel/useConversationScroll.ts#L158-L201)
+- 后端按消息 `index` 返回原顺序，桌面保留原消息 ID 和可解析的 `createdAt`。渲染侧使用消息 ID 标记行，活动分组包装层可使用组内首条的 ID。 [存储顺序](https://github.com/nuphos/nuphos/blob/2c2f2e27fab0a9098de430734f05079680ff71c8/apps/backend/src/lib/agent/db/conversations.ts#L196-L218) · [读取投影](https://github.com/nuphos/nuphos/blob/2c2f2e27fab0a9098de430734f05079680ff71c8/apps/desktop/src/components/agent/panel/persistence.ts#L184-L204) · [渲染身份](https://github.com/nuphos/nuphos/blob/2c2f2e27fab0a9098de430734f05079680ff71c8/apps/desktop/src/components/agent/panel/conversationMessageList.tsx#L169-L208)
+
+## NeuxBot 的验证结果
+
+| 场景 | 当前行为 |
+| --- | --- |
+| 聊天读取首次返回 HTTP 503，自动重试随后成功 | 拦截器在第一次失败时发布聊天提示。查询状态仍为 `pending`，提示已经可见。重试取得 HTTP 200 后，成功响应撤掉提示。 [拦截器](../../packages/frontend/src/shared/api/runtime.ts#L116) · [查询重试](../../packages/frontend/src/app/providers.tsx#L16) |
+| 历史消息先于详情到达 | 已显示的消息节点在详情到达后被替换。详情使 `readingChatId` 生效，条件包装在现有列表上方插入 `ChatReadingSurface`，React 重新挂载子树。 [聊天详情与阅读身份](../../packages/frontend/src/modules/chat/pages/chat-page.tsx#L1562) · [条件包装](../../packages/frontend/src/modules/chat/components/chat-thread.tsx#L1780) |
+| 助手历史消息缺少 `createdAt` | 真实助手消息页脚生成 `1970-01-01T00:00:00.000Z` 的时间标签。 [时间标签](../../packages/frontend/src/modules/chat/components/chat-thread.tsx#L996) |
+| 已记录最后访问的会话，最近列表先于该会话详情返回 | `/chat` 先选择最近列表中的会话并替换路由。优先会话详情随后成功时，入口已停止解析。 [最近入口](../../packages/frontend/src/modules/chat/pages/chat-entry-page.tsx#L71) · [目标选择](../../packages/frontend/src/modules/chat/model/resolve-chat-recent-target.ts#L32) |
+
+以上四项用受控响应顺序和真实前端组件在 jsdom 验证。测试确认 DOM 替换、提示出现及撤走等程序行为。线上闪现的具体帧、滚动位移和实际时钟偏差仍待桌面验收。
+
+页面还会分阶段取得详情、历史、技能与工作流事件。恢复可见会重新对账历史，较新的头部游标可能触发旧页读取，详情落后于执行终态时又会补查详情。技能与工作流标记可以等正文出现后插入。纯文本图片占位替换为缩略图时也会增加内容高度。当前滚动锚点保存的是 DOM 元素与偏移，原元素消失时重新捕获位置。相同消息的可见位置因此无法跨重挂载恢复。 [历史对账](../../packages/frontend/src/modules/chat/api/chat-queries.ts#L350) · [时间线装配](../../packages/frontend/src/modules/chat/pages/chat-page.tsx#L1516) · [图片占位](../../packages/frontend/src/shared/workspace/workspace-markdown-image.tsx#L327) · [阅读锚点](../../packages/frontend/src/modules/chat/components/use-chat-viewport-scroll.ts#L115)
+
+Core 用毫秒时间保存记录，消息同时具有创建序号。乐观发送先使用客户端时钟，接管后使用 Core 记录的创建时刻。普通消息顺序已有创建游标，部分未绑定消息的时间线标记仍优先按时间戳插入。时钟偏移或暂时缺失的字段会影响标签和标记位置。端侧时钟是否实际偏移尚未测量。 [记录时间](../../server/internal/chat/conversation/store.go#L155) · [消息投影](../../server/internal/chat/messageview/message_view.go#L356) · [时间线排序](../../packages/frontend/src/modules/chat/components/chat-thread.tsx#L1938)
+
+## 优先修复顺序
+
+1. 聊天读取的错误交给查询归属的界面，在重试耗尽后呈现。首次读取、后台对账和前台切换各自保留状态，已展示历史可以继续阅读。发送、鉴权和终态执行失败沿用各自的反馈。
+2. 固定消息列表及外围容器身份，详情到达只启用阅读能力。最近会话入口先确定目标，同一会话的后台更新保留已经显示的内容。沿用现有的 `submissionId`、修订号和持久游标。
+3. 用会话 ID、消息或内容节点 ID 和视口内偏移保存阅读锚点。在可见布局变化时协调翻页补偿、定位和底部跟随，图片与图表尽可能保留尺寸。长列表渲染优化以实际布局和提交耗时数据为依据。
+4. 使用创建序号或明确的事件锚点决定位置，权威业务时刻用于标签，执行起止字段用于耗时。缺少真实时间时省略标签。分别验证同一毫秒多条提交、流式转终态、刷新日期分组和跨时区显示。
+
+现有 Chat Query Cache 和实时合并有迟到快照保护。实施时可在现有边界补回归覆盖，重点检查刷新或切换后同一消息的 DOM 身份、锚点偏移和时间是否保持一致。 [NeuxBot 普通聊天事件与查询刷新职责](ordinary-chat-refresh-spec-cn.md#连续消息与首发交接)
