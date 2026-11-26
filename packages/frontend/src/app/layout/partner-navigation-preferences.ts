@@ -17,6 +17,7 @@ export type PartnerNavigationPreferences = {
   railExpanded: boolean;
   railOrder: string[];
   railPins?: Record<string, boolean>;
+  /** 待导入 Core 的旧版分组。服务端确认后从本机偏好移除。 */
   wakerGroups?: WakerNavigationGroup[];
 };
 
@@ -120,20 +121,6 @@ function normalizeWakerGroups(value: unknown): WakerNavigationGroup[] {
   return groups;
 }
 
-export function moveWakerToNavigationGroup(
-  groups: readonly WakerNavigationGroup[],
-  wakerId: string,
-  groupName: string,
-): WakerNavigationGroup[] {
-  const next = groups.map(({ name, wakerIds }) => {
-    const ids = wakerIds.filter((id) => id !== wakerId);
-    return { name, wakerIds: name === groupName ? [...ids, wakerId] : ids };
-  });
-  if (groupName && !next.some((group) => group.name === groupName))
-    next.push({ name: groupName, wakerIds: [wakerId] });
-  return next;
-}
-
 export function readPartnerNavigationPreferences(): PartnerNavigationPreferences {
   if (typeof window === "undefined") return defaultPreferences;
   try {
@@ -173,7 +160,9 @@ export function readPartnerNavigationPreferences(): PartnerNavigationPreferences
       railOrder: "railOrder" in value ? stringArray(value.railOrder) : [],
       railPins: "railPins" in value ? booleanRecord(value.railPins) : {},
       wakerGroups:
-        "wakerGroups" in value ? normalizeWakerGroups(value.wakerGroups) : [],
+        "wakerGroups" in value
+          ? normalizeWakerGroups(value.wakerGroups)
+          : undefined,
     };
   } catch {
     return defaultPreferences;

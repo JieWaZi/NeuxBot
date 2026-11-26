@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	eventhub "github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 )
@@ -115,7 +116,8 @@ func validResourceShape(topic string, resource eventhub.Resource) bool {
 	case "reading":
 		return (resource.Kind == "chat" || resource.Kind == "workflow_run" || resource.Kind == "automatic_run") && resource.ParentID == ""
 	case "entities":
-		return (resource.Kind == "waker" || resource.Kind == "channel") && resource.ParentID == ""
+		return resource.ParentID == "" && (resource.Kind == "waker" || resource.Kind == "channel" ||
+			(resource.Kind == constants.WakerNavigationGroupsEventKind && resource.ID == constants.WakerNavigationGroupsEventID))
 	case "automatic-tasks":
 		return (resource.Kind == "automatic_task" || resource.Kind == "waker" || resource.Kind == "channel") && resource.ParentID == ""
 	case "im":

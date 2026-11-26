@@ -6265,6 +6265,20 @@ export type GithubComJieWaZiNeuxBotServerApisWakersGetWakerRecentProjectResponse
 };
 
 /**
+ * 导入伙伴导航分组请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisWakersImportWakerNavigationGroupsRequest = {
+    /**
+     * 分组列表
+     */
+    groups: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerNavigationGroupMembers>;
+    /**
+     * 伙伴顺序
+     */
+    wakerOrder?: Array<string>;
+};
+
+/**
  * 伙伴对话列表响应
  */
 export type GithubComJieWaZiNeuxBotServerApisWakersListWakerChatsResponse = {
@@ -6287,6 +6301,20 @@ export type GithubComJieWaZiNeuxBotServerApisWakersListWakerChatsResponse = {
 };
 
 /**
+ * 伙伴导航分组响应
+ */
+export type GithubComJieWaZiNeuxBotServerApisWakersListWakerNavigationGroupsResponse = {
+    /**
+     * 分组列表
+     */
+    groups: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerNavigationGroupMembers>;
+    /**
+     * 未分组伙伴
+     */
+    ungroupedWakerIds: Array<string>;
+};
+
+/**
  * 伙伴列表响应
  */
 export type GithubComJieWaZiNeuxBotServerApisWakersListWakersResponse = {
@@ -6306,6 +6334,27 @@ export type GithubComJieWaZiNeuxBotServerApisWakersListWakersResponse = {
      * 总数
      */
     totalSize?: number;
+};
+
+/**
+ * 移动伙伴分组请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisWakersMoveWakerToNavigationGroupRequest = {
+    /**
+     * 分组名称
+     */
+    name: string;
+};
+
+/**
+ * 调整伙伴导航位置请求
+ */
+export type GithubComJieWaZiNeuxBotServerApisWakersPlaceWakerInNavigationRequest = {
+    placement: GithubComJieWaZiNeuxBotServerConstantsWakerNavigationPlacement & unknown;
+    /**
+     * 目标伙伴
+     */
+    targetWakerId: string;
 };
 
 /**
@@ -8406,6 +8455,14 @@ export type GithubComJieWaZiNeuxBotServerConstantsTeamMemberActivityState = 'idl
  *
  */
 export type GithubComJieWaZiNeuxBotServerConstantsWakerActivityState = 'idle' | 'running' | 'waiting';
+
+/**
+ * >
+ * * `after` - WakerNavigationPlacementAfter 将伙伴放到目标伙伴后面。
+ * * `before` - WakerNavigationPlacementBefore 将伙伴放到目标伙伴前面。
+ *
+ */
+export type GithubComJieWaZiNeuxBotServerConstantsWakerNavigationPlacement = 'after' | 'before';
 
 /**
  * >
@@ -13192,6 +13249,20 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel = {
      * 智能体
      */
     runtimeId?: string;
+};
+
+/**
+ * 伙伴导航分组成员
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerNavigationGroupMembers = {
+    /**
+     * 分组名称
+     */
+    name: string;
+    /**
+     * 伙伴标识
+     */
+    wakerIds: Array<string>;
 };
 
 /**
@@ -40849,6 +40920,84 @@ export type CreateWakerResponses = {
 
 export type CreateWakerResponse = CreateWakerResponses[keyof CreateWakerResponses];
 
+export type ListWakerNavigationGroupsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/wakers/groups';
+};
+
+export type ListWakerNavigationGroupsErrors = {
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListWakerNavigationGroupsError = ListWakerNavigationGroupsErrors[keyof ListWakerNavigationGroupsErrors];
+
+export type ListWakerNavigationGroupsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWakersListWakerNavigationGroupsResponse;
+};
+
+export type ListWakerNavigationGroupsResponse = ListWakerNavigationGroupsResponses[keyof ListWakerNavigationGroupsResponses];
+
+export type ImportWakerNavigationGroupsData = {
+    body: GithubComJieWaZiNeuxBotServerApisWakersImportWakerNavigationGroupsRequest & unknown;
+    path?: never;
+    query?: never;
+    url: '/api/v1/wakers/groups/import';
+};
+
+export type ImportWakerNavigationGroupsErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ImportWakerNavigationGroupsError = ImportWakerNavigationGroupsErrors[keyof ImportWakerNavigationGroupsErrors];
+
+export type ImportWakerNavigationGroupsResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type ImportWakerNavigationGroupsResponse = ImportWakerNavigationGroupsResponses[keyof ImportWakerNavigationGroupsResponses];
+
 export type DeleteWakerData = {
     body: GithubComJieWaZiNeuxBotServerApisWakersDeleteWakerRequest & unknown;
     path: {
@@ -40885,6 +41034,7 @@ export type DeleteWakerErrors = {
     408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatHasActiveExecution][40900000006]`
      * * `[ChatLogNativeOutcomePending][40900007203]`
      * * `[ChatLogVersionConflict][40900007201]`
      * * `[DefaultWakerCannotDelete][40900000024]`
@@ -44052,7 +44202,11 @@ export type DuplicateWakerData = {
 export type DuplicateWakerErrors = {
     /**
      * >
+     * * `[AgentInputInvalid][40000009001]`
      * * `[BadRequest][40000000001]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -44064,13 +44218,27 @@ export type DuplicateWakerErrors = {
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatHasActiveExecution][40900000006]`
      * * `[CreateRequestConflict][40900000023]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[DatabaseError][50000000002]`
      * * `[InternalServerError][50000000001]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
     500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
@@ -44083,6 +44251,112 @@ export type DuplicateWakerResponses = {
 };
 
 export type DuplicateWakerResponse = DuplicateWakerResponses[keyof DuplicateWakerResponses];
+
+export type MoveWakerToNavigationGroupData = {
+    body: GithubComJieWaZiNeuxBotServerApisWakersMoveWakerToNavigationGroupRequest & unknown;
+    path: {
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/wakers/{wakerId}/group';
+};
+
+export type MoveWakerToNavigationGroupErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WakerNotFound][40400000001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type MoveWakerToNavigationGroupError = MoveWakerToNavigationGroupErrors[keyof MoveWakerToNavigationGroupErrors];
+
+export type MoveWakerToNavigationGroupResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type MoveWakerToNavigationGroupResponse = MoveWakerToNavigationGroupResponses[keyof MoveWakerToNavigationGroupResponses];
+
+export type PlaceWakerInNavigationData = {
+    body: GithubComJieWaZiNeuxBotServerApisWakersPlaceWakerInNavigationRequest & unknown;
+    path: {
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/wakers/{wakerId}/navigation-position';
+};
+
+export type PlaceWakerInNavigationErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[WakerNotFound][40400000001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type PlaceWakerInNavigationError = PlaceWakerInNavigationErrors[keyof PlaceWakerInNavigationErrors];
+
+export type PlaceWakerInNavigationResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type PlaceWakerInNavigationResponse = PlaceWakerInNavigationResponses[keyof PlaceWakerInNavigationResponses];
 
 export type StartWakerOnboardingData = {
     body?: never;

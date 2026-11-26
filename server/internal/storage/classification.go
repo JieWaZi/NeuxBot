@@ -101,6 +101,9 @@ func managedFileEntry(root *scanRoot, parts []string) FileEntry {
 		}
 		return entry
 	case "Agents":
+		if parts[1] == constants.WakerCopyStagingDirectoryName || root.pendingWakerCopies[parts[1]] {
+			return FileEntry{Category: constants.StorageCategoryRecovery}
+		}
 		if len(parts) >= 3 {
 			return FileEntry{Category: constants.StorageCategoryWorkFiles, WakerID: parts[1]}
 		}

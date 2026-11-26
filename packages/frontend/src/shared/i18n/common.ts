@@ -443,6 +443,10 @@ export const commonZh = {
     renameChat: "重命名",
     deleteChat: "删除",
     entityMenu: "“{{name}}”操作",
+    groupedDragInstructions:
+      "按空格拿起伙伴，按上、下方向键选择目标行。跨组时，按左方向键插在目标之前，按右方向键插在目标之后。再按空格放置，按 Esc 取消。",
+    dropBefore: "插入到「{{name}}」之前",
+    dropAfter: "插入到「{{name}}」之后",
     wakerActions: {
       menu: "“{{name}}”伙伴操作",
       markUnread: "标为未读",
@@ -452,6 +456,8 @@ export const commonZh = {
       ungrouped: "未分组",
       newGroup: "新建分组",
       groupName: "分组名称",
+      groupMoveError: "无法移动伙伴，请重试。",
+      groupImportError: "无法导入本机伙伴分组。",
       edit: "编辑伙伴",
       duplicate: "复制伙伴",
       duplicating: "正在复制…",
@@ -581,6 +587,8 @@ export const commonEn = {
       ungrouped: "Ungrouped",
       newGroup: "New group",
       groupName: "Group name",
+      groupMoveError: "Could not move the partner. Try again.",
+      groupImportError: "Could not import local partner groups.",
       edit: "Edit partner",
       duplicate: "Duplicate partner",
       duplicating: "Duplicating…",
@@ -648,6 +656,10 @@ export const commonEn = {
     renameChat: "Rename",
     deleteChat: "Delete",
     entityMenu: "Actions for “{{name}}”",
+    groupedDragInstructions:
+      "Press Space to pick up a partner. Use Up and Down to choose a row. In another group, press Left to insert before the row or Right to insert after it. Press Space to drop or Escape to cancel.",
+    dropBefore: "Insert before {{name}}",
+    dropAfter: "Insert after {{name}}",
     openEntityDetail: "Open {{name}} details",
     sections: {
       resources: "Resources",

@@ -89,6 +89,66 @@ func TestMeasureClassifiesSystemSkillsOnlyInOwnedExecutionWorkspaces(t *testing.
 	}
 }
 
+func TestMeasureClassifiesPartnerCopyStagingAsRecovery(t *testing.T) {
+	managed := t.TempDir()
+	writeMeasuredFile(t, managed, filepath.Join("Agents", constants.WakerCopyStagingDirectoryName, "partner", "partial.txt"), 3)
+	result, err := Measure(t.Context(), Roots{Data: t.TempDir(), Managed: managed}, Limits{})
+	if err != nil || len(result.Entries) != 1 {
+		t.Fatalf("measurement=%+v, error=%v", result, err)
+	}
+	file := result.Entries[0]
+	if file.Category != constants.StorageCategoryRecovery || file.WakerID != "" {
+		t.Fatalf("staged partner file classified as %+v", file)
+	}
+}
+
+func TestMeasureKeepsPublishedPartnerCopyOutOfRankingsUntilSettled(t *testing.T) {
+	roots := Roots{Data: t.TempDir(), Managed: t.TempDir()}
+	layout, err := chatstorage.NewLayout(roots.Managed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := layout.AgentWorkspace("source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := layout.AgentWorkspace("target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workspace.EnsureAgentWorkspace(source, "source"); err != nil {
+		t.Fatal(err)
+	}
+	writeMeasuredFile(t, source, "notes.txt", 3)
+	if err := workspace.PrepareAgentWorkspaceCopy(t.Context(), source, target, "source", "target"); err != nil {
+		t.Fatal(err)
+	}
+	measureFile := func(path string) FileEntry {
+		t.Helper()
+		measurement, err := Measure(t.Context(), roots, Limits{})
+		if err != nil || !measurement.Complete {
+			t.Fatalf("measurement=%+v, error=%v", measurement, err)
+		}
+		for _, file := range measurement.Entries {
+			if file.Path == path {
+				return file
+			}
+		}
+		t.Fatalf("missing measured file %s", path)
+		return FileEntry{}
+	}
+	path := filepath.Join(target, "notes.txt")
+	if file := measureFile(path); file.Category != constants.StorageCategoryRecovery || file.WakerID != "" {
+		t.Fatalf("unsettled workspace file classified as %+v", file)
+	}
+	if err := workspace.SettleAgentWorkspaceCopy(target, "target", true); err != nil {
+		t.Fatal(err)
+	}
+	if file := measureFile(path); file.Category != constants.StorageCategoryWorkFiles || file.WakerID != "target" {
+		t.Fatalf("settled workspace file classified as %+v", file)
+	}
+}
+
 func TestMeasureDeduplicatesNestedRoots(t *testing.T) {
 	data := t.TempDir()
 	managed := filepath.Join(data, "nested")

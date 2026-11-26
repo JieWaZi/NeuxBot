@@ -5,14 +5,19 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/memory"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
+	integrationservice "github.com/JieWaZi/NeuxBot/server/services/integration"
+	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -27,8 +32,9 @@ type failingWakerDelete struct {
 func (f failingWakerDelete) Delete(context.Context, string) error { return status_error.DatabaseError }
 
 func TestDeleteWakerOwnsAgentFilesWithoutAnyChatsAndRollsBackDatabaseFailure(t *testing.T) {
-	for _, fail := range []bool{false, true} {
-		t.Run(map[bool]string{false: "commit", true: "rollback"}[fail], func(t *testing.T) {
+	for _, scenario := range []string{"commit", "rollback", "never-opened"} {
+		t.Run(scenario, func(t *testing.T) {
+			fail := scenario == "rollback"
 			database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "api.db"), Migrate: true})
 			if err != nil {
 				t.Fatal(err)
@@ -57,7 +63,13 @@ func TestDeleteWakerOwnsAgentFilesWithoutAnyChatsAndRollsBackDatabaseFailure(t *
 			global.MCPConnectorControllerManager = controllers.NewMCPConnectorController(database.DB)
 			global.TransactionControllerManager = controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))
 			global.AutomaticTaskControllerManager, global.PluginControllerManager = nil, nil
-			global.KnowledgeService, global.IntegrationService, global.MemoryService = nil, nil, nil
+			global.KnowledgeService, global.IntegrationService = nil, nil
+			memories, err := memory.NewService(memory.ServiceConfig{DBPath: filepath.Join(t.TempDir(), "memory.db")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(memories.Close)
+			global.MemoryService = memories
 			global.ScheduleService, global.ChannelService, global.AgentThreads = nil, nil, nil
 			service, err := chatservice.New(chatservice.Config{StorageDirectory: global.Config.ManagedFilesDirectory, Projects: global.ProjectControllerManager, QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: global.TransactionControllerManager}})
 			if err != nil {
@@ -77,12 +89,48 @@ func TestDeleteWakerOwnsAgentFilesWithoutAnyChatsAndRollsBackDatabaseFailure(t *
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err = workspace.EnsureAgentWorkspace(cwd, "owned"); err != nil {
+			report := filepath.Join(cwd, "report.txt")
+			if scenario != "never-opened" {
+				if err = workspace.EnsureAgentWorkspace(cwd, "owned"); err != nil {
+					t.Fatal(err)
+				}
+				if err = os.WriteFile(report, []byte("outcome"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err = memories.Write(ctx, memory.Context{PartnerID: "owned"}, "A note."); err != nil {
 				t.Fatal(err)
 			}
-			report := filepath.Join(cwd, "report.txt")
-			if err = os.WriteFile(report, []byte("outcome"), 0600); err != nil {
-				t.Fatal(err)
+			settledUnderLock := false
+			policyDone := make(chan error, 1)
+			if scenario == "never-opened" {
+				authority := integrationservice.New(integrationservice.Config{})
+				knowledge := knowledgeservice.New(knowledgeservice.Config{})
+				global.IntegrationService, global.KnowledgeService = authority, knowledge
+				global.WakerControllerManager = observeDeletedWaker{
+					WakerController: global.WakerControllerManager,
+					onMissing: func() {
+						release, err := chatstorage.AcquireOperation(layout.Root(), "waker:owned")
+						if err == nil {
+							release()
+							t.Error("deletion settled after releasing the partner operation lock")
+						}
+						settledUnderLock = true
+						go func() {
+							policyDone <- authority.WithAuthorizationWrite(t.Context(), func(context.Context) error {
+								return knowledge.WithPolicyWrite(func() error { return nil })
+							})
+						}()
+						select {
+						case err := <-policyDone:
+							if err != nil {
+								t.Errorf("unrelated policy write failed during memory cleanup: %v", err)
+							}
+						case <-time.After(time.Second):
+							t.Error("global policy locks still held during memory cleanup")
+						}
+					},
+				}
 			}
 			external := filepath.Join(t.TempDir(), "project.txt")
 			if err = os.WriteFile(external, []byte("project"), 0600); err != nil {
@@ -110,9 +158,35 @@ func TestDeleteWakerOwnsAgentFilesWithoutAnyChatsAndRollsBackDatabaseFailure(t *
 					t.Fatalf("owned Agent remains: %v", statErr)
 				}
 			}
+			if scenario == "never-opened" && !settledUnderLock {
+				t.Fatal("did not settle deletion of a partner without a workspace")
+			}
+			remaining, err := memories.ListMemories(ctx, memory.ListFilter{PartnerID: "owned", Limit: 10})
+			wantMemories := int64(0)
+			if fail {
+				wantMemories = 1
+			}
+			if err != nil || remaining.Total != wantMemories {
+				t.Fatalf("remaining memory = %+v, %v", remaining, err)
+			}
 			if content, err := os.ReadFile(external); err != nil || string(content) != "project" {
 				t.Fatalf("external project changed: %q %v", content, err)
 			}
 		})
 	}
+}
+
+type observeDeletedWaker struct {
+	// WakerController 提供真实持久化。
+	controllers.WakerController
+	// onMissing 在读到已删除的伙伴时核对结算仍持有操作门。
+	onMissing func()
+}
+
+func (c observeDeletedWaker) Get(ctx context.Context, id string) (models.Waker, error) {
+	waker, err := c.WakerController.Get(ctx, id)
+	if util.HasStatusCode(err, status_error.WakerNotFound) {
+		c.onMissing()
+	}
+	return waker, err
 }

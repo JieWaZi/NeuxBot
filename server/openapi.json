@@ -44002,6 +44002,158 @@
         }
       }
     },
+    "/api/v1/wakers/groups": {
+      "get": {
+        "tags": [
+          "github.com/JieWaZi/NeuxBot/server/apis/wakers"
+        ],
+        "summary": "伙伴导航分组列表",
+        "operationId": "ListWakerNavigationGroups",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisWakersListWakerNavigationGroupsResponse"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": ">\n* `[DatabaseOperationCancelled][40800001001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseOperationCancelled][40800001001]"
+            ]
+          },
+          "500": {
+            "description": ">\n* `[DatabaseError][50000000002]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseError][50000000002]"
+            ]
+          },
+          "503": {
+            "description": ">\n* `[DatabaseBusy][50300001001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseBusy][50300001001]"
+            ]
+          }
+        }
+      }
+    },
+    "/api/v1/wakers/groups/import": {
+      "post": {
+        "tags": [
+          "github.com/JieWaZi/NeuxBot/server/apis/wakers"
+        ],
+        "summary": "导入伙伴导航分组",
+        "operationId": "ImportWakerNavigationGroups",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisWakersImportWakerNavigationGroupsRequest"
+                  },
+                  {
+                    "description": "请求体",
+                    "x-go-field-name": "Body",
+                    "x-tag-in": "body"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxCommonResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": ">\n* `[BadRequest][40000000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[BadRequest][40000000001]"
+            ]
+          },
+          "408": {
+            "description": ">\n* `[DatabaseOperationCancelled][40800001001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseOperationCancelled][40800001001]"
+            ]
+          },
+          "500": {
+            "description": ">\n* `[DatabaseError][50000000002]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseError][50000000002]"
+            ]
+          },
+          "503": {
+            "description": ">\n* `[DatabaseBusy][50300001001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseBusy][50300001001]"
+            ]
+          }
+        }
+      }
+    },
     "/api/v1/wakers/{wakerId}": {
       "delete": {
         "tags": [
@@ -44098,7 +44250,7 @@
             ]
           },
           "409": {
-            "description": ">\n* `[ChatLogNativeOutcomePending][40900007203]`\n* `[ChatLogVersionConflict][40900007201]`\n* `[DefaultWakerCannotDelete][40900000024]`\n* `[WakerHasRunningWork][40900000005]`\n",
+            "description": ">\n* `[ChatHasActiveExecution][40900000006]`\n* `[ChatLogNativeOutcomePending][40900007203]`\n* `[ChatLogVersionConflict][40900007201]`\n* `[DefaultWakerCannotDelete][40900000024]`\n* `[WakerHasRunningWork][40900000005]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -44107,6 +44259,7 @@
               }
             },
             "x-status-errors": [
+              "[ChatHasActiveExecution][40900000006]",
               "[ChatLogNativeOutcomePending][40900007203]",
               "[ChatLogVersionConflict][40900007201]",
               "[DefaultWakerCannotDelete][40900000024]",
@@ -48978,6 +49131,139 @@
             }
           },
           "400": {
+            "description": ">\n* `[AgentInputInvalid][40000009001]`\n* `[BadRequest][40000000001]`\n* `[MemoryCoreBudgetExceeded][40000000021]`\n* `[SkillContentInvalid][40000000013]`\n* `[WorkspacePathInvalid][40000007102]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[AgentInputInvalid][40000009001]",
+              "[BadRequest][40000000001]",
+              "[MemoryCoreBudgetExceeded][40000000021]",
+              "[SkillContentInvalid][40000000013]",
+              "[WorkspacePathInvalid][40000007102]"
+            ]
+          },
+          "404": {
+            "description": ">\n* `[WakerNotFound][40400000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[WakerNotFound][40400000001]"
+            ]
+          },
+          "408": {
+            "description": ">\n* `[OperationCanceled][40800000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[OperationCanceled][40800000001]"
+            ]
+          },
+          "409": {
+            "description": ">\n* `[ChatHasActiveExecution][40900000006]`\n* `[CreateRequestConflict][40900000023]`\n* `[WakerHasRunningWork][40900000005]`\n* `[WorkspaceResourceConflict][40900007104]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[ChatHasActiveExecution][40900000006]",
+              "[CreateRequestConflict][40900000023]",
+              "[WakerHasRunningWork][40900000005]",
+              "[WorkspaceResourceConflict][40900007104]"
+            ]
+          },
+          "500": {
+            "description": ">\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[DatabaseError][50000000002]`\n* `[InternalServerError][50000000001]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[ChatDirectoryOwnershipInvalid][50000000007]",
+              "[DatabaseError][50000000002]",
+              "[InternalServerError][50000000001]",
+              "[ManagedWorkspaceError][50000000033]",
+              "[MemoryServiceUnavailable][50000000036]",
+              "[WorkspaceStorageFailed][50000007106]"
+            ]
+          }
+        }
+      }
+    },
+    "/api/v1/wakers/{wakerId}/group": {
+      "put": {
+        "tags": [
+          "github.com/JieWaZi/NeuxBot/server/apis/wakers"
+        ],
+        "summary": "移动伙伴分组",
+        "operationId": "MoveWakerToNavigationGroup",
+        "parameters": [
+          {
+            "name": "wakerId",
+            "in": "path",
+            "description": "伙伴标识",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "伙伴标识",
+              "x-go-field-name": "WakerID",
+              "x-tag-in": "path",
+              "x-tag-name": "wakerId",
+              "x-tag-validate": "required"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisWakersMoveWakerToNavigationGroupRequest"
+                  },
+                  {
+                    "description": "请求体",
+                    "x-go-field-name": "Body",
+                    "x-tag-in": "body"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxCommonResponse"
+                }
+              }
+            }
+          },
+          "400": {
             "description": ">\n* `[BadRequest][40000000001]`\n",
             "content": {
               "application/json": {
@@ -49003,8 +49289,8 @@
               "[WakerNotFound][40400000001]"
             ]
           },
-          "409": {
-            "description": ">\n* `[CreateRequestConflict][40900000023]`\n",
+          "408": {
+            "description": ">\n* `[DatabaseOperationCancelled][40800001001]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -49013,11 +49299,11 @@
               }
             },
             "x-status-errors": [
-              "[CreateRequestConflict][40900000023]"
+              "[DatabaseOperationCancelled][40800001001]"
             ]
           },
           "500": {
-            "description": ">\n* `[InternalServerError][50000000001]`\n",
+            "description": ">\n* `[DatabaseError][50000000002]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -49026,7 +49312,141 @@
               }
             },
             "x-status-errors": [
-              "[InternalServerError][50000000001]"
+              "[DatabaseError][50000000002]"
+            ]
+          },
+          "503": {
+            "description": ">\n* `[DatabaseBusy][50300001001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseBusy][50300001001]"
+            ]
+          }
+        }
+      }
+    },
+    "/api/v1/wakers/{wakerId}/navigation-position": {
+      "put": {
+        "tags": [
+          "github.com/JieWaZi/NeuxBot/server/apis/wakers"
+        ],
+        "summary": "调整伙伴导航位置",
+        "operationId": "PlaceWakerInNavigation",
+        "parameters": [
+          {
+            "name": "wakerId",
+            "in": "path",
+            "description": "伙伴标识",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "伙伴标识",
+              "x-go-field-name": "WakerID",
+              "x-tag-in": "path",
+              "x-tag-name": "wakerId",
+              "x-tag-validate": "required"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisWakersPlaceWakerInNavigationRequest"
+                  },
+                  {
+                    "description": "请求体",
+                    "x-go-field-name": "Body",
+                    "x-tag-in": "body"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxCommonResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": ">\n* `[BadRequest][40000000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[BadRequest][40000000001]"
+            ]
+          },
+          "404": {
+            "description": ">\n* `[WakerNotFound][40400000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[WakerNotFound][40400000001]"
+            ]
+          },
+          "408": {
+            "description": ">\n* `[DatabaseOperationCancelled][40800001001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseOperationCancelled][40800001001]"
+            ]
+          },
+          "500": {
+            "description": ">\n* `[DatabaseError][50000000002]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseError][50000000002]"
+            ]
+          },
+          "503": {
+            "description": ">\n* `[DatabaseBusy][50300001001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseBusy][50300001001]"
             ]
           }
         }
@@ -77158,6 +77578,36 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersGetWakerRecentProjectResponse",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.GetWakerRecentProjectResponse"
       },
+      "GithubComJieWaZiNeuxBotServerApisWakersImportWakerNavigationGroupsRequest": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerNavigationGroupMembers"
+            },
+            "description": "分组列表",
+            "x-go-field-name": "Groups",
+            "x-tag-validate": "required,dive"
+          },
+          "wakerOrder": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "伙伴顺序",
+            "x-go-field-name": "WakerOrder",
+            "x-tag-json": "wakerOrder,omitempty",
+            "x-tag-validate": "omitempty,dive,min=1"
+          }
+        },
+        "required": [
+          "groups"
+        ],
+        "description": "导入伙伴导航分组请求",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersImportWakerNavigationGroupsRequest",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.ImportWakerNavigationGroupsRequest"
+      },
       "GithubComJieWaZiNeuxBotServerApisWakersListWakerChatsResponse": {
         "type": "object",
         "properties": {
@@ -77192,6 +77642,36 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersListWakerChatsResponse",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.ListWakerChatsResponse"
       },
+      "GithubComJieWaZiNeuxBotServerApisWakersListWakerNavigationGroupsResponse": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerNavigationGroupMembers"
+            },
+            "description": "分组列表",
+            "x-go-field-name": "Groups",
+            "x-tag-validate": "required"
+          },
+          "ungroupedWakerIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "未分组伙伴",
+            "x-go-field-name": "UngroupedWakerIDs",
+            "x-tag-validate": "required"
+          }
+        },
+        "required": [
+          "groups",
+          "ungroupedWakerIds"
+        ],
+        "description": "伙伴导航分组响应",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersListWakerNavigationGroupsResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.ListWakerNavigationGroupsResponse"
+      },
       "GithubComJieWaZiNeuxBotServerApisWakersListWakersResponse": {
         "type": "object",
         "properties": {
@@ -77225,6 +77705,54 @@
         "description": "伙伴列表响应",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersListWakersResponse",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.ListWakersResponse"
+      },
+      "GithubComJieWaZiNeuxBotServerApisWakersMoveWakerToNavigationGroupRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "分组名称",
+            "x-go-field-name": "Name",
+            "x-go-star-level": 1,
+            "x-tag-validate": "required"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "description": "移动伙伴分组请求",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersMoveWakerToNavigationGroupRequest",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.MoveWakerToNavigationGroupRequest"
+      },
+      "GithubComJieWaZiNeuxBotServerApisWakersPlaceWakerInNavigationRequest": {
+        "type": "object",
+        "properties": {
+          "placement": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerConstantsWakerNavigationPlacement"
+              },
+              {
+                "description": "相对位置",
+                "x-go-field-name": "Placement",
+                "x-tag-validate": "required"
+              }
+            ]
+          },
+          "targetWakerId": {
+            "type": "string",
+            "description": "目标伙伴",
+            "x-go-field-name": "TargetWakerID",
+            "x-tag-validate": "required"
+          }
+        },
+        "required": [
+          "targetWakerId",
+          "placement"
+        ],
+        "description": "调整伙伴导航位置请求",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersPlaceWakerInNavigationRequest",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.PlaceWakerInNavigationRequest"
       },
       "GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerDefaultModelRequest": {
         "type": "object",
@@ -80994,6 +81522,20 @@
         },
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerConstantsWakerActivityState",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/constants.WakerActivityState"
+      },
+      "GithubComJieWaZiNeuxBotServerConstantsWakerNavigationPlacement": {
+        "type": "string",
+        "enum": [
+          "after",
+          "before"
+        ],
+        "description": ">\n* `after` - WakerNavigationPlacementAfter 将伙伴放到目标伙伴后面。\n* `before` - WakerNavigationPlacementBefore 将伙伴放到目标伙伴前面。\n",
+        "x-enum-labels": {
+          "after": "WakerNavigationPlacementAfter 将伙伴放到目标伙伴后面。",
+          "before": "WakerNavigationPlacementBefore 将伙伴放到目标伙伴前面。"
+        },
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerConstantsWakerNavigationPlacement",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/constants.WakerNavigationPlacement"
       },
       "GithubComJieWaZiNeuxBotServerConstantsWakerOnboardingStatus": {
         "type": "string",
@@ -89523,6 +90065,33 @@
         "description": "WakerDefaultModel 保存伙伴选择的明确执行配置。",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerDefaultModel",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/repositories/models.WakerDefaultModel"
+      },
+      "GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerNavigationGroupMembers": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "分组名称",
+            "x-go-field-name": "Name",
+            "x-tag-validate": "required"
+          },
+          "wakerIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "伙伴标识",
+            "x-go-field-name": "WakerIDs",
+            "x-tag-validate": "required,dive,required"
+          }
+        },
+        "required": [
+          "name",
+          "wakerIds"
+        ],
+        "description": "伙伴导航分组成员",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerNavigationGroupMembers",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/repositories/models.WakerNavigationGroupMembers"
       },
       "GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerPlugin": {
         "type": "object",

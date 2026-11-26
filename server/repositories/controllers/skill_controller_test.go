@@ -2,12 +2,16 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
 )
 
@@ -285,5 +289,53 @@ func TestExistingLibraryContentUsesCurrentImportedVersions(t *testing.T) {
 	}
 	if !indexed {
 		t.Fatalf("content query lost its digest index: %+v", plan)
+	}
+}
+
+func TestDuplicateWakerSkillsRefreshesResourcesOnlyAfterCommit(t *testing.T) {
+	hub := events.New()
+	t.Cleanup(hub.Close)
+	db := WithEventPublisher(newTestDB(t), hub)
+	transactions := NewTransactionController(dbhelper.NewGormTransactionManager(db))
+	skills := NewSkillController(db)
+	for _, relation := range []models.WakerSkill{
+		{ID: "enabled-relation", WakerID: "source", SkillPackageID: "enabled-skill", Enabled: true},
+		{ID: "paused-relation", WakerID: "source", SkillPackageID: "paused-skill"},
+	} {
+		if err := skills.UpsertWakerSkill(t.Context(), relation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	changes := hub.Subscribe("resources", events.Resource{Kind: "global"})
+	t.Cleanup(changes.Close)
+	copySkills := func(tx context.Context) error {
+		if err := skills.DuplicateWakerSkills(tx, "source", "copy"); err != nil {
+			return err
+		}
+		if len(changes.Events) != 0 {
+			t.Fatal("skill installation change was published before commit")
+		}
+		return nil
+	}
+	if err := transactions.Transaction(t.Context(), func(tx context.Context) error {
+		if err := copySkills(tx); err != nil {
+			return err
+		}
+		return status_error.Conflict
+	}); !errors.Is(err, status_error.Conflict) || len(changes.Events) != 0 {
+		t.Fatalf("rolled back skill copy: error=%v, events=%d", err, len(changes.Events))
+	}
+	if err := transactions.Transaction(t.Context(), copySkills); err != nil {
+		t.Fatal(err)
+	}
+	if len(changes.Events) != 1 {
+		t.Fatalf("committed skill copy published %d changes, want one", len(changes.Events))
+	}
+	if change := <-changes.Events; change.Type != "resources.changed" || change.Resource != (events.Resource{Kind: "global"}) {
+		t.Fatalf("skill installation change = %+v", change)
+	}
+	counts, err := skills.InstalledCounts(t.Context(), []string{"enabled-skill", "paused-skill"})
+	if err != nil || counts["enabled-skill"] != 2 || counts["paused-skill"] != 2 {
+		t.Fatalf("committed installation counts = %v, error=%v", counts, err)
 	}
 }

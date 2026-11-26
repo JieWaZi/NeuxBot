@@ -151,7 +151,12 @@ function validGlobalEventResource(
         !resource.parentId
       );
     case "entities":
-      return ["waker", "channel"].includes(resource.kind) && !resource.parentId;
+      return (
+        !resource.parentId &&
+        (["waker", "channel"].includes(resource.kind) ||
+          (resource.kind === "waker_navigation_groups" &&
+            resource.id === "navigation"))
+      );
     case "automatic-tasks":
       return (
         ["automatic_task", "waker", "channel"].includes(resource.kind) &&

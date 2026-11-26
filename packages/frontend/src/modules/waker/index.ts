@@ -1,5 +1,10 @@
 export {
   duplicateWakerMutation,
+  importWakerNavigationGroupsMutation,
+  listWakerNavigationGroupsOptions,
+  listWakerNavigationGroupsQueryKey,
+  moveWakerToNavigationGroupMutation,
+  placeWakerInNavigationMutation,
   listWakersOptions,
   listWakersQueryKey,
 } from "./api/waker-queries";

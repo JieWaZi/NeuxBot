@@ -97,6 +97,9 @@ const RuntimeStateDirectoryName = "runtime"
 // ChatForkDirectoryName 保存聊天分叉操作记录和暂存聚合目录。
 const ChatForkDirectoryName = "Forks"
 
+// WakerCopyStagingDirectoryName 是 Agents 下的伙伴空间复制回执与暂存目录。
+const WakerCopyStagingDirectoryName = ".partner-copy-staging"
+
 // WorkflowFileMaximumBytes 限制单次上传或下载的文件字节数。
 const WorkflowFileMaximumBytes int64 = 100 << 20
 
@@ -751,6 +754,10 @@ const (
 	PluginUsageChangedEventType = "plugins.usage.changed"
 	// EntityActivityChangedEventType 表示已有伙伴或团队的活动摘要变化。
 	EntityActivityChangedEventType = "entities.activity.changed"
+	// WakerNavigationGroupsEventKind 标识伙伴导航分组快照事件。
+	WakerNavigationGroupsEventKind = "waker_navigation_groups"
+	// WakerNavigationGroupsEventID 是伙伴导航分组快照的固定资源标识。
+	WakerNavigationGroupsEventID = "navigation"
 	// ChatReadingRecoveredReason 标识原 Chat 查询投影恢复后发布的范围失效。
 	ChatReadingRecoveredReason = "reading-recovered"
 )

@@ -259,6 +259,24 @@ test("订阅只接受固定协议字段，拒绝任意URL、未知主题与超�
   );
 });
 
+test("伙伴导航分组订阅只接受固定资源标识", () => {
+  const input = {
+    subscriptionId: "00000000-0000-4000-8000-000000000001",
+    topic: "entities",
+    resource: { kind: "waker_navigation_groups", id: "navigation" },
+  };
+  assert.equal(globalEventSubscriptionSchema.safeParse(input).success, true);
+  for (const resource of [
+    { ...input.resource, id: "other" },
+    { ...input.resource, parentId: "other" },
+  ]) {
+    assert.equal(
+      globalEventSubscriptionSchema.safeParse({ ...input, resource }).success,
+      false,
+    );
+  }
+});
+
 test("资源数据库暂时失败在同一连接内退避重订阅，成功后恢复，过期回执不干扰", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { client, sockets } = setup(t);

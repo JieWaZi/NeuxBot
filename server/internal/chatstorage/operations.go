@@ -1,9 +1,11 @@
 package chatstorage
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
@@ -48,6 +50,39 @@ func AcquireOperation(root string, chatIDs ...string) (func(), error) {
 				delete(operations.busy, key)
 			}
 		})
+	}, nil
+}
+
+type wakerDeletionKey struct{}
+
+type wakerDeletionClaim struct {
+	// root 是操作门规范化后的受管根。
+	root string
+	// wakerID 是获准延续删除阶段的伙伴身份。
+	wakerID string
+	// active 防止已释放的上下文再次越过伙伴操作门。
+	active atomic.Bool
+}
+
+// AcquireWakerDeletion 独占伙伴删除操作，允许内层删除阶段复用同一有效声明。
+func AcquireWakerDeletion(ctx context.Context, root, wakerID string) (context.Context, func(), error) {
+	root, wakerID = filepath.Clean(root), strings.TrimSpace(wakerID)
+	if !safeSegment(wakerID) {
+		return ctx, nil, status_error.BadRequest
+	}
+	if claim, _ := ctx.Value(wakerDeletionKey{}).(*wakerDeletionClaim); claim != nil &&
+		claim.root == root && claim.wakerID == wakerID && claim.active.Load() {
+		return ctx, func() {}, nil
+	}
+	release, err := AcquireOperation(root, "waker:"+wakerID)
+	if err != nil {
+		return ctx, nil, err
+	}
+	claim := &wakerDeletionClaim{root: root, wakerID: wakerID}
+	claim.active.Store(true)
+	return context.WithValue(ctx, wakerDeletionKey{}, claim), func() {
+		claim.active.Store(false)
+		release()
 	}, nil
 }
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 
 	// ncruces/go-sqlite3 是 CGO-free 的 SQLite 驱动，仅 Memory 模块使用；
 	// luist18/sqlite-vec-go 为每个 ncruces 连接自动注册 sqlite-vec 扩展。
@@ -341,6 +342,22 @@ func (s *store) listMemories() ([]Memory, error) {
 	return memories, nil
 }
 
+// listPartnerMemoriesForCopy 按从旧到新的顺序读取当前记忆，副本同批创建后仍保留相对顺序。
+func (s *store) listPartnerMemoriesForCopy(ctx context.Context, tx *sql.Tx, partnerID string) ([]Memory, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT `+memoryColumns+` FROM partner_memories
+		WHERE partner_id = ? ORDER BY updated_at ASC, seq ASC`, partnerID)
+	if err != nil {
+		logx.Errorf("query memories for duplication: partner_id=%s error=%v", partnerID, err)
+		return nil, status_error.DatabaseError
+	}
+	items, err := scanMemories(rows)
+	if err != nil {
+		logx.Errorf("scan memories for duplication: partner_id=%s error=%v", partnerID, err)
+		return nil, status_error.DatabaseError
+	}
+	return items, nil
+}
+
 // recentMemoriesInGroup 读取供复盘使用的一页同类记忆，无需统计总数或请求向量服务。
 func (s *store) recentMemoriesInGroup(ctx context.Context, partnerID string, core bool, limit int) ([]Memory, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+memoryColumns+` FROM partner_memories
@@ -499,6 +516,19 @@ func (s *store) upsertFTS(tx *sql.Tx, memoryID string, data string) error {
 		memoryID,
 		data,
 	); err != nil {
+		return status_error.DatabaseError
+	}
+	return nil
+}
+
+// indexPartnerKeywords 为全文索引已清空的目标批量写入当前内容。
+func (s *store) indexPartnerKeywords(ctx context.Context, tx *sql.Tx, partnerID string) error {
+	if !s.ftsAvailable {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO partner_memory_fts (memory_id, data)
+		SELECT id, data FROM partner_memories WHERE partner_id = ?`, partnerID); err != nil {
+		logx.Errorf("index copied memory keywords: partner_id=%s error=%v", partnerID, err)
 		return status_error.DatabaseError
 	}
 	return nil

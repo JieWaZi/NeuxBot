@@ -220,12 +220,17 @@ func (l *Layout) ChatLogDirectory(chatID string) (string, error) {
 	return filepath.Join(root, logDirectoryName), nil
 }
 
+// AgentWorkspacesRoot 返回伙伴固定工作区所在的受管聚合目录。
+func (l *Layout) AgentWorkspacesRoot() string {
+	return filepath.Join(l.root, "Agents")
+}
+
 // AgentWorkspace 返回伙伴拥有、在普通 Chat 之间共享的真实 Runtime 工作目录。
 func (l *Layout) AgentWorkspace(wakerID string) (string, error) {
 	if !safeSegment(wakerID) {
 		return "", status_error.BadRequest
 	}
-	return filepath.Join(l.root, "Agents", wakerID), nil
+	return filepath.Join(l.AgentWorkspacesRoot(), wakerID), nil
 }
 
 // TeamRoot 返回团队对话的聚合目录。

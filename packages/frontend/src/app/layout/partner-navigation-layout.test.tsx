@@ -1,3 +1,4 @@
+import type { DragEndEvent } from "@dnd-kit/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { AssistantRuntime } from "@assistant-ui/react";
 import {
@@ -9,9 +10,16 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useId, useState, type ReactNode } from "react";
+import {
+  memo,
+  useEffect,
+  useId,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type * as ChatModule from "@/modules/chat";
 import type * as WakerModule from "@/modules/waker";
@@ -42,6 +50,111 @@ const history = vi.hoisted(() => ({
   observers: new Set<GlobalEventObserver>(),
 }));
 const duplicateWaker = vi.hoisted(() => vi.fn());
+const navigationGroups = vi.hoisted(() => ({
+  groups: [] as { name: string; wakerIds: string[] }[],
+  ungrouped: [] as string[],
+  finishDrag: undefined as ((event: DragEndEvent) => void) | undefined,
+  queryKey: ["waker-navigation-groups"],
+  move: vi.fn(),
+  place: vi.fn(),
+  import: vi.fn(),
+}));
+
+beforeEach(() => {
+  navigationGroups.groups = [];
+  navigationGroups.ungrouped = [];
+  navigationGroups.finishDrag = undefined;
+  navigationGroups.place
+    .mockReset()
+    .mockImplementation(
+      async ({
+        path,
+        body,
+      }: {
+        path: { wakerId: string };
+        body: { targetWakerId: string; placement: string };
+      }) => {
+        const listFor = (id: string) =>
+          navigationGroups.groups.find((group) => group.wakerIds.includes(id))
+            ?.wakerIds ?? navigationGroups.ungrouped;
+        const source = listFor(path.wakerId);
+        const target = listFor(body.targetWakerId);
+        source.splice(source.indexOf(path.wakerId), 1);
+        target.splice(
+          target.indexOf(body.targetWakerId) +
+            Number(body.placement === "after"),
+          0,
+          path.wakerId,
+        );
+      },
+    );
+  navigationGroups.move
+    .mockReset()
+    .mockImplementation(
+      async ({
+        path,
+        body,
+      }: {
+        path: { wakerId: string };
+        body: { name: string };
+      }) => {
+        for (const group of navigationGroups.groups)
+          group.wakerIds = group.wakerIds.filter((id) => id !== path.wakerId);
+        navigationGroups.ungrouped = navigationGroups.ungrouped.filter(
+          (id) => id !== path.wakerId,
+        );
+        if (!body.name) {
+          navigationGroups.ungrouped.push(path.wakerId);
+          return;
+        }
+        const group = navigationGroups.groups.find(
+          ({ name }) => name === body.name,
+        );
+        if (group) group.wakerIds.push(path.wakerId);
+        else
+          navigationGroups.groups.push({
+            name: body.name,
+            wakerIds: [path.wakerId],
+          });
+      },
+    );
+  navigationGroups.import
+    .mockReset()
+    .mockImplementation(
+      async ({
+        body,
+      }: {
+        body: { groups: typeof navigationGroups.groups; wakerOrder: string[] };
+      }) => {
+        if (navigationGroups.groups.length) return;
+        navigationGroups.groups = structuredClone(body.groups);
+        navigationGroups.ungrouped = body.wakerOrder.filter(
+          (id) => !body.groups.some((group) => group.wakerIds.includes(id)),
+        );
+      },
+    );
+});
+
+vi.mock(import("@dnd-kit/core"), async (importOriginal) => {
+  const core = await importOriginal();
+  return {
+    ...core,
+    DndContext: memo(function CaptureSidebarDrop(
+      props: ComponentProps<typeof core.DndContext>,
+    ) {
+      const { onDragStart, onDragCancel, onDragEnd, sensors } = props;
+      useEffect(() => {
+        if (!onDragStart || !onDragCancel || !sensors?.length) return;
+        navigationGroups.finishDrag = onDragEnd;
+        return () => {
+          if (navigationGroups.finishDrag === onDragEnd)
+            navigationGroups.finishDrag = undefined;
+        };
+      }, [onDragStart, onDragCancel, onDragEnd, sensors]);
+      return <core.DndContext {...props} />;
+    }),
+  };
+});
 
 vi.mock("@/modules/chat/components/chat-thread", () => ({
   ChatThread: () => null,
@@ -50,6 +163,23 @@ vi.mock("@/modules/chat/components/chat-thread", () => ({
 vi.mock("@/modules/waker", async (importOriginal) => ({
   ...(await importOriginal<typeof WakerModule>()),
   duplicateWakerMutation: () => ({ mutationFn: duplicateWaker }),
+  listWakerNavigationGroupsQueryKey: () => navigationGroups.queryKey,
+  listWakerNavigationGroupsOptions: () => ({
+    queryKey: navigationGroups.queryKey,
+    queryFn: async () => ({
+      groups: structuredClone(navigationGroups.groups),
+      ungroupedWakerIds: [...navigationGroups.ungrouped],
+    }),
+  }),
+  moveWakerToNavigationGroupMutation: () => ({
+    mutationFn: navigationGroups.move,
+  }),
+  placeWakerInNavigationMutation: () => ({
+    mutationFn: navigationGroups.place,
+  }),
+  importWakerNavigationGroupsMutation: () => ({
+    mutationFn: navigationGroups.import,
+  }),
 }));
 
 vi.mock(import("@/shared/api/global-events"), async (importOriginal) => ({
@@ -239,7 +369,7 @@ const initialPreferences: PartnerNavigationPreferences = {
   globalSidebarCollapsed: false,
   lastTeamThreads: {},
   railExpanded: false,
-  railOrder: wakers.map((waker) => `waker:${waker.id ?? ""}`),
+  railOrder: [],
 };
 
 function LocationProbe() {
@@ -430,6 +560,7 @@ function renderLayout({
   contextSidebarHidden,
   floatingChat,
   initialEntry = "/chat?wakerId=waker-6",
+  reactStrictMode = false,
   sceneContentFlush,
   selectedPartnerId,
   settingsOpen,
@@ -445,6 +576,7 @@ function renderLayout({
   contextSidebarHidden?: boolean;
   floatingChat?: boolean;
   initialEntry?: string;
+  reactStrictMode?: boolean;
   sceneContentFlush?: boolean;
   selectedPartnerId?: string;
   settingsOpen?: boolean;
@@ -483,17 +615,22 @@ function renderLayout({
         </WorkspaceProvider>
       </MemoryRouter>
     </QueryClientProvider>,
-    { wrapper: TooltipProvider },
+    { wrapper: TooltipProvider, reactStrictMode },
   );
 }
 
 describe("PartnerNavigationLayout", () => {
   it("伙伴右键菜单可新建分组、移入已有分组、编辑和打开删除确认", async () => {
-    renderLayout({
-      navigationPreferences: {
-        wakerGroups: [{ name: "已有分组", wakerIds: ["waker-2"] }],
-      },
-    });
+    navigationGroups.groups = [{ name: "已有分组", wakerIds: ["waker-2"] }];
+    navigationGroups.ungrouped = [
+      "waker-1",
+      "waker-3",
+      "waker-4",
+      "waker-5",
+      "waker-6",
+    ];
+    renderLayout();
+    await screen.findByRole("heading", { name: "已有分组" });
     const user = userEvent.setup();
     const row = screen.getByRole("button", { name: "伙伴 1" });
     row.focus();
@@ -509,22 +646,33 @@ describe("PartnerNavigationLayout", () => {
     const groupDialog = screen.getByRole("dialog", { name: "新建分组" });
     await user.type(within(groupDialog).getByLabelText("分组名称"), "研究");
     await user.click(within(groupDialog).getByRole("button", { name: "保存" }));
-    const heading = screen.getByRole("heading", { name: "研究" });
+    const heading = await screen.findByRole("heading", { name: "研究" });
     expect(heading.nextElementSibling).toContainElement(row);
 
     fireEvent.contextMenu(row);
     await openMove();
     await user.click(screen.getByRole("menuitem", { name: "已有分组" }));
-    expect(heading).not.toBeInTheDocument();
+    await waitFor(() => expect(heading).not.toBeInTheDocument());
     const existing = screen.getByRole("heading", { name: "已有分组" });
-    expect(existing.nextElementSibling).toContainElement(row);
+    expect(existing.nextElementSibling).toContainElement(
+      screen.getByRole("button", { name: "伙伴 2" }),
+    );
+    expect(existing.nextElementSibling?.nextElementSibling).toContainElement(
+      row,
+    );
 
     fireEvent.contextMenu(row);
     await openMove();
     await user.click(screen.getByRole("menuitem", { name: "未分组" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "已有分组" })
+          .previousElementSibling,
+      ).toContainElement(row),
+    );
     expect(
-      screen.getByRole("heading", { name: "未分组" }).nextElementSibling,
-    ).toContainElement(row);
+      navigationGroups.move.mock.calls.map(([request]) => request.body.name),
+    ).toEqual(["研究", "已有分组", ""]);
 
     fireEvent.contextMenu(row);
     await user.click(screen.getByRole("menuitem", { name: "编辑伙伴" }));
@@ -536,6 +684,219 @@ describe("PartnerNavigationLayout", () => {
     expect(
       within(deleteDialog).getByRole("button", { name: "删除伙伴" }),
     ).toBeDisabled();
+  });
+
+  it("按 Core 顺序显示同组排序和跨组拖放的落点，重新挂载后保留", async () => {
+    navigationGroups.groups = [
+      { name: "研究", wakerIds: ["waker-1", "waker-2"] },
+      { name: "开发", wakerIds: ["waker-3", "waker-4"] },
+    ];
+    navigationGroups.ungrouped = ["waker-5", "waker-6"];
+    const mounted = renderLayout();
+    await screen.findByRole("heading", { name: "研究" });
+    const orderedPartners = () =>
+      screen
+        .getAllByRole("button", { name: /^伙伴 [1-6]/ })
+        .map(
+          (element) =>
+            element.getAttribute("aria-label")?.match(/^伙伴 [1-6]/)?.[0],
+        );
+    const finishDrag = (source: number, target: number, offset?: number) => {
+      const activatorEvent =
+        offset === undefined
+          ? new KeyboardEvent("keydown")
+          : new MouseEvent("mousedown");
+      act(() =>
+        navigationGroups.finishDrag?.({
+          activatorEvent,
+          active: {
+            id: `waker:waker-${source}`,
+            rect: {
+              current: {
+                translated:
+                  offset === undefined ? null : { top: offset, height: 20 },
+              },
+            },
+          },
+          over: { id: `waker:waker-${target}`, rect: { top: 0, height: 20 } },
+        } as unknown as DragEndEvent),
+      );
+    };
+
+    expect(navigationGroups.finishDrag).toBeTypeOf("function");
+    finishDrag(2, 1);
+    await waitFor(() =>
+      expect(navigationGroups.place).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: { wakerId: "waker-2" },
+          body: { targetWakerId: "waker-1", placement: "before" },
+        }),
+        expect.anything(),
+      ),
+    );
+    await waitFor(() =>
+      expect(orderedPartners()).toEqual([
+        "伙伴 5",
+        "伙伴 6",
+        "伙伴 2",
+        "伙伴 1",
+        "伙伴 3",
+        "伙伴 4",
+      ]),
+    );
+    await waitFor(() =>
+      expect(navigationGroups.finishDrag).toBeTypeOf("function"),
+    );
+    // 拖向下方的目标组，但落点在第一行前半部分，实际插在第一行之前。
+    finishDrag(1, 3, -4);
+    const expected = [
+      "伙伴 5",
+      "伙伴 6",
+      "伙伴 2",
+      "伙伴 1",
+      "伙伴 3",
+      "伙伴 4",
+    ];
+    const development = () =>
+      screen.getByRole("heading", { name: "开发" }).nextElementSibling;
+    await waitFor(() =>
+      expect(development()).toContainElement(
+        screen.getByRole("button", { name: "伙伴 1" }),
+      ),
+    );
+    expect(navigationGroups.place).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        path: { wakerId: "waker-1" },
+        body: { targetWakerId: "waker-3", placement: "before" },
+      }),
+      expect.anything(),
+    );
+    expect(orderedPartners()).toEqual(expected);
+    await waitFor(() =>
+      expect(navigationGroups.finishDrag).toBeTypeOf("function"),
+    );
+    mounted.unmount();
+    renderLayout();
+    await screen.findByRole("heading", { name: "开发" });
+    expect(development()).toContainElement(
+      screen.getByRole("button", { name: "伙伴 1" }),
+    );
+    expect(orderedPartners()).toEqual(expected);
+  });
+
+  it("StrictMode 下旧分组导入只执行一次，成功后恢复移动和复制", async () => {
+    const groups = [{ name: "已有分组", wakerIds: ["waker-2"] }];
+    renderLayout({
+      reactStrictMode: true,
+      navigationPreferences: {
+        wakerGroups: groups,
+        railOrder: ["waker:waker-5", "waker:waker-1"],
+      },
+    });
+    expect(
+      await screen.findByRole("heading", { name: "已有分组" }),
+    ).toBeVisible();
+    expect(navigationGroups.import).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { groups, wakerOrder: ["waker-5", "waker-1"] },
+      }),
+      expect.anything(),
+    );
+    expect(navigationGroups.import).toHaveBeenCalledTimes(1);
+    const savedPreferences = screen.getByTestId("navigation-preferences");
+    await waitFor(() =>
+      expect(savedPreferences).not.toHaveTextContent("wakerGroups"),
+    );
+    expect(savedPreferences).not.toHaveTextContent("waker:waker-5");
+    fireEvent.contextMenu(screen.getByRole("button", { name: "伙伴 1" }));
+    expect(
+      screen.getByRole("menuitem", { name: "移动到" }),
+    ).not.toHaveAttribute("data-disabled");
+    expect(
+      screen.getByRole("menuitem", { name: "复制伙伴" }),
+    ).not.toHaveAttribute("data-disabled");
+  });
+
+  it("导入旧分组失败时可在当前页面重试并恢复分组操作", async () => {
+    navigationGroups.import.mockRejectedValueOnce(new Error("import failed"));
+    const groups = [{ name: "已有分组", wakerIds: ["waker-1"] }];
+    renderLayout({ navigationPreferences: { wakerGroups: groups } });
+    const retry = await screen.findByRole("button", { name: "重试" });
+    expect(screen.getByTestId("navigation-preferences")).toHaveTextContent(
+      "已有分组",
+    );
+    const user = userEvent.setup();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "伙伴 1" }));
+    expect(screen.getByRole("menuitem", { name: "移动到" })).toHaveAttribute(
+      "data-disabled",
+    );
+    expect(screen.getByRole("menuitem", { name: "复制伙伴" })).toHaveAttribute(
+      "data-disabled",
+    );
+    await user.keyboard("{Escape}");
+    await user.click(retry);
+    expect(
+      await screen.findByRole("heading", { name: "已有分组" }),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("navigation-preferences"),
+      ).not.toHaveTextContent("wakerGroups"),
+    );
+    expect(navigationGroups.import).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("button", { name: "重试" })).toBeNull();
+  });
+
+  it("拖放后立即呈现落点，并在保存失败时恢复 Core 顺序和原行焦点", async () => {
+    navigationGroups.groups = [
+      { name: "研究", wakerIds: ["waker-1", "waker-2"] },
+      { name: "开发", wakerIds: ["waker-3", "waker-4"] },
+    ];
+    let rejectPlacement: (reason: Error) => void = () => {};
+    const request = new Promise<never>((_, reject) => {
+      rejectPlacement = reject;
+    });
+    navigationGroups.place.mockReturnValueOnce(request);
+    renderLayout();
+    const sourceGroup = await screen.findByRole("heading", { name: "研究" });
+    const targetGroup = screen.getByRole("heading", { name: "开发" });
+    const source = screen.getByRole("button", { name: "伙伴 1" });
+    const target = screen.getByRole("button", { name: "伙伴 3" });
+    source.focus();
+
+    act(() =>
+      navigationGroups.finishDrag?.({
+        activatorEvent: new MouseEvent("mousedown"),
+        active: {
+          id: "waker:waker-1",
+          rect: { current: { translated: { top: -4, height: 20 } } },
+        },
+        over: { id: "waker:waker-3", rect: { top: 0, height: 20 } },
+      } as unknown as DragEndEvent),
+    );
+    expect(targetGroup.nextElementSibling).toContainElement(source);
+    expect(targetGroup.nextElementSibling?.nextElementSibling).toContainElement(
+      target,
+    );
+    expect(source).toHaveFocus();
+    expect(sourceGroup.nextElementSibling).toContainElement(
+      screen.getByRole("button", { name: "伙伴 2" }),
+    );
+    expect(navigationGroups.finishDrag).toBeUndefined();
+    expect(source).not.toHaveAttribute("aria-roledescription");
+    await waitFor(() =>
+      expect(navigationGroups.place).toHaveBeenCalledTimes(1),
+    );
+    await act(async () => rejectPlacement(new Error("write failed")));
+    await waitFor(() =>
+      expect(sourceGroup.nextElementSibling).toContainElement(source),
+    );
+    expect(targetGroup.nextElementSibling).toContainElement(target);
+    expect(source).toHaveFocus();
+    await waitFor(() =>
+      expect(navigationGroups.finishDrag).toBeTypeOf("function"),
+    );
+    expect(source).toHaveAttribute("aria-roledescription", "sortable");
   });
 
   it("复制通过原伙伴标识请求新伙伴", async () => {

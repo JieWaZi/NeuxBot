@@ -68,12 +68,12 @@ import {
   pinnedAppModules,
   contextSidebarWidthRange,
   moveItem,
-  moveWakerToNavigationGroup,
   reconcilePartnerOrder,
   type NavigationDropPlacement,
   type PartnerNavigationPreferences,
 } from "./partner-navigation-preferences";
 import { WakerNavigationMenu } from "./waker-navigation-menu";
+import { useWakerNavigationGroups } from "./use-waker-navigation-groups";
 import { TeamNavigationMenu } from "./team-navigation-menu";
 import { VerticalResizeHandle } from "@/shared/ui/vertical-resize-handle";
 import {
@@ -252,26 +252,27 @@ function PartnerNavigationLayoutContent({
     location.pathname,
   );
   const navigation = resolveAppNavigation(location);
-  const availableRailKeys = useMemo(
-    () => [
-      ...wakers.flatMap((waker) => (waker.id ? [`waker:${waker.id}`] : [])),
-      ...channels.flatMap((detail) =>
+  const navigationGroups = useWakerNavigationGroups(
+    preferences,
+    onPreferencesChange,
+  );
+  const availableTeamKeys = useMemo(
+    () =>
+      channels.flatMap((detail) =>
         detail.channel?.id ? [`team:${detail.channel.id}`] : [],
       ),
-    ],
-    [channels, wakers],
+    [channels],
   );
-  const orderedRailKeys = reconcilePartnerOrder(
-    availableRailKeys,
-    preferences.railOrder,
+  const availableWakerKeys = wakers.flatMap((waker) =>
+    waker.id ? [`waker:${waker.id}`] : [],
   );
   useEffect(() => {
-    if (availableRailKeys.length === 0) return;
+    if (availableTeamKeys.length === 0) return;
     onPreferencesChange((current) => {
-      const nextOrder = reconcilePartnerOrder(
-        availableRailKeys,
-        current.railOrder,
-      );
+      const nextOrder = [
+        ...current.railOrder.filter((key) => key.startsWith("waker:")),
+        ...reconcilePartnerOrder(availableTeamKeys, current.railOrder),
+      ];
       if (
         nextOrder.length === current.railOrder.length &&
         nextOrder.every((id, index) => id === current.railOrder[index])
@@ -280,7 +281,7 @@ function PartnerNavigationLayoutContent({
       }
       return { ...current, railOrder: nextOrder };
     });
-  }, [availableRailKeys, onPreferencesChange]);
+  }, [availableTeamKeys, onPreferencesChange]);
   const navigationEntityByKey = new Map<string, NavigationEntity>();
   for (const waker of wakers) {
     if (!waker.id) continue;
@@ -303,9 +304,13 @@ function PartnerNavigationLayoutContent({
       attention: executorAttention?.get(channelId),
     });
   }
-  const modeRailKeys = orderedRailKeys.filter((key) =>
-    key.startsWith(`${preferences.entityMode}:`),
-  );
+  const modeRailKeys =
+    preferences.entityMode === "waker"
+      ? reconcilePartnerOrder(
+          availableWakerKeys,
+          navigationGroups.wakerOrder.map((id) => `waker:${id}`),
+        )
+      : reconcilePartnerOrder(availableTeamKeys, preferences.railOrder);
   const visibleRailItems = modeRailKeys.flatMap<NavigationEntity>((key) => {
     const item = navigationEntityByKey.get(key);
     return item ? [item] : [];
@@ -322,55 +327,29 @@ function PartnerNavigationLayoutContent({
     waker: Waker;
   } | null>(null);
   useEffect(() => () => resizeCleanup.current(), []);
-  const moveWaker = (wakerId: string, groupName: string) => {
-    onPreferencesChange((current) => ({
-      ...current,
-      wakerGroups: moveWakerToNavigationGroup(
-        current.wakerGroups ?? [],
-        wakerId,
-        groupName,
-      ),
-    }));
-  };
   const updateOrder = (
     sourceId: string,
     targetId: string,
     placement: NavigationDropPlacement,
   ) => {
-    onPreferencesChange((current) => {
-      const source = navigationEntityByKey.get(sourceId);
-      const target = navigationEntityByKey.get(targetId);
-      const groups = current.wakerGroups ?? [];
-      let wakerGroups = current.wakerGroups;
-      if (
-        groups.length &&
-        source?.kind === "waker" &&
-        target?.kind === "waker"
-      ) {
-        const sourceGroup = groups.find((group) =>
-          group.wakerIds.includes(source.id),
-        );
-        const targetGroup = groups.find((group) =>
-          group.wakerIds.includes(target.id),
-        );
-        if (sourceGroup !== targetGroup)
-          wakerGroups = moveWakerToNavigationGroup(
-            groups,
-            source.id,
-            targetGroup?.name ?? "",
-          );
-      }
-      return {
-        ...current,
-        railOrder: moveItem(
-          reconcilePartnerOrder(availableRailKeys, current.railOrder),
+    const source = navigationEntityByKey.get(sourceId);
+    const target = navigationEntityByKey.get(targetId);
+    if (source?.kind === "waker" && target?.kind === "waker") {
+      void navigationGroups.place(source.id, target.id, placement);
+      return;
+    }
+    onPreferencesChange((current) => ({
+      ...current,
+      railOrder: [
+        ...current.railOrder.filter((key) => key.startsWith("waker:")),
+        ...moveItem(
+          reconcilePartnerOrder(availableTeamKeys, current.railOrder),
           sourceId,
           targetId,
           placement,
         ),
-        wakerGroups,
-      };
-    });
+      ],
+    }));
   };
   const settingsLayout = settingsOpen ? settingsSidebar : undefined;
   const partnerContext = !settingsOpen && navigation.sidebarKind === "partners";
@@ -543,6 +522,10 @@ function PartnerNavigationLayoutContent({
                 className="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain"
               >
                 <EntityNavigation
+                  canReorder={
+                    preferences.entityMode !== "waker" ||
+                    navigationGroups.canMove
+                  }
                   collapsed={false}
                   entityStatus={entityStatus}
                   mode={preferences.entityMode}
@@ -554,6 +537,7 @@ function PartnerNavigationLayoutContent({
                     }))
                   }
                   onReorder={updateOrder}
+                  onRetryGroupImport={navigationGroups.retryImport}
                   onSelectPartner={onSelectPartner}
                   onSelectTeam={onSelectTeam}
                   onShowcaseWaker={(waker, origin) =>
@@ -561,7 +545,7 @@ function PartnerNavigationLayoutContent({
                   }
                   selectedKey={selectedRailKey}
                   items={visibleRailItems}
-                  wakerGroups={preferences.wakerGroups}
+                  wakerGroups={navigationGroups.groups}
                   renderTeamRow={(item, row) => (
                     <TeamNavigationMenu
                       key={item.key}
@@ -590,31 +574,15 @@ function PartnerNavigationLayoutContent({
                       key={item.key}
                       waker={item.waker}
                       wakerId={item.id}
-                      groups={preferences.wakerGroups ?? []}
+                      groups={navigationGroups.groups}
+                      canMove={navigationGroups.canMove}
+                      canDuplicate={navigationGroups.migrationResolved}
                       onNewChat={() =>
                         openNewOwnerChat({ kind: "waker", id: item.id })
                       }
-                      onMove={(groupName) => moveWaker(item.id, groupName)}
-                      onCopied={(newId) => {
-                        onPreferencesChange((current) => {
-                          const groups = current.wakerGroups ?? [];
-                          const sourceGroup = groups.find((group) =>
-                            group.wakerIds.includes(item.id),
-                          );
-                          return sourceGroup
-                            ? {
-                                ...current,
-                                wakerGroups: moveWakerToNavigationGroup(
-                                  groups,
-                                  newId,
-                                  sourceGroup.name,
-                                ),
-                              }
-                            : current;
-                        });
-                      }}
+                      onMove={(name) => navigationGroups.move(item.id, name)}
                       onDeleted={() => {
-                        moveWaker(item.id, "");
+                        void navigationGroups.refresh();
                         if (
                           selectedRailKey === item.key &&
                           (location.pathname === "/chat" || activeChatId)

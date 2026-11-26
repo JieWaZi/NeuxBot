@@ -8,6 +8,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 
 	"context"
 	"crypto/rand"
@@ -580,10 +581,28 @@ func recoverWakerDeletions(ctx context.Context, managedDirectory string) error {
 	return nil
 }
 
+// recoverWakerCopies 在接纳新工作前清理未发布的空间副本，保留已提交的伙伴空间。
+func recoverWakerCopies(ctx context.Context, managedDirectory string) error {
+	layout, err := chatstorage.NewLayout(managedDirectory)
+	if err != nil {
+		return mapCoreError("initialize_waker_storage", status_error.CoreChatInitializationFailed, err)
+	}
+	if err := workspace.RecoverAgentWorkspaceCopies(ctx, layout.AgentWorkspacesRoot(), memory.NewPartnerExistsResolver(WakerControllerManager)); err != nil {
+		return mapCoreError("recover_waker_workspace_copies", status_error.CoreChatInitializationFailed, err)
+	}
+	return nil
+}
+
 // loadChat 先恢复 Chat 权威事实，再装配入口无关的 Execution Core。
 func loadChat(ctx context.Context, configuration *Configuration, handlerFactory schedule.LocalHandlerFactory) error {
 	if err := recoverWakerDeletions(ctx, configuration.ManagedFilesDirectory); err != nil {
 		return err
+	}
+	if err := recoverWakerCopies(ctx, configuration.ManagedFilesDirectory); err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		logx.Warnf("recover partner workspace copies: %v", err)
 	}
 	conversations, err := conversation.NewStore(configuration.ManagedFilesDirectory)
 	if err != nil {

@@ -159,8 +159,11 @@ func IsInternalExecutionPath(root, path string) bool {
 	}
 	name, subpath, _ := strings.Cut(filepath.ToSlash(relative), "/")
 	reserved := strings.ToLower(name)
+	if isNativeSkillDiscoveryRoot(root, name) {
+		return true
+	}
 	switch reserved {
-	case ".agents", ".claude", ".codebuddy", ".cursor", ".pi", ".grok", ".gemini", ".opencode", ".qoder", ".neuxbot", ".neuxbot-skills.json", constants.ChatContextOwnerFileName:
+	case ".neuxbot", ".neuxbot-skills.json", constants.ChatContextOwnerFileName:
 		return sameWorkspaceEntry(root, name, reserved)
 	case constants.ProjectEntriesDirectoryName:
 		chatID, _, _ := strings.Cut(subpath, "/")
@@ -168,12 +171,18 @@ func IsInternalExecutionPath(root, path string) bool {
 			return false
 		}
 		entry := filepath.Join(root, name, chatID)
-		marker, err := os.Lstat(filepath.Join(entry, constants.ChatContextOwnerFileName))
-		if err != nil || !marker.Mode().IsRegular() || marker.Size() > 4096 {
-			return false
-		}
 		owner, err := ReadExecutionWorkspaceOwner(entry)
 		return err == nil && owner.Kind == constants.ChatProjectEntriesOwnerKind && isSafeDirectoryName(owner.ChatID) && sameWorkspaceEntry(filepath.Dir(entry), chatID, owner.ChatID)
+	default:
+		return false
+	}
+}
+
+func isNativeSkillDiscoveryRoot(root, name string) bool {
+	canonical := strings.ToLower(name)
+	switch canonical {
+	case ".agents", ".claude", ".codebuddy", ".cursor", ".pi", ".grok", ".gemini", ".opencode", ".qoder":
+		return sameWorkspaceEntry(root, name, canonical)
 	default:
 		return false
 	}
@@ -259,30 +268,9 @@ func ReadExecutionWorkspaceOwner(root string) (ExecutionWorkspaceOwner, error) {
 
 // ReadWorkspaceOwnerAt 从已锚定目录读取有限大小的常规归属文件。
 func ReadWorkspaceOwnerAt(root *os.Root) (ExecutionWorkspaceOwner, error) {
-	name := constants.ChatContextOwnerFileName
-	info, err := root.Lstat(name)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > 4096 {
-		return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
-	}
-	file, err := root.Open(name)
+	marker, err := readWorkspaceOwnerMarkerAt(root)
 	if err != nil {
-		return ExecutionWorkspaceOwner{}, status_error.ManagedWorkspaceError
-	}
-	defer file.Close()
-	actual, err := file.Stat()
-	if err != nil || !os.SameFile(info, actual) {
-		return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
-	}
-	content, err := io.ReadAll(io.LimitReader(file, 4097))
-	if err != nil {
-		return ExecutionWorkspaceOwner{}, status_error.ManagedWorkspaceError
-	}
-	if len(content) > 4096 {
-		return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
-	}
-	var marker ownerMarker
-	if err := json.Unmarshal(content, &marker); err != nil {
-		return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
+		return ExecutionWorkspaceOwner{}, err
 	}
 	return ExecutionWorkspaceOwner{
 		Kind:      marker.Kind,
@@ -291,6 +279,35 @@ func ReadWorkspaceOwnerAt(root *os.Root) (ExecutionWorkspaceOwner, error) {
 		WakerID:   marker.WakerID,
 		MessageID: marker.MessageID,
 	}, nil
+}
+
+func readWorkspaceOwnerMarkerAt(root *os.Root) (ownerMarker, error) {
+	name := constants.ChatContextOwnerFileName
+	info, err := root.Lstat(name)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 4096 {
+		return ownerMarker{}, status_error.ChatDirectoryOwnershipInvalid
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		return ownerMarker{}, status_error.ManagedWorkspaceError
+	}
+	defer file.Close()
+	actual, err := file.Stat()
+	if err != nil || !os.SameFile(info, actual) {
+		return ownerMarker{}, status_error.ChatDirectoryOwnershipInvalid
+	}
+	content, err := io.ReadAll(io.LimitReader(file, 4097))
+	if err != nil {
+		return ownerMarker{}, status_error.ManagedWorkspaceError
+	}
+	if len(content) > 4096 {
+		return ownerMarker{}, status_error.ChatDirectoryOwnershipInvalid
+	}
+	var marker ownerMarker
+	if err := json.Unmarshal(content, &marker); err != nil {
+		return ownerMarker{}, status_error.ChatDirectoryOwnershipInvalid
+	}
+	return marker, nil
 }
 
 // ValidateThreadExecutionWorkspaceDeletion 只校验 thread 共享工作区归属，不产生文件副作用。

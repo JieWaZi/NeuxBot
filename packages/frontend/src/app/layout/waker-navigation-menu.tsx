@@ -17,6 +17,7 @@ import { listChatsOptions } from "@/modules/chat";
 import {
   duplicateWakerMutation,
   isBuiltinWaker,
+  listWakerNavigationGroupsQueryKey,
   listWakersQueryKey,
   WakerDeleteDialog,
   WakerFormDialog,
@@ -47,20 +48,22 @@ import { toast } from "@/shared/ui/sonner";
 import type { WakerNavigationGroup } from "./partner-navigation-preferences";
 
 export function WakerNavigationMenu({
+  canDuplicate,
+  canMove,
   children,
   groups,
-  onCopied,
   onDeleted,
   onMove,
   onNewChat,
   waker,
   wakerId,
 }: {
+  canDuplicate: boolean;
+  canMove: boolean;
   children: ReactElement;
   groups: readonly WakerNavigationGroup[];
-  onCopied: (newId: string) => void;
   onDeleted: () => void;
-  onMove: (groupName: string) => void;
+  onMove: (groupName: string) => Promise<boolean>;
   onNewChat: () => void;
   waker: Waker;
   wakerId: string;
@@ -76,6 +79,7 @@ export function WakerNavigationMenu({
   const [markingUnread, setMarkingUnread] = useState(false);
   const origin = useRef<HTMLElement | null>(null);
   const copyRequest = useRef<string | undefined>(undefined);
+  const groupRequest = useRef<Promise<boolean> | undefined>(undefined);
   const currentGroup =
     groups.find((group) => group.wakerIds.includes(wakerId))?.name ?? "";
   const duplicate = useMutation(
@@ -103,19 +107,24 @@ export function WakerNavigationMenu({
     try {
       const requestId = copyRequest.current ?? crypto.randomUUID();
       copyRequest.current = requestId;
-      const result = await duplicate.mutateAsync({
+      await duplicate.mutateAsync({
         path: { wakerId },
         body: { requestId },
       });
       copyRequest.current = undefined;
-      if (result.wakerId) onCopied(result.wakerId);
-      await client.invalidateQueries({ queryKey: listWakersQueryKey() });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: listWakersQueryKey() }),
+        client.invalidateQueries({
+          queryKey: listWakerNavigationGroupsQueryKey(),
+        }),
+      ]);
     } catch (error) {
       toast.error(localApiErrorMessage(error, t("duplicateError")));
     }
   };
   const closeDialog = (open: boolean) => {
     if (open) return;
+    groupRequest.current = undefined;
     setDialog(undefined);
     requestAnimationFrame(() => origin.current?.focus());
   };
@@ -152,7 +161,7 @@ export function WakerNavigationMenu({
             {t("markUnread")}
           </ContextMenuItem>
           <ContextMenuSub>
-            <ContextMenuSubTrigger>
+            <ContextMenuSubTrigger disabled={!canMove}>
               <FolderInput />
               {t("moveTo")}
             </ContextMenuSubTrigger>
@@ -163,7 +172,7 @@ export function WakerNavigationMenu({
                   <ContextMenuItem
                     key={name}
                     aria-current={name === currentGroup || undefined}
-                    onSelect={() => onMove(name)}
+                    onSelect={() => void onMove(name)}
                   >
                     <Icon />
                     <span className="truncate">{name || t("ungrouped")}</span>
@@ -187,7 +196,7 @@ export function WakerNavigationMenu({
             {t("edit")}
           </ContextMenuItem>
           <ContextMenuItem
-            disabled={duplicate.isPending}
+            disabled={duplicate.isPending || !canDuplicate}
             onSelect={() => void copy()}
           >
             <Copy />
@@ -225,9 +234,13 @@ export function WakerNavigationMenu({
               onSubmit={(event) => {
                 event.preventDefault();
                 const name = groupName.trim();
-                if (!name) return;
-                closeDialog(false);
-                onMove(name);
+                if (!name || !canMove) return;
+                const request = onMove(name);
+                groupRequest.current = request;
+                void request.then((moved) => {
+                  if (moved && groupRequest.current === request)
+                    closeDialog(false);
+                });
               }}
             >
               <div className="grid gap-2 px-6 pb-5">
@@ -248,7 +261,7 @@ export function WakerNavigationMenu({
                 >
                   {common("cancel")}
                 </Button>
-                <Button type="submit" disabled={!groupName.trim()}>
+                <Button type="submit" disabled={!groupName.trim() || !canMove}>
                   {common("save")}
                 </Button>
               </DialogFooter>

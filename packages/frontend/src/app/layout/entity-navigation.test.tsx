@@ -63,6 +63,35 @@ function NavigationHarness({
   );
 }
 
+function measureDragRows(entries: [HTMLElement, number][]) {
+  const rows = entries.map(([button, top]) => {
+    const row = button.parentElement;
+    if (!row)
+      throw new Error(`找不到伙伴行 ${button.getAttribute("aria-label")}`);
+    vi.spyOn(row, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, top, 220, 52),
+    );
+    return row;
+  });
+  const getRect = HTMLElement.prototype.getBoundingClientRect;
+  const measureOverlay = vi
+    .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+    .mockImplementation(function (this: HTMLElement) {
+      const { position, left, top, width, height } =
+        this.parentElement?.style ?? {};
+      return position === "fixed" && left && top && width && height
+        ? new DOMRect(
+            parseFloat(left),
+            parseFloat(top),
+            parseFloat(width),
+            parseFloat(height),
+          )
+        : getRect.call(this);
+    });
+  onTestFinished(() => measureOverlay.mockRestore());
+  return rows;
+}
+
 describe("EntityNavigation", () => {
   it("悬停伙伴名称和行内操作时保持同一头像表情，离开整行后恢复", async () => {
     const random = vi.spyOn(Math, "random").mockReturnValue(0.6);
@@ -401,6 +430,139 @@ describe("EntityNavigation", () => {
     expect(screen.getByRole("button", { name: "伙伴一" })).not.toHaveAttribute(
       "aria-expanded",
     );
+  });
+
+  it("跨组拖动时固定其他伙伴，并高亮目标分组和插入位置", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    onTestFinished(() => {
+      // The pointer sensor defers removing its document click listener.
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+    });
+    const partners = ["甲", "乙", "丙", "丁"].map((name, index) => ({
+      id: `partner-${index}`,
+      key: `waker:partner-${index}`,
+      kind: "waker" as const,
+      waker: { id: `partner-${index}`, name } as Waker,
+    }));
+    const onReorder = vi.fn();
+    render(
+      <EntityNavigation
+        collapsed={false}
+        items={partners}
+        mode="waker"
+        onManageEntities={vi.fn()}
+        onModeChange={vi.fn()}
+        onReorder={onReorder}
+        onSelectPartner={vi.fn()}
+        onSelectTeam={vi.fn()}
+        selectedKey=""
+        wakerGroups={[
+          { name: "研究", wakerIds: ["partner-0", "partner-1"] },
+          { name: "开发", wakerIds: ["partner-2", "partner-3"] },
+        ]}
+      />,
+    );
+
+    const source = screen.getByRole("button", { name: "甲" });
+    const rows = measureDragRows(
+      partners.map(({ waker }, index) => [
+        screen.getByRole("button", { name: waker.name }),
+        index * 54 + (index < 2 ? 24 : 48),
+      ]),
+    );
+    fireEvent.pointerDown(source, {
+      isPrimary: true,
+      button: 0,
+      clientX: 120,
+      clientY: 50,
+    });
+    fireEvent.pointerMove(document, { clientX: 120, clientY: 70 });
+    fireEvent.pointerMove(document, { clientX: 120, clientY: 92 });
+    expect(rows[1]?.style.transform).toContain("-54px");
+    fireEvent.pointerMove(document, { clientX: 120, clientY: 162 });
+    expect(rows.slice(1).map((row) => row.style.transform)).toEqual([
+      "",
+      "",
+      "",
+    ]);
+    const sourceGroup = screen.getByRole("heading", { name: "研究" });
+    const targetGroup = screen.getByRole("heading", { name: "开发" });
+    expect(sourceGroup).not.toHaveAttribute("data-drop-group");
+    expect(targetGroup).toHaveAttribute("data-drop-group", "start");
+    expect(rows[2]).toHaveAttribute("data-drop-group", "middle");
+    expect(rows[3]).toHaveAttribute("data-drop-group", "end");
+    expect(sourceGroup).not.toHaveClass("before:bg-accent-surface");
+    expect(targetGroup).toHaveClass("before:bg-accent-surface");
+    expect(rows[2]).toHaveClass("before:bg-accent-surface");
+    expect(rows[3]).toHaveClass("before:bg-accent-surface");
+    expect(rows[2]).toHaveAttribute("data-drop-placement", "before");
+
+    fireEvent.pointerMove(document, { clientX: 120, clientY: 198 });
+    expect(rows[2]).toHaveAttribute("data-drop-placement", "after");
+    expect(onReorder).not.toHaveBeenCalled();
+    fireEvent.pointerUp(document);
+    expect(onReorder).toHaveBeenCalledExactlyOnceWith(
+      "waker:partner-0",
+      "waker:partner-2",
+      "after",
+    );
+    expect(rows[2]).not.toHaveAttribute("data-drop-placement");
+    expect(targetGroup).not.toHaveAttribute("data-drop-group");
+    expect(targetGroup).not.toHaveClass("before:bg-accent-surface");
+    expect(rows[2]).not.toHaveClass("before:bg-accent-surface");
+  });
+
+  it("键盘可把伙伴插入下方单人分组的第一行之前", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const onReorder = vi.fn();
+    render(
+      <EntityNavigation
+        collapsed={false}
+        items={items.filter((item) => item.kind === "waker")}
+        mode="waker"
+        onManageEntities={vi.fn()}
+        onModeChange={vi.fn()}
+        onReorder={onReorder}
+        onSelectPartner={vi.fn()}
+        onSelectTeam={vi.fn()}
+        selectedKey=""
+        wakerGroups={[
+          { name: "研究", wakerIds: ["waker-1"] },
+          { name: "开发", wakerIds: ["waker-2"] },
+        ]}
+      />,
+    );
+    const source = screen.getByRole("button", { name: "伙伴一" });
+    const target = screen.getByRole("button", { name: "伙伴二" });
+    const [, targetRow] = measureDragRows([
+      [source, 24],
+      [target, 102],
+    ]);
+    source.focus();
+    fireEvent.keyDown(source, { code: "Space", key: " " });
+    act(() => vi.runOnlyPendingTimers());
+    fireEvent.keyDown(source, { code: "ArrowDown", key: "ArrowDown" });
+    expect(targetRow).toHaveAttribute("data-drop-placement", "after");
+    fireEvent.keyDown(source, { code: "ArrowLeft", key: "ArrowLeft" });
+    expect(targetRow).toHaveAttribute("data-drop-placement", "before");
+    expect(screen.getByText("插入到「伙伴二」之前")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    fireEvent.keyDown(source, { code: "ArrowRight", key: "ArrowRight" });
+    expect(targetRow).toHaveAttribute("data-drop-placement", "after");
+    fireEvent.keyDown(source, { code: "ArrowLeft", key: "ArrowLeft" });
+    fireEvent.keyDown(source, { code: "Space", key: " " });
+    expect(onReorder).toHaveBeenCalledExactlyOnceWith(
+      "waker:waker-1",
+      "waker:waker-2",
+      "before",
+    );
+    expect(source).toHaveFocus();
   });
 
   it("展开态双击头像打开伙伴资料卡", () => {

@@ -17,6 +17,10 @@ type Waker struct {
 	ID string `gorm:"column:id;type:varchar(32);primaryKey" json:"id"`
 	// Name 是用户识别伙伴时看到的名称。
 	Name string `gorm:"column:name;type:varchar(80);not null;uniqueIndex" json:"name"`
+	// NavigationGroupID 指向伙伴的导航分组；空值表示未分组。
+	NavigationGroupID string `gorm:"type:varchar(32);not null;default:'';index:idx_waker_navigation,priority:1" json:"-"`
+	// NavigationPosition 决定伙伴在当前分组中的显式排序；零值按创建顺序排在最后。
+	NavigationPosition int64 `gorm:"not null;default:0;index:idx_waker_navigation,priority:2" json:"-"`
 	// RoleName 是伙伴当前承担的角色名称。
 	RoleName string `gorm:"column:role_name;type:varchar(80);not null;default:''" json:"roleName"`
 	// Avatar 是头像 URL、Data URL 或内置头像标识。

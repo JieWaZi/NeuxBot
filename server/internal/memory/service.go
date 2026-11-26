@@ -610,6 +610,51 @@ func (s *Service) ProbeEmbedding(ctx context.Context) error {
 	return err
 }
 
+// DuplicatePartner 将当前记忆和可复用索引复制给尚未发布的伙伴。
+//
+// 调用方须保证目标标识在主业务库尚未使用，并串行化同一目标的复制。
+// 重试时，之前暂存的目标数据和本次副本在同一记忆事务中替换。
+func (s *Service) DuplicatePartner(ctx context.Context, sourceID, targetID string) error {
+	if strings.TrimSpace(sourceID) == "" || strings.TrimSpace(targetID) == "" || sourceID == targetID {
+		return status_error.BadRequest
+	}
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
+	return s.store.withTx(ctx, func(tx *sql.Tx) error {
+		entries, err := s.store.listPartnerMemoriesForCopy(ctx, tx, sourceID)
+		if err != nil {
+			return err
+		}
+		if err := s.deletePartner(tx, targetID); err != nil {
+			return err
+		}
+		hasVectors, err := s.vectors.vecTableExists(tx)
+		if err != nil {
+			return err
+		}
+		now := time.Now().UnixMilli()
+		for _, entry := range entries {
+			entryCopy := Memory{
+				ID: util.New(), PartnerID: targetID, Data: entry.Data, Hash: entry.Hash,
+				CreatedAt: now, UpdatedAt: now, Core: entry.Core, Revision: 1, Origin: entry.Origin, control: entry.control,
+			}
+			if err := s.store.insertMemory(tx, &entryCopy); err != nil {
+				return err
+			}
+			if hasVectors {
+				if err := s.vectors.copyVector(ctx, tx, entry, entryCopy); err != nil {
+					return err
+				}
+			}
+		}
+		if err := s.store.indexPartnerKeywords(ctx, tx, targetID); err != nil {
+			return err
+		}
+		return updateCoreSnapshot(tx, targetID)
+	})
+}
+
 // DeletePartner 清除伙伴的记忆、索引、历史及命令回执。
 func (s *Service) DeletePartner(ctx context.Context, partnerID string) error {
 	s.mutationMu.Lock()
@@ -618,14 +663,18 @@ func (s *Service) DeletePartner(ctx context.Context, partnerID string) error {
 		return status_error.BadRequest
 	}
 	return s.store.withTx(ctx, func(tx *sql.Tx) error {
-		if err := s.vectors.deletePartnerVectors(tx, partnerID); err != nil {
-			return err
-		}
-		if err := s.store.deletePartnerFTS(tx, partnerID); err != nil {
-			return err
-		}
-		return s.store.deletePartnerData(tx, partnerID)
+		return s.deletePartner(tx, partnerID)
 	})
+}
+
+func (s *Service) deletePartner(tx *sql.Tx, partnerID string) error {
+	if err := s.vectors.deletePartnerVectors(tx, partnerID); err != nil {
+		return err
+	}
+	if err := s.store.deletePartnerFTS(tx, partnerID); err != nil {
+		return err
+	}
+	return s.store.deletePartnerData(tx, partnerID)
 }
 
 // CleanupOrphanPartners 重试清理已不存在伙伴的记忆数据。

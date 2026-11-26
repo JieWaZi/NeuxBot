@@ -81,6 +81,42 @@ func TestConcurrentChatAdmissionsRetainOneWakerDeletionGate(t *testing.T) {
 	release()
 }
 
+func TestWakerDeletionClaimRetainsGateUntilOuterRelease(t *testing.T) {
+	root := t.TempDir()
+	claimed, releaseOuter, err := AcquireWakerDeletion(t.Context(), root, "partner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseOuter()
+	_, releaseInner, err := AcquireWakerDeletion(claimed, root, "partner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	releaseInner()
+	if release, err := AcquireOperation(root, "waker:partner"); err == nil {
+		release()
+		t.Fatal("inner release dropped the outer partner operation gate")
+	}
+	assertClaimBlocked := func(root, wakerID string) {
+		t.Helper()
+		release, err := AcquireOperation(root, "waker:"+wakerID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer release()
+		if _, unexpected, err := AcquireWakerDeletion(claimed, root, wakerID); !errors.Is(err, status_error.ChatHasActiveExecution) {
+			if unexpected != nil {
+				unexpected()
+			}
+			t.Fatalf("claim bypassed an active gate for %s: %v", wakerID, err)
+		}
+	}
+	assertClaimBlocked(t.TempDir(), "partner")
+	assertClaimBlocked(root, "other")
+	releaseOuter()
+	assertClaimBlocked(root, "partner")
+}
+
 func TestSharedReferencesFenceExpiry(t *testing.T) {
 	root := t.TempDir()
 	id := "chat"

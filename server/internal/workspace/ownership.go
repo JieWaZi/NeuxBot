@@ -22,6 +22,8 @@ type ownerMarker struct {
 	WakerID string `json:"wakerId,omitempty"`
 	// MessageID 是附件目录归属标记中的消息标识。
 	MessageID string `json:"messageId,omitempty"`
+	// CopyAttempt 把已发布的伙伴副本绑定到待核对的复制尝试。
+	CopyAttempt string `json:"copyAttempt,omitempty"`
 }
 
 func writeJSON(path string, value interface{}, failure status_error.StatusError) error {

@@ -44,6 +44,14 @@ type WakerController interface {
 	SetOnboardingInterview(ctx context.Context, wakerID, chatID string, interview models.WakerOnboardingInterview) error
 	// CompleteOnboarding 保存展示字段并完成建档。
 	CompleteOnboarding(ctx context.Context, wakerID, chatID string, overview models.Waker) error
+	// ListNavigationGroups 查询导航分组、每组成员和未分组伙伴的当前顺序。
+	ListNavigationGroups(ctx context.Context) ([]models.WakerNavigationGroupMembers, []string, error)
+	// MoveToNavigationGroup 在调用方事务中移动伙伴，按需创建导航分组。
+	MoveToNavigationGroup(ctx context.Context, waker models.Waker, name string) error
+	// PlaceWakerInNavigation 在调用方事务中按目标伙伴的当前分组与相对位置落位。
+	PlaceWakerInNavigation(ctx context.Context, wakerID, targetWakerID string, placement constants.WakerNavigationPlacement) error
+	// ImportNavigationGroups 在调用方事务中初始化旧分组成员关系与导航顺序。
+	ImportNavigationGroups(ctx context.Context, groups []models.WakerNavigationGroupMembers, wakerOrder []string) error
 	// Delete 删除伙伴。
 	Delete(ctx context.Context, id string) error
 }
@@ -64,6 +72,7 @@ func (c *wakerController) Create(ctx context.Context, waker models.Waker) error 
 	err := controllerDB(ctx, c.db).Create(&waker).Error
 	if err == nil {
 		publishCommittedChange(ctx, c.db, "entities", eventsResource("waker", waker.ID))
+		c.publishNavigationGroupsChanged(ctx)
 		return nil
 	}
 	if dbhelper.IsDuplicateError(err) {
@@ -234,6 +243,9 @@ func (c *wakerController) Delete(ctx context.Context, id string) error {
 		return databaseError("delete_waker", "waker_id="+id, result.Error)
 	}
 	publishCommittedChange(ctx, c.db, "entities", eventsResource("waker", id))
+	if result.RowsAffected != 0 {
+		c.publishNavigationGroupsChanged(ctx)
+	}
 	return nil
 }
 

@@ -1151,7 +1151,7 @@ func (m *service) DeleteWakerChats(ctx context.Context, wakerID string, prepare 
 	if wakerID == "" {
 		return status_error.BadRequest
 	}
-	release, err := chatstorage.AcquireOperation(m.storage.Root(), "waker:"+wakerID)
+	_, release, err := chatstorage.AcquireWakerDeletion(ctx, m.storage.Root(), wakerID)
 	if err != nil {
 		return err
 	}

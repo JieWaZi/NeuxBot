@@ -7,6 +7,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragMoveEvent,
 } from "@dnd-kit/core";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import {
@@ -14,6 +15,7 @@ import {
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
+  type SortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -80,8 +82,14 @@ export type NavigationEntity =
     };
 
 type NavigationWaker = Extract<NavigationEntity, { kind: "waker" }>;
+type NavigationDropTarget = {
+  targetId: string;
+  placement: NavigationDropPlacement;
+  keyboard: boolean;
+};
 
 type EntityNavigationProps = {
+  canReorder?: boolean;
   collapsed: boolean;
   entityStatus?: "error" | "loading" | "ready";
   floating?: boolean;
@@ -94,6 +102,7 @@ type EntityNavigationProps = {
     targetId: string,
     placement: NavigationDropPlacement,
   ) => void;
+  onRetryGroupImport?: () => void;
   onSelectPartner: (partnerId: string) => void;
   onSelectTeam: (channelId: string) => void;
   onShowcaseWaker?: (waker: Waker, origin: HTMLElement) => void;
@@ -108,6 +117,8 @@ type EntityNavigationProps = {
 };
 
 const modeSwitchDurationMs = 220;
+const dropGroupHighlight =
+  "isolate before:border-accent before:bg-accent-surface before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:-z-10 before:border-x";
 const partnerRailIndicatorHeight = {
   hover: 8,
   selected: 20,
@@ -312,7 +323,10 @@ function entityActivityState(item: NavigationEntity) {
 }
 
 function EntityRow({
+  canReorder,
   collapsed,
+  dropGroupEdge,
+  dropPlacement,
   item,
   onHoverEnd,
   onHoverStart,
@@ -322,7 +336,10 @@ function EntityRow({
   registerItemRef,
   selected,
 }: {
+  canReorder: boolean;
   collapsed: boolean;
+  dropGroupEdge?: "middle" | "end";
+  dropPlacement?: NavigationDropPlacement;
   item: NavigationEntity;
   onHoverEnd?: () => void;
   onHoverStart?: () => void;
@@ -337,6 +354,7 @@ function EntityRow({
     attributes,
     isDragging,
     listeners,
+    setActivatorNodeRef,
     setNodeRef,
     transform,
     transition,
@@ -380,6 +398,8 @@ function EntityRow({
       <div
         ref={setNodeRef}
         data-avatar-hover-scope=""
+        data-drop-group={dropGroupEdge}
+        data-drop-placement={dropPlacement}
         style={{
           transform: CSS.Transform.toString(transform),
           transition,
@@ -390,6 +410,14 @@ function EntityRow({
             ? "bg-surface-panel text-content-primary [--team-avatar-outline:var(--surface-panel)]"
             : "hover:bg-surface-subtle [--team-avatar-outline:var(--canvas)] hover:[--team-avatar-outline:color(from_color-mix(in_srgb,var(--canvas),var(--surface-subtle))_srgb_r_g_b_/_1)]",
           isDragging && "z-10 opacity-35",
+          dropGroupEdge && dropGroupHighlight,
+          dropGroupEdge === "middle" && "before:-bottom-0.5",
+          dropGroupEdge === "end" &&
+            "before:bottom-0 before:rounded-b-md before:border-b",
+          dropPlacement &&
+            "after:bg-accent after:pointer-events-none after:absolute after:inset-x-2 after:z-10 after:h-0.5 after:rounded-full",
+          dropPlacement === "before" && "after:top-0",
+          dropPlacement === "after" && "after:bottom-0",
         )}
       >
         <span className="flex shrink-0 items-center pl-2">
@@ -406,6 +434,7 @@ function EntityRow({
           />
         </span>
         <button
+          ref={setActivatorNodeRef}
           type="button"
           data-waker-nav-row={item.kind === "waker" ? "" : undefined}
           data-team-nav-row={item.kind === "team" ? "" : undefined}
@@ -413,8 +442,8 @@ function EntityRow({
           aria-label={accessibleLabel}
           onClick={handleRowClick}
           className="focus-visible:ring-ring min-h-row-entity relative grid min-w-0 items-center rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2"
-          {...attributes}
-          {...listeners}
+          {...(canReorder ? attributes : undefined)}
+          {...(canReorder ? listeners : undefined)}
         >
           <span className="min-w-0">
             <strong className="type-body block truncate font-medium">
@@ -434,6 +463,7 @@ function EntityRow({
   const button = (
     <button
       ref={(node) => {
+        setActivatorNodeRef(node);
         setNodeRef(node);
         registerItemRef?.(item.key, node);
       }}
@@ -459,8 +489,8 @@ function EntityRow({
         "focus-visible:ring-ring size-row-navigation relative grid touch-none place-items-center rounded-sm outline-none focus-visible:ring-2",
         isDragging && "z-10 opacity-30",
       )}
-      {...attributes}
-      {...listeners}
+      {...(canReorder ? attributes : undefined)}
+      {...(canReorder ? listeners : undefined)}
     >
       <EntityAvatar item={item} />
     </button>
@@ -475,6 +505,7 @@ function EntityRow({
 }
 
 export function EntityNavigation({
+  canReorder = true,
   collapsed,
   entityStatus = "ready",
   floating = false,
@@ -483,6 +514,7 @@ export function EntityNavigation({
   onManageEntities,
   onModeChange,
   onReorder,
+  onRetryGroupImport,
   onSelectPartner,
   onSelectTeam,
   onShowcaseWaker,
@@ -494,6 +526,10 @@ export function EntityNavigation({
 }: EntityNavigationProps) {
   const { t } = useTranslation("common");
   const [activeKey, setActiveKey] = useState("");
+  const [dropTarget, setDropTarget] = useState<NavigationDropTarget | null>(
+    null,
+  );
+  const keyboardDropTarget = useRef<NavigationDropTarget | null>(null);
   const [hoveredRailKey, setHoveredRailKey] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -502,12 +538,6 @@ export function EntityNavigation({
   const itemRefs = useRef(new Map<string, HTMLButtonElement>());
   const indicatorRef = useRef<HTMLSpanElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase("zh-CN");
   const visibleItems = normalizedSearchQuery
     ? items.filter((item) => {
@@ -525,6 +555,8 @@ export function EntityNavigation({
       wakerIds.map((id) => [id, name] as const),
     ),
   );
+  const groupedNavigation =
+    !collapsed && mode === "waker" && wakerGroups.length > 0;
   const groups = (
     mode === "waker" ? ["", ...wakerGroups.map(({ name }) => name)] : [""]
   ).map((name) => ({
@@ -539,6 +571,53 @@ export function EntityNavigation({
     : groups.flatMap((group) => group.items);
   const activeItem = navigationItems.find((item) => item.key === activeKey);
   const itemKeys = navigationItems.map((item) => item.key);
+  const groupAt = (index: number) => {
+    const item = navigationItems[index];
+    return item && (groupNames.get(item.id) ?? "");
+  };
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: (event, args) => {
+        const side = event.code;
+        const over = args.context.over;
+        if (
+          groupedNavigation &&
+          over &&
+          (side === "ArrowLeft" || side === "ArrowRight") &&
+          groupAt(itemKeys.indexOf(String(args.active))) !==
+            groupAt(itemKeys.indexOf(String(over.id)))
+        ) {
+          event.preventDefault();
+          const target: NavigationDropTarget = {
+            targetId: String(over.id),
+            placement: side === "ArrowLeft" ? "before" : "after",
+            keyboard: true,
+          };
+          keyboardDropTarget.current = target;
+          setDropTarget(target);
+          return;
+        }
+        return sortableKeyboardCoordinates(event, args);
+      },
+    }),
+  );
+  const keyboardTargetItem = dropTarget?.keyboard
+    ? navigationItems.find((item) => item.key === dropTarget.targetId)
+    : undefined;
+  const highlightedGroup = dropTarget
+    ? groupAt(itemKeys.indexOf(dropTarget.targetId))
+    : undefined;
+  const sortWithinGroups: SortingStrategy = (args) => {
+    const sourceGroup = groupAt(args.activeIndex);
+    if (
+      groupAt(args.overIndex) !== sourceGroup ||
+      groupAt(args.index) !== sourceGroup
+    ) {
+      return null;
+    }
+    return verticalListSortingStrategy(args);
+  };
   const entityName =
     mode === "waker"
       ? t("partnerNavigation.wakers")
@@ -733,20 +812,65 @@ export function EntityNavigation({
       observer?.disconnect();
     };
   }, [collapsed, navigationItems, syncIndicator]);
-  const finishDrag = ({ active, over }: DragEndEvent) => {
+  const resolveDrop = ({ active, activatorEvent, over }: DragMoveEvent) => {
+    if (!canReorder) return null;
     const sourceId = String(active.id);
-    const targetId = over ? String(over.id) : "";
+    if (!over || sourceId === String(over.id)) return null;
+    const targetId = String(over.id);
     const sourceIndex = itemKeys.indexOf(sourceId);
     const targetIndex = itemKeys.indexOf(targetId);
-    if (sourceIndex >= 0 && targetIndex >= 0 && sourceIndex !== targetIndex) {
-      onReorder(
-        sourceId,
-        targetId,
-        sourceIndex < targetIndex ? "after" : "before",
-      );
+    if (sourceIndex < 0 || targetIndex < 0) return null;
+
+    const crossGroup =
+      groupedNavigation && groupAt(sourceIndex) !== groupAt(targetIndex);
+    let placement: NavigationDropPlacement =
+      sourceIndex < targetIndex ? "after" : "before";
+    const keyboardTarget = keyboardDropTarget.current;
+    if (crossGroup && keyboardTarget?.targetId === targetId)
+      placement = keyboardTarget.placement;
+    const translated = active.rect.current.translated;
+    if (
+      mode === "waker" &&
+      (!groupedNavigation || crossGroup) &&
+      translated &&
+      activatorEvent instanceof MouseEvent
+    ) {
+      const center = translated.top + translated.height / 2;
+      const targetCenter = over.rect.top + over.rect.height / 2;
+      if (center !== targetCenter)
+        placement = center < targetCenter ? "before" : "after";
     }
+    return { sourceId, targetId, placement, crossGroup };
+  };
+  const previewDrop = (event: DragMoveEvent) => {
+    if (keyboardDropTarget.current?.targetId !== event.over?.id)
+      keyboardDropTarget.current = null;
+    const drop = resolveDrop(event);
+    const next = drop?.crossGroup
+      ? {
+          targetId: drop.targetId,
+          placement: drop.placement,
+          keyboard: event.activatorEvent instanceof KeyboardEvent,
+        }
+      : null;
+    setDropTarget((current) =>
+      current?.targetId === next?.targetId &&
+      current?.placement === next?.placement &&
+      current?.keyboard === next?.keyboard
+        ? current
+        : next,
+    );
+  };
+  const clearDrag = () => {
+    keyboardDropTarget.current = null;
     setActiveKey("");
+    setDropTarget(null);
     syncIndicator();
+  };
+  const finishDrag = (event: DragEndEvent) => {
+    const drop = resolveDrop(event);
+    if (drop) onReorder(drop.sourceId, drop.targetId, drop.placement);
+    clearDrag();
   };
 
   return (
@@ -807,11 +931,8 @@ export function EntityNavigation({
             <DndContext
               collisionDetection={closestCenter}
               modifiers={[restrictToVerticalAxis]}
-              sensors={sensors}
-              onDragCancel={() => {
-                setActiveKey("");
-                syncIndicator();
-              }}
+              sensors={canReorder ? sensors : []}
+              onDragCancel={clearDrag}
               onDragEnd={finishDrag}
               onDragStart={({ active }) => {
                 setActiveKey(String(active.id));
@@ -854,6 +975,7 @@ export function EntityNavigation({
                     {navigationItems.map((item) => (
                       <EntityRow
                         key={item.key}
+                        canReorder={canReorder}
                         collapsed
                         item={item}
                         onHoverEnd={() => {
@@ -898,17 +1020,66 @@ export function EntityNavigation({
               value={mode}
             />
             {expandedCreateToolbar}
+            {onRetryGroupImport && mode === "waker" ? (
+              <div className="flex items-center justify-between gap-2 px-2 py-1">
+                <p role="alert" className="text-content-muted type-ui">
+                  {t("partnerNavigation.wakerActions.groupImportError")}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={onRetryGroupImport}
+                >
+                  {t("retry")}
+                </Button>
+              </div>
+            ) : null}
             <DndContext
+              accessibility={
+                groupedNavigation
+                  ? {
+                      screenReaderInstructions: {
+                        draggable: t(
+                          "partnerNavigation.groupedDragInstructions",
+                        ),
+                      },
+                    }
+                  : undefined
+              }
               collisionDetection={closestCenter}
               modifiers={[restrictToVerticalAxis]}
-              sensors={sensors}
-              onDragCancel={() => setActiveKey("")}
+              sensors={canReorder ? sensors : []}
+              onDragCancel={clearDrag}
               onDragEnd={finishDrag}
+              onDragMove={groupedNavigation ? previewDrop : undefined}
+              onDragOver={groupedNavigation ? previewDrop : undefined}
               onDragStart={({ active }) => setActiveKey(String(active.id))}
             >
+              {groupedNavigation ? (
+                <span className="sr-only" role="status">
+                  {keyboardTargetItem && dropTarget
+                    ? t(
+                        dropTarget.placement === "before"
+                          ? "partnerNavigation.dropBefore"
+                          : "partnerNavigation.dropAfter",
+                        {
+                          name: entityLabel(
+                            keyboardTargetItem,
+                            t("partnerNavigation.partner"),
+                          ),
+                        },
+                      )
+                    : null}
+                </span>
+              ) : null}
               <SortableContext
                 items={itemKeys}
-                strategy={verticalListSortingStrategy}
+                strategy={
+                  groupedNavigation
+                    ? sortWithinGroups
+                    : verticalListSortingStrategy
+                }
               >
                 <nav
                   aria-label={t("partnerNavigation.partnerRail")}
@@ -932,11 +1103,26 @@ export function EntityNavigation({
                     </p>
                   ) : null}
                   {groups.flatMap((group) => {
-                    const rows = group.items.map((item) => {
+                    // Highlight across siblings so a moved row keeps its DOM identity.
+                    const showGroupHighlight = group.name === highlightedGroup;
+                    const rows = group.items.map((item, index) => {
                       const row = (
                         <EntityRow
                           key={item.key}
+                          canReorder={canReorder}
                           collapsed={false}
+                          dropGroupEdge={
+                            showGroupHighlight
+                              ? index === group.items.length - 1
+                                ? "end"
+                                : "middle"
+                              : undefined
+                          }
+                          dropPlacement={
+                            dropTarget?.targetId === item.key
+                              ? dropTarget.placement
+                              : undefined
+                          }
                           item={item}
                           onSelectPartner={onSelectPartner}
                           onSelectTeam={onSelectTeam}
@@ -950,22 +1136,31 @@ export function EntityNavigation({
                         return renderTeamRow(item, row);
                       return row;
                     });
-                    if (!rows.length || !wakerGroups.length || mode !== "waker")
-                      return rows;
+                    if (!rows.length || !groupedNavigation) return rows;
                     return [
                       <h3
                         key={`group:${group.name}`}
-                        className="text-muted-foreground type-caption truncate px-3 pt-2 pb-1"
+                        data-drop-group={
+                          showGroupHighlight ? "start" : undefined
+                        }
+                        className={cn(
+                          "text-muted-foreground type-caption px-3 pt-2 pb-1",
+                          showGroupHighlight &&
+                            "relative before:-bottom-0.5 before:rounded-t-md before:border-t",
+                          showGroupHighlight && dropGroupHighlight,
+                        )}
                       >
-                        {group.name ||
-                          t("partnerNavigation.wakerActions.ungrouped")}
+                        <span className="block truncate">
+                          {group.name ||
+                            t("partnerNavigation.wakerActions.ungrouped")}
+                        </span>
                       </h3>,
                       ...rows,
                     ];
                   })}
                 </nav>
               </SortableContext>
-              <DragOverlay>
+              <DragOverlay dropAnimation={groupedNavigation ? null : undefined}>
                 {activeItem ? (
                   <div className="bg-surface flex min-w-40 items-center gap-2 rounded-md p-2 shadow-sm">
                     <EntityAvatar item={activeItem} size="navigation" />

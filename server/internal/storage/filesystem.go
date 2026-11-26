@@ -131,6 +131,8 @@ type scanRoot struct {
 	databaseName string
 	// pluginAlias 表示同根时大小写不同的两个插件前缀被文件系统映射到同一目录。
 	pluginAlias bool
+	// pendingWakerCopies 保存进入伙伴空间时仍有待结算凭据的身份。
+	pendingWakerCopies map[string]bool
 }
 
 type fileIdentity struct {
@@ -399,6 +401,18 @@ func (s *scanner) visitEntry(root *os.Root, owner *scanRoot, parent string, dept
 		if depth == s.limits.MaxDepth {
 			s.problem("open_directory", "depth_limit", owner, relative, status_error.StorageScanIncomplete)
 			return
+		}
+		if owner.scope&managedRoot != 0 && parent == "Agents" && name != constants.WakerCopyStagingDirectoryName {
+			receipt := filepath.Join(constants.WakerCopyStagingDirectoryName, name)
+			if _, err := root.Lstat(receipt); !errors.Is(err, fs.ErrNotExist) {
+				if err != nil {
+					s.ioProblem("stat_waker_copy_receipt", owner, filepath.Join(parent, receipt), err, status_error.StorageScanIncomplete)
+				}
+				if owner.pendingWakerCopies == nil {
+					owner.pendingWakerCopies = make(map[string]bool)
+				}
+				owner.pendingWakerCopies[name] = true
+			}
 		}
 		child, err := root.OpenRoot(name)
 		if err != nil {

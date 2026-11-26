@@ -8,6 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
@@ -70,6 +71,8 @@ type SkillController interface {
 	DeleteLearningReceipt(ctx context.Context, suggestionID string) error
 	// DeleteWakerSkill 删除伙伴技能关系，使其恢复未关联状态。
 	DeleteWakerSkill(ctx context.Context, wakerID string, skillID string) error
+	// DuplicateWakerSkills 为副本创建独立的技能安装关系，沿用源伙伴的启停状态。
+	DuplicateWakerSkills(ctx context.Context, sourceID, targetID string) error
 	// DeleteByWaker 只删除伙伴安装关系，保留技能库和全部版本。
 	DeleteByWaker(ctx context.Context, wakerID string) error
 	// DeletePackage 删除技能包、全部版本和全部伙伴关系。
@@ -418,6 +421,27 @@ func (c *skillController) DeleteWakerSkill(ctx context.Context, wakerID string, 
 	if err := controllerDB(ctx, c.db).Where("waker_id = ? AND skill_package_id = ?", wakerID, skillID).Delete(&models.WakerSkill{}).Error; err != nil {
 		return databaseError("delete_waker_skill", wakerID, err)
 	}
+	return nil
+}
+
+// DuplicateWakerSkills 复制技能关系到同一事务中的新伙伴，复用库包和共享版本。
+func (c *skillController) DuplicateWakerSkills(ctx context.Context, sourceID, targetID string) error {
+	db := controllerDB(ctx, c.db)
+	var relations []models.WakerSkill
+	if err := db.Select("skill_package_id", "enabled").Where("waker_id = ?", sourceID).Find(&relations).Error; err != nil {
+		return databaseError("list_waker_skills_for_copy", "waker_id="+sourceID, err)
+	}
+	if len(relations) == 0 {
+		return nil
+	}
+	for index := range relations {
+		relations[index].ID = util.New()
+		relations[index].WakerID = targetID
+	}
+	if err := db.CreateInBatches(&relations, 100).Error; err != nil {
+		return databaseError("copy_waker_skills", "waker_id="+targetID, err)
+	}
+	publishCommittedChange(ctx, c.db, "resources", eventsResource("global", ""))
 	return nil
 }
 

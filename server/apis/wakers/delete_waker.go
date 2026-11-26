@@ -2,7 +2,9 @@ package wakers
 
 import (
 	"context"
+	"errors"
 	"os"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
@@ -71,16 +73,28 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(err)
 	}
 	var staged *chatstorage.StagedDeletion
-	// settle 与 prepare 共用伙伴 writer；失败补偿不能和新的接纳交错。
+	var prepared bool
+	// 文件与记忆结算仍持有伙伴操作门，防止旧删除清理同一身份的新副本。
 	settle := func() error {
-		if staged == nil {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
+		_, err := global.WakerControllerManager.Get(cleanup, d.WakerID)
+		if util.HasStatusCode(err, status_error.WakerNotFound) {
+			if global.ReviewWorker != nil {
+				global.ReviewWorker.ObservePartnerDeletion(d.WakerID)
+			}
+			if global.MemoryService != nil {
+				if err := global.MemoryService.DeletePartner(cleanup, d.WakerID); err != nil {
+					// 独立记忆库清理失败时，由下次启动的孤儿扫描重试。
+					logx.Errorf("delete waker memories failed: waker_id=%s error=%v", d.WakerID, err)
+				}
+			}
+			if staged != nil {
+				return staged.Commit()
+			}
 			return nil
 		}
-		_, err := global.WakerControllerManager.Get(context.WithoutCancel(ctx), d.WakerID)
-		if util.HasStatusCode(err, status_error.WakerNotFound) {
-			return staged.Commit()
-		}
-		if err != nil {
+		if err != nil || staged == nil {
 			return err
 		}
 		return staged.Rollback()
@@ -102,13 +116,15 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 			return nil, err
 		}
 		if _, err := os.Lstat(agentRoot); os.IsNotExist(err) {
+			prepared = true
 			return nil, nil
 		} else if err != nil {
 			return nil, status_error.ManagedWorkspaceError
 		}
 		var err error
 		staged, err = deletions.StageWaker(util.New(), d.WakerID)
-		return settle, err
+		prepared = true
+		return nil, err
 	}
 	run := func(transactionContext context.Context) error {
 		if global.AutomaticTaskControllerManager != nil {
@@ -135,8 +151,19 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 		}
 		return global.WakerControllerManager.Delete(transactionContext, d.WakerID)
 	}
+	var releaseWaker func()
+	defer func() {
+		if releaseWaker != nil {
+			releaseWaker()
+		}
+	}()
 	deleteOwned := func(ctx context.Context) error {
-		return global.ChatService.DeleteWakerChats(ctx, d.WakerID, prepare, run)
+		claimed, release, err := chatstorage.AcquireWakerDeletion(ctx, layout.Root(), d.WakerID)
+		if err != nil {
+			return err
+		}
+		releaseWaker = release
+		return global.ChatService.DeleteWakerChats(claimed, d.WakerID, prepare, run)
 	}
 	change := func(policyContext context.Context) error {
 		if global.KnowledgeService != nil {
@@ -150,17 +177,11 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 	} else {
 		err = change(ctx)
 	}
+	if prepared {
+		err = errors.Join(err, settle())
+	}
 	if err != nil {
 		return nil, ginx.WithStack(err)
-	}
-	// 独立记忆库清理失败时，由下次启动的孤儿扫描重试。
-	if global.MemoryService != nil {
-		if err := global.MemoryService.DeletePartner(ctx, d.WakerID); err != nil {
-			logx.Errorf("delete waker memories failed: waker_id=%s error=%v", d.WakerID, err)
-		}
-	}
-	if global.ReviewWorker != nil {
-		global.ReviewWorker.ObservePartnerDeletion(d.WakerID)
 	}
 	if global.StorageService != nil {
 		global.StorageService.Invalidate()

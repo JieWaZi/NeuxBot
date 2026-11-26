@@ -465,3 +465,18 @@ func TestStorageControlRequiresGlobalResource(t *testing.T) {
 		t.Fatal("storage accepted a scoped resource")
 	}
 }
+
+func TestWakerNavigationGroupSubscriptionRequiresFixedResource(t *testing.T) {
+	valid := []byte(`{"type":"subscribe","requestId":"groups","topic":"entities","resource":{"kind":"waker_navigation_groups","id":"navigation"}}`)
+	if _, err := decodeControl(valid); err != nil {
+		t.Fatalf("navigation group subscription rejected: %v", err)
+	}
+	for _, raw := range []string{
+		`{"type":"subscribe","requestId":"groups","topic":"entities","resource":{"kind":"waker_navigation_groups","id":"other"}}`,
+		`{"type":"subscribe","requestId":"groups","topic":"entities","resource":{"kind":"waker_navigation_groups","id":"navigation","parentId":"other"}}`,
+	} {
+		if _, err := decodeControl([]byte(raw)); err == nil {
+			t.Fatalf("accepted navigation group subscription %s", raw)
+		}
+	}
+}

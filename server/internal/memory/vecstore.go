@@ -5,8 +5,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"strconv"
+
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 // vecTableName 是 sqlite-vec 向量表名。
@@ -101,6 +103,17 @@ func (v *vectorStore) insertVector(
 		partnerID,
 	)
 	if err != nil {
+		return status_error.DatabaseError
+	}
+	return nil
+}
+
+// copyVector 为相同正文复用同一索引指纹下的向量，尚未索引的条目保持原状态。
+func (v *vectorStore) copyVector(ctx context.Context, tx *sql.Tx, source, target Memory) error {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO partner_memory_vectors (memory_id, embedding, partner_id)
+		SELECT ?, embedding, ? FROM partner_memory_vectors WHERE memory_id = ? AND partner_id = ?`,
+		target.ID, target.PartnerID, source.ID, source.PartnerID); err != nil {
+		logx.Errorf("copy memory vector: memory_id=%s target_partner_id=%s error=%v", source.ID, target.PartnerID, err)
 		return status_error.DatabaseError
 	}
 	return nil
