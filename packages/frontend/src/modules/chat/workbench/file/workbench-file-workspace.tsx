@@ -39,6 +39,7 @@ import {
 import { FileReferenceProvider } from "@/shared/workspace/file-reference-link";
 import { WorkspaceFileTypeIcon } from "@/shared/workspace/workspace-file-type-icon";
 import type { WorkspaceFile } from "@/shared/workspace/types";
+import { workspaceFileKey } from "../../model/chat-workspace-files";
 import {
   importDroppedWorkspaceFiles,
   hasPlatformService,
@@ -93,8 +94,11 @@ export type WorkbenchFileWorkspaceProps = {
   onRetryChatFiles?: () => void;
   onFileSourceChange?: (source: "project" | "chat") => void;
   onDownloadChatFile: (file: WorkspaceFile) => Promise<void>;
-  onDeleteChatFile: (file: WorkspaceFile) => Promise<boolean>;
-  onSelectFile?: (file: { name: string; path: string }, root?: string) => void;
+  onDeleteChatFile?: (file: WorkspaceFile) => Promise<boolean>;
+  onSelectFile?: (
+    file: Pick<WorkspaceFile, "name" | "path" | "sourceChatId">,
+    root?: string,
+  ) => void;
   onPathDeleted?: (
     path: string,
     file?: ResolvedFileReference,
@@ -252,6 +256,7 @@ export function WorkbenchFileWorkspace({
   const deleteChatFile = async (
     file: WorkspaceFile,
   ): Promise<ChatFileDeleteError | undefined> => {
+    if (!onDeleteChatFile) return "deleteFileError";
     try {
       const candidate = parseReference(file.path, "path");
       if (candidate?.kind !== "file") return "deleteFileError";
@@ -457,11 +462,13 @@ export function WorkbenchFileWorkspace({
           <div role="tree" className="grid gap-1">
             {visibleChatFiles.map((file) => (
               <ChatFileRow
-                key={file.path}
+                key={workspaceFileKey(file)}
                 file={file}
                 onSelect={() => onSelectFile?.(file)}
                 onDownload={() => onDownloadChatFile(file)}
-                onDelete={() => deleteChatFile(file)}
+                onDelete={
+                  onDeleteChatFile ? () => deleteChatFile(file) : undefined
+                }
               />
             ))}
           </div>
@@ -639,7 +646,7 @@ function ChatFileRow({
   file: WorkspaceFile;
   onSelect: () => void;
   onDownload: () => Promise<void>;
-  onDelete: () => Promise<ChatFileDeleteError | undefined>;
+  onDelete?: () => Promise<ChatFileDeleteError | undefined>;
 }) {
   const { t } = useTranslation("chat");
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -673,13 +680,15 @@ function ChatFileRow({
             <Download />
             {t("workspace.downloadFile")}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            variant="destructive"
-            onSelect={() => setDeleteOpen(true)}
-          >
-            <Trash2 />
-            {t("workspace.deleteFile")}
-          </DropdownMenuItem>
+          {onDelete && (
+            <DropdownMenuItem
+              variant="destructive"
+              onSelect={() => setDeleteOpen(true)}
+            >
+              <Trash2 />
+              {t("workspace.deleteFile")}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       <Dialog
@@ -711,6 +720,7 @@ function ChatFileRow({
               variant="danger"
               disabled={deleting}
               onClick={() => {
+                if (!onDelete) return;
                 setDeleting(true);
                 setDeleteError(undefined);
                 void onDelete().then((error) => {

@@ -34,6 +34,12 @@ const (
 // ChatInteractionProjectionTimeoutMillis 限制已提交交互事实的查询投影收尾，不限制人工等待。
 const ChatInteractionProjectionTimeoutMillis = 10_000
 
+// WorkBoardRequestKindApproval 表示待用户审批的工作请求。
+const WorkBoardRequestKindApproval = "approval"
+
+// WorkBoardRequestKindInput 表示待用户回答的工作请求。
+const WorkBoardRequestKindInput = "input"
+
 // KnowledgeLibraryScanBatchSize 限制目录搜索与活动任务恢复每批读取的库元数据。
 const KnowledgeLibraryScanBatchSize = 100
 

@@ -2,6 +2,7 @@
 @source "../../";
 @source "../../../../../web/src";
 @source "../../../../../desktop/src";
+@import "./fixed-scene-tab.css";
 @import "./theme.css";
 @import "./window-glass.css";
 @import "./resource-catalog.css";

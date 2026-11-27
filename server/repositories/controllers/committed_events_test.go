@@ -159,6 +159,53 @@ func TestCommittedActivityRollbackPublishesNoScopes(t *testing.T) {
 	}
 }
 
+func TestCommittedMainTeamRequestsRefreshWhenEffectiveActorsChange(t *testing.T) {
+	hub := events.New()
+	t.Cleanup(hub.Close)
+	database := WithEventPublisher(newTestDB(t), hub)
+	ctx := t.Context()
+	for _, row := range []any{
+		&models.Channel{ID: "team", Name: "Team", LeadWakerID: "lead"},
+		&models.ChannelMember{ChannelID: "team", WakerID: "lead"},
+		&models.ChannelMember{ChannelID: "team", WakerID: "member"},
+	} {
+		if err := database.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	conversation, err := NewMainConversationController(database).Ensure(ctx, "team", "team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	board := hub.Subscribe("work-board", events.Resource{Kind: "global"})
+	t.Cleanup(board.Close)
+	channel := NewChannelController(database)
+	if err := channel.RemoveMember(ctx, "team", "lead"); err != nil {
+		t.Fatal(err)
+	}
+	if len(board.Events) != 0 {
+		t.Fatal("the current lead remained authorized after losing a member row")
+	}
+
+	checkRefresh := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case change := <-board.Events:
+			if change.Type != "work-board.changed" || change.Resource != eventsResource("main_conversation", conversation.ID) {
+				t.Fatalf("unexpected team request refresh: %+v", change)
+			}
+		default:
+			t.Fatal("the former actor lost request eligibility without a board refresh")
+		}
+	}
+	checkRefresh(channel.UpdateLead(ctx, "team", "member", 2))
+	checkRefresh(channel.UpdateLead(ctx, "team", "new-lead", 3))
+	checkRefresh(channel.RemoveMember(ctx, "team", "member"))
+}
+
 func TestCommittedChatAttentionRefreshesWhenPendingIdentityChangesAtSameCount(t *testing.T) {
 	hub := events.New()
 	t.Cleanup(hub.Close)
@@ -592,5 +639,38 @@ func TestCommittedTaskOwnershipLookupFailureKeepsCommitAndRecoveryBoundary(t *te
 	})
 	if err == nil || len(changes.Events) != 0 {
 		t.Fatalf("rolled back ownership lookup published success: events=%d error=%v", len(changes.Events), err)
+	}
+}
+
+func TestMainConversationRefreshesWhenPendingQuestionIsReplacedAtSameCount(t *testing.T) {
+	hub := events.New()
+	t.Cleanup(hub.Close)
+	db := WithEventPublisher(newTestDB(t), hub)
+	store := NewMainConversationController(db)
+	owner, err := store.Ensure(t.Context(), "waker", "partner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := store.ReserveWork(t.Context(), owner.ID, "partner", "managed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Chat{
+		ID: source.WorkChatID, WakerID: "partner", HiddenFromWakerHistory: true, ActiveExecutionID: "execution",
+		WaitingElicitation: true, PendingElicitations: []models.PendingElicitation{{ElicitationID: "earlier"}},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	subscription := hub.Subscribe(constants.MainConversationEventTopic, eventsResource("waker", "partner"))
+	defer subscription.Close()
+	if err := NewChatController(db).AdvanceProjection(t.Context(), source.WorkChatID, 0, map[string]any{
+		"pending_elicitations": `[{"elicitationId":"replacement"}]`, "latest_sequence": int64(2),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-subscription.Events:
+	default:
+		t.Fatal("new question must wake the public timeline even when one question is still pending")
 	}
 }

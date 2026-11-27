@@ -20,7 +20,80 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	acp "github.com/JieWaZi/acp-go-sdk"
 )
+
+func TestProviderRuntimeLogsPreparationFailureOnRequestTrace(t *testing.T) {
+	const privateData = "private-provider-diagnostic-fixture"
+	refusal := &acp.RequestError{
+		Code: -32603, Message: "Cannot open the session directory", Data: map[string]any{"detail": privateData},
+	}
+	for _, step := range []struct {
+		// operation names the failed preparation step in the log.
+		operation string
+		// status is the public error already used for this step.
+		status status_error.StatusError
+	}{
+		{"provider/acquire_account", status_error.AIAccountConfigurationInvalid},
+		{"provider/prepare_launch_auth", status_error.RuntimeAuthRequired},
+		{"provider/acquire_resources", status_error.RuntimeConfigurationInvalid},
+		{"provider/credential_proof", status_error.RuntimeAuthRequired},
+	} {
+		t.Run(step.operation, func(t *testing.T) {
+			logs, ctx := nativePreparationTestLog(t)
+			req := providerTestRequest(t, "codex")
+			req.Account.ConfigHome = req.Account.CWD
+			req.Launch.Environment["FIXTURE_REJECT_CREDENTIAL_PROOF"] = "1"
+			runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: func(context.Context, AccountRequest) (AccountLease, error) {
+				if step.operation == "provider/acquire_account" {
+					return AccountLease{}, refusal
+				}
+				lease := AccountLease{ConfigHome: req.Account.ConfigHome}
+				if step.operation == "provider/prepare_launch_auth" {
+					lease.PrepareLaunchAuth = func(context.Context) (LaunchAuthLease, error) { return LaunchAuthLease{}, refusal }
+				}
+				if step.operation == "provider/credential_proof" {
+					lease.VerifyCodexCredential = func(context.Context, [sha256.Size]byte) error {
+						t.Error("native proof failure reached verification")
+						return nil
+					}
+				}
+				return lease, nil
+			}})
+			t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+			conn, err := runtime.Open(ctx, req, ProviderConnectionPorts{AcquireResources: func(context.Context, ResourceSelection) (ResourceLease, error) {
+				if step.operation == "provider/acquire_resources" {
+					return ResourceLease{}, refusal
+				}
+				return ResourceLease{}, nil
+			}})
+			if conn == nil || !errors.Is(err, step.status) {
+				t.Fatalf("Open = %v, %v, want %v", conn != nil, err, step.status)
+			}
+			if err := conn.WaitOpenCleanup(ctx); err != nil {
+				t.Fatal(err)
+			}
+			output := logs.String()
+			var matches int
+			for _, line := range strings.Split(output, "\n") {
+				if strings.Contains(line, "operation="+step.operation+" ") &&
+					strings.Contains(line, "trace_id=01020304050607080910111213141516") &&
+					strings.Contains(line, "error_code="+step.status.Key()) &&
+					strings.Contains(line, "native_rpc_code=-32603") {
+					matches++
+				}
+			}
+			if matches != 1 {
+				t.Errorf("expected one safe preparation diagnostic, found %d in %q", matches, output)
+			}
+			for _, private := range []string{privateData, refusal.Message, req.Account.CWD, req.Account.Subject} {
+				if strings.Contains(output, private) {
+					t.Error("preparation log contains private input")
+				}
+			}
+		})
+	}
+}
 
 func TestProviderRuntimeVerifiesCodexSystemCredentialBeforePublishing(t *testing.T) {
 	for _, tc := range []struct {
@@ -739,6 +812,10 @@ func TestProviderRuntimeChild(t *testing.T) {
 				}
 				reply["result"] = result
 			case "getAuthStatus":
+				if os.Getenv("FIXTURE_REJECT_CREDENTIAL_PROOF") == "1" {
+					reply["error"] = map[string]any{"code": -32603, "message": "Cannot open the session directory", "data": map[string]any{"detail": "private-provider-diagnostic-fixture"}}
+					break
+				}
 				method := "chatgpt"
 				if os.Getenv("FIXTURE_CODEX_ACCOUNT") == "apiKey" {
 					method = "apikey"

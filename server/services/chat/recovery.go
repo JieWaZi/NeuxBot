@@ -462,13 +462,7 @@ func (p *queryIndexStore) replaceReadingProjection(ctx context.Context, projecti
 			return err
 		}
 		projection.chat.LatestReadableSequence = latest
-		if err := p.chatController.Delete(transactionContext, projection.chat.ID); err != nil {
-			return err
-		}
-		if err := p.chatController.Create(transactionContext, projection.chat); err != nil {
-			return err
-		}
-		return nil
+		return p.chatController.ReplaceProjection(transactionContext, projection.chat)
 	})
 }
 

@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SceneChromeActionsProvider } from "./scene-chrome-actions";
 import { i18n } from "@/shared/i18n";
+import fixedTabStyles from "@/shared/styles/fixed-scene-tab.css?raw";
+import sharedStyles from "@/shared/styles/index.css?raw";
 import {
   SceneChromePortalProvider,
   useSceneChromeAccessoryWidthSetter,
@@ -22,6 +24,52 @@ function AccessoryWidth({ side = "right" }: { side?: "left" | "right" }) {
 }
 
 describe("SceneTabStrip", () => {
+  it("固定伙伴按身份取宽，普通对话保留标准宽度并在窄栏按下限收缩", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <style>
+          {sharedStyles.match(/^\.shell-header-tab \{[^}]+\}/m)?.[0]}
+        </style>
+        <style>{fixedTabStyles}</style>
+        <SceneTabStrip
+          activeTabId="lumi"
+          ariaLabel="聊天标签"
+          tabs={[
+            {
+              id: "lumi",
+              label: "lumi",
+              fixed: true,
+              indicator: <span>头像</span>,
+            },
+            { id: "draft", label: "新会话", closeable: true },
+          ]}
+          onSelect={() => {}}
+          onClose={() => {}}
+          trailing={<button>新建会话</button>}
+        />
+      </TooltipProvider>,
+    );
+    const [main, ordinary] = Array.from(
+      container.querySelectorAll("[data-scene-tab-item]"),
+      (element) => getComputedStyle(element),
+    );
+    expect(main?.width).toBe("max-content");
+    expect(main?.flexBasis).toBe("auto");
+    expect(main?.minWidth).toBe("var(--spacing-control-md)");
+    expect(main?.position).toBe("sticky");
+    expect(main?.insetInlineStart).toBe("0px");
+    expect(main?.marginInlineEnd).toBe("var(--spacing)");
+    expect(ordinary?.width).toBe("auto");
+    expect(ordinary?.minWidth).toBe("var(--spacing-scene-tab-min)");
+    expect(ordinary?.maxWidth).toBe("var(--spacing-scene-tab)");
+    const tablist = getComputedStyle(screen.getByRole("tablist"));
+    expect(tablist.minWidth).toBe("min-content");
+    expect(tablist.gridTemplateColumns).toBe("max-content");
+    expect(tablist.gridAutoColumns.replace(/\s+/g, "")).toBe(
+      "minmax(var(--spacing-scene-tab-min),var(--spacing-scene-tab))",
+    );
+  });
+
   it.each([
     ["zh-CN", "重命名", "关闭其他页签", "页签名称", "保存"],
     ["en-US", "Rename", "Close other tabs", "Tab name", "Save"],
@@ -192,9 +240,13 @@ describe("SceneTabStrip", () => {
   });
 });
 
-it.each([2, 20])(
-  "%s个平铺Tab时末尾新建属于同一滚动内容，局部操作留在滚动区外",
-  async (count) => {
+it.each([
+  [2, false],
+  [20, false],
+  [20, true],
+] as const)(
+  "%s 个页签、首项固定为 %s 时，末尾新建随同一轨道滚动",
+  async (count, fixed) => {
     const onSelect = vi.fn();
     const onNew = vi.fn();
     render(
@@ -206,6 +258,7 @@ it.each([2, 20])(
             tabs={Array.from({ length: count }, (_, index) => ({
               id: `chat-${index + 1}`,
               label: `聊天${index + 1}`,
+              fixed: index === 0 && fixed,
             }))}
             onSelect={onSelect}
             onClose={() => {}}
@@ -220,6 +273,7 @@ it.each([2, 20])(
     const add = screen.getByRole("button", { name: "新建会话" });
     const scroll = first.closest("[data-scene-tab-scroll]");
     expect(scroll).not.toBeNull();
+    expect(first.closest("[data-fixed]") !== null).toBe(fixed);
     expect(scroll).toContainElement(last);
     expect(scroll).toContainElement(add);
     expect(scroll).not.toContainElement(

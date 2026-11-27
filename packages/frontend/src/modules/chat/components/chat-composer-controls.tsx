@@ -41,6 +41,7 @@ type ChatComposerControlsProps = {
   preservePermissionOnModelChange?: boolean;
   executionControlsDisabled?: boolean;
   workspaceReadOnly?: boolean;
+  hideWorkspace?: boolean;
   selectedAccountId?: string;
   activeChatId?: string;
   availableReasoningOptions?: RuntimeReasoningOption[];
@@ -89,6 +90,7 @@ export function useChatComposerControls({
   preservePermissionOnModelChange = true,
   executionControlsDisabled = false,
   workspaceReadOnly = false,
+  hideWorkspace = false,
   selectedAccountId,
   activeChatId,
   availableReasoningOptions,
@@ -284,9 +286,9 @@ export function useChatComposerControls({
   const renderContextStrip = () => (
     <ChatComposerWorkspaceStrip
       permissionControl={renderPermissionControl(false)}
-      workspaceControl={workspaceControl}
+      workspaceControl={hideWorkspace ? undefined : workspaceControl}
       workspaceDirectory={workspaceDirectory}
-      workspaceLabel={workspaceLabel}
+      workspaceLabel={hideWorkspace ? undefined : workspaceLabel}
     />
   );
 

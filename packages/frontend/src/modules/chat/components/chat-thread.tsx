@@ -149,16 +149,10 @@ import {
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
 import {
-  approvalQueuePosition,
   approvalResultLabel,
-  ChatApprovalCard,
-  nextApprovalSeenIds,
   type ApprovalSubmissionState,
 } from "./chat-approval-card";
-import {
-  ChatElicitationCard,
-  type ElicitationSubmissionState,
-} from "./chat-elicitation-card";
+import type { ElicitationSubmissionState } from "./chat-elicitation-card";
 import {
   ChatComposerInput,
   type ChatMemberMentionOption,
@@ -171,7 +165,16 @@ import {
   CancelWorkflowInvocation,
   type WorkflowInvocationStop,
 } from "./chat-workflow-cancel";
-import { chatContentColumnClassName } from "./chat-layout";
+import {
+  assistantMessageRowClassName,
+  chatContentColumnClassName,
+} from "./chat-layout";
+import {
+  ChatApprovalQueue,
+  ChatTimelineInteractions,
+  SettledChatQuestion,
+  pendingQuestionTimelineEvents,
+} from "./chat-timeline-interactions";
 import {
   ChatMessageConnectorReferences,
   type ChatConnectorOption,
@@ -198,6 +201,7 @@ import {
   type ChatPartNode,
   type ChatToolGroup,
   type ChatProcessGroup,
+  segmentsWithPublishedResult,
 } from "./chat-message-nodes";
 import { MarkdownVisibility } from "@/shared/markdown/visibility";
 import { useChatViewportScroll } from "./use-chat-viewport-scroll";
@@ -230,6 +234,7 @@ type ChatThreadProps = {
   timelineEvents?: readonly ChatTimelineEvent[];
   workflowInvocation?: WorkflowInvocationStop;
   activityStatus?: ReactNode;
+  composerRecovery?: ReactNode;
   afterMessages?: ReactNode;
   isRunning?: boolean;
   isWorkRunning?: boolean;
@@ -247,7 +252,7 @@ type ChatThreadProps = {
   isHistoryLoading?: boolean;
   historyError?: { message: string; onRetry: () => void; error?: unknown };
   renderComposerSettings?: (simplified: boolean) => ReactNode;
-  composerInputSize?: "compact" | "tall";
+  composerLayout?: "compact" | "tall";
   composerActions?: ReactNode;
   composerEffects?: ReactNode;
   composerReferences?: ChatComposerContextReference[];
@@ -311,6 +316,8 @@ type ChatThreadProps = {
   warning?: string;
   warningAction?: ReactNode;
   requestedInteractionId?: string;
+  interactionsInTimeline?: boolean;
+  interactionErrorScope?: string;
   pendingApprovals?: PendingApproval[];
   approvalSubmissionState?: ApprovalSubmissionState;
   onResolveApproval?: (approvalId: string, optionId: string) => void;
@@ -936,7 +943,9 @@ function ChatMessageParts({
 }) {
   const terminal = isTerminalMessage(view.message);
   const focusedProcessElementRef = useRef<Element | null>(null);
-  const finalSegment = view.segments.at(-1);
+  const published = Boolean(view.message.publishedResultParts?.length);
+  const segments = segmentsWithPublishedResult(view);
+  const finalSegment = segments.at(-1);
   const finalNode =
     finalSegment && "kind" in finalSegment
       ? finalSegment.nodes.at(-1)
@@ -947,13 +956,15 @@ function ChatMessageParts({
       : finalNode?.key;
   return (
     <div className="space-y-4">
-      {view.segments.map((segment) =>
+      {segments.map((segment) =>
         "kind" in segment ? (
           <MessageWorkProcess
             key={segment.key}
             group={segment}
             currentKey={currentKey}
-            completed={view.message.status === "completed"}
+            completed={
+              published ? terminal : view.message.status === "completed"
+            }
             terminal={terminal}
             metrics={metrics}
             showUsageMetrics={showUsageMetrics}
@@ -1149,26 +1160,31 @@ const messageFooterLayoutClassName =
 const messageLocationClassName =
   "duration-standard outline-none transition-[background-color] focus-visible:inset-ring-2 focus-visible:inset-ring-ring motion-reduce:transition-none";
 
-function UserMessage({
+export function UserMessage({
   message,
   replyQuote,
+  sideAction,
   availableSkillIds,
   availableConnectorIds,
   pluginIcons,
   wakerId = "",
   onOpenCodeReference,
   onOpenFile,
+  onSelectReply,
 }: {
   message: BotChatMessage;
   replyQuote?: ReactNode;
+  sideAction?: ReactNode;
   availableSkillIds?: ReadonlySet<string>;
   availableConnectorIds?: ReadonlySet<string>;
   pluginIcons?: ChatPluginIcons;
   wakerId?: string;
   onOpenCodeReference?: (reference: ChatCodeReference) => void;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
+  onSelectReply?: () => void;
 }) {
-  const selectReply = useSelectMessageReply(message);
+  const selectMessageReply = useSelectMessageReply(message);
+  const selectReply = onSelectReply ?? selectMessageReply;
   const skills = (message.skills ?? []).flatMap((skill) =>
     skill.id && skill.name
       ? [{ id: skill.id, name: skill.name, version: skill.version }]
@@ -1186,12 +1202,12 @@ function UserMessage({
       data-role="user"
       className="group/user-message mt-1 px-6"
     >
-      <div className="ml-auto grid w-fit max-w-[78%] min-w-0 justify-items-end">
+      <div className="flex min-w-0 items-start justify-end gap-1">
         <div
           data-chat-message-bubble
           tabIndex={-1}
           className={cn(
-            "bg-user-message-background text-user-message-content type-chat data-[chat-message-located]:bg-user-message-background/85 max-w-full min-w-0 overflow-hidden rounded-xl px-4 py-1.5",
+            "bg-user-message-background text-user-message-content type-chat data-[chat-message-located]:bg-user-message-background/85 max-w-[78%] min-w-0 overflow-hidden rounded-xl px-4 py-1.5",
             messageLocationClassName,
           )}
         >
@@ -1231,6 +1247,7 @@ function UserMessage({
                 <button
                   key={`${path}:${reference.startLine}:${reference.endLine}:${reference.content}`}
                   type="button"
+                  disabled={!onOpenCodeReference}
                   className={`${chatMessageReferenceChipClass} focus-visible:ring-ring outline-none hover:bg-current/20 focus-visible:ring-2`}
                   onClick={() => onOpenCodeReference?.(reference)}
                 >
@@ -1248,16 +1265,17 @@ function UserMessage({
             </div>
           </div>
         </div>
-        <footer
-          className={cn(
-            messageFooterLayoutClassName,
-            "duration-quick pointer-events-none opacity-0 transition-opacity group-focus-within/user-message:pointer-events-auto group-focus-within/user-message:opacity-100 group-hover/user-message:pointer-events-auto group-hover/user-message:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+        <div className="duration-quick pointer-events-none order-first flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-focus-within/user-message:pointer-events-auto group-focus-within/user-message:opacity-100 group-hover/user-message:pointer-events-auto group-hover/user-message:opacity-100 has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+          {sideAction ?? (
+            <>
+              <MessageCopyAction message={message} />
+              {selectReply ? (
+                <MessageReplyAction onSelect={selectReply} />
+              ) : null}
+              <MessageReadActions message={message} />
+            </>
           )}
-        >
-          <MessageCopyAction message={message} />
-          {selectReply ? <MessageReplyAction onSelect={selectReply} /> : null}
-          <MessageReadActions message={message} />
-        </footer>
+        </div>
       </div>
     </div>
   );
@@ -1336,10 +1354,10 @@ function MessageCopyAction({
         try {
           await navigator.clipboard.writeText(
             message.role === "assistant"
-              ? (message.displayParts ?? [])
+              ? (message.publishedResultParts ?? message.displayParts ?? [])
                   .filter((part) => part.type === "text")
                   .map((part) => part.text ?? "")
-                  .join("\n")
+                  .join(message.publishedResultParts ? "\n\n" : "\n")
               : (message.content ?? ""),
           );
           setCopied(true);
@@ -1396,25 +1414,42 @@ function AddAttachmentButton({
   );
 }
 
-const assistantMessageRowClassName =
-  "grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6";
-
-/** 普通回复与团队成员交付共用卡片、悬停底栏和消息间距。 */
-function ChatReplyMessage({
+/** 公开发言和普通助手回复共用卡片、身份列与消息定位。 */
+export function ChatReplyMessage({
   message,
+  variant,
   identity,
   name,
+  continued,
   status,
   children,
   footer,
+  sideAction,
 }: {
   message: BotChatMessage;
+  variant?: "post";
   identity: ReactNode;
   name?: string;
+  continued?: boolean;
   status?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
+  sideAction?: ReactNode;
 }) {
+  const bubble = children ? (
+    <div
+      data-chat-message-card
+      data-chat-message-bubble
+      tabIndex={-1}
+      className={cn(
+        "bg-message-card-background w-fit max-w-full min-w-0 rounded-xl px-4 py-1.5 data-[chat-message-located]:bg-[color-mix(in_srgb,var(--message-card-background),var(--accent-default)_12%)]",
+        variant === "post" && "rounded-ss-xs",
+        messageLocationClassName,
+      )}
+    >
+      {children}
+    </div>
+  ) : null;
   return (
     <div
       data-message-id={message.id}
@@ -1425,28 +1460,26 @@ function ChatReplyMessage({
       }
       data-role={message.role}
       className={cn(
-        "group mt-1",
-        children && !footer && "pb-4",
+        "group group/reply-row",
+        continued ? "-mt-1" : "mt-1",
+        children && !footer && !sideAction && "pb-4",
         assistantMessageRowClassName,
       )}
     >
       {identity}
-      <div className="group/reply w-fit max-w-full min-w-0">
+      <div className="group/reply col-start-2 w-fit max-w-full min-w-0">
         {name ? <div className="type-body mb-2 font-medium">{name}</div> : null}
         {status}
-        {children ? (
-          <div
-            data-chat-message-card
-            data-chat-message-bubble
-            tabIndex={-1}
-            className={cn(
-              "bg-message-card-background w-fit max-w-full min-w-0 rounded-xl px-4 py-1.5 data-[chat-message-located]:bg-[color-mix(in_srgb,var(--message-card-background),var(--accent-default)_12%)]",
-              messageLocationClassName,
-            )}
-          >
-            {children}
+        {sideAction ? (
+          <div className="flex min-w-0 items-start gap-1">
+            {bubble}
+            <div className="duration-quick pointer-events-none flex shrink-0 opacity-0 transition-opacity group-focus-within/reply-row:pointer-events-auto group-focus-within/reply-row:opacity-100 group-hover/reply-row:pointer-events-auto group-hover/reply-row:opacity-100 has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+              {sideAction}
+            </div>
           </div>
-        ) : null}
+        ) : (
+          bubble
+        )}
         {footer ? (
           <footer
             className={cn(
@@ -1462,17 +1495,48 @@ function ChatReplyMessage({
   );
 }
 
-function AssistantReplyWaitStatus({
+function observeWaitingTextMotion(label: HTMLSpanElement | null) {
+  if (!label) return;
+  let visible = typeof IntersectionObserver === "undefined";
+  const update = () => {
+    label.toggleAttribute("data-shimmer-visible", visible && !document.hidden);
+  };
+  const observer = visible
+    ? undefined
+    : new IntersectionObserver(([entry]) => {
+        visible = entry?.isIntersecting ?? false;
+        update();
+      });
+  observer?.observe(label);
+  document.addEventListener("visibilitychange", update);
+  update();
+  return () => {
+    observer?.disconnect();
+    document.removeEventListener("visibilitychange", update);
+    label.removeAttribute("data-shimmer-visible");
+  };
+}
+
+export function AssistantReplyWaitStatus({
   establishingSession,
+  showWaitingText,
 }: {
   establishingSession?: boolean;
+  showWaitingText?: boolean;
 }) {
   const { t } = useTranslation("chat");
   return (
     <div role="status">
-      {!establishingSession && (
-        <span className="sr-only">{t("awaitingReply")}</span>
-      )}
+      {!establishingSession &&
+        (showWaitingText ? (
+          <span className="text-content-secondary type-ui min-h-avatar-sm inline-flex items-center">
+            <span ref={observeWaitingTextMotion} data-text-shimmer="true">
+              {t("awaitingReply")}
+            </span>
+          </span>
+        ) : (
+          <span className="sr-only">{t("awaitingReply")}</span>
+        ))}
       <RetainedPresence
         present={Boolean(establishingSession)}
         data-motion={establishingSession ? "none" : "presence"}
@@ -1482,27 +1546,6 @@ function AssistantReplyWaitStatus({
           {t("preparingSession")}
         </span>
       </RetainedPresence>
-    </div>
-  );
-}
-
-export function ChatQuestionRow({
-  children,
-  compact = false,
-  interactionId,
-}: {
-  children: ReactNode;
-  compact?: boolean;
-  interactionId?: string;
-}) {
-  return (
-    <div
-      data-chat-interaction-id={interactionId}
-      className={cn("py-2", compact ? "px-6" : assistantMessageRowClassName)}
-    >
-      <div className={compact ? undefined : "col-start-2 min-w-0"}>
-        {children}
-      </div>
     </div>
   );
 }
@@ -1543,6 +1586,7 @@ export function AssistantMessage({
     (message.fileChangeRecord?.totalFiles ?? 0) > 0;
   const hasContent =
     view.segments.length > 0 ||
+    Boolean(message.publishedResultParts?.length) ||
     Boolean(message.attachments?.length) ||
     (message.status === "canceled" && !continuation?.continued) ||
     (message.status === "failed" && !last);
@@ -1726,16 +1770,8 @@ const ChatMessage = memo(function ChatMessage({
   showFileChanges?: boolean;
 }) {
   const message = view.message;
-  if (message.question) {
-    return message.question.result ? (
-      <ChatQuestionRow>
-        <ChatElicitationCard
-          elicitation={message.question}
-          resolution={message.question}
-        />
-      </ChatQuestionRow>
-    ) : null;
-  }
+  if (message.question)
+    return <SettledChatQuestion question={message.question} />;
   if (message.role === "user") {
     const replyTo = message.replyTo;
     const quotedWakerId = replyTo?.sourceWakerId;
@@ -1760,10 +1796,7 @@ const ChatMessage = memo(function ChatMessage({
         message={message}
         replyQuote={
           replyTo ? (
-            <MessageReplyQuote
-              replyTo={replyTo}
-              authorName={quotedWakerName}
-            />
+            <MessageReplyQuote replyTo={replyTo} authorName={quotedWakerName} />
           ) : undefined
         }
         availableSkillIds={availableSkillIds}
@@ -2162,6 +2195,7 @@ const Composer = memo(function Composer({
   singleSubmission = false,
   inputSize,
   activityStatus,
+  composerRecovery,
   settings,
   actions,
   effects,
@@ -2218,8 +2252,9 @@ const Composer = memo(function Composer({
   autoFocus?: boolean;
   disabled?: boolean;
   singleSubmission?: boolean;
-  inputSize?: ChatThreadProps["composerInputSize"];
+  inputSize?: ChatThreadProps["composerLayout"];
   activityStatus?: ReactNode;
+  composerRecovery?: ReactNode;
   settings?: ReactNode;
   actions?: ReactNode;
   effects?: ReactNode;
@@ -2312,28 +2347,7 @@ const Composer = memo(function Composer({
     setSubmissionState((current) => ({ ...current, pending: true }));
     return true;
   };
-  const pendingApprovalKey = pendingApprovals
-    .map((approval) => approval.approvalId)
-    .join("\0");
-  const [approvalSeenState, setApprovalSeenState] = useState(() => ({
-    pendingKey: pendingApprovalKey,
-    seenIds: nextApprovalSeenIds(pendingApprovals, []),
-  }));
-  if (pendingApprovalKey !== approvalSeenState.pendingKey) {
-    setApprovalSeenState({
-      pendingKey: pendingApprovalKey,
-      seenIds: nextApprovalSeenIds(pendingApprovals, approvalSeenState.seenIds),
-    });
-  }
   const currentApproval = pendingApprovals[0];
-  const queuedApproval = pendingApprovals.find(
-    (item) =>
-      item.approvalId === requestedInteractionId && item !== currentApproval,
-  );
-  const approvalPosition = approvalQueuePosition(
-    currentApproval?.approvalId,
-    approvalSeenState.seenIds,
-  );
   const errorNotices = useChatErrorNotices({
     scopes: errorScopes,
     fallback: sendFailure,
@@ -2341,6 +2355,7 @@ const Composer = memo(function Composer({
     appearance: "composer",
   });
   const composerContext =
+    composerRecovery ??
     errorNotices ??
     (activityStatus ? (
       <div data-chat-work-status className="flex min-w-0 flex-1 items-center">
@@ -2358,7 +2373,7 @@ const Composer = memo(function Composer({
           bodyClassName="p-0"
           className="overflow-hidden"
           context={composerContext}
-          contextTone={errorNotices ? "danger" : "neutral"}
+          contextTone={composerRecovery || errorNotices ? "danger" : "neutral"}
           contextFooter={
             replyTo && onDismissReply ? (
               <ComposerReplyContext
@@ -2422,16 +2437,12 @@ const Composer = memo(function Composer({
             ) : null
           }
         >
-          {currentApproval ? (
-            <ChatApprovalCard
-              approval={currentApproval}
-              current={approvalPosition.current}
-              total={approvalPosition.total}
-              queuedApproval={queuedApproval}
-              submissionState={approvalSubmissionState}
-              onResolve={onResolveApproval}
-            />
-          ) : null}
+          <ChatApprovalQueue
+            pendingApprovals={pendingApprovals}
+            requestedInteractionId={requestedInteractionId}
+            approvalSubmissionState={approvalSubmissionState}
+            onResolveApproval={onResolveApproval}
+          />
           {/* 审批期间保留输入草稿和发送恢复状态。 */}
           <div hidden={Boolean(currentApproval)}>
             <ComposerInputBody data-chat-composer-input-body size={inputSize}>
@@ -2632,6 +2643,7 @@ function ChatThreadContent({
   timelineEvents = [],
   workflowInvocation,
   activityStatus,
+  composerRecovery,
   afterMessages,
   isRunning = false,
   isWorkRunning = false,
@@ -2645,7 +2657,7 @@ function ChatThreadContent({
   isHistoryLoading = false,
   historyError,
   renderComposerSettings,
-  composerInputSize,
+  composerLayout,
   composerActions,
   composerEffects,
   composerReferences,
@@ -2705,6 +2717,8 @@ function ChatThreadContent({
   warning,
   warningAction,
   requestedInteractionId,
+  interactionsInTimeline = false,
+  interactionErrorScope,
   pendingApprovals = emptyList,
   approvalSubmissionState = "idle",
   onResolveApproval = ignoreChange,
@@ -2825,13 +2839,12 @@ function ChatThreadContent({
   };
   const replyActions = useMemo(
     () => ({
-      select:
-        onReplyToChange && showComposer
-          ? (reply: ChatReplyReference) => {
-              onReplyToChange(reply);
-              focusInputRef.current?.();
-            }
-          : undefined,
+      select: onReplyToChange
+        ? (reply: ChatReplyReference) => {
+            onReplyToChange(reply);
+            if (showComposer) focusInputRef.current?.();
+          }
+        : undefined,
       locate: locateReply,
     }),
     [locateReply, onReplyToChange, showComposer],
@@ -2861,34 +2874,54 @@ function ChatThreadContent({
     (question) =>
       question.elicitationId && !settledQuestionIds.has(question.elicitationId),
   );
-  const liveQuestions = openQuestions.map((question, index) => (
-    <ChatQuestionRow
-      key={question.elicitationId}
-      compact={presentation === "composer"}
-    >
-      <ChatElicitationCard
-        elicitation={question}
-        submissionState={index === 0 ? elicitationSubmissionState : "idle"}
-        waitingForTurn={index > 0}
-        onResolve={onResolveElicitation}
-      />
-      {index === 0 && fileScopeChatId && workflowInvocation ? (
+  const timelineApprovals = interactionsInTimeline
+    ? pendingApprovals
+    : emptyList;
+  const hasLiveInteractions = Boolean(
+    openQuestions.length || timelineApprovals.length,
+  );
+  const questionProps = {
+    elicitationSubmissionState,
+    onResolveElicitation,
+    firstQuestionActions:
+      fileScopeChatId && workflowInvocation ? (
         <CancelWorkflowInvocation
           key={workflowInvocation.executionId}
           chatId={fileScopeChatId}
           {...workflowInvocation}
         />
-      ) : null}
-    </ChatQuestionRow>
-  ));
-  const visibleTimelineEvents = timelineEventsInMessageWindow(
+      ) : null,
+  };
+  const liveInteractions = (
+    <ChatTimelineInteractions
+      {...questionProps}
+      compact={presentation === "composer"}
+      pendingApprovals={timelineApprovals}
+      approvalSubmissionState={approvalSubmissionState}
+      requestedInteractionId={requestedInteractionId}
+      onResolveApproval={onResolveApproval}
+      approvalHotkeys={active && interactionsInTimeline}
+      pendingElicitations={interactionsInTimeline ? emptyList : openQuestions}
+      interactionErrorScope={interactionErrorScope}
+    />
+  );
+  const scopedTimelineEvents = timelineEventsInMessageWindow(
     timelineEvents,
     messages,
     hasEarlierMessages,
   );
+  const visibleTimelineEvents = interactionsInTimeline
+    ? [
+        ...scopedTimelineEvents,
+        ...pendingQuestionTimelineEvents(messages, {
+          ...questionProps,
+          pendingElicitations: openQuestions,
+        }),
+      ]
+    : scopedTimelineEvents;
   const emptyThread =
     messages.length === 0 &&
-    liveQuestions.length === 0 &&
+    !hasLiveInteractions &&
     visibleTimelineEvents.length === 0;
   const centerEmptyState =
     emptyStatePosition === "center" &&
@@ -2898,13 +2931,13 @@ function ChatThreadContent({
   const showDirectEmptyState =
     !isHistoryLoading &&
     !inlineHistoryError &&
-    liveQuestions.length === 0 &&
+    !hasLiveInteractions &&
     (pinEmptyState || centerEmptyState);
   const threadVisible =
     active &&
     presentation === "thread" &&
     !showDirectEmptyState &&
-    (!isHistoryLoading || liveQuestions.length > 0);
+    (!isHistoryLoading || hasLiveInteractions);
   const targetMessageId = currentReplyLocation
     ? currentReplyLocation.messageId
     : messageId;
@@ -2939,11 +2972,13 @@ function ChatThreadContent({
   });
   const latestMessage = messages.findLast((message) => !message.question);
   const compactComposer =
-    presentation === "thread" &&
-    (((hasExistingConversation || Boolean(fileScopeChatId)) &&
-      (isHistoryLoading || Boolean(historyError))) ||
-      hasEarlierMessages ||
-      messages.some((message) => !message.optimistic));
+    composerLayout !== undefined
+      ? composerLayout === "compact"
+      : presentation === "thread" &&
+        (((hasExistingConversation || Boolean(fileScopeChatId)) &&
+          (isHistoryLoading || Boolean(historyError))) ||
+          hasEarlierMessages ||
+          messages.some((message) => !message.optimistic));
   const companionInteraction = isWorkStopping
     ? "stopping"
     : pendingApprovals.length || openQuestions.length
@@ -3120,7 +3155,7 @@ function ChatThreadContent({
                             </ChatMessageReading>
                           </>
                         )}
-                        {liveQuestions}
+                        {liveInteractions}
                         {!isHistoryLoading && afterMessages}
                       </ChatMessageColumn>
                     </>
@@ -3134,14 +3169,14 @@ function ChatThreadContent({
                   />
                 )}
               </div>
-            ) : liveQuestions.length > 0 ? (
+            ) : hasLiveInteractions ? (
               <div
                 className={cn(
                   "mx-auto w-full overflow-y-auto",
                   chatContentColumnClassName,
                 )}
               >
-                {liveQuestions}
+                {liveInteractions}
               </div>
             ) : null}
             <motion.div
@@ -3182,11 +3217,9 @@ function ChatThreadContent({
                     autoFocus={composerAutoFocus}
                     disabled={composerDisabled}
                     singleSubmission={composerSingleSubmission}
-                    inputSize={
-                      composerInputSize ??
-                      (compactComposer ? "compact" : undefined)
-                    }
+                    inputSize={compactComposer ? "compact" : composerLayout}
                     activityStatus={activityStatus}
+                    composerRecovery={composerRecovery}
                     settings={renderComposerSettings?.(compactComposer)}
                     actions={composerActions}
                     effects={composerEffects}
@@ -3245,7 +3278,9 @@ function ChatThreadContent({
                     onOpenPlugin={onOpenPlugin}
                     pluginHrefPrefix={pluginHrefPrefix}
                     requestedInteractionId={requestedInteractionId}
-                    pendingApprovals={pendingApprovals}
+                    pendingApprovals={
+                      interactionsInTimeline ? emptyList : pendingApprovals
+                    }
                     approvalSubmissionState={approvalSubmissionState}
                     onResolveApproval={onResolveApproval}
                     waitingForAnswer={openQuestions.length > 0}

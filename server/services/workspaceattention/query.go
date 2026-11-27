@@ -101,10 +101,17 @@ func (q *Query) ExecutorSummaries(ctx context.Context, reader string, ids []stri
 	results := make([]models.ExecutorAttentionSummary, 0, len(ids))
 	for _, id := range ids {
 		entry := models.ExecutorAttentionSummary{ExecutorID: id, Kind: "waker", Chats: []models.ExecutorAttentionChat{}, Requests: []models.WorkBoardAttention{}}
+		if source, exists := facts.MainWorkCounts[id]; exists {
+			entry.RunningChatCount = source.RunningCount
+			entry.Kind = source.SubjectType
+		}
 		kinds := map[models.WorkRef][]string{}
 		requests := map[models.WorkRef][]models.WorkBoardAttention{}
 		for _, request := range requestsByExecutor[id] {
 			entry.Requests = append(entry.Requests, request)
+			if !slices.Contains(entry.RequestKinds, request.Kind) {
+				entry.RequestKinds = append(entry.RequestKinds, request.Kind)
+			}
 			work := models.WorkRef{Kind: constants.WorkOwnerKind(request.OwnerKind), ID: request.OwnerID}
 			requests[work] = append(requests[work], request)
 			if !slices.Contains(kinds[work], request.Kind) {
@@ -114,8 +121,15 @@ func (q *Query) ExecutorSummaries(ctx context.Context, reader string, ids []stri
 				entry.Kind = "team"
 			}
 		}
-		entry.WaitingWorkCount = int64(len(kinds))
-		entry.PendingRequestCount = int64(len(entry.Requests))
+		slices.Sort(entry.RequestKinds)
+		entry.WaitingWorkCount += int64(len(kinds))
+		entry.PendingRequestCount += int64(len(entry.Requests))
+		if unread := facts.MainUnread[id]; unread.Count > 0 {
+			entry.UnreadMessageCount += unread.Count
+			entry.UnreadChatCount++
+			entry.AwaitingViewWorkCount++
+			entry.MainConversationUnreadGeneration = &unread.UnreadGeneration
+		}
 		var latest models.WorkBoardEntry
 		for _, item := range chatsByExecutor[id] {
 			if latest.OwnerID == "" || before(item, latest) {

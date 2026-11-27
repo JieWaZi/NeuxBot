@@ -2,6 +2,8 @@
 package models
 
 import (
+	"slices"
+
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -38,6 +40,13 @@ type Channel struct {
 
 // TableName 返回团队定义使用的表名。
 func (Channel) TableName() string { return "channels" }
+
+// AuthorizesWorkActor 判断实际执行伙伴当前仍是负责人或团队成员。
+func (c Channel) AuthorizesWorkActor(wakerID string, members []ChannelMember) bool {
+	return c.ID != "" && wakerID != "" && (c.LeadWakerID == wakerID || slices.ContainsFunc(members, func(member ChannelMember) bool {
+		return member.ChannelID == c.ID && member.WakerID == wakerID
+	}))
+}
 
 // ChannelMember 保存团队成员及其未来对话使用的默认执行配置。
 type ChannelMember struct {

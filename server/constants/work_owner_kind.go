@@ -8,6 +8,8 @@ type WorkOwnerKind string
 const (
 	// WorkOwnerKindChat 表示独立会话。
 	WorkOwnerKindChat WorkOwnerKind = "chat"
+	// WorkOwnerKindMainConversation 表示伙伴或团队的公开主会话。
+	WorkOwnerKindMainConversation WorkOwnerKind = "main_conversation"
 	// WorkOwnerKindTeamThread 表示团队对话。
 	WorkOwnerKindTeamThread WorkOwnerKind = "team_thread"
 	// WorkOwnerKindWorkflowRun 表示对用户可见的工作流运行。

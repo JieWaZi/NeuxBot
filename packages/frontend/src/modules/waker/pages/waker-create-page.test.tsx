@@ -117,7 +117,7 @@ it("跟随全局默认时仅在打开模型选择器后读取目录", async () =
   expect(directoryReads.accounts).toHaveBeenCalled();
 });
 
-it("选择默认模型后携带原请求标识重试，进入已接纳的建档对话", async () => {
+it("选择默认模型后携带原请求标识重试，进入新伙伴的主会话", async () => {
   create
     .mockRejectedValueOnce(new Error("connection interrupted"))
     .mockResolvedValueOnce({ wakerId: "new-partner", chatId: "setup-chat" });
@@ -161,7 +161,7 @@ it("选择默认模型后携带原请求标识重试，进入已接纳的建档�
   );
   await user.click(screen.getByRole("button", { name: "创建伙伴" }));
   expect(await screen.findByLabelText("目标 Scene")).toHaveTextContent(
-    "/chats/setup-chat?wakerId=new-partner",
+    "/chat/main/waker/new-partner",
   );
 
   const first = create.mock.calls[0]?.[0].body;

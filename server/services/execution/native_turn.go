@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -24,10 +25,12 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	"github.com/shrewx/ginx/pkg/statuserror"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // nativeResourceProjection 记录现有连接实际持有的交付资源。
@@ -256,8 +259,14 @@ func (m *service) startNativeExecution(
 	message := nativeMessage(request, files)
 	agentRequest := request
 	agentRequest.entryPoint = trustedWorkbenchEntryPoint(request, state)
+	// 接纳前没有执行日志，通过请求追踪和稳定错误码定位失败边界。
+	logPreparationFailure := func(stage string, err error) {
+		logx.Warnf("native execution preparation failed: stage=%s trace_id=%s chat_id=%s execution_id=%s runtime_id=%s error_code=%s",
+			stage, trace.SpanContextFromContext(ctx).TraceID(), state.chat.ID, executionID, environment.RuntimeID, util.ErrorCode(err, "unknown"))
+	}
 	grant, err := m.prepareAgent(ctx, executionContext, environment, workspace, &skills, &instructions, &connectors, &contextInstructions, state.chat, executionID, agentRequest, files.referencedFiles, files.attachments.RuntimePaths)
 	if err != nil {
+		logPreparationFailure("prepare_agent_connection", err)
 		return AcceptedExecution{}, err
 	}
 	if grant.finish != nil {
@@ -297,6 +306,9 @@ func (m *service) startNativeExecution(
 	}
 	key := sessionResourceKey(frozen.key, string(metadata), enabledConnectors)
 	thread := nativeThreadRequest(state.chat.ID, workspace, instructions, request, environment, selection, key)
+	thread.ReplaceRejectedSession = request.admission == constants.ExecutionAdmissionCommitBeforeDispatch &&
+		state.chat.HiddenFromWakerHistory && request.message.Actor == "user" &&
+		(request.entryPoint == MainConversationEntryPoint || request.entryPoint == MainConversationSourceEntryPoint)
 	if agentRequest.entryPoint == WorkbenchEntryPoint {
 		thread.CoreMemoryOwner = state.chat.WakerID
 	}
@@ -304,6 +316,7 @@ func (m *service) startNativeExecution(
 	thread.Connection.Launch.BotCLIExecutable = grant.cliExecutable
 	thread.Connection.Account, err = m.resolveAccount(ctx, thread.Connection.Account, thread.Connection.Launch.ConfigHome)
 	if err != nil {
+		logPreparationFailure("resolve_account", err)
 		return AcceptedExecution{}, err
 	}
 
@@ -350,6 +363,7 @@ func (m *service) startNativeExecution(
 	}
 	turn, err := m.threads.Prepare(ctx, thread, nativeInput, ports)
 	if err != nil {
+		logPreparationFailure("prepare_thread", err)
 		return AcceptedExecution{}, err
 	}
 	defer func() {
@@ -396,6 +410,10 @@ func (m *service) startNativeExecution(
 
 	// A reliable entrypoint commits the pending job before dispatch. The native admission
 	// batch then adds execution.started and the actual input identity together.
+	// 只传递链路标识；后台执行的取消和超时仍归执行注册表管理。
+	if span := trace.SpanContextFromContext(ctx); span.IsValid() {
+		executionContext = trace.ContextWithSpanContext(executionContext, span)
+	}
 	if request.admission == constants.ExecutionAdmissionCommitBeforeDispatch {
 		var accepted chatservice.AcceptedTurn
 		if err := request.admissionBoundary.Commit(ctx, func(ctx context.Context) error {
@@ -750,7 +768,7 @@ func (m *service) runNativeExecution(ctx context.Context, work *nativeExecutionW
 		}
 	}()
 	if err := m.executions.waitForFileSnapshots(ctx, ctx, chatID, executionID); err != nil {
-		work.settle(m, agent.TurnResult{OperationError: err})
+		work.settle(ctx, m, agent.TurnResult{OperationError: err})
 		return
 	}
 	if recorder, ok := m.journal.(chatservice.FileChangesRecorder); ok {
@@ -762,10 +780,10 @@ func (m *service) runNativeExecution(ctx context.Context, work *nativeExecutionW
 	}
 	result := turn.Run(ctx)
 	admitted = result.BusinessAdmitted
-	work.settle(m, result)
+	work.settle(ctx, m, result)
 }
 
-func (work *nativeExecutionWork) settle(m *service, result agent.TurnResult) {
+func (work *nativeExecutionWork) settle(ctx context.Context, m *service, result agent.TurnResult) {
 	if work.finishToolScope != nil {
 		work.finishToolScope()
 	}
@@ -790,11 +808,22 @@ func (work *nativeExecutionWork) settle(m *service, result agent.TurnResult) {
 		}
 	}
 	if outcome.status == constants.ExecutionStatusFailed {
-		var nativeFailure error
+		var rpcCode, nativeKind string
 		if result.Outcome != nil {
-			nativeFailure = result.Outcome.NativeFailure
+			if result.Outcome.NativeErrorCode != 0 {
+				rpcCode = strconv.Itoa(result.Outcome.NativeErrorCode)
+			}
+			nativeKind = result.Outcome.NativeErrorKind
 		}
-		logx.Errorf("native execution settlement failed: chat_id=%s execution_id=%s error_code=%s cause=%v", work.chat.ID, work.execution.ID, outcome.code, errors.Join(result.StorageError, result.DeliveryError, result.CleanupError, result.OperationError, nativeFailure))
+		stageErrorCode := func(err error) string {
+			if err == nil {
+				return ""
+			}
+			return util.ErrorCode(err, "unclassified")
+		}
+		logx.Errorf("native execution settlement failed: trace_id=%s chat_id=%s execution_id=%s runtime_id=%s error_code=%s failure_code=%s native_rpc_code=%s native_kind=%s storage_error_code=%s delivery_error_code=%s cleanup_error_code=%s operation_error_code=%s",
+			trace.SpanContextFromContext(ctx).TraceID(), work.chat.ID, work.execution.ID, work.execution.RuntimeID, outcome.code, outcome.failureCode, rpcCode, nativeKind,
+			stageErrorCode(result.StorageError), stageErrorCode(result.DeliveryError), stageErrorCode(result.CleanupError), stageErrorCode(result.OperationError))
 	}
 	if !work.precommitted && !work.projected.Load() {
 		// Reconcile the file journal before the caller is allowed to roll back a new Chat.
@@ -810,7 +839,7 @@ func (work *nativeExecutionWork) settle(m *service, result agent.TurnResult) {
 	if work.execution.Status == constants.ExecutionStatusPending && result.BusinessAdmitted {
 		work.execution.Status = constants.ExecutionStatusRunning
 	}
-	m.finishExecution(work.chat, work.execution, eventlog.ExecutionFinishedData{Status: outcome.status, ErrorCode: outcome.code, ErrorMessage: outcome.message, ErrorParams: outcome.params, FailureCode: outcome.failureCode, ErrorMessageSource: outcome.messageSource})
+	m.finishExecution(work.chat, work.execution, work.input.toolCapabilities, result, eventlog.ExecutionFinishedData{Status: outcome.status, ErrorCode: outcome.code, ErrorMessage: outcome.message, ErrorParams: outcome.params, FailureCode: outcome.failureCode, ErrorMessageSource: outcome.messageSource})
 }
 
 // nativeExecutionStatus maps native settlement to the existing business status.

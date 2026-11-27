@@ -46,7 +46,7 @@ func TestDeleteWakerChatsSkipsMissingRegisteredChat(t *testing.T) {
 	if _, err := chats.logStore.ReadAll(missingID); !hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
 		t.Fatalf("query missing chat: %v", err)
 	}
-	if err := chats.DeleteWakerChats(ctx, "waker-target", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
+	if err := chats.DeleteWakerChats(ctx, "waker-target", nil, func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
 		t.Fatalf("delete waker with missing registered chat: %v", err)
 	}
 }
@@ -101,7 +101,7 @@ func TestDeleteChatsPreservesReadAndDatabaseErrors(t *testing.T) {
 	if err := chats.DeleteChatsAtomically(ctx, []string{chatID}, finalize); !hasStatusErrorCode(err, status_error.ChatLogCorrupted.Code()) {
 		t.Fatalf("corrupt log must block deletion: %v", err)
 	}
-	if err := chats.DeleteWakerChats(ctx, "waker-target", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); !hasStatusErrorCode(err, status_error.ChatLogCorrupted.Code()) {
+	if err := chats.DeleteWakerChats(ctx, "waker-target", nil, func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); !hasStatusErrorCode(err, status_error.ChatLogCorrupted.Code()) {
 		t.Fatalf("corrupt log must block waker deletion: %v", err)
 	}
 	if finalized {
@@ -575,7 +575,7 @@ func TestDeleteWakerChatsUsesAuthorityAndRejectsActiveExecution(t *testing.T) {
 		t.Fatalf("Create(team chat) error = %v", err)
 	}
 
-	if err := chatService.DeleteWakerChats(ctx, "waker-target", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); !errors.Is(err, status_error.WakerHasRunningWork) {
+	if err := chatService.DeleteWakerChats(ctx, "waker-target", nil, func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); !errors.Is(err, status_error.WakerHasRunningWork) {
 		t.Fatalf("DeleteWakerChats() error = %v, want WakerHasRunningWork", err)
 	}
 	if _, err := logStore.ReadAll(targetID); err != nil {
@@ -590,7 +590,7 @@ func TestDeleteWakerChatsUsesAuthorityAndRejectsActiveExecution(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("complete authority execution: %v", err)
 	}
-	if err := chatService.DeleteWakerChats(ctx, "waker-target", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
+	if err := chatService.DeleteWakerChats(ctx, "waker-target", nil, func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
 		t.Fatalf("DeleteWakerChats() error = %v", err)
 	}
 	if _, err := logStore.ReadAll(targetID); err == nil {
@@ -827,7 +827,7 @@ func TestDeleteProvisionalTeamWithoutRuntimeRootRemovesExactPrivateChats(t *test
 func TestWakerDeletionBlocksAdmissionUntilItsFilesAreSettled(t *testing.T) {
 	_, m, _ := newDeleteTestService(t)
 	settled := false
-	err := m.DeleteWakerChats(context.Background(), "waker", func([]string) (func() error, error) {
+	err := m.DeleteWakerChats(context.Background(), "waker", nil, func([]string) (func() error, error) {
 		return func() error {
 			settled = true
 			release, err := chatstorage.AcquireAdmission(m.storage.Root(), "waker", "new-chat")

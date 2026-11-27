@@ -33,7 +33,7 @@ type emptyWakerChats struct {
 }
 
 // DeleteWakerChats 表示当前伙伴没有需要删除的聊天文件。
-func (emptyWakerChats) DeleteWakerChats(ctx context.Context, _ string, prepare func([]string) (func() error, error), finalize func(context.Context) error) error {
+func (emptyWakerChats) DeleteWakerChats(ctx context.Context, _ string, _ []string, prepare func([]string) (func() error, error), finalize func(context.Context) error) error {
 	settle, err := prepare(nil)
 	if err != nil {
 		return err

@@ -25,7 +25,7 @@ type ReplyTarget struct {
 
 // ReadReplyTarget 读取普通或成员 Chat 中已提交的同一会话正文。
 func (m *service) ReadReplyTarget(ctx context.Context, chatID, messageID string) (ReplyTarget, error) {
-	return m.readReplyTarget(ctx, "", chatID, messageID)
+	return m.readReplyTarget(ctx, "", chatID, messageID, false)
 }
 
 // ReadTeamReplyTarget 读取团队对话已公开到负责人 Chat 的同一条消息。
@@ -33,10 +33,15 @@ func (m *service) ReadTeamReplyTarget(ctx context.Context, threadID, leadChatID,
 	if threadID == "" {
 		return ReplyTarget{}, status_error.ChatReplyTargetUnavailable
 	}
-	return m.readReplyTarget(ctx, threadID, leadChatID, messageID)
+	return m.readReplyTarget(ctx, threadID, leadChatID, messageID, false)
 }
 
-func (m *service) readReplyTarget(ctx context.Context, threadID, chatID, messageID string) (ReplyTarget, error) {
+// ReadSourceReplyTarget 为已获主会话授权的工作记录读取同一来源中的引用。
+func (m *service) ReadSourceReplyTarget(ctx context.Context, chatID, messageID string) (ReplyTarget, error) {
+	return m.readReplyTarget(ctx, "", chatID, messageID, true)
+}
+
+func (m *service) readReplyTarget(ctx context.Context, threadID, chatID, messageID string, source bool) (ReplyTarget, error) {
 	journal, ok := m.logStore.(*conversationJournal)
 	if !ok {
 		return ReplyTarget{}, status_error.ChatLogError
@@ -51,7 +56,7 @@ func (m *service) readReplyTarget(ctx context.Context, threadID, chatID, message
 	}
 	teamMain := threadID != ""
 	if (teamMain && data.ThreadWorkspaceID != threadID) ||
-		(!teamMain && data.HiddenFromWakerHistory && data.ThreadWorkspaceID == "") {
+		(!teamMain && source != (data.HiddenFromWakerHistory && data.ThreadWorkspaceID == "")) {
 		return ReplyTarget{}, status_error.ChatReplyTargetUnavailable
 	}
 	message, err := m.queryIndexes.readPublicMessageThrough(ctx, chatID, messageID, math.MaxInt64)

@@ -1,17 +1,36 @@
 import type { WorkspaceAttentionOpen } from "@neuxbot/platform-contracts/services";
 import { chatHref } from "@/shared/lib/chat-navigation";
+import { mainConversationHref } from "@/shared/lib/main-conversation-navigation";
+
+export function workspaceAttentionMainOwner(target: WorkspaceAttentionOpen) {
+  if (target?.work.kind !== "main_conversation") return;
+  if (target.channelId) return { kind: "team" as const, id: target.channelId };
+  if (target.wakerId) return { kind: "waker" as const, id: target.wakerId };
+}
 
 export function workspaceAttentionOpenHref(
   target: WorkspaceAttentionOpen,
 ): string {
   if (!target) return "/work-board";
-  const request =
-    target.operation === "request_opened" ? target.requestId : undefined;
+  const isRequest = target.operation === "request_opened";
+  const request = isRequest ? target.requestId : undefined;
   const message = request ? undefined : target.messageId;
   const query = new URLSearchParams();
   if (request) query.set("request", request);
   if (message) query.set("message", message);
   switch (target.work.kind) {
+    case "main_conversation": {
+      const owner = workspaceAttentionMainOwner(target);
+      if (!owner) break;
+      if (!isRequest)
+        return mainConversationHref({ ...owner, messageId: message });
+      if (request && target.chatId)
+        return mainConversationHref({
+          ...owner,
+          request: { requestId: request, workChatId: target.chatId },
+        });
+      break;
+    }
     case "chat":
       if (target.definitionId) {
         query.set("chat", target.chatId || target.work.id);
@@ -42,5 +61,5 @@ export function workspaceAttentionOpenHref(
       if (target.automaticTaskId)
         return `/automatic-tasks/${target.automaticTaskId}?run=${target.work.id}`;
   }
-  return `/work-board?mode=${request ? "action" : "awaiting_view"}`;
+  return `/work-board?mode=${isRequest ? "action" : "awaiting_view"}`;
 }

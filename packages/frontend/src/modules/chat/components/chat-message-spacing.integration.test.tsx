@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import userEvent from "@testing-library/user-event";
 import { useMemo } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { expect, it, vi } from "vitest";
@@ -8,6 +10,9 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import type { BotChatMessage } from "../runtime/chat-projection";
 import { ChatMessageProjection } from "./chat-message-nodes";
 import { AssistantMessage, ChatMessageList } from "./chat-thread";
+import { PublicConversationMessage } from "./main-conversation-message";
+import { ChatMessageReplyActions } from "./chat-message-reply";
+import type { PublicMessage } from "../api/main-conversation";
 import type { ChatFileOpenRequest } from "./chat-attachment";
 
 function MessageHarness({
@@ -112,10 +117,11 @@ it("只包含正式附件的助手消息可以打开受管成果", () => {
   expect(onOpenFile).toHaveBeenCalledWith({
     name: "审核报告.md",
     path: "attachments/generated/review.md",
+    fileSource: "chat",
   });
 });
 
-it("用户卡和回复卡使用等高的操作栏，回复行没有额外的底部留白", () => {
+it("用户操作紧邻气泡左侧，普通助手回复保留原底栏", () => {
   const views = new ChatMessageProjection().update([
     { id: "input", role: "user", content: "你是谁" },
     {
@@ -127,13 +133,28 @@ it("用户卡和回复卡使用等高的操作栏，回复行没有额外的底�
     { id: "next", role: "user", content: "继续" },
   ]);
   const { container } = render(<ChatMessageList views={views} name="伙伴" />);
-  for (const id of ["reply", "input", "next"]) {
-    const row = container.querySelector(`[data-message-id="${id}"]`);
-    const footer = row?.querySelector("footer");
-    expect(row).toHaveClass("mt-1");
-    expect(row).not.toHaveClass("pb-4");
-    expect(footer).toHaveClass("mt-1", "flex", "min-h-control-sm");
+  for (const id of ["input", "next"]) {
+    const row = container.querySelector<HTMLElement>(
+      `[data-message-id="${id}"]`,
+    );
+    if (!row) throw new Error("未找到用户消息");
+    const bubble = row.querySelector("[data-chat-message-bubble]");
+    const actions = bubble?.nextElementSibling;
+    expect(bubble?.parentElement).toHaveClass("flex", "justify-end");
+    expect(actions).toHaveClass("order-first");
+    expect(actions).toContainElement(
+      within(row).getByRole("button", { name: "复制" }),
+    );
+    expect(row.querySelector("footer")).toBeNull();
   }
+  const reply = container.querySelector('[data-message-id="reply"]');
+  expect(reply).toHaveClass("mt-1");
+  expect(reply).not.toHaveClass("pb-4");
+  expect(reply?.querySelector("footer")).toHaveClass(
+    "mt-1",
+    "flex",
+    "min-h-control-sm",
+  );
 });
 
 it("一条已有接纳回执的运行位于来源输入之后，即使下一条聊天输入先显示", () => {
@@ -426,4 +447,109 @@ it("截图固定语料保留13.5s、过程说明、网络组、具体搜索动�
   fireEvent.click(screen.getByRole("button", { name: "收起" }));
   expect(network).toHaveAttribute("aria-expanded", "false");
   expect(screen.getByText("已经完成核对，以下是最终答复。")).toBeVisible();
+});
+
+it("公开助手回复与普通回复都从正文起排，用户主动引用的消息仍能定位", async () => {
+  const greeting = { id: "greeting", role: "user", content: "你好" };
+  const text =
+    "你好！我是你的 AI 助手。\n\n    const result = true;\n\n最后一段。";
+  const reply = {
+    id: "public-reply",
+    role: "assistant",
+    content: text,
+    replyToMessageId: greeting.id,
+    sourceChatId: "work",
+  };
+  const [ordinary] = new ChatMessageProjection().update([
+    {
+      id: "ordinary",
+      role: "assistant",
+      status: "completed",
+      displayParts: [{ type: "text", text }],
+    },
+  ]);
+  if (!ordinary) throw new Error("未找到普通聊天回复");
+  const select = vi.fn();
+  const locate = vi.fn();
+  function publicRow(row: PublicMessage, quoted?: PublicMessage) {
+    return (
+      <PublicConversationMessage
+        subject={{ subjectType: "waker", subjectId: "author" }}
+        row={row}
+        quoted={quoted}
+        active={false}
+        select={select}
+        openSource={() => {}}
+        openFile={() => {}}
+      />
+    );
+  }
+  const { container } = render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>
+        <TooltipProvider>
+          <AssistantMessage view={ordinary} name="助手" latest last />
+          <ChatMessageReplyActions.Provider value={{ locate }}>
+            {publicRow(reply, greeting)}
+            {publicRow({
+              ...reply,
+              id: "earlier",
+              replyToMessageId: "outside-page",
+            })}
+            {publicRow(
+              {
+                id: "follow-up",
+                role: "user",
+                content: "请继续",
+                replyToMessageId: reply.id,
+              },
+              reply,
+            )}
+          </ChatMessageReplyActions.Provider>
+        </TooltipProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  for (const id of ["ordinary", reply.id, "earlier"]) {
+    const bubble = container.querySelector<HTMLElement>(
+      `[data-message-id="${id}"] [data-chat-message-bubble]`,
+    );
+    if (!bubble) throw new Error("未找到回复气泡");
+    expect(
+      within(bubble).queryByRole("button", { name: /定位原消息/ }),
+    ).toBeNull();
+    expect(within(bubble).queryByText("原消息在更早的历史中")).toBeNull();
+    expect(bubble.textContent?.startsWith("你好！我是你的 AI 助手。")).toBe(
+      true,
+    );
+    expect(bubble.querySelector("pre code")).toHaveTextContent(
+      "const result = true;",
+    );
+    expect(within(bubble).getByText("最后一段。").tagName).toBe("P");
+  }
+  const publicMessage = container.querySelector<HTMLElement>(
+    '[data-message-id="public-reply"]',
+  );
+  if (!publicMessage) throw new Error("未找到公开回复");
+  const replyButton = within(publicMessage).getByRole("button", {
+    name: "回复",
+  });
+  expect(publicMessage.querySelector("footer")).toBeNull();
+  expect(publicMessage).not.toHaveClass("pb-4");
+  expect(
+    publicMessage.querySelector("[data-chat-message-bubble]")
+      ?.nextElementSibling,
+  ).toContainElement(replyButton);
+  expect(
+    container.querySelector('[data-message-id="ordinary"] footer'),
+  ).toBeInTheDocument();
+  expect(replyButton.tabIndex).toBe(0);
+  replyButton.focus();
+  await userEvent.keyboard("{Enter}");
+  expect(select).toHaveBeenCalledWith(
+    expect.objectContaining({ messageId: reply.id, role: "assistant" }),
+  );
+  const quote = screen.getByRole("button", { name: /定位原消息/ });
+  fireEvent.click(quote);
+  expect(locate).toHaveBeenCalledWith(reply.id, quote, "follow-up");
 });

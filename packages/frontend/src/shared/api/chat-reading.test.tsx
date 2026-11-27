@@ -5,11 +5,17 @@ import { expect, it, vi } from "vitest";
 import { useRef, type ReactNode } from "react";
 import {
   captureChatOpenIntent,
+  captureMainConversationOpenIntent,
   markLatestChatUnread,
   useChatReading,
+  useMainConversationReading,
   usePresentedChatBoundary,
 } from "./chat-reading";
-import { chatReadingOptions, type ChatReadingState } from "./reading-queries";
+import {
+  chatReadingOptions,
+  conversationReadingOptions,
+  type ChatReadingState,
+} from "./reading-queries";
 import { client } from "./generated/client.gen";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -143,6 +149,87 @@ it("在途的显式打开发生代次冲突后只重读，不重放旧动作", a
     queryClient.clear();
     server.close();
     focus.mockRestore();
+  }
+});
+
+it("打开较早展示的结果不会清掉另一个窗口后来标记的主会话未读", async () => {
+  const target = { subjectType: "waker", subjectId: "partner" } as const;
+  const conversationId = "public-conversation";
+  const authority = {
+    conversationId,
+    throughSequence: 0,
+    unreadGeneration: 9,
+    holdUnread: true,
+    unreadMessageCount: 1,
+    firstUnreadMessageID: "public-report",
+    latestReadableMessageID: "public-report",
+    complete: true,
+  };
+  const path =
+    "http://127.0.0.1:19923/api/v1/main-conversations/waker/partner/reading";
+  const queryClient = new QueryClient();
+  const options = conversationReadingOptions(target);
+  queryClient.setQueryData(options.queryKey, authority);
+  const writes = vi.fn();
+  const recovery = vi.fn();
+  const server = setupServer(
+    http.get(path, () => {
+      recovery();
+      return HttpResponse.json(authority);
+    }),
+    http.post(path, async ({ request }) => {
+      writes(await request.json());
+      return HttpResponse.json(
+        { key: "ReadingIntentConflict" },
+        { status: 409 },
+      );
+    }),
+  );
+  server.listen({ onUnhandledRequest: "error" });
+  client.setConfig({ baseUrl: "http://127.0.0.1:19923" });
+  const focus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  const navigationState = captureMainConversationOpenIntent(
+    queryClient,
+    target,
+    {
+      observedGeneration: 8,
+      freezeObservedGeneration: true,
+    },
+  );
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter
+        initialEntries={[{ pathname: "/chat", state: navigationState }]}
+      >
+        {children}
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+  const hook = renderHook(
+    () =>
+      useMainConversationReading({
+        ...target,
+        conversationId,
+        active: true,
+      }),
+    { wrapper },
+  );
+  const boundary = { messageId: "public-report", sequence: 11 };
+  try {
+    act(() => hook.result.current.present(boundary));
+    await waitFor(() => expect(recovery).toHaveBeenCalledOnce());
+    expect(hook.result.current.state?.holdUnread).toBe(true);
+    act(() => hook.result.current.present(boundary));
+    expect(writes).toHaveBeenCalledExactlyOnceWith({
+      intent: "explicit",
+      throughMessageID: boundary.messageId,
+      observedUnreadGeneration: 8,
+    });
+  } finally {
+    hook.unmount();
+    queryClient.clear();
+    focus.mockRestore();
+    server.close();
   }
 });
 

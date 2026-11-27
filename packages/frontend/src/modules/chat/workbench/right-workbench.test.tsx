@@ -24,10 +24,7 @@ import { workbenchDocumentBuffers } from "./document-buffers";
 import { RightWorkbench } from "./right-workbench";
 import { WorkbenchProvider, useWorkbench } from "./workbench-store";
 
-// Native views are outside this header contract; the real store and close guards stay mounted.
-vi.mock("../components/chat-browser-view", () => ({
-  ChatBrowserView: () => <div />,
-}));
+// Native terminals are outside this contract; test the browser's actual tool entry points.
 vi.mock("../components/chat-terminal-panel", () => ({
   ChatTerminalPanel: () => <div />,
 }));
@@ -242,6 +239,20 @@ afterEach(() => {
 });
 
 describe("右侧工作台顶栏", () => {
+  it("禁用侧聊时工作台菜单和空白浏览器页都没有侧聊入口", async () => {
+    const user = userEvent.setup();
+    mount({ allowSideChat: false });
+
+    expect(await screen.findByRole("heading", { name: "工具" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "侧聊" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "添加工作台标签" }));
+    expect(
+      within(await screen.findByRole("menu")).queryByRole("menuitem", {
+        name: "侧聊",
+      }),
+    ).toBeNull();
+  });
+
   it("加号打开已有工具菜单，按确认顺序显示且不直接创建浏览器", async () => {
     const user = userEvent.setup();
     mount();

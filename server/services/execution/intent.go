@@ -24,6 +24,10 @@ type ToolCapability struct {
 	Name string
 	// Bindings 是服务端冻结的领域操作；函数和凭据不参与序列化。
 	Bindings []agentcap.Binding `json:"-"`
+	// validateWork 在准备连接时核对这组能力是否仍属于实际运行的 Chat 和执行。
+	validateWork func(models.Chat, string) error
+	// publishFinal 在执行终态提交前交付本次已保存、可辨认的用户答复。
+	publishFinal func(context.Context, func(context.Context) (string, error)) error
 }
 
 // WorkflowTurnBinding 保存为当前接纳回合准备的工作流选择与受限能力。
@@ -55,6 +59,8 @@ type WorkIntent struct {
 	AutomaticRunID string `json:"-"`
 	// ExecutionID 是上层持久编排预先分配的可选执行标识；普通入口留空并由 Execution Core 生成。
 	ExecutionID string
+	// UserMessageID 是宿主为需要引用耐久用户输入的入口预留的消息标识。
+	UserMessageID string `json:"-"`
 	// ClientRequestID 是新建 Chat 首次发送时由客户端稳定复用的幂等标识；已有 Chat 续发必须为空。
 	ClientRequestID string
 	// Chat 描述目标已有 Chat 或新建 Chat 规格。
@@ -71,7 +77,7 @@ type WorkIntent struct {
 	Admission constants.ExecutionAdmission
 	// AdmissionBoundary 可选地保护派发前的耐久接纳，不随原生执行传递。
 	AdmissionBoundary AdmissionBoundary `json:"-"`
-	// ClaimAttachments 在首发幂等检查后将原附件引用转换为本地路径，回调由宿主提供。
+	// ClaimAttachments 在幂等检查后将原附件引用转换为本地路径，回调由宿主提供。
 	// 返回的释放函数以权威接纳结果结算附件租约。
 	ClaimAttachments func([]AttachmentInput) (func(bool), error) `json:"-"`
 }
@@ -82,6 +88,8 @@ type ChatTarget struct {
 	ChatID string
 	// Create 是新建 Chat 时冻结伙伴和工作范围的规格。
 	Create *CreateChatSpec
+	// MainConversationSource 允许主会话入口在已预留的 ChatID 下首次建立隐藏工作记录。
+	MainConversationSource *CreateChatSpec `json:"-"`
 }
 
 // CreateChatSpec 保存新 Chat 需要永久冻结的伙伴和工作范围。
@@ -94,6 +102,8 @@ type CreateChatSpec struct {
 	WakerID string
 	// ProjectID 是用户选择的伙伴项目标识，临时文件夹 Chat 为空。
 	ProjectID string
+	// ProjectScope 是主会话交办在选定工作 Chat 前冻结的项目范围。
+	ProjectScope *MainProjectScope `json:"-"`
 	// WorkingDirectory 是用户授权的临时目录，项目 Chat 为空。
 	WorkingDirectory string
 	// ExecutionWorkspaceDirectory 是宿主领域拥有的真实隔离 cwd；普通 Chat 留空。
@@ -209,7 +219,7 @@ type AcceptedExecution struct {
 // Start 校验并执行一个入口无关的工作意图。
 func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecution, error) {
 	requestedAt := nowMillis()
-	if m.validateIntent != nil {
+	if intent.Chat.MainConversationSource == nil && m.validateIntent != nil {
 		if err := m.validateIntent(ctx, intent); err != nil {
 			return AcceptedExecution{}, err
 		}
@@ -223,7 +233,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 	}
 	teamReply := intent.TeamReplyThreadID != ""
 	if intent.Input.ReplyToMessageID != "" &&
-		(intent.Chat.ChatID == "" || intent.Chat.Create != nil || (!teamReply && intent.Options.EntryPoint != WorkbenchEntryPoint) ||
+		(intent.Chat.ChatID == "" || intent.Chat.Create != nil || (!teamReply && intent.Options.EntryPoint != WorkbenchEntryPoint && intent.Options.EntryPoint != MainConversationSourceEntryPoint) ||
 			(teamReply && intent.Admission != constants.ExecutionAdmissionCommitBeforeDispatch) ||
 			strings.TrimSpace(intent.Input.Actor) != string(constants.ChannelMessageActorUser) ||
 			(!teamReply && intent.AutomaticRunID != "") || intent.Input.IMReplyLinkID != "" || intent.Options.WorkflowCreationSessionID != "") {
@@ -244,22 +254,24 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		releaseTeam = sync.OnceFunc(release)
 	}
 	defer releaseTeam()
-	wakerID := ""
-	if intent.Chat.Create != nil {
-		wakerID = strings.TrimSpace(intent.Chat.Create.WakerID)
-	}
-	if intent.Chat.ChatID != "" {
-		chat, err := m.journal.LoadExecutionChat(ctx, intent.Chat.ChatID)
-		if err != nil {
-			return AcceptedExecution{}, err
-		}
-		wakerID = chat.WakerID
+	wakerID, err := m.admissionWaker(ctx, intent.Chat)
+	if err != nil {
+		return AcceptedExecution{}, err
 	}
 	releaseOperation, operationErr := chatstorage.AcquireAdmission(m.storage.Root(), wakerID, intent.Chat.ChatID)
 	if operationErr != nil {
 		return AcceptedExecution{}, operationErr
 	}
 	defer releaseOperation()
+	// 预留来源没有 Chat 日志。取得同一个删除边界后再核对绑定，防止团队删除后重新物化。
+	if intent.Chat.MainConversationSource != nil && m.validateIntent != nil {
+		if err := m.validateIntent(ctx, intent); err != nil {
+			return AcceptedExecution{}, err
+		}
+	}
+	if err := m.ensureMainConversationSource(ctx, intent); err != nil {
+		return AcceptedExecution{}, err
+	}
 	if intent.Admission == "" {
 		intent.Admission = constants.ExecutionAdmissionCommitOnRuntimeAccept
 	}
@@ -276,6 +288,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 	request := pendingMessage{automaticRunID: intent.AutomaticRunID, imReplyLinkID: intent.Input.IMReplyLinkID,
 		entryPoint:        intent.Options.EntryPoint,
 		executionID:       intent.ExecutionID,
+		userMessageID:     intent.UserMessageID,
 		submissionID:      intent.Input.SubmissionID,
 		clientRequestID:   intent.ClientRequestID,
 		chatID:            intent.Chat.ChatID,

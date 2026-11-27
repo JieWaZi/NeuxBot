@@ -16,51 +16,57 @@ export function useChatHistoryScroll({
   scope,
   viewport,
   hasMore,
-  loading,
+  loading = false,
+  enabled = true,
   load,
   onError,
 }: {
   scope: string;
   viewport: RefObject<HTMLDivElement | null>;
   hasMore: boolean;
-  loading: boolean;
-  load: () => Promise<void>;
+  loading?: boolean;
+  enabled?: boolean;
+  load: (signal: AbortSignal) => Promise<void>;
   onError: (error: unknown) => void;
 }) {
-  const sessionRef = useRef<ScrollSession>({ scope, live: true });
+  const sessionRef = useRef<ScrollSession>(null);
   const [failure, setFailure] = useState<{ scope: string; error: unknown }>();
   const error = failure?.scope === scope ? failure.error : undefined;
   useLayoutEffect(() => {
-    const session: ScrollSession = { scope, live: true };
+    if (!enabled) return;
+    const lifetime = new AbortController();
+    const session: ScrollSession = { scope, signal: lifetime.signal };
     sessionRef.current = session;
     return () => {
-      session.live = false;
+      lifetime.abort();
       if (session.frame !== undefined) cancelAnimationFrame(session.frame);
     };
-  }, [scope]);
+  }, [enabled, scope]);
 
   const loadEarlier = async () => {
     const session = sessionRef.current;
-    if (session.pending) return session.pending;
     if (
-      !session.live ||
-      session.scope !== scope ||
-      !hasMore ||
-      loading ||
-      session.frame !== undefined
+      !enabled ||
+      !session ||
+      session.signal.aborted ||
+      session.scope !== scope
     )
       return;
+    if (session.pending) return session.pending;
+    if (!hasMore || loading || session.frame !== undefined) return;
     const request = (async () => {
       try {
         const { loadChatHistoryWithAnchor } =
           await import("./chat-history-anchor");
-        if (!session.live) return;
-        await loadChatHistoryWithAnchor(session, viewport, load);
-        if (!session.live) return;
+        if (session.signal.aborted) return;
+        await loadChatHistoryWithAnchor(session, viewport, () =>
+          load(session.signal),
+        );
+        if (session.signal.aborted) return;
         setFailure(undefined);
         return true;
       } catch (error) {
-        if (!session.live) return;
+        if (session.signal.aborted) return;
         session.anchor = undefined;
         setFailure({ scope, error });
         onError(error);
@@ -76,6 +82,7 @@ export function useChatHistoryScroll({
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
     const container = event.currentTarget;
     const session = sessionRef.current;
+    if (!enabled || !session || session.signal.aborted) return;
     const previous = session.previousTop;
     session.previousTop = container.scrollTop;
     const programmaticTop = session.programmaticTop;
@@ -100,9 +107,13 @@ export function useChatHistoryScroll({
       void loadEarlier();
   };
 
-  const isAnchoring = useCallback(() => Boolean(sessionRef.current.anchor), []);
+  const isAnchoring = useCallback(
+    () =>
+      Boolean(sessionRef.current?.anchor && !sessionRef.current.signal.aborted),
+    [],
+  );
   const ignoreProgrammaticScroll = useCallback((top: number) => {
-    sessionRef.current.programmaticTop = top;
+    if (sessionRef.current) sessionRef.current.programmaticTop = top;
   }, []);
   return {
     isAnchoring,

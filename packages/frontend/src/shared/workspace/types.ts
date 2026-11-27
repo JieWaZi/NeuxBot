@@ -6,5 +6,6 @@ export type WorkspaceFile = {
   name: string;
   path: string;
   source: "chat" | "project";
+  sourceChatId?: string;
   mediaType?: string;
 };

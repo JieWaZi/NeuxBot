@@ -704,6 +704,11 @@ func (s *Service) authorizeWorkflowTool(ctx context.Context, scope workflowtool.
 		if err != nil {
 			return workflowToolAccess{}, err
 		}
+		if lease.ThreadID == "" && chat.HiddenFromWakerHistory {
+			if err := s.checkMainWork(ctx, chat); err != nil {
+				return workflowToolAccess{}, err
+			}
+		}
 		return workflowToolAccess{
 			owner:     consumerReceiptOwner(lease),
 			selection: lease.Selection,

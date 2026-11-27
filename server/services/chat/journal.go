@@ -97,6 +97,8 @@ type Journal interface {
 	ReadExecutionMessages(context.Context, string, string) ([]messageview.Message, error)
 	// ReadReplyTarget 为当前用户输入定位普通或成员 Chat 中可引用的公开正文。
 	ReadReplyTarget(context.Context, string, string) (ReplyTarget, error)
+	// ReadSourceReplyTarget 读取获得主会话授权的隐藏工作记录内可引用的原消息。
+	ReadSourceReplyTarget(context.Context, string, string) (ReplyTarget, error)
 	// ReadTeamReplyTarget 为负责人队列定位该对话中可引用的公开正文。
 	ReadTeamReplyTarget(context.Context, string, string, string) (ReplyTarget, error)
 	// ForkChat 创建独立原生会话并发布可恢复的继承历史。

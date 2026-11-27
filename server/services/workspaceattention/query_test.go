@@ -2,8 +2,10 @@ package workspaceattention
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -60,6 +62,9 @@ func TestAttentionMultipleChats(t *testing.T) {
 	want := models.AttentionMetrics{UnreadMessageCount: 5, UnreadChatCount: 2, WaitingWorkCount: 1, PendingRequestCount: 2, AwaitingViewWorkCount: 2, RunningChatCount: 1}
 	if !complete.Complete || len(summaries) != 1 || summaries[0].AttentionMetrics != want {
 		t.Fatalf("summaries=%+v complete=%+v want=%+v", summaries, complete, want)
+	}
+	if !slices.Equal(summaries[0].RequestKinds, []string{"approval"}) {
+		t.Fatalf("ordinary request kinds = %v", summaries[0].RequestKinds)
 	}
 	t.Logf("SQLite scope with two pending requests: %s", time.Since(started))
 	if err := reader.MarkRead(ctx, constants.LocalReaderID, first, "3", 0, constants.ReadingIntentExplicit); err != nil {
@@ -129,6 +134,40 @@ func TestExecutorAttentionExcludesWorkflowCreationChats(t *testing.T) {
 	if err != nil || request.WorkflowID != "workflow" || request.RequestID != "approve" {
 		t.Errorf("workflow creation request lost its workflow target: %+v error=%v", request, err)
 	}
+
+	t.Run("only owned main conversation sources contribute request kinds", func(t *testing.T) {
+		if err := db.DB.Create(&models.Waker{ID: "waker", Name: "伙伴"}).Error; err != nil {
+			t.Fatal(err)
+		}
+		store := controllers.NewMainConversationController(db.DB)
+		main, err := store.Ensure(ctx, "waker", "waker")
+		if err != nil {
+			t.Fatal(err)
+		}
+		source, err := store.ReserveWork(ctx, main.ID, "waker", "managed")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.DB.Create(&models.Chat{
+			ID: source.WorkChatID, WakerID: "waker", HiddenFromWakerHistory: true, ActiveExecutionID: "main-active",
+			WaitingElicitation: true, PendingElicitations: []models.PendingElicitation{{ElicitationID: "question"}},
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+		summaries, complete, err := q.ExecutorSummaries(ctx, constants.LocalReaderID, []string{"waker"})
+		if err != nil || !complete.Complete || len(summaries) != 1 {
+			t.Fatalf("executor summaries = %+v, complete = %+v, err = %v", summaries, complete, err)
+		}
+		got := summaries[0]
+		if got.WaitingWorkCount != 1 || got.PendingRequestCount != 1 || len(got.Chats) != 0 || len(got.Requests) != 1 ||
+			got.Requests[0].OwnerKind != constants.WorkOwnerKindMainConversation || got.Requests[0].OwnerID != main.ID || got.Requests[0].ChatID != source.WorkChatID {
+			t.Fatalf("main work changed ordinary navigation: %+v", got)
+		}
+		data, err := json.Marshal(got)
+		if err != nil || !strings.Contains(string(data), `"requestKinds":["input"]`) {
+			t.Fatalf("main question lost its kind: %s %v", data, err)
+		}
+	})
 }
 
 // attentionQueryTrace 记录工作区权威查询使用的实际 SQL 数量。

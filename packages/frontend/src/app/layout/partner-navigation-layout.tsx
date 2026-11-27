@@ -74,6 +74,7 @@ import {
 } from "./partner-navigation-preferences";
 import { WakerNavigationMenu } from "./waker-navigation-menu";
 import { useWakerNavigationGroups } from "./use-waker-navigation-groups";
+import { mainConversationOwner } from "../scenes/main-conversation-route";
 import { TeamNavigationMenu } from "./team-navigation-menu";
 import { VerticalResizeHandle } from "@/shared/ui/vertical-resize-handle";
 import {
@@ -583,9 +584,12 @@ function PartnerNavigationLayoutContent({
                       onMove={(name) => navigationGroups.move(item.id, name)}
                       onDeleted={() => {
                         void navigationGroups.refresh();
+                        const owner = mainConversationOwner(location.pathname);
                         if (
-                          selectedRailKey === item.key &&
-                          (location.pathname === "/chat" || activeChatId)
+                          owner
+                            ? owner.kind === "waker" && owner.id === item.id
+                            : selectedRailKey === item.key &&
+                              (location.pathname === "/chat" || activeChatId)
                         )
                           navigate("/wakers", { replace: true });
                       }}

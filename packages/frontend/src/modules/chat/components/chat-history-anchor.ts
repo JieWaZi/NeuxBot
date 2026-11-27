@@ -2,7 +2,7 @@ import type { RefObject } from "react";
 
 export type ScrollSession = {
   scope: string;
-  live: boolean;
+  signal: AbortSignal;
   pending?: Promise<boolean | undefined>;
   frame?: number;
   previousTop?: number;
@@ -34,9 +34,10 @@ export async function loadChatHistoryWithAnchor(
       }
     : undefined;
   await load();
-  if (!session.live || viewport.current !== container) return;
+  if (session.signal.aborted || viewport.current !== container) return;
   session.frame = requestAnimationFrame(() => {
-    if (!session.live || !container || viewport.current !== container) return;
+    if (session.signal.aborted || !container || viewport.current !== container)
+      return;
     // 按可见消息的实际位移补偿，浏览器已完成原生锚定时位移为零。
     const position = session.anchor;
     const target =

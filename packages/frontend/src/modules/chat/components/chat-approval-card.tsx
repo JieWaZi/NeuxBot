@@ -377,7 +377,9 @@ export function ChatApprovalCard({
           onClick={() => resolve(rejectOnce?.id)}
         >
           {t("approval.reject")}
-          <kbd className="text-muted-foreground type-caption">Esc</kbd>
+          {hotkeys ? (
+            <kbd className="text-muted-foreground type-caption">Esc</kbd>
+          ) : null}
         </Button>
         <div className="inline-flex">
           <Button
@@ -390,7 +392,9 @@ export function ChatApprovalCard({
           >
             <ShieldCheck />
             {t("approval.allowOnce")}
-            <kbd className="text-primary-foreground/70 type-caption">↵</kbd>
+            {hotkeys ? (
+              <kbd className="text-primary-foreground/70 type-caption">↵</kbd>
+            ) : null}
           </Button>
           {extras.length ? (
             <DropdownMenu>

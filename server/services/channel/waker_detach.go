@@ -25,14 +25,8 @@ type wakerDetachmentPlan struct {
 	removedWakerIDs []string
 }
 
-// ValidateWakerDetachment 校验伙伴退出全部团队时不会被活跃工作阻止。
-func (s *service) ValidateWakerDetachment(ctx context.Context, wakerID string) error {
-	_, err := s.prepareWakerDetachment(ctx, wakerID)
-	return err
-}
-
-// DetachWaker 从全部团队中移除指定伙伴，并在成员不足时级联删除团队。
-func (s *service) DetachWaker(ctx context.Context, wakerID string) error {
+// DetachWaker 将伙伴移除及需要级联删除的团队交给宿主的同一次聚合删除。
+func (s *service) DetachWaker(ctx context.Context, wakerID string, apply func(context.Context, []string, func(context.Context) error) error) error {
 	channelIDs, err := s.channels.ListIDsByMemberWaker(ctx, wakerID)
 	if err != nil {
 		return err
@@ -55,7 +49,7 @@ func (s *service) DetachWaker(ctx context.Context, wakerID string) error {
 		chatIDs = append(chatIDs, plan.chatIDs...)
 	}
 	updatedAt := time.Now().UnixMilli()
-	return s.chats.DeleteChatsAtomically(
+	return apply(
 		ctx,
 		chatIDs,
 		func(transactionContext context.Context) error {
@@ -170,16 +164,9 @@ func (s *service) prepareChannelWakerDetachment(
 	if active > 0 {
 		return wakerDetachmentPlan{}, status_error.ChannelHasActiveWork
 	}
-	threadIDs, err := s.threads.ListIDsByChannel(ctx, channelID)
+	plan.chatIDs, err = s.channelDeletionChatIDs(ctx, channelID)
 	if err != nil {
 		return wakerDetachmentPlan{}, err
-	}
-	for _, threadID := range threadIDs {
-		ids, listErr := s.threads.ListChatIDs(ctx, threadID)
-		if listErr != nil {
-			return wakerDetachmentPlan{}, listErr
-		}
-		plan.chatIDs = append(plan.chatIDs, ids...)
 	}
 	plan.deleteChannel = true
 	return plan, nil
@@ -312,25 +299,4 @@ func (s *service) listExistingMembers(
 		existing = append(existing, member)
 	}
 	return existing, nil
-}
-
-func (s *service) deleteChannelIgnoringActiveWork(ctx context.Context, channelID string) error {
-	threadIDs, err := s.threads.ListIDsByChannel(ctx, channelID)
-	if err != nil {
-		return err
-	}
-	chatIDs := make([]string, 0)
-	for _, threadID := range threadIDs {
-		ids, listErr := s.threads.ListChatIDs(ctx, threadID)
-		if listErr != nil {
-			return listErr
-		}
-		chatIDs = append(chatIDs, ids...)
-	}
-	return s.chats.DeleteChatsAtomically(ctx, chatIDs, func(transactionContext context.Context) error {
-		if err := s.threads.DeleteByChannel(transactionContext, channelID); err != nil {
-			return err
-		}
-		return s.channels.Delete(transactionContext, channelID)
-	})
 }

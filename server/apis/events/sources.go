@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	eventhub "github.com/JieWaZi/NeuxBot/server/internal/notification/events"
@@ -11,6 +12,9 @@ import (
 
 func validateResource(ctx context.Context, command control) error {
 	resource := command.Resource
+	if command.Topic == constants.MainConversationEventTopic {
+		return validateMainConversationSubject(ctx, resource)
+	}
 	if resource.Kind == "global" {
 		return nil
 	}
@@ -68,6 +72,12 @@ func validateResource(ctx context.Context, command control) error {
 		}
 	case "work-board", "reading":
 		switch resource.Kind {
+		case string(constants.WorkOwnerKindMainConversation):
+			conversation, readErr := global.MainConversationControllerManager.Get(ctx, resource.ID)
+			if readErr != nil {
+				return readErr
+			}
+			return validateMainConversationSubject(ctx, eventhub.Resource{Kind: conversation.SubjectType, ID: conversation.SubjectID})
 		case "chat":
 			_, err = global.ChatControllerManager.Get(ctx, resource.ID)
 		case "team_thread":

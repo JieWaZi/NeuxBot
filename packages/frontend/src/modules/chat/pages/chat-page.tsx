@@ -3,6 +3,7 @@ import {
   cancelFirstChatExecutionMutation,
   getWakerRecentProjectOptions,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
+import { applicationErrorMessage } from "@/shared/api/error-presentation";
 import { useInstalledPluginReferences } from "@/modules/plugin";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
 import type { ExecutionSelection } from "@/shared/hooks/use-execution-selection";
@@ -30,12 +31,16 @@ import type {
 } from "@/shared/api/generated/types.gen";
 import type { ChatWorkspaceMainContent } from "../components/chat-workspace-surface";
 import { useWorkbench } from "../workbench/workbench-store";
-import type { ChatSendSelection } from "../runtime/chat-queue-store";
+import type {
+  ChatCodeReference,
+  ChatSendSelection,
+} from "../runtime/chat-queue-store";
 import type {
   ChatReplyDraftEditor,
   ChatReplyReference,
 } from "../runtime/chat-projection";
 import { useTranslation } from "react-i18next";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import {
   useNavigate,
@@ -85,6 +90,7 @@ import { workspaceFilesOf } from "../model/chat-workspace-files";
 import { resolveGitWorkspaceDirectories } from "../model/git-workspace-directories";
 import { useChatWorkspaceBindings } from "../components/use-chat-workspace-bindings";
 import { useComposerScopeTransition } from "../model/use-composer-scope-transition";
+import { isSendFailureActive } from "../runtime/chat-send-failure";
 import { useChatViewState } from "../model/use-chat-view-state";
 import { chatFileRoots } from "../model/project-files-scope";
 import {
@@ -92,7 +98,10 @@ import {
   useChatInvocationGuard,
 } from "../model/conversation-identity";
 import { useChatSkillTimeline } from "../components/chat-skill-suggestions";
-import { useChatInteractions } from "../model/use-conversation-interactions";
+import {
+  useChatInteractions,
+  type ChatRequestSource,
+} from "../model/use-conversation-interactions";
 import { selectableRuntimes } from "../model/selectable-runtimes";
 import {
   useChatRuntime,
@@ -146,10 +155,25 @@ export type ChatWorkspaceEntry = {
   defaults?: ExecutionSelection;
   scopeKey: string;
   wakerId: string;
-  directoryLabel: string;
+  directoryLabel?: string;
+  /** 主会话输入与公开发言的引用由外层持有，工作来源可锁定本次目录。 */
+  conversation?: {
+    reply?: ChatReplyReference;
+    setReply: (reply: ChatReplyReference | undefined) => void;
+    source?: {
+      id?: string;
+      workspaceDirectory?: string;
+      additionalWorkingDirectories?: string[];
+      projectName?: string;
+    };
+    requests?: ChatRequestSource;
+    view: "main" | "source";
+    fixedMember: boolean;
+  };
   mainContent?: ChatWorkspaceMainContent;
   history?: ReactNode;
   draft?: string;
+  codeReferenceRequest?: ChatCodeReference;
   composerReferences?: ChatComposerContextReference[];
   onComposerReferencesChange?: (ids: string[]) => void;
   emptyState?:
@@ -195,6 +219,7 @@ export function ChatPageContent(props: ChatPageContentProps) {
   const composerHost = useChatWorkspaceHost();
   const workspaceScopeKey =
     (props.boardDraft ? props.presentationScopeKey : undefined) ??
+    (props.entry?.conversation ? props.entry.scopeKey : undefined) ??
     (props.presentation === "composer" ? composerHost?.scopeKey : undefined) ??
     props.entry?.scopeKey ??
     (props.chatId
@@ -294,8 +319,14 @@ function ChatView({
         : {},
     );
   const [composerRestoreRevision, setComposerRestoreRevision] = useState(0);
-  const [replyTo, setReplyTo] = useState<ChatReplyReference>();
+  const conversation = entry?.conversation;
+  const [localReply, setLocalReply] = useState<ChatReplyReference>();
+  const replyTo = conversation ? conversation.reply : localReply;
+  const setReplyTo = conversation?.setReply ?? setLocalReply;
   const replyToRef = useRef<ChatReplyReference | undefined>(undefined);
+  useLayoutEffect(() => {
+    replyToRef.current = replyTo;
+  }, [replyTo]);
   const replyDraftRef = useRef<ChatReplyDraftEditor | null>(null);
   const registerReplyDraftEditor = useCallback(
     (editor: ChatReplyDraftEditor) => {
@@ -311,7 +342,7 @@ function ChatView({
       replyToRef.current = target;
       setReplyTo(target);
     },
-    [],
+    [setReplyTo],
   );
   const [sessionSwitch, setSessionSwitch] = useState<{
     chatId: string;
@@ -372,7 +403,8 @@ function ChatView({
   } = useChatWorkflowPicker(
     workflowDrafts,
     JSON.stringify([presentationScopeKey, activeMemberTab?.id ?? "partner"]),
-    !entry && !boardDraft && presentation === "workspace",
+    Boolean(conversation && !conversation.fixedMember) ||
+      (!entry && !boardDraft && presentation === "workspace"),
   );
   const currentChatKey = conversationKeyOf(workspaceScopeKey, activeChatId);
   const { accountId, selectAccount } = useChatAccountSelection(
@@ -461,23 +493,25 @@ function ChatView({
     !entry &&
     !activeMemberTab &&
     (presentation === "workspace" || Boolean(boardDraft));
-  const replyEnabled = Boolean(
-    activeChatId &&
-    ordinaryChatDestination &&
-    !boardDraft &&
-    !routeTransitioning &&
-    activeChat?.id === activeChatId &&
-    !activeChat.hiddenFromWakerHistory &&
-    !wakersQuery.isPending &&
-    !(
-      selectedWaker?.onboardingStatus === "pending" &&
-      selectedWaker.onboardingChatId === activeChatId
-    ),
-  );
+  const replyEnabled =
+    Boolean(conversation) ||
+    Boolean(
+      activeChatId &&
+      ordinaryChatDestination &&
+      !boardDraft &&
+      !routeTransitioning &&
+      activeChat?.id === activeChatId &&
+      !activeChat.hiddenFromWakerHistory &&
+      !wakersQuery.isPending &&
+      !(
+        selectedWaker?.onboardingStatus === "pending" &&
+        selectedWaker.onboardingChatId === activeChatId
+      ),
+    );
   const ordinaryDraft =
     !activeChatId &&
-    !entry &&
-    (Boolean(boardDraft) || presentation !== "composer");
+    (Boolean(conversation && !conversation.fixedMember) ||
+      (!entry && (Boolean(boardDraft) || presentation !== "composer")));
   const wakerDefaultModel = ordinaryDraft
     ? selectedWaker?.defaultModel
     : undefined;
@@ -486,7 +520,7 @@ function ChatView({
       path: { wakerId: selectedWakerID ?? "pending" },
       query: { pageNum: 1, pageSize: 100 },
     }),
-    enabled: readDraftResources && Boolean(selectedWakerID),
+    enabled: !conversation && readDraftResources && Boolean(selectedWakerID),
   });
   const pluginsQuery = useInstalledPluginReferences(
     selectedWakerID,
@@ -879,7 +913,7 @@ function ChatView({
             project.id === explicitDraftSelection.projectId &&
             project.available,
         )
-      : explicitDraftSelection
+      : explicitDraftSelection || conversation
         ? undefined
         : projects.find(
             (project) => project.id === recentProjectID && project.available,
@@ -888,10 +922,12 @@ function ChatView({
     explicitDraftSelection?.type === "folder"
       ? explicitDraftSelection.path
       : "";
-  const workspaceDirectory =
-    detailQuery.data?.chat?.workspaceDirectory ??
-    (entry ? "" : draftWorkingDirectory);
+  const workspaceDirectory = conversation
+    ? (conversation.source?.workspaceDirectory ?? "")
+    : (detailQuery.data?.chat?.workspaceDirectory ??
+      (entry ? "" : draftWorkingDirectory));
   const linkAdditionalWorkingDirectories =
+    conversation?.source?.additionalWorkingDirectories ??
     detailQuery.data?.chat?.additionalWorkingDirectories;
   const gitWorkspaceDirectories = resolveGitWorkspaceDirectories({
     additionalWorkingDirectories: linkAdditionalWorkingDirectories,
@@ -905,6 +941,11 @@ function ChatView({
         workspaceDirectory)
       : undefined;
   const fileRoots = (() => {
+    if (conversation)
+      return chatFileRoots(
+        workspaceDirectory,
+        linkAdditionalWorkingDirectories,
+      );
     if (activeChatId && workspaceDirectory)
       return chatFileRoots(
         workspaceDirectory,
@@ -1002,7 +1043,9 @@ function ChatView({
     conversationKey: currentChatKey,
     queueKey: runtimeQueueKey,
     queueActive: sceneActive,
-    singleSubmission: Boolean(boardDraft || (optimizeProfile && !activeChatId)),
+    singleSubmission: Boolean(
+      conversation || boardDraft || (optimizeProfile && !activeChatId),
+    ),
     chatId: activeChatId,
     messageSource,
     activeExecutionId: detailQuery.data?.chat?.activeExecutionId,
@@ -1075,7 +1118,8 @@ function ChatView({
         },
       };
     },
-    onMessageRejected: (selection) => {
+    onMessageRejected: (selection, mode) => {
+      if (mode === "edit") changeReplyTo(selection.replyTo);
       if (selection.optimizeProfile && !activeChatId)
         selectProfileOptimization(true);
       setComposerRestoreRevision((revision) => revision + 1);
@@ -1118,10 +1162,12 @@ function ChatView({
       const message = {
         steerExecutionId: selection?.steerExecutionId,
         text,
-        ...(ordinaryChatDestination && selection?.attachmentOnly
+        ...((conversation || ordinaryChatDestination) &&
+        selection?.attachmentOnly
           ? { attachmentOnly: true }
           : {}),
-        ...(ordinaryChatDestination && selection?.codeReferenceOnly
+        ...((conversation || ordinaryChatDestination) &&
+        selection?.codeReferenceOnly
           ? { codeReferenceOnly: true }
           : {}),
         workflowId: selection?.workflow?.id,
@@ -1357,21 +1403,13 @@ function ChatView({
       chatRuntime.pendingApprovals.length > 0 ||
       chatRuntime.pendingElicitations.length > 0,
   });
-  const {
-    approvalSubmissionState,
-    elicitationSubmissionState,
-    resolveApprovalChoice,
-    resolveElicitationChoice,
-  } = useChatInteractions({
+  const requests: ChatRequestSource = conversation?.requests ?? {
     chatId: activeChatId,
-    conversationKey: currentChatKey,
-    guard: chatInvocationGuard,
+    pendingApprovals: chatRuntime.pendingApprovals,
+    pendingElicitations: chatRuntime.pendingElicitations,
     onSettled: (targetChatId) =>
       refreshChatMetadata(targetChatId, selectedWakerID),
     onElicitationSettled: () => void messageSource.reconcile().catch(() => {}),
-    pendingApprovals: chatRuntime.pendingApprovals,
-    pendingElicitations: chatRuntime.pendingElicitations,
-    queueKey: runtimeQueueKey,
     resolveApproval: (targetChatId, approvalId, optionId) =>
       resolveApproval.mutateAsync({
         path: { chatId: targetChatId, approvalId },
@@ -1382,6 +1420,17 @@ function ChatView({
         path: { chatId: targetChatId, elicitationId },
         body: { content, declined },
       }),
+  };
+  const {
+    approvalSubmissionState,
+    elicitationSubmissionState,
+    resolveApprovalChoice,
+    resolveElicitationChoice,
+  } = useChatInteractions({
+    ...requests,
+    conversationKey: currentChatKey,
+    guard: chatInvocationGuard,
+    queueKey: runtimeQueueKey,
   });
   const historyIsLoading = Boolean(
     entry?.isHistoryLoading ||
@@ -1411,6 +1460,9 @@ function ChatView({
   const conversationAvatar = selectedWaker?.avatar;
   const conversationWakerId = selectedWakerID;
   const workspaceLabel =
+    (conversation
+      ? conversation.source?.projectName || t("defaultWorkspace")
+      : "") ||
     entry?.directoryLabel ||
     detailQuery.data?.chat?.projectName ||
     (activeChatId && !detailQuery.data?.chat?.projectName
@@ -1448,15 +1500,20 @@ function ChatView({
       : emptyState;
 
   const retryFirstSubmission = chatRuntime.retryFirstSubmission;
+  const firstSendUnconfirmed = t("firstSendUnconfirmed");
+  const sendFailure = chatRuntime.sendFailure;
   const boardInputLocked = Boolean(boardDraft && retryFirstSubmission);
   const {
     composerEffects,
     renderComposerSettings,
     renderContextStrip: renderComposerContextStrip,
   } = useChatComposerControls({
+    hideWorkspace: conversation?.view === "main",
     preservePermissionOnModelChange: !boardDraft,
     executionControlsDisabled: Boolean(
-      boardDraft && (boardInputLocked || chatRuntime.isRunning || !sceneActive),
+      conversation?.fixedMember ||
+      (boardDraft &&
+        (boardInputLocked || chatRuntime.isRunning || !sceneActive)),
     ),
     loadAccounts: readExecutionCatalog,
     onModelPickerOpenChange: boardDraft ? setBoardModelPickerOpen : undefined,
@@ -1613,23 +1670,72 @@ function ChatView({
       afterMessages: skillTimeline.loadError,
       timelineEvents: [...workflowTimeline.events, ...skillTimeline.events],
       workflowInvocation: workflowTimeline.workflowInvocation,
-      activityStatus: retryFirstSubmission ? (
-        <div
-          role="status"
-          className="type-ui flex min-w-0 flex-wrap items-center justify-between gap-2"
-        >
-          {t("firstSendUnconfirmed")}
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            disabled={chatRuntime.isRunning || !sceneActive}
-            onClick={retryFirstSubmission}
+      composerRecovery:
+        conversation && retryFirstSubmission ? (
+          <div
+            role="alert"
+            className="type-ui flex w-full min-w-0 flex-wrap items-center gap-2"
           >
-            {t("retryFirstSend")}
-          </Button>
-        </div>
-      ) : undefined,
+            <div className="flex min-w-0 flex-1 basis-32 items-center gap-2">
+              <AlertTriangle
+                aria-hidden="true"
+                className="text-destructive size-icon-md shrink-0"
+              />
+              <p className="text-destructive min-w-0 flex-1 break-words">
+                {isSendFailureActive(sendFailure)
+                  ? applicationErrorMessage({
+                      code: sendFailure.errorCode,
+                      params: sendFailure.errorParams,
+                      message: sendFailure.message,
+                      messageSource: sendFailure.messageSource,
+                      fallback: firstSendUnconfirmed,
+                    })
+                  : firstSendUnconfirmed}
+              </p>
+            </div>
+            <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
+              {chatRuntime.editFirstSubmission ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={chatRuntime.isRunning || !sceneActive}
+                  onClick={chatRuntime.editFirstSubmission}
+                >
+                  {t("editFirstSend")}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="ml-auto shrink-0"
+                disabled={chatRuntime.isRunning || !sceneActive}
+                onClick={retryFirstSubmission}
+              >
+                {t("retryFirstSend")}
+              </Button>
+            </div>
+          </div>
+        ) : undefined,
+      activityStatus:
+        !conversation && retryFirstSubmission ? (
+          <div
+            role="status"
+            className="type-ui flex min-w-0 flex-wrap items-center justify-between gap-2"
+          >
+            {firstSendUnconfirmed}
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={chatRuntime.isRunning || !sceneActive}
+              onClick={retryFirstSubmission}
+            >
+              {t("retryFirstSend")}
+            </Button>
+          </div>
+        ) : undefined,
       presentationScopeKey,
       active: sceneActive,
       wakerName,
@@ -1697,7 +1803,7 @@ function ChatView({
       selectedConnectorIds: selectedConnectorIDs,
       onSkillSelectionChange: setSelectedSkillIDs,
       onConnectorSelectionChange: setSelectedConnectorIDs,
-      codeReferenceRequest,
+      codeReferenceRequest: entry?.codeReferenceRequest ?? codeReferenceRequest,
       composerClearRevision,
       composerRestoreRevision,
       linkWorkspaceRoot: workspaceDirectory,
@@ -1713,7 +1819,7 @@ function ChatView({
       onOpenFileChange: openExecutionFileChange,
       contextMetrics: chatRuntime.contextMetrics,
       sendFailure: chatRuntime.sendFailure,
-      errorScopes: [runtimeQueueKey, `chat:${activeChatId}`],
+      errorScopes: [runtimeQueueKey, `chat:${requests.chatId}`],
       onRecoverSession: () => {
         if (!activeChatId) return;
         setSessionSwitch({
@@ -1732,14 +1838,12 @@ function ChatView({
           .then(() => {}),
       warning: permissionWarning || undefined,
       requestedInteractionId: searchParams.get("request") ?? undefined,
-      pendingApprovals: sceneActive ? chatRuntime.pendingApprovals : [],
+      pendingApprovals: sceneActive ? requests.pendingApprovals : [],
       approvalSubmissionState,
       onResolveApproval: (approvalId, optionId) =>
         void resolveApprovalChoice(approvalId, optionId),
       pendingElicitations:
-        sceneActive && !routeTransitioning
-          ? chatRuntime.pendingElicitations
-          : [],
+        sceneActive && !routeTransitioning ? requests.pendingElicitations : [],
       elicitationSubmissionState,
       onResolveElicitation: (elicitationId, content, declined) =>
         void resolveElicitationChoice(elicitationId, content, declined),
@@ -1763,10 +1867,16 @@ function ChatView({
         <ChatThread
           {...chatAdapter.thread}
           presentation="composer"
+          fileScopeChatId={
+            conversation?.view === "source"
+              ? conversation.source?.id
+              : activeChatId
+          }
           composerAutoFocus={!boardDraft}
-          composerInputSize={boardDraft ? "tall" : undefined}
-          composerSingleSubmission={Boolean(boardDraft)}
+          composerLayout={boardDraft ? "tall" : conversation && "compact"}
+          composerSingleSubmission={Boolean(boardDraft || conversation)}
           composerDisabled={Boolean(
+            (conversation && retryFirstSubmission) ||
             boardInputLocked ||
             (boardDraft && chatRuntime.isRunning) ||
             entry?.isSendDisabled ||

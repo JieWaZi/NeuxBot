@@ -1,3 +1,4 @@
+import { mainConversationScene } from "./main-conversation-route";
 import { resolveAppNavigation } from "../layout/app-navigation-model";
 import type {
   AppSceneBackground,
@@ -24,6 +25,7 @@ export type RouteSceneLabels = {
   automaticTask?: string;
   workflow?: string;
   chat: string;
+  mainConversation?: string;
   detail: string;
   newChat: string;
   newWaker?: string;
@@ -153,6 +155,11 @@ export function routeSceneForLocation(
     );
   }
   const params = new URLSearchParams(search);
+  const main = mainConversationScene(
+    location,
+    labels.mainConversation || labels.chat,
+  );
+  if (main) return main;
   const chat = /^\/chats\/([^/]+)$/.exec(pathname);
   if (chat?.[1])
     return routeTab(`chat:${chat[1]}`, labels.chat, location, "preserve");

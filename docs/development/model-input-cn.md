@@ -20,6 +20,7 @@
 | 场景                   | 会话规则和工具                                                                                                                                                                                     | 正文以外的本轮输入                                                                                                                       |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | 普通伙伴与项目对话     | 伙伴档案、工作范围、项目允许加载的说明和已交付能力入口。工作流可按用户请求在授权工具中发现，普通本地对话省略工作流专用会话指令。技能、连接器的显式管理通过授权命令及保存回执，规则随实际能力交付。 | 有选择时发送附件名称和工作路径、代码路径或选区、技能名、原生连接器名及已选插件信息。明确回复时，通过 `Reply target` 交付同一 Chat 原消息的有界正文。工作台合格对话按下节交付核心记忆。按需查找普通记忆。 |
+| 主会话交办的工作 Chat | 宿主签发公开历史读取与主会话发言能力。工作 Chat 按需翻阅同一会话的公开记录。 | 原始公开交办与引用由宿主绑定到当前执行。来源内续聊的用户输入也在主会话可见。工作记录保存完整工具过程和原生输出。 |
 | 普通对话指定工作流     | 沿用普通对话的会话规则和工具集合。                                                                                                                                                                 | `Workflow target` 携带本轮冻结的定义和版本，以及可读名称。下一轮由新的选择决定。                                                         |
 | 工作流创作             | 创作角色和工作区规则作为会话指令，完整指南、源码、资源和 SDK 通过 `workflow.authoring.prepare` 按需读取。                                                                                          | 冻结画布或运行引用，未选择时省略。公开用户正文沿用创作页原始输入。                                                                       |
 | 工作流运行与节点       | 使用当前执行或消费者入口的规则及精确授权；有结果提交契约时提示按工具回执提交。                                                                                                                     | 当前运行目录、业务输入和所需结果 Schema。独立的工具授权、运行身份和提交回执由 Core 保持。                                                |
@@ -132,7 +133,7 @@ Use these cwd-relative project entry paths for project tools. Each sourcePath is
 
 #### 应用能力入口 · MCP
 
-工作流能力已交付且当前智能体支持 stdio MCP 时采用。
+工作流或主会话发言能力已交付且当前智能体支持 stdio MCP 时采用。
 
 ```text
 ## NeuxBot capabilities
@@ -148,6 +149,16 @@ Core 成功准备应用能力且选用 CLI 传输时采用。
 ## NeuxBot capabilities
 
 For NeuxBot-provided operations, read the bot skill at "{{botSkillDir}}/SKILL.md". Run `botcli capabilities` to discover the current authorized commands. If the shell cannot resolve the bundled `botcli`, invoke the executable at "{{botcliPath}}" with the same arguments. The host provides the active connection. Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read "{{botSkillDir}}/references/wiki-guide.md". These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract.
+```
+
+#### 主会话发言
+
+当前工作执行获授 `conversations.messages.post` 时，宿主加入下列固定指令。模型提供完整正文和每次调用的请求标识，投递目标来自宿主接纳的工作来源。无工具、无审批或提问且未尝试发言的成功回合，宿主可送达适配器确认的最终答复。WorkBuddy 省略原生最终消息时，仅采用正常结束时同一原生助手消息的连续正文。此前可有独立思考，出现旁白、多条正文或归属不明时留在工作记录。
+
+```text
+## Public conversation messages
+
+Publish complete messages with conversations.messages.post (conversations_messages_post over MCP). Each call delivers immediately to the same main conversation from either input view. For short answers, one post is enough. For longer work, publish a useful, self-contained finding or a change that affects the user's next decision as soon as you have it, then continue. Publish the finished result when ready. Use a structured question when you need the user's answer to proceed. While a question is pending, keep the turn open. Call interaction.questions.wait with its questionId. On completed=false, repeat the wait with the same ID until resolved. Continue from the actual answer. Keep reasoning, tool steps and routine progress in the work transcript. Give each message its own requestId. If its receipt is uncertain, look it up or retry with the original requestId and content. Read earlier public messages when needed via conversations.messages.list (conversations_messages_list over MCP).
 ```
 
 #### 技能与连接器管理

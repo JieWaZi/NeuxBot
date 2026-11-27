@@ -13,6 +13,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/apis/integrations"
 	knowledgeapi "github.com/JieWaZi/NeuxBot/server/apis/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/apis/knowledge_connections"
+	"github.com/JieWaZi/NeuxBot/server/apis/main_conversations"
 	"github.com/JieWaZi/NeuxBot/server/apis/mcp"
 	memoryapi "github.com/JieWaZi/NeuxBot/server/apis/memory"
 	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
@@ -61,6 +62,7 @@ func init() {
 	desktopRouter.Register(projects.Router)
 	desktopRouter.Register(role_presets.Router)
 	desktopRouter.Register(chats.Router)
+	desktopRouter.Register(main_conversations.Router)
 	desktopRouter.Register(channels.Router)
 	desktopRouter.Register(runtime_options.Router)
 	desktopRouter.Register(ai_accounts.Router)

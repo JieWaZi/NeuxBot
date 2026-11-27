@@ -88,6 +88,8 @@ export type BotChatMessage = ChatMessage & {
   steerPending?: boolean;
   liveRevision?: number;
   codeReferences?: ChatCodeReference[];
+  /** 来源工作记录只把已提交的公开发言投影到结果区，原生部件仍由日志持有。 */
+  publishedResultParts?: readonly MessageDisplayPart[];
 };
 
 /** 原领域 Query 提供已提交快照和原子持久事件接管，Runtime 不识别来源缓存键。 */

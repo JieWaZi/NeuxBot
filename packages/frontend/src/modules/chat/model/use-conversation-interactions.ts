@@ -38,6 +38,19 @@ type ChatInteractionOptions = {
   ) => Promise<unknown>;
 };
 
+/** 业务会话向聊天输入区提供权威请求、处理回址与确认读取。 */
+export type ChatRequestSource = Pick<
+  ChatInteractionOptions,
+  | "chatId"
+  | "resolveApproval"
+  | "resolveElicitation"
+  | "onSettled"
+  | "onElicitationSettled"
+> & {
+  pendingApprovals: PendingApproval[];
+  pendingElicitations: ChatPendingElicitation[];
+};
+
 type ApprovalSubmission = {
   approvalId?: string;
   conversationKey?: ChatScopeKey;

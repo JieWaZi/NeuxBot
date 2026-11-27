@@ -23,7 +23,10 @@ import {
   WakerFormDialog,
   type Waker,
 } from "@/modules/waker";
-import { markLatestChatUnread } from "@/shared/api/chat-reading";
+import {
+  markLatestChatUnread,
+  markLatestConversationUnread,
+} from "@/shared/api/chat-reading";
 import {
   localApiErrorMessage,
   withLocalErrorMutation,
@@ -88,6 +91,13 @@ export function WakerNavigationMenu({
   const markUnread = async () => {
     setMarkingUnread(true);
     try {
+      if (
+        await markLatestConversationUnread(client, {
+          subjectType: "waker",
+          subjectId: wakerId,
+        })
+      )
+        return;
       const result = await client.fetchQuery({
         ...listChatsOptions(
           withLocalErrorSurface({ query: { wakerId, limit: 1 } }),

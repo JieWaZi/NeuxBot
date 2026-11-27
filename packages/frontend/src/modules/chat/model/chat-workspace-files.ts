@@ -2,20 +2,33 @@ import type { GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage as Cha
 import type { WorkspaceFileEntry } from "@/shared/platform";
 import type { WorkspaceFile } from "@/shared/workspace/types";
 
+export function workspaceFileKey(
+  file: Pick<WorkspaceFile, "path" | "sourceChatId">,
+) {
+  return file.sourceChatId
+    ? JSON.stringify([file.sourceChatId, file.path])
+    : file.path;
+}
+
 export function workspaceFilesOf(
-  messages: readonly ChatMessage[],
+  messages: readonly (Pick<ChatMessage, "attachments"> & {
+    sourceChatId?: string;
+  })[],
 ): WorkspaceFile[] {
   const files = new Map<string, WorkspaceFile>();
   for (const message of messages) {
     for (const attachment of message.attachments ?? []) {
       const path = attachment.path?.trim();
-      if (!path || files.has(path)) continue;
-      files.set(path, {
+      if (!path) continue;
+      const file: WorkspaceFile = {
         name: attachment.name?.trim() || path.split("/").at(-1) || path,
         path,
         source: "chat",
         mediaType: attachment.mediaType,
-      });
+        ...(message.sourceChatId ? { sourceChatId: message.sourceChatId } : {}),
+      };
+      const key = workspaceFileKey(file);
+      if (!files.has(key)) files.set(key, file);
     }
   }
   return [...files.values()];
@@ -30,7 +43,7 @@ export function workspaceFilesWithGenerated(
   const merged = new Map(
     files
       .filter((file) => !removed.has(file.path))
-      .map((file) => [file.path, file]),
+      .map((file) => [workspaceFileKey(file), file]),
   );
   for (const entry of generatedEntries) {
     const path = entry.relativePath.trim();

@@ -3446,6 +3446,132 @@ export type GithubComJieWaZiNeuxBotServerApisKnowledgeWriteThemeInput = {
 };
 
 /**
+ * 主会话接纳回执
+ */
+export type GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationAcceptance = {
+    /**
+     * 执行标识
+     */
+    executionId?: string;
+    message?: GithubComJieWaZiNeuxBotServerRepositoriesModelsMainConversationMessage & unknown;
+};
+
+/**
+ * 主会话输入
+ */
+export type GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationInput = {
+    /**
+     * 消息正文
+     */
+    content?: string;
+    message?: GithubComJieWaZiNeuxBotServerApisChatsMessageRequest & unknown;
+    /**
+     * 交办项目
+     */
+    projectId?: string;
+    /**
+     * 引用消息
+     */
+    replyToMessageId?: string;
+    /**
+     * 提交标识
+     */
+    submissionId: string;
+    /**
+     * 临时目录
+     */
+    workingDirectory?: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationReadingResponse = GithubComJieWaZiNeuxBotServerRepositoriesModelsMainConversationReadingState & GithubComJieWaZiNeuxBotServerRepositoriesModelsAttentionCompleteness & {
+    [key: string]: unknown;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationResponse = GithubComJieWaZiNeuxBotServerRepositoriesModelsMainConversation & {
+    /**
+     * 活跃工作
+     */
+    activeWork?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsMainConversationActivity>;
+    /**
+     * 更早记录
+     */
+    hasMore?: boolean;
+    /**
+     * 消息列表
+     */
+    messages?: Array<GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationTimelineMessage>;
+    /**
+     * 上页游标
+     */
+    nextBeforeSequence?: number;
+};
+
+/**
+ * 来源公开发言
+ */
+export type GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationSourcePublication = {
+    /**
+     * 发言正文
+     */
+    content?: string;
+    /**
+     * 执行标识
+     */
+    executionId?: string;
+    /**
+     * 发言标识
+     */
+    id?: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationSourceResponse = GithubComJieWaZiNeuxBotServerServicesChatMessageHistoryPage & {
+    chat?: GithubComJieWaZiNeuxBotServerRepositoriesModelsChat & unknown;
+    /**
+     * 已发布发言
+     */
+    publishedMessages?: Array<GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationSourcePublication>;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationTimelineMessage = GithubComJieWaZiNeuxBotServerRepositoriesModelsMainConversationMessage & {
+    /**
+     * 仅附件
+     */
+    attachmentOnly?: boolean;
+    /**
+     * 附件列表
+     */
+    attachments?: Array<GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference>;
+    /**
+     * 仅代码引用
+     */
+    codeReferenceOnly?: boolean;
+    /**
+     * 代码引用
+     */
+    codeReferences?: Array<GithubComJieWaZiNeuxBotServerInternalChatEventlogCodeReference>;
+    /**
+     * 失败原因码
+     */
+    failureCode?: string;
+    /**
+     * 分支回合
+     */
+    forkExecutionId?: string;
+    /**
+     * 原始正文
+     */
+    inputContent?: string;
+    /**
+     * 历史提问
+     */
+    questions?: Array<GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageQuestion>;
+    /**
+     * 可读发言
+     */
+    readable?: boolean;
+};
+
+/**
  * 连接器输入
  */
 export type GithubComJieWaZiNeuxBotServerApisMcpConnectorInput = {
@@ -6546,6 +6672,10 @@ export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardLiveTarget = {
      */
     title?: string;
     /**
+     * 提醒展示时的公开会话未读代次
+     */
+    unreadGeneration?: number;
+    /**
      * Valid 表示原目标仍可打开。
      */
     valid?: boolean;
@@ -8477,11 +8607,12 @@ export type GithubComJieWaZiNeuxBotServerConstantsWakerOnboardingStatus = '' | '
  * >
  * * `automatic_run` - WorkOwnerKindAutomaticRun 表示没有接纳目标的自动机会。
  * * `chat` - WorkOwnerKindChat 表示独立会话。
+ * * `main_conversation` - WorkOwnerKindMainConversation 表示伙伴或团队的公开主会话。
  * * `team_thread` - WorkOwnerKindTeamThread 表示团队对话。
  * * `workflow_run` - WorkOwnerKindWorkflowRun 表示对用户可见的工作流运行。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind = 'automatic_run' | 'chat' | 'team_thread' | 'workflow_run';
+export type GithubComJieWaZiNeuxBotServerConstantsWorkOwnerKind = 'automatic_run' | 'chat' | 'main_conversation' | 'team_thread' | 'workflow_run';
 
 /**
  * >
@@ -12357,6 +12488,14 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecutorAttentionSumm
     latestChatId?: string;
     latestWork?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkRef & unknown;
     /**
+     * 主会话未读代次
+     */
+    mainConversationUnreadGeneration?: number;
+    /**
+     * 请求类型
+     */
+    requestKinds?: Array<string>;
+    /**
      * Requests 定位每个仍有效的原操作及真实成员或子运行。
      */
     requests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
@@ -12785,6 +12924,141 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsMcpToolSummary = {
      * Name 是 MCP 服务声明的工具名称。
      */
     name?: string;
+};
+
+/**
+ * MainConversation 是主体在本机持久可寻址的公开主会话。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsMainConversation = {
+    /**
+     * 会话标识
+     */
+    id?: string;
+    /**
+     * 主体标识
+     */
+    subjectId?: string;
+    /**
+     * 主体类型
+     */
+    subjectType?: string;
+};
+
+/**
+ * 主会话活跃工作
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsMainConversationActivity = {
+    /**
+     * 活跃执行
+     */
+    executionId?: string;
+    /**
+     * 已有公开答复
+     */
+    hasPublicReply?: boolean;
+    /**
+     * 公开交办消息
+     */
+    inputMessageId?: string;
+    /**
+     * 执行伙伴
+     */
+    sourceWakerId?: string;
+    /**
+     * 等待审批
+     */
+    waitingApproval?: boolean;
+    /**
+     * 等待补充输入
+     */
+    waitingElicitation?: boolean;
+    /**
+     * 工作对话
+     */
+    workChatId?: string;
+};
+
+/**
+ * MainConversationMessage 是用户输入或明确发往主会话的一条发言。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsMainConversationMessage = {
+    /**
+     * 消息正文
+     */
+    content?: string;
+    /**
+     * 会话标识
+     */
+    conversationId?: string;
+    /**
+     * 创建时间
+     */
+    createdAt?: number;
+    /**
+     * 消息标识
+     */
+    id?: string;
+    /**
+     * 引用消息
+     */
+    replyToMessageId?: string;
+    /**
+     * 发送角色
+     */
+    role?: string;
+    /**
+     * 消息顺序
+     */
+    sequence?: number;
+    /**
+     * 来源对话
+     */
+    sourceChatId?: string;
+    /**
+     * 发言伙伴
+     */
+    sourceWakerId?: string;
+};
+
+/**
+ * 主会话阅读游标
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsMainConversationReadCursor = {
+    /**
+     * 主会话标识
+     */
+    conversationId?: string;
+    /**
+     * 保持未读
+     */
+    holdUnread?: boolean;
+    /**
+     * 已读序号
+     */
+    throughSequence?: number;
+    /**
+     * 未读代次
+     */
+    unreadGeneration?: number;
+    /**
+     * 更新时间
+     */
+    updatedAt?: number;
+};
+
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsMainConversationReadingState = GithubComJieWaZiNeuxBotServerRepositoriesModelsMainConversationReadCursor & {
+    /**
+     * 首条未读消息
+     */
+    firstUnreadMessageID?: string;
+    /**
+     * 最后可读消息
+     */
+    latestReadableMessageID?: string;
+    /**
+     * 未读消息数
+     */
+    unreadMessageCount?: number;
 };
 
 /**
@@ -13448,6 +13722,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry = {
      * Title 是原容器当前标题。
      */
     title?: string;
+    /**
+     * UnreadGeneration 是当前公开会话的手动未读代次。
+     */
+    unreadGeneration?: number;
     /**
      * UnreadMessageCount 是本工作公开会话的未读消息数。
      */
@@ -16648,6 +16926,8 @@ export type ReadErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -17029,6 +17309,8 @@ export type CommandErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -17682,6 +17964,8 @@ export type StartAiAccountLoginErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -18072,6 +18356,8 @@ export type CancelAiAccountLoginErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -18557,6 +18843,8 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -19029,6 +19317,8 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -19415,6 +19705,8 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -20537,6 +20829,35 @@ export type ResolveApprovalData = {
     url: '/api/v1/chats/{chatId}/approvals/{approvalId}';
 };
 
+export type ResolveApprovalErrors = {
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ResolveApprovalError = ResolveApprovalErrors[keyof ResolveApprovalErrors];
+
 export type ResolveApprovalResponses = {
     200: GithubComShrewxGinxCommonResponse;
 };
@@ -20608,6 +20929,35 @@ export type ResolveElicitationData = {
     query?: never;
     url: '/api/v1/chats/{chatId}/elicitations/{elicitationId}';
 };
+
+export type ResolveElicitationErrors = {
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ResolveElicitationError = ResolveElicitationErrors[keyof ResolveElicitationErrors];
 
 export type ResolveElicitationResponses = {
     200: GithubComShrewxGinxCommonResponse;
@@ -21296,6 +21646,8 @@ export type RetryChatWorkflowDeliveryErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -21951,6 +22303,8 @@ export type StreamEventsErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -23056,6 +23410,8 @@ export type UpdateMcpServiceErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -23536,6 +23892,8 @@ export type UpdateApiServiceErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -31580,6 +31938,1065 @@ export type GetWikiIndexResponses = {
 
 export type GetWikiIndexResponse = GetWikiIndexResponses[keyof GetWikiIndexResponses];
 
+export type GetMainConversationData = {
+    body?: never;
+    path: {
+        /**
+         * 主体标识
+         */
+        subjectId: string;
+        /**
+         * 主体类型
+         */
+        subjectType: string;
+    };
+    query?: {
+        /**
+         * 消息游标
+         */
+        beforeSequence?: number;
+        /**
+         * 分页上限
+         */
+        limit?: number;
+    };
+    url: '/api/v1/main-conversations/{subjectType}/{subjectId}';
+};
+
+export type GetMainConversationErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryCoreBudgetExceeded][40000000021]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[RuntimeWorkspaceScopeUnsupported][40000007108]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspaceGitTargetInvalid][40000007112]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BotCLIInstallationConflict][40900009003]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
+     * * `[Conflict][40900000001]`
+     * * `[CoreStorageInUse][40900009701]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginAccountConflict][40900006506]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginSkillSelectionConflict][40900006507]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[ReadingIntentConflict][40900009201]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[RuntimeInstallationBusy][40900007301]`
+     * * `[RuntimeRestartBusy][40900007302]`
+     * * `[RuntimeUpdateCheckBusy][40900007303]`
+     * * `[RuntimeVersionUnknown][40900007304]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[StorageMaintenanceBusy][40900009705]`
+     * * `[StoragePolicyConflict][40900009703]`
+     * * `[StoragePreviewExpired][40900009702]`
+     * * `[StorageSnapshotExpired][40900009704]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WakerOnboardingIncomplete][40900009101]`
+     * * `[WakerOnboardingInterviewPending][40900009102]`
+     * * `[WakerOnboardingInterviewRequired][40900009104]`
+     * * `[WakerOnboardingStateChanged][40900009100]`
+     * * `[WakerOnboardingUnavailable][40900009103]`
+     * * `[WakerProfileChanged][40900009105]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingTargetLimitExceeded][41300009201]`
+     * * `[WakerProfileTooLong][41300009100]`
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     * * `[PluginCapabilityUnsupported][42200006501]`
+     * * `[PluginPackageUnsupported][42200006502]`
+     * * `[RuntimeInstallationUnsupported][42200007301]`
+     * * `[RuntimeMaintenanceUnsupported][42200007302]`
+     * * `[WorkspaceGitHubUnsupported][42200007113]`
+     *
+     */
+    422: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BotCLIInstallationFailed][50000009002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimeModelSelectionFailed][50000000053]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeQuotaExhausted][50000000051]`
+     * * `[RuntimeRateLimited][50000000052]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[StorageCleanupFailed][50000009705]`
+     * * `[StoragePolicyInvalid][50000009701]`
+     * * `[StorageRootInvalid][50000009702]`
+     * * `[StorageScanIncomplete][50000009703]`
+     * * `[StorageVolumeUnavailable][50000009704]`
+     * * `[WakerProfileTokenizationFailed][50000009100]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProbeFailed][50200000005]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDependencyUnavailable][50200006503]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     * * `[PluginOAuthMetadataUnavailable][50200006505]`
+     * * `[PluginOAuthServiceUnavailable][50200006504]`
+     * * `[RuntimeInstallationFailed][50200007301]`
+     * * `[WorkspaceGitHubRequestFailed][50200007115]`
+     *
+     */
+    502: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[ReadingExecutionInterrupted][50300009202]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     * * `[TerminalUnavailable][50300007108]`
+     * * `[WorkspaceGitHubCLIUnavailable][50300007114]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetMainConversationError = GetMainConversationErrors[keyof GetMainConversationErrors];
+
+export type GetMainConversationResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationResponse;
+};
+
+export type GetMainConversationResponse = GetMainConversationResponses[keyof GetMainConversationResponses];
+
+export type SendMainConversationMessageData = {
+    body: GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationInput & unknown;
+    path: {
+        /**
+         * 主体标识
+         */
+        subjectId: string;
+        /**
+         * 主体类型
+         */
+        subjectType: string;
+    };
+    query?: never;
+    url: '/api/v1/main-conversations/{subjectType}/{subjectId}/messages';
+};
+
+export type SendMainConversationMessageErrors = {
+    /**
+     * >
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
+     * * `[ProjectNotFound][40400000006]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[CreateRequestConflict][40900000023]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[InternalServerError][50000000001]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[StorageCleanupFailed][50000009705]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type SendMainConversationMessageError = SendMainConversationMessageErrors[keyof SendMainConversationMessageErrors];
+
+export type SendMainConversationMessageResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationAcceptance;
+};
+
+export type SendMainConversationMessageResponse = SendMainConversationMessageResponses[keyof SendMainConversationMessageResponses];
+
+export type DeleteMainConversationMessageData = {
+    body?: never;
+    path: {
+        /**
+         * 消息标识
+         */
+        messageId: string;
+        /**
+         * 主体标识
+         */
+        subjectId: string;
+        /**
+         * 主体类型
+         */
+        subjectType: string;
+    };
+    query?: never;
+    url: '/api/v1/main-conversations/{subjectType}/{subjectId}/messages/{messageId}';
+};
+
+export type DeleteMainConversationMessageErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[WakerNotFound][40400000001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type DeleteMainConversationMessageError = DeleteMainConversationMessageErrors[keyof DeleteMainConversationMessageErrors];
+
+export type DeleteMainConversationMessageResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type DeleteMainConversationMessageResponse = DeleteMainConversationMessageResponses[keyof DeleteMainConversationMessageResponses];
+
+export type GetMainConversationReadingData = {
+    body?: never;
+    path: {
+        /**
+         * 主体标识
+         */
+        subjectId: string;
+        /**
+         * 主体类型
+         */
+        subjectType: string;
+    };
+    query?: never;
+    url: '/api/v1/main-conversations/{subjectType}/{subjectId}/reading';
+};
+
+export type GetMainConversationReadingErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[WakerNotFound][40400000001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetMainConversationReadingError = GetMainConversationReadingErrors[keyof GetMainConversationReadingErrors];
+
+export type GetMainConversationReadingResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationReadingResponse;
+};
+
+export type GetMainConversationReadingResponse = GetMainConversationReadingResponses[keyof GetMainConversationReadingResponses];
+
+export type MarkMainConversationReadData = {
+    body: GithubComJieWaZiNeuxBotServerApisChatReadingMarkChatReadRequest & unknown;
+    path: {
+        /**
+         * 主体标识
+         */
+        subjectId: string;
+        /**
+         * 主体类型
+         */
+        subjectType: string;
+    };
+    query?: never;
+    url: '/api/v1/main-conversations/{subjectType}/{subjectId}/reading';
+};
+
+export type MarkMainConversationReadErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[WakerNotFound][40400000001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingIntentConflict][40900009201]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type MarkMainConversationReadError = MarkMainConversationReadErrors[keyof MarkMainConversationReadErrors];
+
+export type MarkMainConversationReadResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type MarkMainConversationReadResponse = MarkMainConversationReadResponses[keyof MarkMainConversationReadResponses];
+
+export type ResolveMainConversationSourceApprovalData = {
+    body: GithubComJieWaZiNeuxBotServerApisChatsResolveApprovalRequest & unknown;
+    path: {
+        /**
+         * 审批标识
+         */
+        approvalId: string;
+        /**
+         * 主体标识
+         */
+        subjectId: string;
+        /**
+         * 主体类型
+         */
+        subjectType: string;
+        /**
+         * 工作对话
+         */
+        workChatId: string;
+    };
+    query?: never;
+    url: '/api/v1/main-conversations/{subjectType}/{subjectId}/sources/{workChatId}/approvals/{approvalId}';
+};
+
+export type ResolveMainConversationSourceApprovalErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ResolveMainConversationSourceApprovalError = ResolveMainConversationSourceApprovalErrors[keyof ResolveMainConversationSourceApprovalErrors];
+
+export type ResolveMainConversationSourceApprovalResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type ResolveMainConversationSourceApprovalResponse = ResolveMainConversationSourceApprovalResponses[keyof ResolveMainConversationSourceApprovalResponses];
+
+export type ResolveMainConversationSourceElicitationData = {
+    body: GithubComJieWaZiNeuxBotServerApisChatsResolveElicitationRequest & unknown;
+    path: {
+        /**
+         * 补充输入标识
+         */
+        elicitationId: string;
+        /**
+         * 主体标识
+         */
+        subjectId: string;
+        /**
+         * 主体类型
+         */
+        subjectType: string;
+        /**
+         * 工作对话
+         */
+        workChatId: string;
+    };
+    query?: never;
+    url: '/api/v1/main-conversations/{subjectType}/{subjectId}/sources/{workChatId}/elicitations/{elicitationId}';
+};
+
+export type ResolveMainConversationSourceElicitationErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ResolveMainConversationSourceElicitationError = ResolveMainConversationSourceElicitationErrors[keyof ResolveMainConversationSourceElicitationErrors];
+
+export type ResolveMainConversationSourceElicitationResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type ResolveMainConversationSourceElicitationResponse = ResolveMainConversationSourceElicitationResponses[keyof ResolveMainConversationSourceElicitationResponses];
+
+export type GetMainConversationSourceData = {
+    body?: never;
+    path: {
+        /**
+         * 主体标识
+         */
+        subjectId: string;
+        /**
+         * 主体类型
+         */
+        subjectType: string;
+        /**
+         * 来源对话
+         */
+        workChatId: string;
+    };
+    query?: {
+        /**
+         * 消息游标
+         */
+        beforeSequence?: number;
+        /**
+         * 分页上限
+         */
+        limit?: number;
+    };
+    url: '/api/v1/main-conversations/{subjectType}/{subjectId}/sources/{workChatId}/messages';
+};
+
+export type GetMainConversationSourceErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatLogError][50000000004]`
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type GetMainConversationSourceError = GetMainConversationSourceErrors[keyof GetMainConversationSourceErrors];
+
+export type GetMainConversationSourceResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisMainConversationsMainConversationSourceResponse;
+};
+
+export type GetMainConversationSourceResponse = GetMainConversationSourceResponses[keyof GetMainConversationSourceResponses];
+
+export type SendMainConversationSourceMessageData = {
+    body: GithubComJieWaZiNeuxBotServerApisChatsSendMessageRequest & unknown;
+    path: {
+        /**
+         * 主体标识
+         */
+        subjectId: string;
+        /**
+         * 主体类型
+         */
+        subjectType: string;
+        /**
+         * 来源对话
+         */
+        workChatId: string;
+    };
+    query?: never;
+    url: '/api/v1/main-conversations/{subjectType}/{subjectId}/sources/{workChatId}/messages';
+};
+
+export type SendMainConversationSourceMessageErrors = {
+    /**
+     * >
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     *
+     */
+    401: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[ChatMessageNotFound][40400007201]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ChatReplyTargetUnavailable][40400007202]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[CreateRequestConflict][40900000023]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[InternalServerError][50000000001]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[StorageCleanupFailed][50000009705]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type SendMainConversationSourceMessageError = SendMainConversationSourceMessageErrors[keyof SendMainConversationSourceMessageErrors];
+
+export type SendMainConversationSourceMessageResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution;
+};
+
+export type SendMainConversationSourceMessageResponse = SendMainConversationSourceMessageResponses[keyof SendMainConversationSourceMessageResponses];
+
+export type MarkMainConversationUnreadData = {
+    body: GithubComJieWaZiNeuxBotServerApisChatReadingMarkChatUnreadRequest & unknown;
+    path: {
+        /**
+         * 主体标识
+         */
+        subjectId: string;
+        /**
+         * 主体类型
+         */
+        subjectType: string;
+    };
+    query?: never;
+    url: '/api/v1/main-conversations/{subjectType}/{subjectId}/unread';
+};
+
+export type MarkMainConversationUnreadErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[WakerNotFound][40400000001]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ReadingIntentConflict][40900009201]`
+     *
+     */
+    409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type MarkMainConversationUnreadError = MarkMainConversationUnreadErrors[keyof MarkMainConversationUnreadErrors];
+
+export type MarkMainConversationUnreadResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type MarkMainConversationUnreadResponse = MarkMainConversationUnreadResponses[keyof MarkMainConversationUnreadResponses];
+
 export type ReindexMemoryIndexData = {
     body?: never;
     path?: never;
@@ -32353,6 +33770,8 @@ export type ListPluginsErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -32755,6 +34174,8 @@ export type BrowsePluginsErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -33136,6 +34557,8 @@ export type RefreshPluginCatalogErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -33527,6 +34950,8 @@ export type GetCatalogPluginErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -33926,6 +35351,8 @@ export type GetCatalogPluginConnectorErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -34312,6 +35739,8 @@ export type PrepareCatalogPluginErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -34711,6 +36140,8 @@ export type GetCatalogPluginReadmeErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -35114,6 +36545,8 @@ export type GetCatalogPluginSkillErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -35495,6 +36928,8 @@ export type CreatePluginFromSkillsErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -36016,6 +37451,8 @@ export type GetPluginErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -36905,6 +38342,8 @@ export type GetPluginConfigurationErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -37516,6 +38955,8 @@ export type InstallPluginErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -38051,6 +39492,8 @@ export type UpdatePluginInstallationsErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -40846,6 +42289,8 @@ export type CreateWakerErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -41442,6 +42887,8 @@ export type ListAutomaticTasksErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -41895,6 +43342,8 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -42314,6 +43763,8 @@ export type DeleteAutomaticTaskErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -42704,6 +44155,8 @@ export type GetAutomaticTaskErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -43245,6 +44698,8 @@ export type ListAutomaticRunsErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -43635,6 +45090,8 @@ export type TriggerAutomaticTaskErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -44670,6 +46127,8 @@ export type StartWakerOnboardingErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -45105,6 +46564,8 @@ export type ListWakerPluginsErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -46209,6 +47670,25 @@ export type GetWorkBoardLiveTargetErrors = {
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     * * `[ReadingProjectionIncomplete][50300009201]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
 };
 
 export type GetWorkBoardLiveTargetError = GetWorkBoardLiveTargetErrors[keyof GetWorkBoardLiveTargetErrors];
@@ -46236,11 +47716,18 @@ export type MarkWorkBoardViewedErrors = {
     /**
      * >
      * * `[AutomaticRunNotFound][40400000019]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[WorkflowNotFound][40400003001]`
      *
      */
     404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ReadingIntentConflict][40900009201]`
@@ -46249,6 +47736,14 @@ export type MarkWorkBoardViewedErrors = {
     409: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
+     * * `[DatabaseError][50000000002]`
+     * * `[InternalServerError][50000000001]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
      * * `[ReadingProjectionIncomplete][50300009201]`
      *
      */
@@ -46686,6 +48181,8 @@ export type CreateWorkflowErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -47085,6 +48582,8 @@ export type DeleteWorkflowErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -47494,6 +48993,8 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -47909,6 +49410,8 @@ export type EditWorkflowConfigurationErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -48295,6 +49798,8 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -48769,6 +50274,8 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -49186,6 +50693,8 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -49603,6 +51112,8 @@ export type StartWorkflowRunErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -49993,6 +51504,8 @@ export type DeleteWorkflowRunErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -50484,6 +51997,8 @@ export type AnswerWorkflowHumanErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -50878,6 +52393,8 @@ export type GetWorkflowInstanceErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -51272,6 +52789,8 @@ export type SkipWorkflowWorkerErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -51666,6 +53185,8 @@ export type AnswerWorkflowOperationErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -52056,6 +53577,8 @@ export type RetryWorkflowRunErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -52516,6 +54039,8 @@ export type SaveWorkflowSourceErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
@@ -53373,6 +54898,8 @@ export type GitActionErrors = {
      * * `[RuntimeQuotaExhausted][50000000051]`
      * * `[RuntimeRateLimited][50000000052]`
      * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeSessionRestoreFailed][50000000055]`
+     * * `[RuntimeSessionStartFailed][50000000054]`
      * * `[RuntimeShutdownFailed][50000000041]`
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`

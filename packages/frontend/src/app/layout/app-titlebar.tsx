@@ -1,26 +1,29 @@
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { ChatSceneOwner } from "@/shared/workspace/app-scene-model";
+import type { ConversationDestination } from "@/shared/lib/main-conversation-navigation";
 import { Button } from "@/shared/ui/button";
 import { SceneChromeLayout } from "@/shared/ui/scene-chrome-portal";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import {
   nearestEntityHistory,
+  sameChatOwner,
   recordEntityHistory,
   type EntityHistory,
 } from "./entity-navigation-history";
 
-/** 侧栏的返回记录实体身份；页面覆盖和聊天子页签不参与。 */
+/** 主会话的前进后退包含工作来源，其他页面沿用主体之间的导航。 */
 export function useAppNavigationHistory({
   owner,
   available,
   onSelect,
   onPageBack,
+  includeWorkSources = false,
 }: {
-  owner?: ChatSceneOwner;
-  available: (owner: ChatSceneOwner) => boolean;
-  onSelect: (owner: ChatSceneOwner) => void;
+  owner?: ConversationDestination;
+  includeWorkSources?: boolean;
+  available: (owner: ConversationDestination) => boolean;
+  onSelect: (owner: ConversationDestination) => void;
   onPageBack?: () => void;
 }) {
   const [{ history, pendingTarget }, setHistory] = useState<{
@@ -33,8 +36,13 @@ export function useAppNavigationHistory({
   if (recorded !== history) {
     setHistory({ history: recorded });
   }
-  const back = nearestEntityHistory(recorded, -1, available);
-  const forward = nearestEntityHistory(recorded, 1, available);
+  const reachable = (destination: ConversationDestination) =>
+    available(destination) &&
+    (includeWorkSources ||
+      (!destination.workChatId &&
+        !sameChatOwner(recorded.entries[recorded.index], destination)));
+  const back = nearestEntityHistory(recorded, -1, reachable);
+  const forward = nearestEntityHistory(recorded, 1, reachable);
   const go = (index: number | undefined) => {
     if (index === undefined) return;
     const entry = recorded.entries[index];

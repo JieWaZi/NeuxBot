@@ -9,7 +9,7 @@ import {
   withLocalErrorMutation,
 } from "@/shared/api/local-error-surface";
 import { randomCompanionAvatar } from "@/shared/companion/appearance";
-import { chatHref } from "@/shared/lib/chat-navigation";
+import { mainConversationHref } from "@/shared/lib/main-conversation-navigation";
 import { Button } from "@/shared/ui/button";
 import { CompanionPicker } from "@/shared/ui/companion-picker";
 import { FieldLabel } from "@/shared/ui/field-label";
@@ -49,7 +49,10 @@ export function WakerCreatePage() {
     startError,
   }: NonNullable<typeof create.data>) => {
     if (!wakerId) return;
-    if (chatId) navigate(chatHref(chatId, wakerId), { replace: true });
+    if (chatId && !startError)
+      navigate(mainConversationHref({ kind: "waker", id: wakerId }), {
+        replace: true,
+      });
     else
       navigate(`/wakers/${encodeURIComponent(wakerId)}`, {
         replace: true,

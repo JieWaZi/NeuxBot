@@ -7,9 +7,9 @@ const (
 	AgentCLIPath = "/agent/v1"
 	// AgentCLIMCPCatalogPath 只向待接纳或已接纳的授权上下文发布固定工具目录。
 	AgentCLIMCPCatalogPath = "/mcp/catalog"
-	// AgentCLIExecutionPath 返回常驻连接当前接纳的执行标识，用于固定外部操作归属。
+	// AgentCLIExecutionPath 提供常驻连接当前接纳的执行标识。
 	AgentCLIExecutionPath = "/execution"
-	// AgentCLIExecutionHeader 携带外部操作发起时由宿主返回的执行标识。
+	// AgentCLIExecutionHeader 携带命令发起时由宿主返回的执行标识。
 	AgentCLIExecutionHeader = "X-NeuxBot-Execution-ID"
 	// AgentCLIConnectionHeader 定位共享 Core token 下的宿主连接。
 	AgentCLIConnectionHeader = "X-NeuxBot-Connection-ID"

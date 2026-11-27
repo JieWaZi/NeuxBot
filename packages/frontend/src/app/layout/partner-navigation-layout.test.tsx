@@ -10,6 +10,8 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
 import {
   memo,
   useEffect,
@@ -31,6 +33,7 @@ import { conversationKeyOf } from "@/modules/chat/model/conversation-identity";
 import { WorkbenchProvider } from "@/modules/chat/workbench/workbench-store";
 import { SettingsContextSidebar } from "@/modules/settings/components/settings-context-sidebar";
 import type { GlobalEventObserver } from "@/shared/api/global-events";
+import { client as apiClient } from "@/shared/api/generated/client.gen";
 import { i18n } from "@/shared/i18n";
 import { configurePlatform, platform } from "@/shared/platform/provider";
 import { TooltipProvider } from "@/shared/ui/tooltip";
@@ -50,6 +53,7 @@ const history = vi.hoisted(() => ({
   observers: new Set<GlobalEventObserver>(),
 }));
 const duplicateWaker = vi.hoisted(() => vi.fn());
+const removeWaker = vi.hoisted(() => vi.fn(async () => ({})));
 const navigationGroups = vi.hoisted(() => ({
   groups: [] as { name: string; wakerIds: string[] }[],
   ungrouped: [] as string[],
@@ -61,6 +65,7 @@ const navigationGroups = vi.hoisted(() => ({
 }));
 
 beforeEach(() => {
+  removeWaker.mockClear();
   navigationGroups.groups = [];
   navigationGroups.ungrouped = [];
   navigationGroups.finishDrag = undefined;
@@ -134,6 +139,11 @@ beforeEach(() => {
       },
     );
 });
+
+vi.mock(import("@/modules/waker/api/waker-queries"), async (original) => ({
+  ...(await original()),
+  deleteWakerMutation: () => ({ mutationFn: removeWaker }),
+}));
 
 vi.mock(import("@dnd-kit/core"), async (importOriginal) => {
   const core = await importOriginal();
@@ -620,6 +630,107 @@ function renderLayout({
 }
 
 describe("PartnerNavigationLayout", () => {
+  it.each([
+    ["waker-6", "/wakers"],
+    ["waker-2", "/chat/main/waker/waker-6"],
+  ])(
+    "主会话打开时从侧栏删除 %s，按当前路由归属恢复导航",
+    async (deletedId, destination) => {
+      renderLayout({ initialEntry: "/chat/main/waker/waker-6" });
+      const user = userEvent.setup();
+      const name = deletedId === "waker-6" ? "伙伴 6" : "伙伴 2";
+      fireEvent.contextMenu(
+        await screen.findByRole("button", { name: new RegExp("^" + name) }),
+      );
+      await user.click(screen.getByRole("menuitem", { name: "删除伙伴" }));
+      const dialog = screen.getByRole("dialog", { name: "删除伙伴" });
+      await user.type(within(dialog).getByRole("textbox"), name);
+      await user.click(
+        within(dialog).getByRole("button", { name: "删除伙伴" }),
+      );
+      expect(removeWaker).toHaveBeenCalledWith(
+        expect.objectContaining({ path: { wakerId: deletedId } }),
+        expect.anything(),
+      );
+      await waitFor(() => expect(dialog).not.toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId("current-route")).toHaveTextContent(
+          destination,
+        ),
+      );
+    },
+  );
+
+  it.each([true, false])(
+    "伙伴右键将最新合格发言标为未读（主会话有公开发言：%s）",
+    async (publicMessage) => {
+      const base = "http://workbench-reading.test";
+      const main = `${base}/api/v1/main-conversations/waker/waker-1`;
+      const latest = `${base}/api/v1/chats/recent-chat`;
+      const chats = vi.fn();
+      const writes = vi.fn();
+      const state = {
+        complete: true,
+        holdUnread: false,
+        throughSequence: 10,
+        unreadGeneration: 7,
+      };
+      const server = setupServer(
+        http.get(main + "/reading", () =>
+          HttpResponse.json({
+            ...state,
+            conversationId: "public-conversation",
+            latestReadableMessageID: publicMessage
+              ? "public-message"
+              : undefined,
+          }),
+        ),
+        http.post(main + "/unread", async ({ request }) => {
+          writes("main", await request.json());
+          return HttpResponse.json({});
+        }),
+        http.get(`${base}/api/v1/chats`, () => {
+          chats();
+          return HttpResponse.json({ resources: [{ id: "recent-chat" }] });
+        }),
+        http.get(latest + "/reading", () =>
+          HttpResponse.json({
+            ...state,
+            chatId: "recent-chat",
+            latestReadableMessageID: "chat-message",
+          }),
+        ),
+        http.post(latest + "/unread", async ({ request }) => {
+          writes("chat", await request.json());
+          return HttpResponse.json({});
+        }),
+      );
+      const config = apiClient.getConfig();
+      apiClient.setConfig({ baseUrl: base });
+      server.listen({ onUnhandledRequest: "bypass" });
+      try {
+        renderLayout();
+        fireEvent.contextMenu(screen.getByRole("button", { name: "伙伴 1" }));
+        await userEvent.click(
+          screen.getByRole("menuitem", { name: "标为未读" }),
+        );
+        await waitFor(() =>
+          expect(writes).toHaveBeenCalledExactlyOnceWith(
+            publicMessage ? "main" : "chat",
+            {
+              fromMessageID: publicMessage ? "public-message" : "chat-message",
+              observedUnreadGeneration: 7,
+            },
+          ),
+        );
+        expect(chats).toHaveBeenCalledTimes(publicMessage ? 0 : 1);
+      } finally {
+        server.close();
+        apiClient.setConfig(config);
+      }
+    },
+  );
+
   it("伙伴右键菜单可新建分组、移入已有分组、编辑和打开删除确认", async () => {
     navigationGroups.groups = [{ name: "已有分组", wakerIds: ["waker-2"] }];
     navigationGroups.ungrouped = [

@@ -42,6 +42,8 @@ type Service interface {
 	PublicReadingMessage(context.Context, string, string) (*messageview.Message, error)
 	// ReadExecutionMessages 返回指定执行的公开消息。
 	ReadExecutionMessages(context.Context, string, string) ([]messageview.Message, error)
+	// ReadResolvedExecutionQuestions 按回合返回原日志中已结束的问答。
+	ReadResolvedExecutionQuestions(context.Context, string, []string) (map[string][]messageview.MessageQuestion, error)
 	// ReadExecutionOutcome 读取指定执行最后一次持久调用的终止和失败事实。
 	ReadExecutionOutcome(context.Context, string, string) (ExecutionOutcome, error)
 	// ReadExecution 按稳定身份读取任意已接纳回合的权威事实。
@@ -102,8 +104,8 @@ type Service interface {
 	DeleteChatsAtomically(ctx context.Context, chatIDs []string, finalize func(context.Context) error) error
 	// DeleteProvisionalTeam 回滚未 ready 的 Team 聚合和可能只完成一部分的成员 Chat。
 	DeleteProvisionalTeam(ctx context.Context, threadID string, provisioningID string, chatIDs []string) error
-	// DeleteWakerChats 持有伙伴与 Chat 排他边界，原子删除普通 Chat 索引及 finalize 的伙伴事实。
-	DeleteWakerChats(ctx context.Context, wakerID string, prepare func([]string) (func() error, error), finalize func(context.Context) error) error
+	// DeleteWakerChats 持有一次排他边界，将伙伴及相关团队 Chat 连同 finalize 的领域事实原子删除。
+	DeleteWakerChats(ctx context.Context, wakerID string, relatedChatIDs []string, prepare func([]string) (func() error, error), finalize func(context.Context) error) error
 }
 
 // Module 是组合根同时交给查询入口和 Execution Core 的完整 Chat 模块。

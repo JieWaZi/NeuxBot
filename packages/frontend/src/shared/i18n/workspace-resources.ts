@@ -1,3 +1,4 @@
+import { mainConversationZh } from "./main-conversation";
 import { storageZh, storageEn } from "./storage";
 import { baseEn } from "./base-en";
 import { knowledgeZh, knowledgeEn } from "./knowledge-navigation";
@@ -1392,6 +1393,11 @@ export const workspaceResources = {
         detached: "卸载了连接器",
         deleted: "删除了连接器",
       },
+      messageActions: {
+        more: "更多操作",
+        copy: "复制消息",
+        copyFailed: "无法复制消息。",
+      },
       reading: {
         actions: "阅读操作",
         markUnread: "从此处标为未读",
@@ -2192,6 +2198,7 @@ export const workspaceResources = {
           invalidated: "已失效",
         },
       },
+      ...mainConversationZh,
       send: "发送消息",
       copy: "复制",
       copied: "已复制",
@@ -2200,6 +2207,7 @@ export const workspaceResources = {
       replyPreview: "回复：{{preview}}",
       removeReply: "移除回复",
       locateReply: "定位原消息：{{preview}}",
+      locateOriginalMessage: "定位原消息",
       locatingReply: "正在定位原消息…",
       replyUnavailable: "原消息不可用",
       replyLocateFailed: "原消息定位失败",
@@ -2286,6 +2294,7 @@ export const workspaceResources = {
         "发送结果未知。输入已保留，历史正在重新同步；请核对后再决定是否发送新消息。",
       firstSendUnconfirmed: "首条消息尚未确认，将使用原伙伴、模型和权限重试。",
       retryFirstSend: "重试原发送",
+      editFirstSend: "返回编辑",
       team: {
         memberConfigUpdateFailed: "成员执行配置保存失败，请稍后重试。",
         memberConfigInvalid: "请检查{{name}}的执行配置后再发送。",

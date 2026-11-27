@@ -8,8 +8,10 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -369,12 +371,36 @@ type executionStartResult struct {
 	err error
 }
 
-// finishExecution 先提交执行终态，再以尽力而为方式追平 SQLite 查询索引。
+// finishExecution 在规范原生结果已保存后结算公开答复，再提交唯一的执行终态。
 func (m *service) finishExecution(
 	chat models.Chat,
 	execution models.Execution,
+	tools []ToolCapability,
+	result agent.TurnResult,
 	finished eventlog.ExecutionFinishedData,
 ) {
+	if finished.Status == constants.ExecutionStatusCompleted {
+		for _, tool := range tools {
+			if tool.publishFinal == nil {
+				continue
+			}
+			// 公开答复可以先提交，但完成提醒须等执行交出占位。
+			ctx, publish := events.HoldCommitEvents(context.Background())
+			defer publish()
+			if err := tool.publishFinal(ctx, func(ctx context.Context) (string, error) {
+				return m.threads.DirectAnswer(ctx, chat.ID, execution.ID, result)
+			}); err != nil {
+				logx.Warnf("publish completed conversation answer: chat_id=%s execution_id=%s error=%v", chat.ID, execution.ID, err)
+				finished.Status = constants.ExecutionStatusFailed
+				finished.ErrorCode = status_error.RuntimeExecutionFailed.Key()
+				finished.FailureCode = constants.RuntimeFailureCodeEventDelivery
+				finished.ErrorMessage = ""
+				finished.ErrorParams = nil
+				finished.ErrorMessageSource = constants.ErrorMessageSourceLocalized
+				break
+			}
+		}
+	}
 	eventType := constants.ChatEventTypeExecutionCompleted
 	if finished.Status == constants.ExecutionStatusFailed {
 		eventType = constants.ChatEventTypeExecutionFailed
@@ -391,6 +417,7 @@ func (m *service) finishExecution(
 	})
 	if err != nil {
 		logx.Errorf("commit execution terminal: chat_id=%s execution_id=%s error=%v", chat.ID, execution.ID, err)
+		m.executions.complete(chat.ID, execution.ID, nil)
 		return
 	}
 	m.executions.complete(chat.ID, execution.ID, func() {

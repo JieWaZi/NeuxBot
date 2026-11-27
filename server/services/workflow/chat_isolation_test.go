@@ -10,8 +10,10 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 func TestChatWorkflowHistoryToolsRecoverAfterLookupFailure(t *testing.T) {
@@ -139,4 +141,40 @@ func (workflowHistoryThread) Get(_ context.Context, id string) (models.ChannelTh
 
 func (workflowHistoryThread) FindByChatID(context.Context, string) (models.ChannelThread, bool, error) {
 	return models.ChannelThread{ID: "existing-thread"}, true, nil
+}
+
+func TestMainSourceWorkflowRunsOnlyFrozenSelection(t *testing.T) {
+	s, _ := workflowTestService(t)
+	ctx := t.Context()
+	def := savedTestWorkflow(t, s, humanSource)
+	chat := consumerFixtureChat(t, "work-source")
+	chat.HiddenFromWakerHistory = true
+	selected := workinput.SelectWorkflow(def.ID)
+	if _, err := s.BindWorkflowTurn(ctx, chat, "not-bound", selected); !errors.Is(err, status_error.WorkflowCapabilityUnsupported) {
+		t.Fatalf("unbound hidden work accepted workflow: %v", err)
+	}
+	s.authorizeMainWork = func(_ context.Context, w models.Chat) error {
+		if w.ID != chat.ID {
+			return status_error.AgentOperationForbidden
+		}
+		return nil
+	}
+	actual, lease := bindConsumerFixture(t, s, chat, def.ID, "bound", "input")
+	if lease.Selection.RevisionID != def.CurrentRevisionID {
+		t.Fatalf("unfrozen selection: %+v", lease)
+	}
+	chat.ActiveExecutionID = lease.ID
+	actual.Status = constants.ExecutionStatusRunning
+	s.chats = &consumerChatBoundary{actual: actual, summary: chatservice.ChatSummary{Chat: chat}}
+	s.executions = consumerExecutionBoundary{}
+	scope := workflowtool.Scope{Kind: constants.WorkflowCapabilityScopeConsumer, Key: lease.ID}
+	start := workflowtool.Input{Action: constants.WorkflowActionRunStart, WorkflowID: def.ID, RevisionID: def.CurrentRevisionID, RequestID: "start"}
+	value, err := s.handleTool(ctx, scope, start)
+	if err != nil || value == nil {
+		t.Fatalf("selected workflow did not start: %v %v", err, value)
+	}
+	s.authorizeMainWork = func(context.Context, models.Chat) error { return status_error.AgentOperationForbidden }
+	if _, err := s.handleTool(ctx, scope, workflowtool.Input{Action: constants.WorkflowActionQuery, Type: constants.WorkflowQueryWorkflows}); !errors.Is(err, status_error.AgentOperationForbidden) {
+		t.Fatalf("revoked source retained a workflow capability: %v", err)
+	}
 }

@@ -47,7 +47,13 @@ func (r *ResolveElicitation) Validate(*gin.Context) error {
 }
 
 // Output 把用户提交交给 Execution Core 结构化输入协调器。
+// @err[DatabaseOperationCancelled][40800001001][数据库操作已取消]
+// @err[DatabaseError][50000000002][数据库操作失败]
+// @err[DatabaseBusy][50300001001][数据库暂忙]
 func (r *ResolveElicitation) Output(ctx *gin.Context) (interface{}, error) {
+	if err := global.MainConversationService.ValidateWorkEntry(ctx.Request.Context(), r.ChatID, false); err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	if err := global.ExecutionService.ResolveElicitation(
 		ctx,
 		r.ChatID,

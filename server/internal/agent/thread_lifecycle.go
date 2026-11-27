@@ -46,6 +46,8 @@ type ThreadRequest struct {
 	HistoryTurns int
 	// ForceNew replaces the native session for this turn without changing binding compatibility.
 	ForceNew bool
+	// ReplaceRejectedSession allows one fresh session after a confirmed restore rejection before input admission.
+	ReplaceRejectedSession bool
 	// Summarize prefers a hidden handoff on the previous native session.
 	Summarize bool
 	// Fork requests a real native fork instead of a new session or resume.
@@ -381,7 +383,7 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 	return t, nil
 }
 
-func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles func(context.Context) error) error {
+func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles func(context.Context) error) (resultErr error) {
 	ctx, state := t.ctx, t.thread
 	defer func() {
 		if closeFiles != nil {
@@ -407,6 +409,23 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	conn, hot, effective, reader := state.connection, state.binding, state.effective, state.reader
 	l.mu.Unlock()
 	compatible := !request.ForceNew && request.Fork == nil && candidateBinding(stored, request.Connection.Account, cfg)
+	var action, reason string
+	defer func() {
+		if action != "" {
+			logNativeSessionDecision(t, request.Connection.Account.Provider, stored, action, reason, resultErr)
+		}
+	}()
+	newReason := "history_identity_changed"
+	switch {
+	case request.ForceNew:
+		newReason = "explicit_new"
+	case stored == nil:
+		newReason = "no_binding"
+	case stored.Session.Provider != request.Connection.Account.Provider:
+		newReason = "provider_changed"
+	case stored.Session.Subject != request.Connection.Account.Subject:
+		newReason = "account_subject_changed"
+	}
 	processConfiguration := threadProcessConfiguration(request)
 	sharesHistoryScope := stored != nil && (stored.coreMemoryOwner() == "" || stored.coreMemoryOwner() == request.CoreMemoryOwner)
 	var replacementHandoff *NativeHandoff
@@ -428,6 +447,9 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 			hotUsable = false
 		} else {
 			compatible = resumableConfiguration(stored.Configuration, cfg, client.Capabilities())
+			if !compatible {
+				newReason = "resources_or_instructions_changed"
+			}
 		}
 	}
 	windowChanged := hotUsable && conn.qoderContextWindow != request.Connection.Launch.QoderContextWindow
@@ -436,6 +458,7 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 			info, err := os.Stat(path)
 			return err == nil && info.Mode().IsRegular()
 		}) {
+		action, reason = "reuse", "compatible_session"
 		binding, err := l.reconcileHandoff(ctx, state.chatID, *stored, reader)
 		if err != nil {
 			return err
@@ -522,6 +545,7 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	if compatible && !resumableConfiguration(stored.Configuration, cfg, client.Capabilities()) {
 		// Cold recovery cannot assume capabilities from a previous process.
 		compatible = false
+		newReason = "resources_or_instructions_changed"
 	}
 	conn.configuration = processConfiguration
 	if request.Connection.Account.Provider == "codex" {
@@ -531,6 +555,7 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	fresh := !compatible
 	switch {
 	case request.Fork != nil:
+		action, reason = "fork", "explicit_fork"
 		fork := *request.Fork
 		fork.Session = request.Session
 		session, err = client.ForkSession(ctx, fork)
@@ -539,20 +564,44 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		}
 		fresh = false // Native forks already carry provider history.
 	case compatible:
-		session, err = openBoundSession(ctx, client, stored.Session.SessionID, request.Session)
-		missing := errors.Is(err, status_error.RuntimeSessionNotFound) ||
-			errors.Is(err, status_error.RuntimePolicyUnsupported) && !client.Capabilities().Resume && !client.Capabilities().Load
-		if missing && (windowChanged || request.Connection.Launch.QoderContextWindow != 0) {
-			return err
+		action, reason = "load", "connection_reopened"
+		if client.Capabilities().Resume {
+			action = "resume"
 		}
-		if missing && !handoffClaimed(stored.Handoff) {
-			fresh = true
-			session, err = client.NewSession(ctx, request.Session)
+		session, err = openBoundSession(ctx, client, stored.Session.SessionID, request.Session)
+		missing := errors.Is(err, status_error.RuntimeSessionNotFound)
+		unsupported := errors.Is(err, status_error.RuntimePolicyUnsupported) && !client.Capabilities().Resume && !client.Capabilities().Load
+		switch {
+		case missing:
+			reason = "native_session_missing"
+		case unsupported:
+			reason = "native_restore_unsupported"
+		case session.restoreRejected:
+			reason = "missing_persisted_history"
+		case err != nil:
+			reason = "restore_failed"
+		}
+		missing = missing || unsupported
+		requiresResume := windowChanged || request.Connection.Launch.QoderContextWindow != 0
+		if missing && requiresResume {
+			return err
 		}
 		if missing && handoffClaimed(stored.Handoff) {
 			return status_error.ChatLogNativeOutcomePending
 		}
+		// A confirmed pre-open refusal leaves the current provider connection available.
+		replaceRejected := request.ReplaceRejectedSession && session.restoreRejected &&
+			errors.Is(err, status_error.RuntimeSessionRestoreFailed) && stored.Handoff == nil && !requiresResume && ctx.Err() == nil
+		if missing || replaceRejected {
+			action = "start"
+			fresh = true
+			session, err = client.NewSession(ctx, request.Session)
+			if replaceRejected && err == nil && session.ID == stored.Session.SessionID {
+				return status_error.RuntimeProtocolIncompatible
+			}
+		}
 	default:
+		action, reason = "start", newReason
 		session, err = client.NewSession(ctx, request.Session)
 	}
 	if err != nil {

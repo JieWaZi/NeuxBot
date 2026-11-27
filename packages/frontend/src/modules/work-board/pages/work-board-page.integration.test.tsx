@@ -300,6 +300,89 @@ it("两个视图用共享页签切换，保留列表筛选、页码与游标并�
   ).not.toBeInTheDocument();
 });
 
+it.each([
+  {
+    kind: "waker",
+    wakerId: "partner-a",
+    channelId: undefined,
+    id: "partner-a",
+  },
+  { kind: "team", wakerId: undefined, channelId: "team-a", id: "team-a" },
+])(
+  "待查看的公开发言直达 $kind 主会话的原消息",
+  async ({ kind, wakerId, channelId, id }) => {
+    const reading = vi.fn();
+    server.use(
+      http.get(`${origin}/api/v1/work-board/summary`, () =>
+        boardResponse({
+          attentionCount: 0,
+          resultCount: 1,
+          results: [
+            {
+              ...entry,
+              ownerKind: "main_conversation",
+              chatId: undefined,
+              wakerId,
+              channelId,
+              title: "公开的交付结果",
+            },
+          ],
+        }),
+      ),
+      http.post(`${origin}/api/v1/main-conversations/:kind/:id/reading`, () => {
+        reading();
+        return HttpResponse.json({});
+      }),
+    );
+    mount();
+    const link = await screen.findByRole("link", { name: "公开的交付结果" });
+    expect(link).toHaveAttribute(
+      "href",
+      `/chat/main/${kind}/${id}?message=${entry.firstUnreadMessageID}`,
+    );
+    await userEvent.click(link);
+    expect(reading).not.toHaveBeenCalled();
+  },
+);
+
+it.each([
+  { channelId: undefined, owner: "waker/answering-partner" },
+  { channelId: "answering-team", owner: "team/answering-team" },
+])(
+  "需要处理的主会话提问直达 $owner 和对应的工作来源",
+  async ({ channelId, owner }) => {
+    server.use(
+      http.get(`${origin}/api/v1/work-board/summary`, () =>
+        boardResponse({
+          attentionCount: 1,
+          resultCount: 0,
+          attention: [
+            {
+              id: "attention",
+              ownerKind: "main_conversation",
+              ownerId: "public-conversation",
+              chatId: "hidden-work-chat",
+              requestId: "pending:question",
+              channelId,
+              wakerId: "answering-partner",
+              kind: "input",
+              title: "请补充公开任务范围",
+            },
+          ],
+        }),
+      ),
+    );
+    mount();
+    const link = await screen.findByRole("link", {
+      name: "请补充公开任务范围",
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      `/chat/main/${owner}?request=pending%3Aquestion&requestChat=hidden-work-chat`,
+    );
+  },
+);
+
 it("关注区保留准确统计，列表标题过滤不改变关注区；查看结果链接不提前提交已读", async () => {
   const summaries = vi.fn();
   const lists = vi.fn();

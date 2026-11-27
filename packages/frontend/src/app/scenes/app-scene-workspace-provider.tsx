@@ -59,6 +59,7 @@ export function AppSceneWorkspaceProvider({
       automaticTask: t("automaticTask:title"),
       workflow: t("workflow:title"),
       chat: t("sceneTabs.chat"),
+      mainConversation: t("chat:mainConversation"),
       detail: t("sceneTabs.detail"),
       newChat: t("sceneTabs.newChat"),
       newWaker: t("partnerNavigation.createWaker"),

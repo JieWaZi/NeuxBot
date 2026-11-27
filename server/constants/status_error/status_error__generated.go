@@ -529,6 +529,10 @@ func (v StatusError) Key() string {
 		return "RuntimeRateLimited"
 	case RuntimeModelSelectionFailed:
 		return "RuntimeModelSelectionFailed"
+	case RuntimeSessionStartFailed:
+		return "RuntimeSessionStartFailed"
+	case RuntimeSessionRestoreFailed:
+		return "RuntimeSessionRestoreFailed"
 	case AutomaticTaskServiceInvalid:
 		return "AutomaticTaskServiceInvalid"
 	case AutomaticTaskTokenGenerationFailed:
@@ -910,6 +914,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeQuotaExhausted:                "current quota is exhausted; switch models or wait for the quota to reset",
 			RuntimeRateLimited:                   "too many requests; try again later",
 			RuntimeModelSelectionFailed:          "the selected model could not be applied; select a model again and retry",
+			RuntimeSessionStartFailed:            "the agent could not start a new session; try again",
+			RuntimeSessionRestoreFailed:          "the agent could not restore the existing session; try again",
 			AutomaticTaskServiceInvalid:          "automatic task service configuration is invalid",
 			AutomaticTaskTokenGenerationFailed:   "failed to generate an automatic task token",
 			AutomaticTaskAPIUnavailable:          "failed to listen on the local task endpoint; check port availability",
@@ -1209,6 +1215,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeQuotaExhausted:                "当前额度已用尽，请切换模型或等待额度恢复后重试",
 			RuntimeRateLimited:                   "请求过于频繁，请稍后重试",
 			RuntimeModelSelectionFailed:          "无法切换到所选模型，请重新选择模型后重试",
+			RuntimeSessionStartFailed:            "无法新建智能体会话，请重试",
+			RuntimeSessionRestoreFailed:          "无法恢复已有的智能体会话，请重试",
 			AutomaticTaskServiceInvalid:          "自动任务服务配置不合法",
 			AutomaticTaskTokenGenerationFailed:   "无法生成自动任务调用密钥",
 			AutomaticTaskAPIUnavailable:          "无法监听本机任务入口，请检查端口占用",

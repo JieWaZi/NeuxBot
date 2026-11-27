@@ -107,6 +107,8 @@ type pendingChat struct {
 	wakerID string
 	// projectID 是选择的项目标识，临时文件夹 Chat 为空。
 	projectID string
+	// projectScope 是主会话选源时已读取的授权目录，普通首发在解析工作区时读取。
+	projectScope *MainProjectScope
 	// workingDirectory 是选择的临时文件夹，项目 Chat 为空。
 	workingDirectory string
 	// executionWorkspaceDirectory 是宿主领域拥有的隔离执行目录，普通聊天为空。
@@ -127,6 +129,8 @@ type pendingMessage struct {
 	submissionHash string
 	// executionID 是持久编排预留的可选执行标识；普通入口为空。
 	executionID string
+	// userMessageID 是宿主预留的耐久输入标识；普通入口由执行分配。
+	userMessageID string
 	// clientRequestID 是新建 Chat 首次发送时由客户端稳定复用的幂等标识。
 	clientRequestID string
 	// clientRequestHash 是规范化首发业务内容的摘要。
@@ -182,6 +186,7 @@ type pendingMessage struct {
 // normalizePendingMessage 清理标识和选择字段，并复制调用方持有的可变切片。
 func normalizePendingMessage(input pendingMessage) pendingMessage {
 	input.executionID = strings.TrimSpace(input.executionID)
+	input.userMessageID = strings.TrimSpace(input.userMessageID)
 	input.clientRequestID = strings.TrimSpace(input.clientRequestID)
 	input.chatID = strings.TrimSpace(input.chatID)
 	input.parentExecutionID = strings.TrimSpace(input.parentExecutionID)
@@ -312,6 +317,9 @@ func (m *service) startMessage(
 		identityMessage := request.message
 		identityMessage.Text = strings.TrimSpace(identityMessage.Text)
 		content := []any{request.chatID, identityMessage, request.runtime, request.parentExecutionID, request.admission, stableToolCapabilities(request.toolCapabilities), request.supplementalInstructions, request.contextInstructions, request.allowedConnectorIDs, request.allowedAgentDomains}
+		if request.entryPoint == MainConversationSourceEntryPoint {
+			content = append(content, request.entryPoint)
+		}
 		if request.message.Workflow != nil {
 			content = append(content, map[string]string{"workflowId": request.message.Workflow.ID})
 		}
@@ -348,7 +356,7 @@ func (m *service) startMessage(
 	}
 	if isNew != (request.create != nil) ||
 		isNew != (request.clientRequestID != "") ||
-		(!isNew && claimAttachments != nil) ||
+		(!isNew && claimAttachments != nil && request.entryPoint != MainConversationSourceEntryPoint) ||
 		request.message.Actor == "" ||
 		(validateMessage(request.message.Text) != nil && (request.message.Text != "" || request.message.Workflow == nil)) ||
 		request.runtime.RuntimeID == "" ||
@@ -369,7 +377,9 @@ func (m *service) startMessage(
 	if request.replyToMessageID != "" {
 		var target chatservice.ReplyTarget
 		var err error
-		if request.teamReplyThreadID == "" {
+		if request.entryPoint == MainConversationSourceEntryPoint {
+			target, err = m.journal.ReadSourceReplyTarget(ctx, request.chatID, request.replyToMessageID)
+		} else if request.teamReplyThreadID == "" {
 			target, err = m.journal.ReadReplyTarget(ctx, request.chatID, request.replyToMessageID)
 		} else {
 			target, err = m.journal.ReadTeamReplyTarget(ctx, request.teamReplyThreadID, request.chatID, request.replyToMessageID)
@@ -419,21 +429,24 @@ func (m *service) startMessage(
 		); err != nil || exists {
 			return replayed, err
 		}
-		if claimAttachments != nil {
-			// 已提交的请求只需原引用即可对账，新请求仍须领取实际附件。
-			releaseAttachments, err := claimAttachments(request.message.Attachments)
-			if err != nil {
-				return AcceptedExecution{}, err
-			}
-			defer func() { releaseAttachments(files != nil && files.committed) }()
+	}
+	if claimAttachments != nil {
+		// 接纳前核对原上传引用；已提交的请求无需再持有暂存字节。
+		releaseAttachments, err := claimAttachments(request.message.Attachments)
+		if err != nil {
+			return AcceptedExecution{}, err
 		}
+		defer func() { releaseAttachments(files != nil && files.committed) }()
 	}
 	// 一次性生成本轮全部稳定标识，后续 JSONL、SQLite 查询索引和 Runtime 调用共用同一身份。
 	executionID := request.executionID
 	if executionID == "" {
 		executionID = util.New()
 	}
-	userMessageID := util.New()
+	userMessageID := request.userMessageID
+	if userMessageID == "" {
+		userMessageID = util.New()
+	}
 	// 现有 Chat 在读取准备状态前取得原操作占位，一次读取即为本次接纳的状态基线。
 	reservationChatID := request.chatID
 	reservationSubmissionID := request.submissionID
@@ -1059,22 +1072,14 @@ func (m *service) resolveChatWorkspaceScope(ctx context.Context, input pendingCh
 			}},
 		}, nil
 	}
-	if m.projectController == nil {
-		return resolvedChatWorkspace{}, status_error.ProjectServiceUnavailable
+	projectScope := input.projectScope
+	if projectScope == nil {
+		projectScope, err = readProjectScope(ctx, m.projectController, input.wakerID, input.projectID)
+		if err != nil {
+			return resolvedChatWorkspace{}, err
+		}
 	}
-	project, err := m.projectController.Get(ctx, input.projectID)
-	if err != nil {
-		return resolvedChatWorkspace{}, err
-	}
-	if project.WakerID != input.wakerID {
-		return resolvedChatWorkspace{}, status_error.ProjectNotFound.WithParams(
-			map[string]interface{}{"ProjectID": input.projectID},
-		)
-	}
-	directories, err := m.projectController.ListDirectories(ctx, input.projectID)
-	if err != nil {
-		return resolvedChatWorkspace{}, err
-	}
+	project, directories := projectScope.Project, projectScope.directories
 	// 项目工作范围必须整体可用；不能静默忽略失效的任何目录。
 	authorizedDirectories := make([]string, 0, len(directories))
 	projectLinks := make([]workspace.ProjectLink, 0, len(directories))

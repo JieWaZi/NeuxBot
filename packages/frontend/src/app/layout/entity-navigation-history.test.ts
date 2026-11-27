@@ -22,6 +22,16 @@ describe("实体导航历史", () => {
     history = recordEntityHistory(history, team);
     expect(history).toEqual({ entries: [a, team], index: 1 });
   });
+  it("来源隶属原伙伴，跨伙伴后退可定位它，直达来源也始终有自己的主会话", () => {
+    const sourceA = { ...a, workChatId: "work" };
+    const sourceB = { ...b, workChatId: "work" };
+    let history = recordEntityHistory({ entries: [], index: -1 }, sourceA);
+    expect(history.entries).toEqual([a, sourceA]);
+    history = recordEntityHistory(history, undefined);
+    history = recordEntityHistory(history, sourceB);
+    expect(history.entries).toEqual([a, sourceA, b, sourceB]);
+    expect(recordEntityHistory(history, sourceA, 1).index).toBe(1);
+  });
   it("后退前进跳过已失效实体", () => {
     const history = { entries: [a, b, team], index: 2 };
     expect(nearestEntityHistory(history, -1, (entry) => entry.id !== "b")).toBe(

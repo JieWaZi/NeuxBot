@@ -48,6 +48,9 @@ func boardCountBranch(branch string, kind constants.WorkOwnerKind, q WorkBoardQu
 
 // boardKindMatchesSource 排除不可能匹配来源的分支，不发出无意义查询。
 func boardKindMatchesSource(kind constants.WorkOwnerKind, source string) bool {
+	if kind == constants.WorkOwnerKindMainConversation {
+		return source == "" || source == "chat" || source == "team"
+	}
 	switch source {
 	case "automatic":
 		return true

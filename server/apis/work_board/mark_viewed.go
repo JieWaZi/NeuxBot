@@ -61,7 +61,16 @@ func markViewedBatch(ctx context.Context, reader string, targets []models.WorkVi
 				continue
 			}
 			var applied bool
-			if target.ChatID != "" {
+			if owner.OwnerKind == constants.WorkOwnerKindMainConversation {
+				if target.ChatID != "" || target.OwnerKind != "" || target.OwnerID != "" || target.ThroughMessageID == "" || target.ObservedUnreadGeneration < 0 {
+					return status_error.BadRequest
+				}
+				applied, err = global.MainConversationControllerManager.MarkReadForBoard(tx, reader, owner.OwnerID, target.ThroughMessageID, target.ObservedUnreadGeneration)
+				if errors.Is(err, status_error.BadRequest) || errors.Is(err, status_error.ChatMessageNotFound) {
+					value.SkippedDeleted++
+					continue
+				}
+			} else if target.ChatID != "" {
 				if target.ChatID != owner.ChatID || target.OwnerKind != "" || target.OwnerID != "" || target.ThroughMessageID == "" || target.ObservedUnreadGeneration < 0 {
 					return status_error.BadRequest
 				}

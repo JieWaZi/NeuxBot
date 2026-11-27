@@ -213,6 +213,31 @@ export function MessageForkAction({ message }: { message: ChatMessage }) {
   );
 }
 
+export function PublicMessageForkMenuItem({
+  chatId,
+  wakerId,
+  executionId,
+  busy,
+}: {
+  chatId: string;
+  wakerId: string;
+  executionId: string;
+  busy?: boolean;
+}) {
+  const { t } = useTranslation("chat");
+  const controls = useChatFork({ chatId, wakerId, busy, messages: [] });
+  return (
+    <DropdownMenuItem
+      title={busy ? t("forkUnavailableBusy") : undefined}
+      disabled={busy || controls.pending}
+      onSelect={() => void controls.fork(executionId)}
+    >
+      <Shuffle aria-hidden="true" />
+      {t("forkPublicMessage")}
+    </DropdownMenuItem>
+  );
+}
+
 function ForkMenuAction({
   controls,
   busy = false,

@@ -73,6 +73,18 @@ describe("chat workspace files", () => {
     ]);
   });
 
+  it("工作来源不同的同名附件各自保留可定位的路径", () => {
+    const attachment = { name: "brief.pdf", path: "attachments/brief.pdf" };
+    const files = workspaceFilesOf([
+      { sourceChatId: "work-a", attachments: [attachment, attachment] },
+      { sourceChatId: "work-b", attachments: [attachment] },
+    ]);
+    expect(workspaceFilesWithGenerated(files, [])).toMatchObject([
+      { sourceChatId: "work-a", path: attachment.path },
+      { sourceChatId: "work-b", path: attachment.path },
+    ]);
+  });
+
   it("已删除的历史附件和生成文件不会重新进入会话文件列表", () => {
     expect(
       workspaceFilesWithGenerated(

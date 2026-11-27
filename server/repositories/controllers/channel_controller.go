@@ -32,6 +32,8 @@ type ChannelController interface {
 	Update(ctx context.Context, channel models.Channel, members []models.ChannelMember) error
 	// CountActiveWork 统计仍拥有团队对话的任务、负责人输入、Chat 执行和工作流。
 	CountActiveWork(ctx context.Context, channelID string) (int64, error)
+	// ListMainWorkChatIDs 返回此团队主会话拥有的隐藏工作 Chat。
+	ListMainWorkChatIDs(ctx context.Context, id string) ([]string, error)
 	// Delete 删除团队主体及其当前成员配置；团队对话必须先由上层清理。
 	Delete(ctx context.Context, channelID string) error
 	// ListIDsByMemberWaker 返回指定伙伴当前参与的全部团队标识。
@@ -212,6 +214,7 @@ func (c *channelController) Update(
 	channel models.Channel,
 	members []models.ChannelMember,
 ) error {
+	publishRequestScopeChange := c.captureMainTeamRequestScope(ctx, channel.ID)
 	db := controllerDB(ctx, c.db)
 	result := db.Model(&models.Channel{}).
 		Where("id = ?", channel.ID).
@@ -234,6 +237,7 @@ func (c *channelController) Update(
 		return databaseError("replace_channel_members", "channel_id="+channel.ID, err)
 	}
 	publishCommittedChange(ctx, c.db, "entities", eventsResource("channel", channel.ID))
+	publishRequestScopeChange()
 	return nil
 }
 
@@ -254,8 +258,10 @@ func (c *channelController) CountActiveWork(
 		return 0, databaseError("count_channel_active_tasks", "channel_id="+channelID, err)
 	}
 	var executionCount int64
+	mainConversations := db.Model(&models.MainConversation{}).Select("id").Where("subject_type = ? AND subject_id = ?", "team", channelID)
+	mainSources := db.Model(&models.MainConversationWork{}).Select("work_chat_id").Where("conversation_id IN (?)", mainConversations)
 	err = db.Model(&models.Chat{}).
-		Where("id IN (SELECT chat_id FROM channel_thread_members WHERE thread_id IN (SELECT id FROM channel_threads WHERE channel_id = ?))", channelID).
+		Where("(id IN (SELECT chat_id FROM channel_thread_members WHERE thread_id IN (SELECT id FROM channel_threads WHERE channel_id = ?)) OR id IN (?))", channelID, mainSources).
 		Where("chats.active_execution_id <> ''").
 		Count(&executionCount).Error
 	if err != nil {
@@ -342,6 +348,7 @@ func (c *channelController) RemoveMember(
 	if channelID == "" || wakerID == "" {
 		return status_error.BadRequest
 	}
+	publishRequestScopeChange := c.captureMainTeamRequestScope(ctx, channelID)
 	result := controllerDB(ctx, c.db).
 		Where("channel_id = ? AND waker_id = ?", channelID, wakerID).
 		Delete(&models.ChannelMember{})
@@ -353,6 +360,7 @@ func (c *channelController) RemoveMember(
 		)
 	}
 	publishCommittedChange(ctx, c.db, "entities", eventsResource("channel", channelID))
+	publishRequestScopeChange()
 	return nil
 }
 
@@ -368,6 +376,7 @@ func (c *channelController) UpdateLead(
 	if channelID == "" || leadWakerID == "" {
 		return status_error.BadRequest
 	}
+	publishRequestScopeChange := c.captureMainTeamRequestScope(ctx, channelID)
 	result := controllerDB(ctx, c.db).
 		Model(&models.Channel{}).
 		Where("id = ?", channelID).
@@ -383,12 +392,16 @@ func (c *channelController) UpdateLead(
 		)
 	}
 	publishCommittedChange(ctx, c.db, "entities", eventsResource("channel", channelID))
+	publishRequestScopeChange()
 	return nil
 }
 
 // Delete 删除团队主体及其当前成员配置；团队对话必须先由上层清理。
 func (c *channelController) Delete(ctx context.Context, channelID string) error {
 	db := controllerDB(ctx, c.db)
+	if err := deleteMainConversation(db, "team", channelID); err != nil {
+		return err
+	}
 	if err := db.Where("channel_id = ?", channelID).Delete(&models.ChannelMember{}).Error; err != nil {
 		return databaseError("delete_channel_members", "channel_id="+channelID, err)
 	}

@@ -19,6 +19,8 @@ import type {
 
 export type ChatSubmissionResult = MessageResult & {
   queuedInput?: QueuedLeadInput;
+  /** 发言的公开时间线由业务入口刷新，接纳后即可继续输入。 */
+  published?: boolean;
 };
 
 /** 请求适配层同步确定真实输入身份；接纳命令沿用同一份请求。 */
@@ -35,9 +37,12 @@ export type PreparedChatSubmission = {
   retryWithNewSubmission?: () => boolean;
   /** 仅支持幂等重放的首发入口提供；待确认期间禁止开始替代提交。 */
   hasUnconfirmedReceipt?: () => boolean;
+  /** 本次准备失败且没有更早的不明回执时，允许取回原草稿。 */
+  canReturnToDraft?: () => boolean;
   /** 首发未分配公开会话标识时，按冻结的原请求身份停止。 */
   cancel?: () => Promise<void>;
-  accept: () => Promise<ChatSubmissionResult>;
+  /** 有独立消息流的入口可复用本次用户消息预览。 */
+  accept: (userMessage?: BotChatMessage) => Promise<ChatSubmissionResult>;
 };
 
 /** 冻结所属场景的请求构造器；出队时不读取后来改选的领域上下文。 */

@@ -75,6 +75,17 @@ export type ChatWorkspaceAdapter = {
   tabs?: WorkspaceTab[];
 };
 
+type CustomChatWorkspaceAdapter = Omit<ChatWorkspaceAdapter, "thread"> & {
+  content: ReactNode;
+  thread: Pick<
+    ChatWorkspaceAdapter["thread"],
+    | "linkAdditionalWorkingDirectories"
+    | "onOpenFile"
+    | "onOpenLink"
+    | "wakerName"
+  >;
+};
+
 /** 主窗口内与共享会话并排的业务内容，不注册为右侧工作台标签。 */
 export type ChatWorkspaceMainContent = {
   contentId: string;
@@ -95,10 +106,12 @@ type ChatWorkspaceSurfaceProps = {
   onNewChat?: () => void;
   chatHistory?: ReactNode;
   activeRightPanel?: ChatRightPanel;
-  adapter: ChatWorkspaceAdapter;
-  onAddCodeReference: (reference: ChatCodeReference) => void;
+  adapter: ChatWorkspaceAdapter | CustomChatWorkspaceAdapter;
+  onAddCodeReference?: (reference: ChatCodeReference) => void;
   onDismissRightPanel: () => void;
   onOpenRightPanel: () => void;
+  defaultFileSource?: "project" | "chat";
+  allowSideChat?: boolean;
   gitRoots?: readonly string[];
   renderTeamMembers?: (onMemberOpened: () => void) => ReactNode;
   showActivityIndicator?: boolean;
@@ -136,6 +149,8 @@ export function ChatWorkspaceSurface({
   onAddCodeReference,
   onDismissRightPanel,
   onOpenRightPanel,
+  defaultFileSource,
+  allowSideChat,
   gitRoots = [],
   renderTeamMembers,
   // showActivityIndicator = true,
@@ -403,6 +418,7 @@ export function ChatWorkspaceSurface({
             name: file.name,
             path: file.path,
             fileSource: file.source,
+            sourceChatId: file.sourceChatId,
           })
         }
         onViewAllFiles={() => {
@@ -574,15 +590,21 @@ export function ChatWorkspaceSurface({
                   snapshot={snapshot}
                   title={activeTab?.label ?? adapter.thread.wakerName}
                 >
-                  <ChatThread
-                    {...adapter.thread}
-                    emptyStatePosition={
-                      canvasInput ? "center" : adapter.thread.emptyStatePosition
-                    }
-                    animateComposerSize={canvasInput !== undefined}
-                    fileScopeChatId={identity.chatId}
-                    isRunning={snapshot.isRunning}
-                  />
+                  {"content" in adapter ? (
+                    adapter.content
+                  ) : (
+                    <ChatThread
+                      {...adapter.thread}
+                      emptyStatePosition={
+                        canvasInput
+                          ? "center"
+                          : adapter.thread.emptyStatePosition
+                      }
+                      animateComposerSize={canvasInput !== undefined}
+                      fileScopeChatId={identity.chatId}
+                      isRunning={snapshot.isRunning}
+                    />
+                  )}
                 </FloatingChat>
               </div>
             }
@@ -641,6 +663,8 @@ export function ChatWorkspaceSurface({
                 adapter.snapshot.pendingElicitationCount > 0
               }
               displayWidth={displayWidth}
+              defaultFileSource={defaultFileSource}
+              allowSideChat={allowSideChat}
               onAddCodeReference={onAddCodeReference}
               onDismiss={onDismissRightPanel}
               onEmpty={() => {

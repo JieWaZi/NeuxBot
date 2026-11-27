@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -23,6 +24,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
+	ginxlogx "github.com/shrewx/ginx/pkg/logx"
 )
 
 func TestThreadTurnGateRejectsBeforeNativePrompt(t *testing.T) {
@@ -131,6 +133,11 @@ func newTurnFixture(t *testing.T, provider string) (*agent.ThreadLifecycle, *con
 
 func TestThreadTurnNativeUsageSurvivesObserverAndResume(t *testing.T) {
 	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	var decisionLogs bytes.Buffer
+	logger := ginxlogx.Instance()
+	originalOutput := logger.Out
+	logger.SetOutput(&decisionLogs)
+	t.Cleanup(func() { logger.SetOutput(originalOutput) })
 	configureThreadFixture(&req, trace)
 	instructions := "stable developer instructions"
 	req.Session.DeveloperInstructions = &instructions
@@ -202,6 +209,21 @@ func TestThreadTurnNativeUsageSurvivesObserverAndResume(t *testing.T) {
 		strings.Count(log, "first input") != 1 || strings.Count(log, "second input") != 1 ||
 		strings.Count(log, "after reconnect") != 1 || !strings.Contains(log, `"model":"alternate-model"`) {
 		t.Fatalf("hot reuse/resume trace (acquired %d): %s", acquisitions, log)
+	}
+	var decisions []string
+	for _, line := range strings.Split(decisionLogs.String(), "\n") {
+		if strings.Contains(line, "native session decision:") {
+			decisions = append(decisions, line)
+		}
+	}
+	if len(decisions) != 3 {
+		t.Fatalf("expected one native session decision per turn: %s", &decisionLogs)
+	}
+	for i, expected := range []string{"action=start reason=no_binding", "action=reuse reason=compatible_session", "action=resume reason=connection_reopened"} {
+		if !strings.Contains(decisions[i], expected) || !strings.Contains(decisions[i], "handoff=none") ||
+			!strings.Contains(decisions[i], "result=ready") || strings.Contains(decisions[i], instructions) {
+			t.Fatalf("decision %d = %s", i, decisions[i])
+		}
 	}
 }
 
@@ -576,6 +598,12 @@ func fixtureCodexFrame(out *json.Encoder, frame map[string]any, raw, session str
 		}})
 	case "thread/start", "thread/resume":
 		params, _ := frame["params"].(map[string]any)
+		if method == "thread/resume" && os.Getenv("THREAD_FIXTURE_REFUSE_CODEX_RESUME") == "1" {
+			_ = out.Encode(map[string]any{"id": frame["id"], "error": map[string]any{
+				"code": -32603, "message": fmt.Sprintf("thread %s did not include persisted history", params["threadId"]),
+			}})
+			return
+		}
 		ack(map[string]any{"thread": map[string]any{"id": session, "ephemeral": params["ephemeral"] == true}, "model": "default-model"})
 	case "turn/start":
 		if strings.Contains(raw, "hold-unconfirmed-handoff") {
@@ -2530,6 +2558,47 @@ func TestThreadTurnColdExplicitEnvironmentChangeResumesNativeSession(t *testing.
 	}
 	if line := fixturePromptLine(t, trace, next.Text); strings.Contains(line, first.Text) {
 		t.Fatalf("process refresh replayed the previous input: %s", line)
+	}
+}
+
+func TestThreadTurnDoesNotReplaceRejectedSessionWithSavedHandoff(t *testing.T) {
+	lifecycle, store, request, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&request, trace)
+	request.Connection.Launch.Environment["THREAD_FIXTURE_REFUSE_CODEX_RESUME"] = "1"
+	request.ReplaceRejectedSession = true
+	ctx := t.Context()
+	first := chatTurn(0, "prior completed input")
+	original := completeThreadFixtureTurn(t, lifecycle, store, request, first, true)
+	if err := lifecycle.CloseThread(ctx, request.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	version, err := store.ReadVersion(ctx, request.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := original.Binding
+	binding.Handoff = &agent.NativeHandoff{History: []agent.HandoffPair{{
+		UserMessageID: "user-" + first.HostInvocationID, AssistantMessageID: first.AssistantMessageID,
+	}}}
+	if _, err := store.Commit(ctx, agent.ConversationBatch{
+		ChatID: request.ChatID, Key: "save-pending-handoff", ExpectedVersion: version,
+		Changes: []agent.ConversationChange{{Binding: &binding}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	next := chatTurn(1, "must not be admitted")
+	turn, err := lifecycle.Prepare(ctx, request, next, chatPorts(request.ChatID, next, false))
+	if turn != nil || !errors.Is(err, status_error.RuntimeSessionRestoreFailed) {
+		t.Fatalf("restore with outstanding handoff = %v, %v", turn, err)
+	}
+	saved, err := store.ReadBinding(ctx, request.ChatID)
+	if err != nil || saved == nil || saved.Session != original.Binding.Session || saved.Handoff == nil {
+		t.Fatalf("pending handoff changed: %+v, %v", saved, err)
+	}
+	wire, err := os.ReadFile(trace)
+	if err != nil || strings.Count(string(wire), `"method":"thread/start"`) != 1 ||
+		strings.Count(string(wire), `"method":"thread/resume"`) != 1 || strings.Contains(string(wire), next.Text) {
+		t.Fatalf("refused restore attempted another native session or input: %s, %v", wire, err)
 	}
 }
 

@@ -236,5 +236,5 @@ func boardCompleteness(ctx context.Context, query controllers.WorkBoardQuery, mi
 }
 
 func validOwner(kind constants.WorkOwnerKind) bool {
-	return kind == constants.WorkOwnerKindChat || kind == constants.WorkOwnerKindTeamThread || kind == constants.WorkOwnerKindWorkflowRun || kind == "automatic_run"
+	return kind == constants.WorkOwnerKindChat || kind == constants.WorkOwnerKindTeamThread || kind == constants.WorkOwnerKindWorkflowRun || kind == constants.WorkOwnerKindAutomaticRun || kind == constants.WorkOwnerKindMainConversation
 }

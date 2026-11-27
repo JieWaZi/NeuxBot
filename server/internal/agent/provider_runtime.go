@@ -488,7 +488,7 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 	}
 	c.accountLease, err = c.runtime.options.AcquireAccount(ctx, account)
 	if err != nil {
-		return safeAgentError(err, status_error.AIAccountConfigurationInvalid)
+		return nativePreparationError(ctx, "provider/acquire_account", err, status_error.AIAccountConfigurationInvalid)
 	}
 	if account.ConfigHome != "" && request.Launch.ConfigHome != "" {
 		root, err := resolveAgentDirectory(request.Launch.ConfigHome)
@@ -512,7 +512,7 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 	if c.accountLease.PrepareLaunchAuth != nil {
 		c.launchAuth, err = c.accountLease.PrepareLaunchAuth(ctx)
 		if err != nil {
-			return safeAgentError(err, status_error.RuntimeAuthRequired)
+			return nativePreparationError(ctx, "provider/prepare_launch_auth", err, status_error.RuntimeAuthRequired)
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -521,7 +521,7 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 	if ports.AcquireResources != nil {
 		c.resources, err = ports.AcquireResources(ctx, request.Resources)
 		if err != nil {
-			return safeAgentError(err, status_error.RuntimeConfigurationInvalid)
+			return nativePreparationError(ctx, "provider/acquire_resources", err, status_error.RuntimeConfigurationInvalid)
 		}
 	} else if request.Resources.Skills != nil || len(request.Resources.Plugins) != 0 || len(request.Resources.ConnectorIDs) != 0 {
 		return status_error.RuntimeConfigurationInvalid
@@ -609,7 +609,7 @@ func (c *providerConnection) verifyCodexCredential(ctx context.Context, verify f
 	}
 	reportedRoot, proof, err := native.CredentialProof(ctx, kind)
 	if err != nil {
-		return safeAgentError(err, status_error.RuntimeAuthRequired)
+		return nativePreparationError(ctx, "provider/credential_proof", err, status_error.RuntimeAuthRequired)
 	}
 	root, err := resolveAgentDirectory(reportedRoot)
 	if err != nil || root != c.accountLease.ConfigHome {

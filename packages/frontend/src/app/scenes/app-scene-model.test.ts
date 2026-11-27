@@ -77,6 +77,35 @@ describe("应用 Scene 模型", () => {
       expect(snapshot.tabs[0]?.id).toBe("chat:latest");
     },
   );
+  it.each(["/chat", "/wakers/new"])(
+    "%s 转到主会话时释放入口，沿用已打开的主会话挂载与普通草稿",
+    (entry) => {
+      const main = routeSceneForLocation({
+        pathname: "/chat/main/waker/w1",
+        search: "",
+      });
+      const draft = routeSceneForLocation({
+        pathname: "/chat",
+        search: "?draftId=explicit&wakerId=w1",
+      });
+      let snapshot = initialAppSceneSnapshot(main, 1);
+      snapshot = appSceneReducer(snapshot, { type: "open", tab: draft });
+      snapshot = appSceneReducer(snapshot, {
+        type: "open",
+        tab: routeSceneForLocation({ pathname: entry, search: "" }),
+      });
+      snapshot = appSceneReducer(snapshot, {
+        type: "open",
+        tab: main,
+        replaceTemporary: true,
+      });
+      expect(snapshot.activeTabId).toBe(main.id);
+      expect(snapshot.tabs.map((tab) => tab.mountKey)).toEqual([
+        main.mountKey,
+        draft.mountKey,
+      ]);
+    },
+  );
   it("旧 MCP 设置保留 Scene 身份并归一到服务详情 URL", () => {
     const scene = routeSceneForLocation({
       pathname: "/settings/integration-mcp",

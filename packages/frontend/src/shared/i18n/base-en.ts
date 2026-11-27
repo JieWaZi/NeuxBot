@@ -1,3 +1,4 @@
+import { mainConversationEn } from "./main-conversation";
 // 工作台领域的英文基线文案；基础文案由 common.ts 拥有。
 export const baseEn = {
   waker: {
@@ -1534,6 +1535,11 @@ export const baseEn = {
       continue: "Completed",
       otherPlaceholder: "Or enter a custom answer",
     },
+    messageActions: {
+      more: "More actions",
+      copy: "Copy message",
+      copyFailed: "Could not copy the message.",
+    },
     reading: {
       actions: "Reading actions",
       markUnread: "Mark unread from here",
@@ -1999,6 +2005,7 @@ export const baseEn = {
     firstSendUnconfirmed:
       "The first message is unconfirmed. Retrying uses the original partner, model, and permissions.",
     retryFirstSend: "Retry original send",
+    editFirstSend: "Back to editing",
     runtimeFailure: {
       thinkingRequired:
         "This model requires thinking. Adjust the thinking setting and try again.",
@@ -2319,6 +2326,7 @@ export const baseEn = {
     modelSection: "Model",
     reasoningSection: "Reasoning",
     stop: "Stop execution",
+    ...mainConversationEn,
     send: "Send message",
     copy: "Copy",
     copied: "Copied",
@@ -2327,6 +2335,7 @@ export const baseEn = {
     replyPreview: "Replying to: {{preview}}",
     removeReply: "Remove reply",
     locateReply: "Go to original message: {{preview}}",
+    locateOriginalMessage: "Go to original message",
     locatingReply: "Locating the original message…",
     replyUnavailable: "The original message is unavailable",
     replyLocateFailed: "Could not locate the original message",

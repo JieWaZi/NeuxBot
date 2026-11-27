@@ -21,7 +21,7 @@ type GetWorkBoardLiveTarget struct {
 	// WorkID 是原公开工作标识。
 	WorkID string `in:"query" name:"workId" validate:"required,len=32"`
 	// Operation 是原实时事件操作类型。
-	Operation string `in:"query" name:"operation" validate:"required,oneof=completed failed request_opened"`
+	Operation string `in:"query" name:"operation" validate:"required,oneof=published completed failed request_opened"`
 	// ChatID 是实际产生消息或请求的会话。
 	ChatID string `in:"query" name:"chatId" validate:"omitempty,len=32"`
 	// MessageID 是已提交的原公开消息标识。
@@ -48,6 +48,8 @@ type WorkBoardLiveTarget struct {
 	Title string `json:"title,omitempty"`
 	// Preview 是可选的公开短文本。
 	Preview string `json:"preview,omitempty"`
+	// 提醒展示时的公开会话未读代次
+	UnreadGeneration *int64 `json:"unreadGeneration,omitempty"`
 	// WakerID 是实际伙伴标识。
 	WakerID string `json:"wakerId,omitempty"`
 	// ChannelID 是原团队标识。
@@ -72,6 +74,10 @@ func (*GetWorkBoardLiveTarget) Path() string { return "/live-target" }
 func (d *GetWorkBoardLiveTarget) Output(ctx *gin.Context) (interface{}, error) {
 	request := ctx.Request.Context()
 	work := models.WorkRef{Kind: d.WorkKind, ID: d.WorkID}
+	main := work.Kind == constants.WorkOwnerKindMainConversation
+	if d.Operation == "published" && !main || main && d.Operation != "published" && d.Operation != "request_opened" {
+		return WorkBoardLiveTarget{}, nil
+	}
 	if d.Operation == "request_opened" {
 		if d.RequestKind == "" || d.RequestID == "" {
 			return nil, ginx.WithStack(status_error.BadRequest)
@@ -114,6 +120,27 @@ func (d *GetWorkBoardLiveTarget) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	value := WorkBoardLiveTarget{Work: &models.WorkRef{Kind: owner.OwnerKind, ID: owner.OwnerID}, Title: owner.Title, ChatID: owner.ChatID, WakerID: owner.WakerID, ChannelID: owner.ChannelID, DefinitionID: owner.WorkflowID, AutomaticTaskID: owner.AutomaticTaskID}
 	switch owner.OwnerKind {
+	case constants.WorkOwnerKindMainConversation:
+		if d.MessageID == "" || d.ChatID != "" {
+			return WorkBoardLiveTarget{}, nil
+		}
+		message, found, err := global.MainConversationControllerManager.FindMessage(request, owner.OwnerID, d.MessageID)
+		if err != nil {
+			return nil, ginx.WithStack(err)
+		}
+		if !found || !message.IsReadablePublication() {
+			return WorkBoardLiveTarget{}, nil
+		}
+		cursor, err := global.MainConversationControllerManager.ReadingCursor(request, constants.LocalReaderID, owner.OwnerID)
+		if err == nil {
+			value.UnreadGeneration = &cursor.UnreadGeneration
+		} else if !errors.Is(err, status_error.ReadingProjectionIncomplete) {
+			return nil, ginx.WithStack(err)
+		}
+		value.Valid = true
+		if d.IncludePreview {
+			value.Preview = livePreview(message.Content)
+		}
 	case constants.WorkOwnerKindTeamThread, constants.WorkOwnerKindChat:
 		if owner.OwnerKind == constants.WorkOwnerKindTeamThread {
 			value.ThreadID = owner.OwnerID

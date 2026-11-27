@@ -134,7 +134,11 @@ export function installWorkspaceAttention(options: Options) {
     );
   }
 
-  async function open(event: WorkspaceAttentionLive, key: string) {
+  async function open(
+    event: WorkspaceAttentionLive,
+    key: string,
+    unreadGeneration?: number,
+  ) {
     if (event.operation === "request_closed") return;
     const intent = { key, request: isRequest(event), invalidated: false };
     pendingOpen = intent;
@@ -152,6 +156,7 @@ export function installWorkspaceAttention(options: Options) {
           ...event,
           operation,
           work: target.work ?? event.work,
+          ...(unreadGeneration !== undefined && { unreadGeneration }),
           chatId: target.chatId ?? event.chatId,
           wakerId: target.wakerId,
           channelId: target.channelId,
@@ -175,7 +180,10 @@ export function installWorkspaceAttention(options: Options) {
     reminder: Reminder,
   ) {
     try {
-      const needsTarget = isRequest(event) || event.work.kind === "chat";
+      const needsTarget =
+        isRequest(event) ||
+        event.work.kind === "chat" ||
+        event.work.kind === "main_conversation";
       let target: WorkspaceAttentionTarget | undefined;
       do {
         reminder.recheck = false;
@@ -221,13 +229,15 @@ export function installWorkspaceAttention(options: Options) {
                 : "有新的工作结果"),
       });
       if (!notification) return;
+      // 点击时复核归属，已展示提醒只授权当时观察到的阅读代次。
+      const generation = target?.unreadGeneration;
       reminder.native = notification;
       const release = () => {
         if (reminders.get(key) === reminder) reminders.delete(key);
       };
       notification.once("click", () => {
         release();
-        void open(event, key).catch(() => undefined);
+        void open(event, key, generation).catch(() => undefined);
       });
       notification.once("close", release);
       notification.once("failed", release);

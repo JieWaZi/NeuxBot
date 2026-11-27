@@ -5,6 +5,8 @@ import {
 } from "@tanstack/react-query";
 import { useMemo } from "react";
 
+import { mainConversationOptions } from "@/modules/chat/api/main-conversation";
+import { mainConversationOwner } from "./main-conversation-route";
 import { useMissingQueries } from "@/shared/api/use-missing-queries";
 import {
   getChannelQueryKey,
@@ -23,6 +25,16 @@ import type { AppSceneTab } from "@/shared/workspace/app-scene-model";
 /** 只匹配页面自身及所属身份，关联资源或弹窗查询失败不使整个页面失效。 */
 function routeSceneQueryKeys(href: string): QueryKey[] {
   const [pathname = "", search] = href.split("?");
+  const owner = mainConversationOwner(pathname);
+  if (owner) {
+    return [
+      mainConversationOptions({ subjectType: owner.kind, subjectId: owner.id })
+        .queryKey,
+      owner.kind === "waker"
+        ? getWakerQueryKey({ path: { wakerId: owner.id } })
+        : getChannelQueryKey({ path: { channelId: owner.id } }),
+    ];
+  }
   const segments = pathname.split("/").slice(1);
   const [kind, id, section, resourceId] = segments;
   if (!id) return [];

@@ -49,6 +49,7 @@ reference's spelling. `--library` and `--libraryId` are not `--library-id`.
 | --- | --- |
 | Knowledge lookup, ingestion and maintenance task | [Knowledge](references/wiki-guide.md#command-examples) |
 | Page/directory repair inside the authorized scope | [Wiki repair](references/wiki-maintenance.md#command-examples) |
+| Reply to the user from a host-bound conversation worker | [Main conversation](references/main-conversation.md#command-examples) |
 | Message/file delivery | [IM delivery](references/im-delivery.md#command-examples) |
 | Team coordination/reporting | [Lead](references/team-lead.md#command-examples), [member](references/team-member.md#command-examples) |
 | Durable memory | [Memory](references/memory.md#command-examples) |

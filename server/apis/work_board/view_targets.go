@@ -79,7 +79,13 @@ func (d *GetWorkBoardViewTargets) Output(ctx *gin.Context) (interface{}, error) 
 		targets := make([]models.WorkViewTarget, 0, len(rows))
 		for _, row := range rows {
 			target := models.WorkViewTarget{Work: models.WorkRef{Kind: row.OwnerKind, ID: row.OwnerID}}
-			if row.ChatID != "" {
+			if row.OwnerKind == constants.WorkOwnerKindMainConversation {
+				if row.LatestReadableMessageID == "" {
+					return status_error.ReadingProjectionIncomplete
+				}
+				target.ThroughMessageID = row.LatestReadableMessageID
+				target.ObservedUnreadGeneration = row.UnreadGeneration
+			} else if row.ChatID != "" {
 				reading := readings[row.ChatID]
 				if reading.LatestReadableMessageID == "" {
 					return status_error.ReadingProjectionIncomplete

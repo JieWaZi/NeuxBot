@@ -35,6 +35,8 @@ type ChatController interface {
 	AdvanceExecutionLocations(context.Context, string, int64, int64, []models.ChatExecutionLocation) error
 	// Create 创建一条可由权威 JSONL 重建的 Chat 索引。
 	Create(ctx context.Context, chat models.Chat) error
+	// ReplaceProjection 在原恢复事务内重建派生索引，保留既有业务归属。
+	ReplaceProjection(ctx context.Context, chat models.Chat) error
 	// Get 按标识返回 Chat 索引。
 	Get(ctx context.Context, id string) (models.Chat, error)
 	// ListByWakerBefore 按稳定活动游标返回一位伙伴更早的 Chat。
@@ -532,18 +534,11 @@ func (c *chatController) Delete(ctx context.Context, id string) error {
 			return databaseError("capture_deleted_chat_im_bindings", "chat_id="+id, err)
 		}
 	}
-	// 执行定位属于同一可重建 Chat 查询投影，随原删除事务一起清理。
-	if err := db.Where("chat_id = ?", id).Delete(&models.ChatExecutionLocation{}).Error; err != nil {
-		return databaseError("delete_chat_execution_locations", "chat_id="+id, err)
+	if err := releaseMainWorkChat(db, id); err != nil {
+		return err
 	}
-	if err := db.Where("chat_id = ?", id).Delete(&models.ChatExecutionLocationCursor{}).Error; err != nil {
-		return databaseError("delete_chat_execution_location_cursor", "chat_id="+id, err)
-	}
-	err := db.
-		Where("id = ?", id).
-		Delete(&models.Chat{}).Error
-	if err != nil {
-		return databaseError("delete_chat_projection", "chat_id="+id, err)
+	if err := deleteChatProjectionRows(db, id); err != nil {
+		return err
 	}
 	publishCommittedChange(ctx, c.db, "work-board", eventsResource("chat", id), affectedEntities...)
 	connections := make(map[string]bool, len(bindings))
@@ -553,6 +548,28 @@ func (c *chatController) Delete(ctx context.Context, id string) error {
 			connections[binding.ConnectionID] = true
 			publishCommittedChange(ctx, c.db, "im", eventsResource("connection", binding.ConnectionID))
 		}
+	}
+	return nil
+}
+
+// ReplaceProjection 从权威历史重建现有 Chat 的可查询字段，不执行会话删除。
+func (c *chatController) ReplaceProjection(ctx context.Context, chat models.Chat) error {
+	if err := deleteChatProjectionRows(controllerDB(ctx, c.db), chat.ID); err != nil {
+		return err
+	}
+	return c.Create(ctx, chat)
+}
+
+func deleteChatProjectionRows(db *gorm.DB, id string) error {
+	// 执行定位的覆盖位置属于同一可重建投影。
+	if err := db.Where("chat_id = ?", id).Delete(&models.ChatExecutionLocation{}).Error; err != nil {
+		return databaseError("delete_chat_execution_locations", "chat_id="+id, err)
+	}
+	if err := db.Where("chat_id = ?", id).Delete(&models.ChatExecutionLocationCursor{}).Error; err != nil {
+		return databaseError("delete_chat_execution_location_cursor", "chat_id="+id, err)
+	}
+	if err := db.Where("id = ?", id).Delete(&models.Chat{}).Error; err != nil {
+		return databaseError("delete_chat_projection", "chat_id="+id, err)
 	}
 	return nil
 }

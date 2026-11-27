@@ -96,6 +96,53 @@ function setup(
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
+test("public replies are verified and deduplicated by public message before notifying", async () => {
+  const work = { kind: "main_conversation", id: "1".repeat(32) };
+  const channelId = "2".repeat(32);
+  const second = "3".repeat(32);
+  const verified = [];
+  let generation = 3;
+  const host = setup(async (target, preview) => {
+    verified.push([target.messageId, preview]);
+    return {
+      valid: target.messageId !== requestId,
+      work,
+      channelId,
+      unreadGeneration: generation,
+    };
+  });
+  const publish = (id) =>
+    host.send("published", {
+      work,
+      chatId: undefined,
+      executionId: undefined,
+      messageId: id,
+    });
+  host.ready();
+  host.send("published", { work: { kind: "workflow_run", id: work.id } });
+  publish(undefined);
+  publish(requestId);
+  publish(messageId);
+  publish(messageId);
+  publish(second);
+  await flush();
+  assert.equal(host.shown.length, 2);
+  assert.deepEqual(verified, [
+    [requestId, false],
+    [messageId, false],
+    [second, false],
+  ]);
+  generation++;
+  host.shown[0].notification.emit("click");
+  await flush();
+  assert.equal(host.opened[0].messageId, messageId);
+  assert.equal(host.opened[0].channelId, channelId);
+  assert.equal(host.opened[0].unreadGeneration, 3);
+  assert.deepEqual(host.opened[0].work, work);
+  assert.equal(host.opened[0].chatId, undefined);
+  host.stop();
+});
+
 test("only live frames after ready can produce a reminder, once per message", async () => {
   const host = setup();
   host.send("completed");
@@ -326,6 +373,74 @@ test("a raw chat request uses the verified work and is withdrawn when that work 
   valid = false;
   host.recheck("team_thread", threadId);
   await flush();
+  assert.equal(host.shown[1].notification.closed, true);
+  host.stop();
+});
+
+test("a hidden chat request opens its verified main conversation with previews disabled", async (t) => {
+  const work = { kind: "main_conversation", id: "1".repeat(32) };
+  const channelId = "2".repeat(32);
+  const wakerId = "3".repeat(32);
+  const secondRequest = "4".repeat(32);
+  const lookups = [];
+  let valid = true;
+  t.mock.method(globalThis, "fetch", async (url) => {
+    lookups.push(Object.fromEntries(url.searchParams));
+    return Response.json({
+      valid,
+      work,
+      wakerId,
+      channelId,
+      chatId,
+      title: "Team name",
+    });
+  });
+  const { resolveWorkspaceAttentionTarget } = loadModule(
+    "main/workspace-attention.ts",
+  );
+  const host = setup(
+    resolveWorkspaceAttentionTarget(async () => ({
+      baseUrl: "http://127.0.0.1:3000",
+      token: "test-token",
+    })),
+  );
+  host.ready();
+  host.preference({ mode: "needs-me", preview: false });
+  host.send("request_opened");
+  await flush();
+  assert.deepEqual(host.shown[0].content, {
+    title: "NeuxBot",
+    body: "有一项请求需要处理",
+  });
+  host.shown[0].notification.emit("click");
+  await flush();
+  assert.deepEqual(lookups, [
+    {
+      workKind: "chat",
+      workId: chatId,
+      operation: "request_opened",
+      chatId,
+      requestId,
+      requestKind: "approval",
+      executionId,
+      includePreview: "false",
+    },
+    lookups[0],
+  ]);
+  assert.deepEqual(host.opened[0].work, work);
+  assert.equal(host.opened[0].channelId, channelId);
+  assert.equal(host.opened[0].wakerId, wakerId);
+  assert.equal(host.opened[0].chatId, chatId);
+  assert.equal(host.opened[0].requestId, requestId);
+  assert.equal(host.opened[0].executionId, executionId);
+  assert.equal(host.opened[0].unreadGeneration, undefined);
+
+  host.send("request_opened", { requestId: secondRequest });
+  await flush();
+  valid = false;
+  host.recheck(work.kind, work.id);
+  await flush();
+  assert.equal(lookups.at(-1).requestId, secondRequest);
   assert.equal(host.shown[1].notification.closed, true);
   host.stop();
 });

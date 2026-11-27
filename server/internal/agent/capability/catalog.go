@@ -203,6 +203,7 @@ func catalog() []Operation {
 		operation("interaction.questions.create", "Ask the user a consequential structured question.", mutation, accepted, "interaction.questions", text("message", true), Field{Name: "requestedSchema", Schema: questionSchema(), Required: true}, scalar("allowSkip", "boolean", false)),
 		operation("interaction.questions.get", "Read the actual answer state of the current execution's question.", read, immediate, "interaction.questions", text("questionId", true)),
 	}
+	result = append(mainConversationOperations(), result...)
 	result = append(result, resourceManagementOperations()...)
 	result = append(result, knowledgeMaintenanceOperations()...)
 	for _, resource := range []struct {
@@ -387,6 +388,9 @@ func outputSchema(id string) map[string]any {
 		}
 		return map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
 	}
+	if id == "interaction.questions.wait" {
+		return object("completed", "resource", "nextAction")
+	}
 	if strings.HasSuffix(id, ".wait") {
 		return object("completed", "resource")
 	}
@@ -520,6 +524,9 @@ func outputSchema(id string) map[string]any {
 
 // DisplayLabel returns a fixed product action without model data; text does not determine completion semantics.
 func (o Operation) DisplayLabel() string {
+	if label := mainConversationLabels[o.ID]; label != "" {
+		return label
+	}
 	labels := map[string]string{
 		"knowledge.pages.purge":   "删除已归并的重复页面",
 		"knowledge.libraries.get": "读取知识库设置", "knowledge.sources.list": "查看知识来源", "knowledge.sources.read": "核查原文证据", "knowledge.pages.list": "查看知识页面", "knowledge.themes.list": "查看知识目录", "knowledge.index.get": "读取知识索引", "knowledge.revisions.list": "查看知识历史", "knowledge.revisions.get": "读取历史版本", "knowledge.jobs.list": "查看整理任务", "knowledge.jobs.get": "查看整理结果", "knowledge.audit.get": "核查知识质量", "knowledge.activity.list": "查看知识活动", "knowledge.export.get": "导出知识正文",

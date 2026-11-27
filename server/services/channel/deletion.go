@@ -57,17 +57,14 @@ func (s *service) DeleteChannel(ctx context.Context, channelID string) error {
 	if _, err := s.channels.Get(ctx, channelID); err != nil {
 		return err
 	}
-	threadIDs, err := s.threads.ListIDsByChannel(ctx, channelID)
+	return s.deleteChannelIgnoringActiveWork(ctx, channelID)
+}
+
+// deleteChannelIgnoringActiveWork 删除团队拥有的全部工作 Chat，并在同一删除事务里清理团队记录。
+func (s *service) deleteChannelIgnoringActiveWork(ctx context.Context, channelID string) error {
+	chatIDs, err := s.channelDeletionChatIDs(ctx, channelID)
 	if err != nil {
 		return err
-	}
-	chatIDs := make([]string, 0)
-	for _, threadID := range threadIDs {
-		ids, listErr := s.threads.ListChatIDs(ctx, threadID)
-		if listErr != nil {
-			return listErr
-		}
-		chatIDs = append(chatIDs, ids...)
 	}
 	return s.chats.DeleteChatsAtomically(ctx, chatIDs, func(transactionContext context.Context) error {
 		if err := s.threads.DeleteByChannel(transactionContext, channelID); err != nil {
@@ -75,4 +72,24 @@ func (s *service) DeleteChannel(ctx context.Context, channelID string) error {
 		}
 		return s.channels.Delete(transactionContext, channelID)
 	})
+}
+
+// channelDeletionChatIDs 包括线程成员 Chat 和独立主会话的受管工作 Chat。
+func (s *service) channelDeletionChatIDs(ctx context.Context, channelID string) ([]string, error) {
+	threadIDs, err := s.threads.ListIDsByChannel(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	chatIDs, err := s.channels.ListMainWorkChatIDs(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	for _, threadID := range threadIDs {
+		ids, err := s.threads.ListChatIDs(ctx, threadID)
+		if err != nil {
+			return nil, err
+		}
+		chatIDs = append(chatIDs, ids...)
+	}
+	return chatIDs, nil
 }

@@ -1,8 +1,18 @@
 import type { WorkBoardEntry as Entry } from "../api/queries";
 import { chatHref } from "@/shared/lib/chat-navigation";
+import { mainConversationHref } from "@/shared/lib/main-conversation-navigation";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention as Attention } from "@/shared/api/generated/types.gen";
 
 export function workEntryHref(entry: Entry, result = false) {
+  if (entry.ownerKind === "main_conversation") {
+    const owner = mainConversationWorkOwner(entry);
+    return owner
+      ? mainConversationHref({
+          ...owner,
+          messageId: result ? entry.firstUnreadMessageID : undefined,
+        })
+      : "/work-board";
+  }
   if (entry.ownerKind === "automatic_run")
     return `/automatic-tasks/${entry.automaticTaskId}?run=${entry.ownerId}`;
   if (entry.ownerKind === "workflow_run")
@@ -23,10 +33,30 @@ export function workEntryHref(entry: Entry, result = false) {
     : base;
 }
 
+export function mainConversationWorkOwner(
+  entry: Pick<Entry, "ownerKind" | "channelId" | "wakerId">,
+) {
+  if (entry.ownerKind !== "main_conversation") return;
+  if (entry.channelId) return { kind: "team" as const, id: entry.channelId };
+  if (entry.wakerId) return { kind: "waker" as const, id: entry.wakerId };
+}
+
 export type WorkAttentionTarget = Attention;
 
 export function workAttentionHref(entry: WorkAttentionTarget) {
   const request = entry.requestId ?? entry.id ?? "";
+  if (entry.ownerKind === "main_conversation") {
+    const owner = mainConversationWorkOwner(entry);
+    return owner
+      ? mainConversationHref({
+          ...owner,
+          request:
+            entry.chatId && request
+              ? { workChatId: entry.chatId, requestId: request }
+              : undefined,
+        })
+      : "/work-board";
+  }
   if (entry.workflowId && entry.chatId && !entry.runId) {
     const params = new URLSearchParams({
       chat: entry.chatId,

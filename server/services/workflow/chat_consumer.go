@@ -10,6 +10,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
@@ -96,10 +97,9 @@ func (s *Service) bindChatWorkflowTurn(ctx context.Context, chat models.Chat, ex
 			}
 		}
 		if threadID == "" {
-			if selected != nil {
-				return bound, status_error.WorkflowCapabilityUnsupported
+			if err := s.checkMainWork(ctx, chat); err != nil {
+				return bound, err
 			}
-			return bound, nil
 		}
 	}
 	reference, err := s.FreezeWorkflowSelection(ctx, selected)
@@ -278,4 +278,15 @@ func (s *Service) StopChatWorkflowTurn(ctx context.Context, chatID, executionID 
 		}
 	}
 	return nil
+}
+
+func (s *Service) checkMainWork(ctx context.Context, chat models.Chat) error {
+	if s.authorizeMainWork == nil {
+		return status_error.WorkflowCapabilityUnsupported
+	}
+	err := s.authorizeMainWork(ctx, chat)
+	if util.HasStatusCode(err, status_error.ChatNotFound) {
+		return status_error.WorkflowCapabilityUnsupported
+	}
+	return err
 }

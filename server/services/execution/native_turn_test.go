@@ -1362,9 +1362,23 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 		case "thread/start", "thread/resume":
 			params, _ := frame["params"].(map[string]any)
 			thread, _ = params["threadId"].(string)
+			if frame["method"] == "thread/start" && os.Getenv("NEUX_EXECUTION_FIXTURE_REFUSE_START") == "1" {
+				_ = out.Encode(map[string]any{"id": frame["id"], "error": map[string]any{
+					"code": -32603, "message": "ACP agent did not verify restored history",
+					"data": map[string]any{"detail": "private-protocol-fixture"},
+				}})
+				continue
+			}
+			refuseResume := os.Getenv("NEUX_EXECUTION_FIXTURE_REFUSE_RESUME") == "1"
+			if frame["method"] == "thread/resume" && refuseResume {
+				_ = out.Encode(map[string]any{"id": frame["id"], "error": map[string]any{
+					"code": -32603, "message": "thread " + thread + " did not include persisted history",
+				}})
+				continue
+			}
 			if thread == "" {
 				thread = fmt.Sprintf("fixture-thread-%d", os.Getpid())
-				if os.Getenv("NEUX_EXECUTION_FIXTURE_CHECK_GRANT") == "1" {
+				if refuseResume || os.Getenv("NEUX_EXECUTION_FIXTURE_CHECK_GRANT") == "1" {
 					thread = uuid.NewString()
 				}
 			}
@@ -1404,6 +1418,11 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 				continue
 			}
 			reply := "fixture reply"
+			if strings.Contains(line, "inspect-temp-files") {
+				item := map[string]any{"id": turnID + "-inspect", "type": "commandExecution", "status": "completed",
+					"command": "ls", "cwd": ".", "exitCode": 0, "aggregatedOutput": "private tool output"}
+				emit("item/completed", map[string]any{"threadId": thread, "turnId": turnID, "item": item})
+			}
 			switch {
 			case strings.Contains(line, "hold-for-stream"):
 				reply = "fixture partial"

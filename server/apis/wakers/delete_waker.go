@@ -55,11 +55,6 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 		release := global.ScheduleService.SealWaker(d.WakerID)
 		defer release()
 	}
-	if global.ChannelService != nil {
-		if err := global.ChannelService.ValidateWakerDetachment(ctx, d.WakerID); err != nil {
-			return nil, ginx.WithStack(err)
-		}
-	}
 	layout, err := chatstorage.NewLayout(global.Config.ManagedFilesDirectory)
 	if err != nil {
 		return nil, ginx.WithStack(err)
@@ -105,11 +100,6 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 				if err := global.AgentThreads.CloseThread(ctx, chatID); err != nil {
 					return nil, err
 				}
-			}
-		}
-		if global.ChannelService != nil {
-			if err := global.ChannelService.DetachWaker(ctx, d.WakerID); err != nil {
-				return nil, err
 			}
 		}
 		if err := workspace.ValidateAgentWorkspaceDeletion(agentRoot, d.WakerID); err != nil {
@@ -163,7 +153,17 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 			return err
 		}
 		releaseWaker = release
-		return global.ChatService.DeleteWakerChats(claimed, d.WakerID, prepare, run)
+		if global.ChannelService == nil {
+			return global.ChatService.DeleteWakerChats(claimed, d.WakerID, nil, prepare, run)
+		}
+		return global.ChannelService.DetachWaker(claimed, d.WakerID, func(ctx context.Context, relatedChatIDs []string, detach func(context.Context) error) error {
+			return global.ChatService.DeleteWakerChats(ctx, d.WakerID, relatedChatIDs, prepare, func(tx context.Context) error {
+				if err := detach(tx); err != nil {
+					return err
+				}
+				return run(tx)
+			})
+		})
 	}
 	change := func(policyContext context.Context) error {
 		if global.KnowledgeService != nil {

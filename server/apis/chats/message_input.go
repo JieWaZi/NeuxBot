@@ -75,7 +75,8 @@ type MessageCodeReference struct {
 	Content string `json:"content" validate:"max=1048576"`
 }
 
-func (r MessageRequest) workInput() (execution.WorkInput, execution.WorkOptions) {
+// WorkInput 将消息选择转换为普通 Chat 与主会话共用的执行输入。
+func (r MessageRequest) WorkInput() (execution.WorkInput, execution.WorkOptions) {
 	sessionPolicy := constants.RuntimeSessionPolicyContinue
 	if r.StartNewSession {
 		sessionPolicy = constants.RuntimeSessionPolicyNew

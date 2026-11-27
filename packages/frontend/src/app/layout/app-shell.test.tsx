@@ -41,6 +41,7 @@ import { useSettingsDraftGuard } from "@/modules/settings";
 import { AppShell } from "./app-shell";
 import { getChatOptions, listChatsOptions } from "@/modules/chat";
 import { chatListInfiniteOptions } from "@/modules/chat/api/chat-queries";
+import { mainConversationOptions } from "@/modules/chat/api/main-conversation";
 import { teamThreadsInfiniteOptions } from "@/modules/team";
 import type {
   GetChatResponse,
@@ -70,9 +71,6 @@ function queryContent(options: { name: string }) {
 }
 function allContents(options?: { name: string }) {
   return screen.getAllByRole("tab", options);
-}
-function queryAllContents() {
-  return screen.queryAllByRole("tab");
 }
 function closeContent(label: string) {
   return screen.getByRole("button", { name: `关闭 ${label}` });
@@ -971,6 +969,66 @@ describe("AppShell 伙伴导航", () => {
     expect(await findContent({ name: "更新的团队标题" })).toBeVisible();
   });
 
+  it("普通对话直达时在同一行首位固定伙伴，点击加号仅新建该伙伴的普通对话", async () => {
+    const user = userEvent.setup();
+    renderShell("/chats/waker-2-chat?wakerId=waker-2");
+    const main = await findContent({ name: "伙伴二" });
+    expect(allContents()[0]).toBe(main);
+    expect(main).toHaveAccessibleDescription("主会话");
+    expect(screen.queryByRole("button", { name: "关闭 伙伴二" })).toBeNull();
+    fireEvent.contextMenu(main);
+    expect(screen.queryByRole("menu")).toBeNull();
+    await user.click(screen.getByRole("tab", { selected: true }));
+    await user.keyboard("{Home}");
+    expect(main).toHaveFocus();
+    expect(activeRouteScene()).toHaveTextContent("/chat/main/waker/waker-2");
+    expect(main).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("button", { name: "新建会话" }));
+    expect(activeRouteScene()).toHaveTextContent(
+      /\/chat\?draftId=.+wakerId=waker-2/,
+    );
+    expect(main).toHaveAttribute("aria-selected", "false");
+    expect(allContents()[0]).toBe(main);
+    await user.click(main);
+    await user.click(screen.getByRole("button", { name: "新建会话" }));
+    expect(allContents({ name: "新会话" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "新建团队对话" })).toBeNull();
+  });
+
+  it("暂时读取失败时保留固定伙伴，主会话确认已删除后关闭普通对话不会重建它", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderShell("/chats/chat-a?wakerId=waker-1", false, client);
+    await findContent({ name: "伙伴一" });
+    const { queryKey } = mainConversationOptions({
+      subjectType: "waker",
+      subjectId: "waker-1",
+    });
+    const fail = (status: number) =>
+      act(async () => {
+        await client
+          .fetchQuery({
+            queryKey,
+            retry: false,
+            queryFn: async () => {
+              throw new ApiError("读取失败", "READ_FAILED", status);
+            },
+          })
+          .catch(() => {});
+      });
+    await fail(503);
+    expect(getContent({ name: "伙伴一" })).toBeVisible();
+    await fail(404);
+    expect(queryContent({ name: "伙伴一" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "新建会话" })).toBeNull();
+    await userEvent.setup().click(closeContent("会话 chat-a"));
+    expect(screen.getByRole("region", { name: "欢迎页" })).toBeVisible();
+    expect(
+      document.querySelector('[data-route-scene-id="main:waker:waker-1"]'),
+    ).toBeNull();
+  });
+
   it.each([
     { status: "待审批", requestKinds: ["approval"], unread: 2 },
     { status: "待回答", requestKinds: ["input"] },
@@ -1139,7 +1197,9 @@ describe("AppShell 伙伴导航", () => {
       expect(trailing).not.toBeNull();
       if (!trailing) throw new Error("未找到聊天 Tab 的新会话入口");
       await user.click(
-        within(trailing).getByRole("button", { name: "新建会话" }),
+        within(trailing).getByRole("button", {
+          name: wakerId ? "新建会话" : "新建团队对话",
+        }),
       );
 
       const firstDraft = new URL(
@@ -1152,7 +1212,11 @@ describe("AppShell 伙伴导航", () => {
       expect(firstDraft.searchParams.get("draftId")).toBeTruthy();
       expect(screen.getByText(entry)).not.toBeVisible();
 
-      await user.click(screen.getByRole("button", { name: "新建会话" }));
+      await user.click(
+        screen.getByRole("button", {
+          name: wakerId ? "新建会话" : "新建团队对话",
+        }),
+      );
       const nextDraft = new URL(
         within(activeRouteScene()).getByText(new RegExp(`^${pathname}\\?`))
           .firstChild?.textContent ?? "",
@@ -1162,7 +1226,11 @@ describe("AppShell 伙伴导航", () => {
         firstDraft.searchParams.get("draftId"),
       );
       await user.click(savedTab);
-      await user.click(screen.getByRole("button", { name: "新建会话" }));
+      await user.click(
+        screen.getByRole("button", {
+          name: wakerId ? "新建会话" : "新建团队对话",
+        }),
+      );
       expect(
         within(activeRouteScene()).getByText(new RegExp(`^${pathname}\\?`)),
       ).toHaveTextContent(firstDraft.searchParams.get("draftId") ?? "missing");
@@ -1217,48 +1285,58 @@ describe("AppShell 伙伴导航", () => {
       ),
     );
     await waitFor(() =>
-      expect(activeRouteScene()).toHaveTextContent("/chats/waker-2-latest"),
+      expect(activeRouteScene()).toHaveTextContent("/chat/main/waker/waker-2"),
     );
     await user.click(screen.getByRole("button", { name: "新建会话" }));
     expect(activeRouteScene()).toHaveTextContent(original ?? "missing");
     expect(screen.getAllByRole("tab", { name: "新会话" })).toHaveLength(1);
   });
 
-  it("聊天入口退到后台后，最近会话晚到只在返回入口时生效", async () => {
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
-    });
-    const recent = deferred<ListChatsResponse>();
-    const lookup = client.fetchInfiniteQuery({
-      ...chatListInfiniteOptions("waker-1"),
-      queryFn: () => recent.promise,
-    });
-    const { router } = renderDataShell(
-      "/chat?wakerId=waker-1",
-      StatefulProductionScene,
-      client,
-    );
-    const entry = activeRouteScene();
-    expect(within(entry).getByText("聊天入口")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "资源库" }));
-    expect(activeRouteScene()).toHaveTextContent("/resources");
-
-    await act(async () => {
-      recent.resolve({ resources: [{ id: "chat-late", wakerId: "waker-1" }] });
-      await lookup;
-    });
-    expect(
-      await within(entry).findByText("聊天内容 chat-late"),
-    ).not.toBeVisible();
-    expect(router.state.location.pathname).toBe("/resources");
-    expect(activeRouteScene()).toHaveTextContent("/resources");
-
-    await act(async () => router.navigate(-1));
-    await waitFor(() =>
-      expect(router.state.location.pathname).toBe("/chats/chat-late"),
-    );
-    expect(screen.getByText("聊天内容 chat-late")).toBeVisible();
-  });
+  it.each(["/", "/chat", "/chat?wakerId=waker-1"])(
+    "从 %s 启动只显示主体主会话，切换伙伴不会带出普通草稿",
+    async (entry) => {
+      const user = userEvent.setup();
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+      });
+      client.setQueryData(chatListInfiniteOptions("waker-1").queryKey, {
+        pages: [{ resources: [{ id: "past", wakerId: "waker-1" }] }],
+        pageParams: [undefined],
+      });
+      const { router } = renderDataShell(
+        entry,
+        (props) =>
+          new Set(["/", "/chat"]).has(props.location.split("?")[0] ?? "") &&
+          !props.location.includes("draftId=") ? (
+            <ProductionRouteScene {...props} />
+          ) : (
+            <TestRouteScene {...props} />
+          ),
+        client,
+      );
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe("/chat/main/waker/waker-1"),
+      );
+      await waitFor(() =>
+        expect(allContents().map((tab) => tab.textContent)).toEqual(["伙伴一"]),
+      );
+      await user.click(screen.getByRole("button", { name: "伙伴二" }));
+      await waitFor(() =>
+        expect(allContents().map((tab) => tab.textContent)).toEqual(["伙伴二"]),
+      );
+      await user.click(screen.getByRole("button", { name: "新建会话" }));
+      const draft = router.state.location.search;
+      expect(new URLSearchParams(draft).get("draftId")).toBeTruthy();
+      await user.click(screen.getByRole("button", { name: "伙伴一" }));
+      await waitFor(() =>
+        expect(allContents().map((tab) => tab.textContent)).toEqual(["伙伴一"]),
+      );
+      await user.click(screen.getByRole("button", { name: "伙伴二" }));
+      expect(allContents()).toHaveLength(2);
+      await user.click(getContent({ name: "新会话" }));
+      expect(router.state.location.search).toBe(draft);
+    },
+  );
 
   it.each([
     {
@@ -1321,7 +1399,7 @@ describe("AppShell 伙伴导航", () => {
       expect(activeRouteScene()).toHaveTextContent(destination);
       expect(draft).not.toBeVisible();
 
-      await act(async () => router.navigate(-1));
+      await act(async () => router.navigate(href));
       expect(
         within(activeRouteScene()).getByRole("textbox", { name: "未发送消息" }),
       ).toBe(draft);
@@ -1370,7 +1448,7 @@ describe("AppShell 伙伴导航", () => {
     expect(screen.queryByRole("button", { name: "新建会话" })).toBeNull();
   });
 
-  it("历史列表请求未完成时，单击伙伴独立查询最近一条会话", async () => {
+  it("历史列表请求未完成时，单击伙伴即可进入主会话", async () => {
     latestChatFixture.historyBlocked = true;
     const user = userEvent.setup();
     renderShell("/wakers/waker-1/projects/project-a");
@@ -1379,12 +1457,10 @@ describe("AppShell 伙伴导航", () => {
         screen.getByRole("navigation", { name: "伙伴头像栏" }),
       ).findByRole("button", { name: "伙伴二" }),
     );
-    expect(
-      await screen.findByText("/chats/waker-2-latest?wakerId=waker-2"),
-    ).toBeVisible();
+    expect(await screen.findByText("/chat/main/waker/waker-2")).toBeVisible();
   });
 
-  it("最近会话 URL 未变化时，单击伙伴仍切回会话页签", async () => {
+  it("从普通聊天的文件页签单击伙伴，进入主会话", async () => {
     const user = userEvent.setup();
     renderShell("/chats/waker-1-latest?wakerId=waker-1");
     await user.click(
@@ -1401,18 +1477,18 @@ describe("AppShell 伙伴导航", () => {
       ),
     );
     await waitFor(() =>
-      expect(getContent({ name: "会话 waker-1-latest" })).toHaveAttribute(
+      expect(getContent({ name: "伙伴一" })).toHaveAttribute(
         "aria-selected",
         "true",
       ),
     );
-    expect(getContent({ name: "同会话文件" })).toHaveAttribute(
+    expect(getContent({ name: "会话 waker-1-latest" })).toHaveAttribute(
       "aria-selected",
       "false",
     );
   });
 
-  it("点击左侧伙伴时只打开该伙伴的最新会话 Scene", async () => {
+  it("点击左侧伙伴时只打开该伙伴的主会话 Scene", async () => {
     const user = userEvent.setup();
     renderShell("/wakers/waker-1/projects/project-a");
 
@@ -1423,16 +1499,16 @@ describe("AppShell 伙伴导航", () => {
     );
 
     expect(
-      await screen.findByText("/chats/waker-2-latest?wakerId=waker-2"),
+      await screen.findByText("/chat/main/waker/waker-2"),
     ).toBeInTheDocument();
     expect(queryContent({ name: "新会话" })).toBeNull();
-    expect(await findContent({ name: "会话 waker-2-latest" })).toHaveAttribute(
+    expect(await findContent({ name: "伙伴二" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
   });
 
-  it("关注摘要已定位伙伴最近会话时，点击同步切换且不等待重复列表请求", async () => {
+  it("伙伴有最近会话时，点击仍进入主体主会话", async () => {
     executorAttentionFixture.set("waker-2", {
       executorId: "waker-2",
       latestChatId: "waker-2-live",
@@ -1448,13 +1524,11 @@ describe("AppShell 伙伴导航", () => {
     ).findByRole("button", { name: "伙伴二" });
     fetch.mockClear();
     fireEvent.click(partner);
-    expect(activeRouteScene()).toHaveTextContent(
-      "/chats/waker-2-live?wakerId=waker-2",
-    );
+    expect(activeRouteScene()).toHaveTextContent("/chat/main/waker/waker-2");
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("关注摘要已定位团队最近会话时，点击同步切换且不重读历史列表", async () => {
+  it("团队有最近会话时，点击仍进入主体主会话", async () => {
     executorAttentionFixture.set("team-1", {
       executorId: "team-1",
       latestChatId: "team-lead",
@@ -1470,13 +1544,11 @@ describe("AppShell 伙伴导航", () => {
     ).findByRole("button", { name: "团队一" });
     fetch.mockClear();
     fireEvent.click(team);
-    expect(activeRouteScene()).toHaveTextContent(
-      "/teams/team-1/threads/thread-live",
-    );
+    expect(activeRouteScene()).toHaveTextContent("/chat/main/team/team-1");
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("从临时会话点击伙伴时保留草稿并打开最新会话", async () => {
+  it("从临时会话点击伙伴时保留草稿并打开主会话", async () => {
     const user = userEvent.setup();
     renderShell("/chat?draftId=draft-a&wakerId=waker-1");
 
@@ -1487,12 +1559,10 @@ describe("AppShell 伙伴导航", () => {
       ).findByRole("button", { name: "伙伴一" }),
     );
 
-    expect(
-      await screen.findByText("/chats/waker-1-latest?wakerId=waker-1"),
-    ).toBeVisible();
+    expect(await screen.findByText("/chat/main/waker/waker-1")).toBeVisible();
     expect(queryContent({ name: "新会话" })).toBeVisible();
     expect(allContents()).toHaveLength(2);
-    expect(getContent({ name: "会话 waker-1-latest" })).toHaveAttribute(
+    expect(getContent({ name: "伙伴一" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -1522,7 +1592,7 @@ describe("AppShell 伙伴导航", () => {
     expect(screen.queryByRole("button", { name: "添加内容" })).toBeNull();
   });
 
-  it("点击团队打开最新会话，快速切换不会被先前团队带回", async () => {
+  it("点击团队打开主会话，快速切换不会被先前团队带回", async () => {
     storage.set(
       "bot.partner-navigation",
       JSON.stringify({
@@ -1543,7 +1613,7 @@ describe("AppShell 伙伴导航", () => {
       ).findByRole("button", { name: "团队一" }),
     );
     expect(
-      await screen.findByText("/teams/team-1/threads/team-1-latest"),
+      await screen.findByText("/chat/main/team/team-1"),
     ).toBeInTheDocument();
     await user.click(
       within(screen.getByRole("navigation", { name: "伙伴头像栏" })).getByRole(
@@ -1553,15 +1623,13 @@ describe("AppShell 伙伴导航", () => {
     );
 
     expect(
-      await screen.findByText("/teams/team-2/threads/team-2-latest"),
+      await screen.findByText("/chat/main/team/team-2"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("/teams/team-1/threads/team-1-latest"),
-    ).not.toBeVisible();
+    expect(screen.getByText("/chat/main/team/team-1")).not.toBeVisible();
   });
 
   it.each([undefined, "thread-remembered"])(
-    "点击团队解析最新会话后进入历史内容：%s",
+    "点击团队打开主会话，保留原线程历史：%s",
     async (threadId) => {
       storage.set(
         "bot.partner-navigation",
@@ -1575,11 +1643,12 @@ describe("AppShell 伙伴导航", () => {
       act(() => teamButton.click());
       expect(teamHistoryRender).not.toHaveBeenCalled();
 
-      expect(await screen.findByText("团队历史内容")).toBeVisible();
+      expect(await screen.findByText("/chat/main/team/team-1")).toBeVisible();
+      expect(teamHistoryRender).not.toHaveBeenCalled();
       expect(
         screen.queryByRole("button", { name: "任务" }),
       ).not.toBeInTheDocument();
-      expect(getContent({ name: "团队会话" })).toBeVisible();
+      expect(getContent({ name: "主会话" })).toBeVisible();
     },
   );
 
@@ -1598,9 +1667,7 @@ describe("AppShell 伙伴导航", () => {
 
     expect(teamHistoryRender).not.toHaveBeenCalled();
     expect(screen.queryByText("团队历史内容")).not.toBeInTheDocument();
-    expect(
-      await screen.findByText("/chats/waker-2-latest?wakerId=waker-2"),
-    ).toBeVisible();
+    expect(await screen.findByText("/chat/main/waker/waker-2")).toBeVisible();
   });
 
   it("侧栏新建伙伴在正文打开创建表单，保留左栏伙伴及原聊天", async () => {
@@ -1742,9 +1809,7 @@ describe("AppShell 伙伴导航", () => {
     await waitFor(() =>
       expect(screen.queryByRole("region", { name: "设置 Scene" })).toBeNull(),
     );
-    expect(activeRouteScene()).toHaveTextContent(
-      "/chats/waker-1-latest?wakerId=waker-1",
-    );
+    expect(activeRouteScene()).toHaveTextContent("/chat/main/waker/waker-1");
   });
 
   it("从 IM 深链切离后，设置入口恢复已有分类且不恢复临时详情", async () => {
@@ -1869,11 +1934,12 @@ describe("AppShell 伙伴导航", () => {
         { name: "伙伴一" },
       ),
     );
+    await user.click(await findContent({ name: "会话 chat-a" }));
     expect(await screen.findByText("保留中的 Chat Scene")).toBeVisible();
     expect(sceneLifecycle).toEqual({ mounts: 1, unmounts: 0 });
   });
 
-  it("回到伙伴后关闭owner卸载原内容，回退到仍挂载的资源 Scene", async () => {
+  it("回到伙伴后关闭最后普通聊天，释放原内容并回到固定主会话", async () => {
     const user = userEvent.setup();
     renderLifecycleShell();
     await screen.findByText("保留中的 Chat Scene");
@@ -1885,11 +1951,14 @@ describe("AppShell 伙伴导航", () => {
         { name: "伙伴一" },
       ),
     );
-    await findContent({ name: "会话 chat-a" });
+    await user.click(await findContent({ name: "会话 chat-a" }));
     await user.click(closeContent("会话 chat-a"));
     expect(sceneLifecycle).toEqual({ mounts: 1, unmounts: 1 });
     expect(queryContent({ name: "会话 chat-a" })).toBeNull();
-    expect(screen.getByText("资源 Scene")).toBeVisible();
+    expect(getContent({ name: "伙伴一" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("工作流资源列表沿用资源库 Scene 并显示分类侧栏", async () => {
@@ -1916,7 +1985,7 @@ describe("AppShell 伙伴导航", () => {
     expect(screen.queryByRole("button", { name: "工作流" })).toBeNull();
   });
 
-  it("关闭最后一个 Scene 后进入无标签欢迎页", async () => {
+  it("关闭伙伴唯一普通对话后回到该伙伴的固定页签", async () => {
     const user = userEvent.setup();
     renderShell();
 
@@ -1924,16 +1993,19 @@ describe("AppShell 伙伴导航", () => {
       await screen.findByRole("button", { name: "关闭 会话 chat-a" }),
     );
 
-    expect(queryAllContents()).toHaveLength(0);
-    expect(screen.getByRole("region", { name: "欢迎页" })).toBeVisible();
+    expect(allContents()).toHaveLength(1);
+    expect(await findContent({ name: "伙伴一" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(
       screen.queryByText("/chats/chat-a?wakerId=waker-1"),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加内容" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "工作区" })).toBeNull();
+    expect(screen.getByRole("button", { name: "工作区" })).toBeVisible();
   });
 
-  it("依次关闭多个 Scene 后不再渲染最后关闭的页面", async () => {
+  it("依次关闭多个普通对话后，仅保留该伙伴主会话", async () => {
     const user = userEvent.setup();
     renderShell();
 
@@ -1941,8 +2013,11 @@ describe("AppShell 伙伴导航", () => {
     await user.click(closeContent("会话 chat-b"));
     await user.click(closeContent("会话 chat-a"));
 
-    expect(queryAllContents()).toHaveLength(0);
-    expect(screen.getByRole("region", { name: "欢迎页" })).toBeVisible();
+    expect(allContents()).toHaveLength(1);
+    expect(await findContent({ name: "伙伴一" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(screen.queryByText(/\/chats\/chat-[ab]/)).toBeNull();
   });
 
@@ -2171,7 +2246,7 @@ describe("AppShell 伙伴导航", () => {
         screen.getByRole("navigation", { name: "伙伴头像栏" }),
       ).findByRole("button", { name: "伙伴二" }),
     );
-    await findContent({ name: "会话 waker-2-latest" });
+    await findContent({ name: "伙伴二" });
     await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(screen.getByRole("button", { name: "集成" }));
     await user.click(
@@ -2180,14 +2255,14 @@ describe("AppShell 伙伴导航", () => {
         { name: "伙伴一" },
       ),
     );
-    await findContent({ name: "会话 waker-1-latest" });
+    await findContent({ name: "伙伴一" });
     fireEvent.contextMenu(getContent({ name: "会话 chat-a" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "关闭其他页签" }),
     );
     expect(queryContent({ name: "会话 chat-b" })).toBeNull();
     expect(
-      document.querySelector('[data-route-scene-id="chat:waker-2-latest"]'),
+      document.querySelector('[data-route-scene-id="main:waker:waker-2"]'),
     ).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "设置" }));
     expect(screen.getByRole("button", { name: "集成" })).toHaveAttribute(
@@ -2209,9 +2284,7 @@ describe("AppShell 伙伴导航", () => {
       ),
     );
     await waitFor(() =>
-      expect(activeRouteScene()).toHaveTextContent(
-        "/teams/team-2/threads/team-2-latest",
-      ),
+      expect(activeRouteScene()).toHaveTextContent("/chat/main/team/team-2"),
     );
     expect(screen.queryByRole("tab", { name: "同会话文件" })).toBeNull();
     expect(screen.queryByRole("button", { name: "聊天列表" })).toBeNull();
@@ -2234,7 +2307,7 @@ describe("AppShell 伙伴导航", () => {
         screen.getByRole("navigation", { name: "伙伴头像栏" }),
       ).findByRole("button", { name: "伙伴二" }),
     );
-    await findContent({ name: "会话 waker-2-latest" });
+    await findContent({ name: "伙伴二" });
     await act(async () =>
       resolveDetail({
         chat: { id: "slow", wakerId: "waker-1", title: "后台迟到的真实标题" },
@@ -2250,7 +2323,46 @@ describe("AppShell 伙伴导航", () => {
     expect(latestChatFixture.detailRequests.get("slow")).toBe(1);
   });
 
-  it("实体权威404跳过历史，原Chat404仍可回伙伴并打开其最新聊天", async () => {
+  it("来源直达可退回所属主会话，跨伙伴和资料页的导航仍按当前场景回退", async () => {
+    const home = "/chat/main/waker/waker-1";
+    const source = `${home}?source=work-a`;
+    const other = "/chat/main/waker/waker-2";
+    const { router } = renderDataShell(
+      source,
+      TestRouteScene,
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+    );
+    const user = userEvent.setup();
+    const back = await screen.findByRole("button", { name: "后退" });
+    const forward = screen.getByRole("button", { name: "前进" });
+    const location = () =>
+      router.state.location.pathname + router.state.location.search;
+    await user.click(back);
+    await waitFor(() => expect(location()).toBe(home));
+    await user.click(forward);
+    await waitFor(() => expect(location()).toBe(source));
+    await user.click(
+      within(screen.getByRole("navigation", { name: "伙伴头像栏" })).getByRole(
+        "button",
+        { name: "伙伴二" },
+      ),
+    );
+    await waitFor(() => expect(location()).toBe(other));
+    await user.click(back);
+    await waitFor(() => expect(location()).toBe(source));
+    await user.click(forward);
+    await waitFor(() => expect(location()).toBe(other));
+    await act(async () => {
+      await router.navigate("/wakers/waker-2/memory");
+    });
+    await user.click(back);
+    await waitFor(() => expect(location()).toBe(home));
+    expect(back).toBeDisabled();
+  });
+
+  it("实体权威404跳过历史，原Chat404仍可回伙伴主会话", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -2262,7 +2374,7 @@ describe("AppShell 伙伴导航", () => {
         screen.getByRole("navigation", { name: "伙伴头像栏" }),
       ).findByRole("button", { name: "伙伴二" }),
     );
-    await findContent({ name: "会话 waker-2-latest" });
+    await findContent({ name: "伙伴二" });
     expect(screen.getByRole("button", { name: "后退" })).toBeEnabled();
     await act(async () => {
       await client
@@ -2294,7 +2406,7 @@ describe("AppShell 伙伴导航", () => {
     });
     expect(screen.getByRole("button", { name: "后退" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "后退" }));
-    expect(await findContent({ name: "会话 waker-1-latest" })).toBeVisible();
+    expect(await findContent({ name: "伙伴一" })).toBeVisible();
   });
 
   it("历史中已解析的伙伴不因实体分页列表未包含而失效", async () => {
@@ -2316,11 +2428,13 @@ describe("AppShell 伙伴导航", () => {
         screen.getByRole("navigation", { name: "伙伴头像栏" }),
       ).findByRole("button", { name: "伙伴二" }),
     );
-    await findContent({ name: "会话 waker-2-latest" });
+    await findContent({ name: "伙伴二" });
     expect(screen.getByRole("button", { name: "后退" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "后退" }));
     await waitFor(() =>
-      expect(activeRouteScene()).toHaveTextContent("wakerId=waker-outside"),
+      expect(activeRouteScene()).toHaveTextContent(
+        "/chat/main/waker/waker-outside",
+      ),
     );
   });
 
@@ -2396,24 +2510,18 @@ describe("AppShell 伙伴导航", () => {
     );
   });
 
-  it("根欢迎从页面贡献的实际owner显示操作，加号复用唯一欢迎草稿", async () => {
+  it("等待入口导航期间点击加号，会为已解析伙伴打开独立的草稿", async () => {
     latestChatFixture.resolvedEntryOwner = "waker-2";
     renderShell("/");
-    expect(await screen.findByRole("tab", { name: "新会话" })).toBeVisible();
-    await waitFor(() =>
-      expect(
-        within(
-          screen.getByRole("navigation", { name: "伙伴头像栏" }),
-        ).getByRole("button", { name: "伙伴二" }),
-      ).toHaveAttribute("aria-current", "page"),
-    );
-    expect(screen.getByRole("button", { name: "工作区" })).toBeVisible();
+    const plus = await screen.findByRole("button", { name: "新建会话" });
+    await waitFor(() => expect(plus).toBeEnabled());
+    expect(plus).not.toHaveClass("hover:bg-action-quiet-hover");
+    expect(screen.queryByRole("tab", { name: "新会话" })).toBeNull();
     const welcome = activeRouteScene();
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "新建会话" }));
-    expect(activeRouteScene()).toBe(welcome);
+    await userEvent.setup().click(plus);
+    expect(activeRouteScene()).not.toBe(welcome);
     expect(screen.getAllByRole("tab", { name: "新会话" })).toHaveLength(1);
+    expect(activeRouteScene()).toHaveTextContent(/draftId=.+wakerId=waker-2/);
   });
 
   it("工作区展开入口由聊天顶栏最右actions承载，展开后交给工作台顶栏", async () => {

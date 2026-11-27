@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -124,17 +123,7 @@ func TestPrepareChatGroupUsesLeadMemberChatAsMainChat(t *testing.T) {
 	if err != nil || accepted.Execution.ChatID != group.Chats[1].ID {
 		t.Fatalf("start member execution = %+v, error = %v", accepted, err)
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		summary, summaryErr := manager.chats.GetChatSummary(context.Background(), group.Chats[1].ID)
-		if summaryErr == nil && summary.Chat.ActiveExecutionID == "" {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("member execution did not finish: %v", summaryErr)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitForChatTerminal(t, manager, memberChatID)
 	history, err := manager.chats.ReadMessageHistory(context.Background(), group.Chats[1].ID, 0, 10)
 	if err != nil || len(history.Resources) != 2 || history.Resources[1].Content != "fixture reply" {
 		t.Fatalf("member chat history = %+v, error = %v", history.Resources, err)

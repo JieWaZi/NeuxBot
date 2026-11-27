@@ -60,12 +60,19 @@ func (m *service) questionBindings(chatID, executionID string) []capability.Bind
 	if m.events != nil {
 		bindings = append(bindings, capability.Binding{Operation: "interaction.questions.wait", Call: func(ctx context.Context, request capability.Request) (capability.Result, error) {
 			id, _ := request.Params["questionId"].(string)
-			return capability.Observe(ctx, request.Params, func() events.Subscription {
+			observation, err := capability.Observe(ctx, request.Params, func() events.Subscription {
 				return m.events.Subscribe("interaction", events.Resource{Kind: "execution", ID: executionID})
 			}, func(context.Context) (any, bool, error) {
 				value, err := read(id)
 				return value, value["status"] != "pending", err
 			})
+			if err == nil {
+				data := observation.Data.(map[string]any)
+				if data["completed"] == false {
+					data["nextAction"] = "Repeat interaction.questions.wait with questionId " + id + ". Keep the turn open until the user responds or the question is closed."
+				}
+			}
+			return observation, err
 		}})
 	}
 	return bindings

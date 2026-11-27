@@ -193,7 +193,7 @@ it("嵌套有序列表保留内部标记，去除首尾段落的多余留白", (
   }
 });
 
-it("少于四列表铺满，四列表保留自然宽度，引用内的四列表仍铺满", () => {
+it("少列和引用内的表格铺满，多列表格至少填满外框并可按内容加宽", () => {
   const source = [
     "| 短列一 | 短列二 | 短列三 |\n| --- | --- | --- |\n| 甲 | 乙 | 丙 |",
     "| 宽列一 | 宽列二 | 宽列三 | 宽列四 |\n| --- | --- | --- | --- |\n| alpha | beta | gamma | delta |",
@@ -203,6 +203,7 @@ it("少于四列表铺满，四列表保留自然宽度，引用内的四列表�
   const [small, wide, quoted] = screen.getAllByRole("table");
   expect(small && getComputedStyle(small).width).toBe("100%");
   expect(wide && getComputedStyle(wide).width).toBe("max-content");
+  expect(wide && getComputedStyle(wide).minWidth).toBe("100%");
   expect(quoted && getComputedStyle(quoted).width).toBe("100%");
   for (const table of [small, wide, quoted]) {
     if (!table) continue;
@@ -267,7 +268,7 @@ it("表格操作悬浮在右上角，不为工具栏占据独立布局行", () =
   expect(style.pointerEvents).toBe("none");
 });
 
-it("宽表按键盘顺序到达横向滚动区，列对齐与完整预览不受影响", async () => {
+it("宽表可用键盘打开宽屏预览，并填满可横向滚动的外框", async () => {
   const user = userEvent.setup();
   render(
     <AssistantMarkdown
@@ -289,6 +290,14 @@ it("宽表按键盘顺序到达横向滚动区，列对齐与完整预览不受�
   await user.tab({ shift: true });
   await user.keyboard("{Enter}");
   const dialog = screen.getByRole("dialog", { name: "表格" });
+  expect(parseFloat(getComputedStyle(dialog).width)).toBeCloseTo(
+    window.innerWidth * 0.9,
+  );
+  const scroller = within(dialog).getByRole("region", { name: "表格" });
+  expect(getComputedStyle(scroller).overflowX).toBe("auto");
+  expect(getComputedStyle(within(scroller).getByRole("table")).minWidth).toBe(
+    "100%",
+  );
   expect(within(dialog).getAllByRole("columnheader")).toHaveLength(4);
   expect(
     within(dialog).getByText("完整内容不会由固定等分列挤碎"),

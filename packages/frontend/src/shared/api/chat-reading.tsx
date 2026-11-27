@@ -6,6 +6,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useSyncExternalStore,
   type RefObject,
@@ -17,26 +18,34 @@ import { observeContentPresentation } from "@/shared/lib/content-presentation";
 import { isElementVisible } from "@/shared/lib/element-visibility";
 import { ApiError } from "./errors";
 import {
-  chatReadingOptions,
-  markChatRead,
-  markChatUnread,
+  conversationReadingOptions,
+  markConversationRead,
+  markConversationUnread,
   type ChatReadCommand,
-  type ChatReadingState,
+  type ConversationReadingState,
+  type MainConversationReadingSubject,
+  type ReadingTarget,
 } from "./reading-queries";
 import { refreshQueryFromEvent, useQueryEvents } from "./use-query-events";
 
-type OpenIntent = { token: string; chatId: string; generation: number };
+type OpenIntent = { token: string; readingKey: string; generation: number };
 type VisibleBoundary = { messageId: string; sequence: number };
 
 const openIntents = new WeakMap<QueryClient, OpenIntent>();
 const chatOperations = new WeakMap<QueryClient, Map<string, Promise<void>>>();
 const unreadWrites = new WeakMap<QueryClient, Map<string, number>>();
 
-function pendingUnread(client: QueryClient, chatId: string) {
-  return Boolean(unreadWrites.get(client)?.get(chatId));
+function readingKeyOf(target: ReadingTarget) {
+  return typeof target === "string"
+    ? target
+    : `main:${target.subjectType}:${target.subjectId}`;
 }
 
-function knownReading(state?: ChatReadingState | null) {
+function pendingUnread(client: QueryClient, readingKey: string) {
+  return Boolean(unreadWrites.get(client)?.get(readingKey));
+}
+
+function knownReading(state?: ConversationReadingState | null) {
   if (
     !state?.complete ||
     typeof state.unreadGeneration !== "number" ||
@@ -52,9 +61,9 @@ function knownReading(state?: ChatReadingState | null) {
   };
 }
 
-function cachedReading(client: QueryClient, chatId: string) {
-  const { queryKey } = chatReadingOptions(chatId);
-  const query = client.getQueryState<ChatReadingState | null>(queryKey);
+function cachedReading(client: QueryClient, target: ReadingTarget) {
+  const { queryKey } = conversationReadingOptions(target);
+  const query = client.getQueryState<ConversationReadingState | null>(queryKey);
   if (query?.status === "success") return knownReading(query.data);
 }
 
@@ -66,14 +75,42 @@ function openToken(state: unknown) {
 
 /** 仅保存一次用户点击时的已有代次。路由恢复不能重建该意图。 */
 export function captureChatOpenIntent(client: QueryClient, chatId: string) {
-  const reading = cachedReading(client, chatId);
+  return captureReadingOpenIntent(client, chatId);
+}
+
+export function captureMainConversationOpenIntent(
+  client: QueryClient,
+  subject: MainConversationReadingSubject,
+  options?: { observedGeneration?: number; freezeObservedGeneration?: boolean },
+) {
+  return captureReadingOpenIntent(client, subject, options);
+}
+
+function captureReadingOpenIntent(
+  client: QueryClient,
+  target: ReadingTarget,
+  {
+    observedGeneration,
+    freezeObservedGeneration = false,
+  }: {
+    observedGeneration?: number;
+    freezeObservedGeneration?: boolean;
+  } = {},
+) {
+  const cachedGeneration = cachedReading(client, target)?.unreadGeneration;
+  const generation =
+    observedGeneration === undefined
+      ? cachedGeneration
+      : freezeObservedGeneration
+        ? observedGeneration
+        : Math.max(observedGeneration, cachedGeneration ?? 0);
   openIntents.delete(client);
-  if (!reading?.complete) return undefined;
+  if (generation === undefined) return undefined;
   const token = crypto.randomUUID();
   openIntents.set(client, {
     token,
-    chatId,
-    generation: reading.unreadGeneration,
+    readingKey: readingKeyOf(target),
+    generation,
   });
   return { chatOpenToken: token };
 }
@@ -87,9 +124,9 @@ export function discardUnmatchedChatOpenIntent(
     openIntents.delete(client);
 }
 
-function serializeChatWrite(
+function serializeReadingWrite(
   client: QueryClient,
-  chatId: string,
+  readingKey: string,
   write: () => Promise<void>,
 ) {
   let operations = chatOperations.get(client);
@@ -98,48 +135,53 @@ function serializeChatWrite(
     chatOperations.set(client, operations);
   }
   const pending = operations;
-  const operation = (pending.get(chatId) ?? Promise.resolve())
+  const operation = (pending.get(readingKey) ?? Promise.resolve())
     .catch(() => {})
     .then(write);
-  pending.set(chatId, operation);
+  pending.set(readingKey, operation);
   return operation.finally(() => {
-    if (pending.get(chatId) === operation) pending.delete(chatId);
+    if (pending.get(readingKey) === operation) pending.delete(readingKey);
   });
 }
 
-async function refreshChatReading(client: QueryClient, chatId: string) {
-  const options = chatReadingOptions(chatId);
+async function refreshConversationReading(
+  client: QueryClient,
+  target: ReadingTarget,
+) {
+  const options = conversationReadingOptions(target);
   await refreshQueryFromEvent(client, options.queryKey, () =>
     client.fetchQuery({ ...options, staleTime: 0 }),
   );
-  return cachedReading(client, chatId);
+  return cachedReading(client, target);
 }
 
-async function writeChatUnread(
+async function writeConversationUnread(
   client: QueryClient,
-  chatId: string,
+  target: ReadingTarget,
   fromMessageID: string,
   generation: number,
 ) {
-  if (openIntents.get(client)?.chatId === chatId) openIntents.delete(client);
+  const readingKey = readingKeyOf(target);
+  if (openIntents.get(client)?.readingKey === readingKey)
+    openIntents.delete(client);
   const pending = unreadWrites.get(client) ?? new Map<string, number>();
   unreadWrites.set(client, pending);
-  pending.set(chatId, (pending.get(chatId) ?? 0) + 1);
+  pending.set(readingKey, (pending.get(readingKey) ?? 0) + 1);
   try {
-    await serializeChatWrite(client, chatId, async () => {
+    await serializeReadingWrite(client, readingKey, async () => {
       try {
-        await markChatUnread(chatId, {
+        await markConversationUnread(target, {
           fromMessageID,
           observedUnreadGeneration: generation,
         });
       } finally {
-        await refreshChatReading(client, chatId);
+        await refreshConversationReading(client, target);
       }
     });
   } finally {
-    const count = pending.get(chatId) ?? 0;
-    if (count > 1) pending.set(chatId, count - 1);
-    else pending.delete(chatId);
+    const count = pending.get(readingKey) ?? 0;
+    if (count > 1) pending.set(readingKey, count - 1);
+    else pending.delete(readingKey);
   }
 }
 
@@ -148,12 +190,24 @@ export async function markLatestChatUnread(
   client: QueryClient,
   chatId: string,
 ) {
-  const state = await refreshChatReading(client, chatId);
+  return markLatestConversationUnread(client, chatId);
+}
+
+export async function markLatestConversationUnread(
+  client: QueryClient,
+  target: ReadingTarget,
+) {
+  const state = await refreshConversationReading(client, target);
   if (!state) throw new Error("Chat reading boundary is unavailable");
   const boundary = state.firstUnreadMessageID ?? state.latestReadableMessageID;
   if (!boundary) return false;
   if (!state.holdUnread)
-    await writeChatUnread(client, chatId, boundary, state.unreadGeneration);
+    await writeConversationUnread(
+      client,
+      target,
+      boundary,
+      state.unreadGeneration,
+    );
   return true;
 }
 
@@ -179,32 +233,63 @@ export function useChatReading({
   chatId: string;
   active: boolean;
 }) {
+  return useConversationReading(chatId, chatId, active);
+}
+
+export function useMainConversationReading({
+  subjectType,
+  subjectId,
+  conversationId,
+  active,
+}: MainConversationReadingSubject & {
+  conversationId?: string;
+  active: boolean;
+}) {
+  const target = useMemo(
+    () => ({ subjectType, subjectId }),
+    [subjectType, subjectId],
+  );
+  return useConversationReading(target, conversationId, active);
+}
+
+function useConversationReading(
+  target: ReadingTarget,
+  resourceId: string | undefined,
+  active: boolean,
+) {
+  const readingKey = readingKeyOf(target);
   const client = useQueryClient();
   const { state: navigationState } = useLocation();
   const token = openToken(navigationState);
-  const options = chatReadingOptions(chatId);
-  const query = useQuery({ ...options, enabled: active && Boolean(chatId) });
+  const options = conversationReadingOptions(target);
+  const query = useQuery({
+    ...options,
+    enabled: active && Boolean(resourceId),
+  });
   useQueryEvents({
     topic: "reading",
-    resource: { kind: "chat", id: chatId },
+    resource: {
+      kind: typeof target === "string" ? "chat" : "main_conversation",
+      id: resourceId,
+    },
     queryKeys: [options.queryKey],
     eventTypes: ["reading.changed"],
     active,
-    enabled: Boolean(chatId),
+    enabled: Boolean(resourceId),
     authority: true,
   });
-  const scope = useRef({ active, chatId, token });
+  const scope = useRef({ active, readingKey, resourceId, token });
   const queuedExplicitToken = useRef<string>(undefined);
   const automatic = useRef<{
-    chatId: string;
+    readingKey: string;
     generation: number;
     sequence: number;
   }>(undefined);
   useEffect(() => {
-    scope.current = { active, chatId, token };
+    scope.current = { active, readingKey, resourceId, token };
     const ownsOpenIntent = () => {
       const pending = openIntents.get(client);
-      return pending?.chatId === chatId && pending.token === token;
+      return pending?.readingKey === readingKey && pending.token === token;
     };
     if (!active && ownsOpenIntent()) openIntents.delete(client);
     return () => {
@@ -218,15 +303,15 @@ export function useChatReading({
           openIntents.delete(client);
       });
     };
-  }, [active, chatId, client, token]);
+  }, [active, readingKey, client, resourceId, token]);
 
   const readState = useCallback(
-    () => cachedReading(client, chatId),
-    [client, chatId],
+    () => cachedReading(client, target),
+    [client, target],
   );
   const recover = useCallback(
-    () => refreshChatReading(client, chatId),
-    [chatId, client],
+    () => refreshConversationReading(client, target),
+    [client, target],
   );
 
   const submit = useCallback(
@@ -243,15 +328,16 @@ export function useChatReading({
           lease.active &&
           document.visibilityState === "visible" &&
           document.hasFocus());
-      return serializeChatWrite(client, chatId, async () => {
+      return serializeReadingWrite(client, readingKey, async () => {
         if (
           !sceneAvailable() ||
-          (command.intent === "automatic" && pendingUnread(client, chatId)) ||
+          (command.intent === "automatic" &&
+            pendingUnread(client, readingKey)) ||
           (begin && !begin())
         )
           return;
         try {
-          await markChatRead(chatId, command);
+          await markConversationRead(target, command);
         } catch (error) {
           const state = await recover();
           if (error instanceof ApiError && error.code !== "NETWORK")
@@ -265,20 +351,29 @@ export function useChatReading({
               !state.holdUnread)
           )
             return;
-          if (sceneAvailable()) await markChatRead(chatId, command);
+          if (sceneAvailable()) await markConversationRead(target, command);
         }
       });
     },
-    [chatId, client, recover],
+    [readingKey, client, recover, target],
   );
 
   const present = useCallback(
     (boundary: VisibleBoundary) => {
-      if (!active || !chatId || pendingUnread(client, chatId)) return;
+      if (!active || !resourceId || pendingUnread(client, readingKey)) return;
       const state = readState();
       if (!state?.complete) return;
+      if (
+        typeof target !== "string" &&
+        (!("conversationId" in state) || state.conversationId !== resourceId)
+      )
+        return;
       const pending = openIntents.get(client);
-      if (pending && pending.chatId === chatId && pending.token === token) {
+      if (
+        pending &&
+        pending.readingKey === readingKey &&
+        pending.token === token
+      ) {
         if (queuedExplicitToken.current === pending.token) return;
         queuedExplicitToken.current = pending.token;
         void submit(
@@ -293,7 +388,7 @@ export function useChatReading({
             if (openIntents.get(client) !== pending) return false;
             openIntents.delete(client);
             automatic.current = {
-              chatId,
+              readingKey,
               generation: pending.generation,
               sequence: boundary.sequence,
             };
@@ -311,13 +406,13 @@ export function useChatReading({
         return;
       const previous = automatic.current;
       if (
-        previous?.chatId === chatId &&
+        previous?.readingKey === readingKey &&
         previous.generation === state.unreadGeneration &&
         previous.sequence >= boundary.sequence
       )
         return;
       const attempt = {
-        chatId,
+        readingKey,
         generation: state.unreadGeneration,
         sequence: boundary.sequence,
       };
@@ -344,32 +439,33 @@ export function useChatReading({
             automatic.current = undefined;
         });
     },
-    [active, chatId, client, readState, submit, token],
+    [active, readingKey, client, readState, resourceId, submit, target, token],
   );
 
   const markRead = useCallback(async () => {
     const state = readState();
     if (!state?.complete || !state.latestReadableMessageID) return;
-    if (openIntents.get(client)?.chatId === chatId) openIntents.delete(client);
+    if (openIntents.get(client)?.readingKey === readingKey)
+      openIntents.delete(client);
     await submit({
       intent: "explicit",
       observedUnreadGeneration: state.unreadGeneration,
       throughMessageID: state.latestReadableMessageID,
     });
-  }, [chatId, client, readState, submit]);
+  }, [readingKey, client, readState, submit]);
 
   const markUnread = useCallback(
     async (fromMessageID: string) => {
       const state = readState();
       if (!state?.complete || !fromMessageID) return;
-      await writeChatUnread(
+      await writeConversationUnread(
         client,
-        chatId,
+        target,
         fromMessageID,
         state.unreadGeneration,
       );
     },
-    [chatId, client, readState],
+    [client, readState, target],
   );
   return {
     state: query.isSuccess ? query.data : undefined,
@@ -428,10 +524,16 @@ export function usePresentedChatBoundary({
 /** 建立确切 Chat 的显式打开意图，普通浏览器修饰点击仍使用原 Link。 */
 export function ChatReadingLink({
   chatId,
+  mainConversation,
   onClick,
   to,
   ...props
-}: ComponentProps<typeof Link> & { chatId?: string }) {
+}: ComponentProps<typeof Link> & {
+  chatId?: string;
+  mainConversation?: MainConversationReadingSubject & {
+    observedGeneration?: number;
+  };
+}) {
   const client = useQueryClient();
   const navigate = useNavigate();
   return (
@@ -441,7 +543,7 @@ export function ChatReadingLink({
       onClick={(event) => {
         onClick?.(event);
         if (
-          !chatId ||
+          (!chatId && !mainConversation) ||
           event.defaultPrevented ||
           event.button !== 0 ||
           event.metaKey ||
@@ -452,7 +554,17 @@ export function ChatReadingLink({
         )
           return;
         event.preventDefault();
-        navigate(to, { state: captureChatOpenIntent(client, chatId) });
+        if (mainConversation) {
+          const { observedGeneration, ...subject } = mainConversation;
+          navigate(to, {
+            state: captureMainConversationOpenIntent(client, subject, {
+              observedGeneration,
+              freezeObservedGeneration: true,
+            }),
+          });
+        } else if (chatId) {
+          navigate(to, { state: captureChatOpenIntent(client, chatId) });
+        }
       }}
     />
   );

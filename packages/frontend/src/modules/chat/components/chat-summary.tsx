@@ -23,7 +23,10 @@ import {
 } from "../model/chat-git";
 import { ChatGitActions } from "./chat-git-actions";
 import { ChatGitBranchSelector } from "./chat-git-branch-selector";
-import { workspaceFilesWithGenerated } from "../model/chat-workspace-files";
+import {
+  workspaceFileKey,
+  workspaceFilesWithGenerated,
+} from "../model/chat-workspace-files";
 
 const previewFileCount = 3;
 
@@ -182,7 +185,7 @@ export function ChatSummary({
               <div className="grid">
                 {files.slice(0, previewFileCount).map((file) => (
                   <Button
-                    key={file.path}
+                    key={workspaceFileKey(file)}
                     size="row"
                     variant="ghost"
                     className="w-full min-w-0"

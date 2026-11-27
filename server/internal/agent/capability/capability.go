@@ -56,6 +56,8 @@ type Result struct {
 type Binding struct {
 	// Operation is the unique operation identity in the static catalog.
 	Operation string
+	// Attempt observes a command addressed to this execution, including rejected input.
+	Attempt func()
 	// Call executes the domain operation only after grant and parameter validation.
 	Call func(context.Context, Request) (Result, error)
 	// Receipt queries the original scoped request in its authoritative store; reads may omit it.
@@ -456,7 +458,8 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 		writeFailure(w, "", status_error.AgentContextUnauthorized)
 		return
 	}
-	if !catalog {
+	command := request.Method == http.MethodPost && request.URL.Path == constants.AgentCLIPath+"/commands"
+	if !catalog && !command {
 		if err := current.validate(ctx); err != nil {
 			writeFailure(w, "", err)
 			return
@@ -526,18 +529,26 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 		var input Request
 		decoder := json.NewDecoder(http.MaxBytesReader(w, request.Body, constants.AgentCLIRequestMaximumBytes))
 		decoder.DisallowUnknownFields()
-		if decoder.Decode(&input) != nil || decoder.Decode(new(any)) != io.EOF {
+		decodeErr := decoder.Decode(&input)
+		binding, ok := current.bindings[input.Operation]
+		op, _ := Find(input.Operation)
+		if ok && op.RequiresExecutionID() && request.Header.Get(constants.AgentCLIExecutionHeader) != current.executionID {
+			writeFailure(w, input.Operation, status_error.AgentContextUnauthorized)
+			return
+		}
+		if ok && binding.Attempt != nil {
+			binding.Attempt()
+		}
+		if err := current.validate(ctx); err != nil {
+			writeFailure(w, "", err)
+			return
+		}
+		if decodeErr != nil || decoder.Decode(new(any)) != io.EOF {
 			writeFailure(w, "", status_error.AgentInputInvalid)
 			return
 		}
-		binding, ok := current.bindings[input.Operation]
 		if !ok {
 			writeFailure(w, input.Operation, status_error.AgentOperationForbidden)
-			return
-		}
-		op, _ := Find(input.Operation)
-		if op.Effect == constants.AgentCLIEffectExternal && request.Header.Get(constants.AgentCLIExecutionHeader) != current.executionID {
-			writeFailure(w, input.Operation, status_error.AgentContextUnauthorized)
 			return
 		}
 		if input.Params == nil {

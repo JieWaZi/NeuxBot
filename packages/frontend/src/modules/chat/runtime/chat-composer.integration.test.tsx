@@ -1640,9 +1640,10 @@ describe("chat composer", () => {
     );
 
     await userEvent.setup().click(await screen.findByText("report.md"));
-    expect(onOpenFile).toHaveBeenCalledWith({
+    expect(onOpenFile).toHaveBeenCalledExactlyOnceWith({
       name: "report.md",
       path: "attachments/user-attachment/report.md",
+      fileSource: "chat",
     });
   });
 
@@ -2532,9 +2533,22 @@ describe("chat composer", () => {
       const card = question.closest<HTMLElement>(
         "[data-chat-elicitation-card]",
       );
-      expect(card).not.toBeNull();
-      if (!card) throw new Error("missing targeted question card");
-      await waitFor(() => expect(scrollIntoView.mock.contexts).toContain(card));
+      const viewport = card?.closest("[data-chat-scroll-viewport]");
+      if (!card || !viewport) throw new Error("missing targeted question card");
+      expect(card.tagName).toBe("ARTICLE");
+      const targets = viewport.querySelectorAll(
+        '[data-chat-interaction-id="target-question"]',
+      );
+      expect(targets).toHaveLength(1);
+      const target = targets.item(0);
+      expect(target).toContainElement(card);
+      expect(target).not.toContainElement(screen.getByText("另一个问题"));
+      await waitFor(() => {
+        expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({
+          block: "start",
+        });
+        expect(scrollIntoView.mock.contexts).toEqual([target]);
+      });
       expect(within(card).getByRole("button", { name: "继续" })).toBeDisabled();
     } finally {
       scrollIntoView.mockRestore();
@@ -2945,7 +2959,7 @@ describe("chat composer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("允许从用户消息右下方复制完整命令", async () => {
+  it("允许从用户消息复制完整的多行命令", async () => {
     const user = userEvent.setup();
     const command = "bundle exec ruby script.rb --dry-run\necho finished";
     render(
@@ -2957,10 +2971,10 @@ describe("chat composer", () => {
     );
 
     const copyButton = await screen.findByRole("button", { name: "复制" });
-    const messageLayout =
-      copyButton.closest("[data-message-id]")?.firstElementChild;
-    expect(messageLayout).toHaveClass("justify-items-end");
-    expect(messageLayout?.lastElementChild).toContainElement(copyButton);
+    expect(copyButton.closest("[data-message-id]")).toHaveAttribute(
+      "data-message-id",
+      "user-command",
+    );
 
     await user.click(copyButton);
 

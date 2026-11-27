@@ -76,15 +76,18 @@ func (c *workBoardController) walkAttention(ctx context.Context, at int64, scope
 		direct := db.Model(&models.Chat{}).Select("id")
 		threads := db.Model(&models.ChannelThread{}).Select("id")
 		visibleRuns := db.Model(&models.WorkflowRun{})
+		main := db.Model(&models.MainConversation{}).Select("id")
 		if scope.executors != nil {
 			direct = direct.Table("chats chat INDEXED BY idx_chat_pending_waker").Where(pendingChatPredicate).
 				Where("waker_id IN ?", scope.executors).Where(workBoardIndependentChat).
+				Where("NOT EXISTS (SELECT 1 FROM main_conversation_work WHERE work_chat_id=chat.id)").
 				Where("NOT EXISTS (SELECT 1 FROM workflow_creation_sessions WHERE chat_id=chat.id)").
 				Where("NOT EXISTS (SELECT 1 FROM workflow_effects WHERE execution_id=chat.active_execution_id AND " + unboundWorkerEffect + ")")
 			threads = threads.Where("channel_id IN ? AND ready_at IS NOT NULL", scope.executors)
 			visibleRuns = visibleRuns.Where("definition_id IN ? AND (parent_run_id='' OR NOT joined) AND history_deleted_at IS NULL", scope.executors)
+			main = main.Where("subject_type IN ('waker','team') AND subject_id IN ?", scope.executors)
 		} else {
-			chatIDs, threadIDs, runIDs := []string{}, []string{}, []string{}
+			chatIDs, threadIDs, runIDs, mainIDs := []string{}, []string{}, []string{}, []string{}
 			for _, owner := range scope.owners {
 				switch owner.OwnerKind {
 				case constants.WorkOwnerKindChat:
@@ -93,11 +96,14 @@ func (c *workBoardController) walkAttention(ctx context.Context, at int64, scope
 					threadIDs = append(threadIDs, owner.OwnerID)
 				case constants.WorkOwnerKindWorkflowRun:
 					runIDs = append(runIDs, owner.OwnerID)
+				case constants.WorkOwnerKindMainConversation:
+					mainIDs = append(mainIDs, owner.OwnerID)
 				}
 			}
 			direct = direct.Where("id IN ?", chatIDs)
 			threads = threads.Where("id IN ?", threadIDs)
 			visibleRuns = visibleRuns.Where("id IN ?", runIDs)
+			main = main.Where("id IN ?", mainIDs)
 		}
 		// detached 运行及其 joined 后代仍保存顶层调用树 ID。
 		// 候选受 WorkflowMaxChildren 约束，返回前再校验准确的可见归属。
@@ -107,8 +113,9 @@ func (c *workBoardController) walkAttention(ctx context.Context, at int64, scope
 		workers := db.Model(&models.WorkflowEffect{}).Select("chat_id").Where("run_id IN (?) AND chat_id<>''", runs)
 		unboundWorkers := db.Model(&models.WorkflowEffect{}).Select("execution_id").Where("run_id IN (?) AND "+unboundWorkerEffect, runs)
 		unboundChats := db.Model(&models.Chat{}).Select("id").Where("active_execution_id IN (?)", unboundWorkers)
+		mainSources := db.Model(&models.MainConversationWork{}).Select("work_chat_id").Where("conversation_id IN (?)", main)
 		// 合并窄身份后按待办索引点查，避免 OR 过滤扫描其他对象的待办。
-		candidates := db.Raw("? UNION ALL ? UNION ALL ? UNION ALL ?", direct, members, workers, unboundChats)
+		candidates := db.Raw("? UNION ALL ? UNION ALL ? UNION ALL ? UNION ALL ?", direct, members, workers, unboundChats, mainSources)
 		chats = chats.Where("id IN (?)", candidates)
 		tasks = tasks.Where("thread_id IN (?)", threads)
 		humans = humans.Where("run_id IN (?)", runs)
@@ -149,6 +156,14 @@ func (c *workBoardController) attentionBatch(ctx context.Context, at int64, chat
 		if details {
 			wakerIDs = append(wakerIDs, v.WakerID)
 		}
+	}
+	mainSources, err := readRelatedRows[models.MainConversationWork](db, "work_chat_id", "work_chat_id,conversation_id,waker_id", chatIDs)
+	if err != nil {
+		return nil, err
+	}
+	mainTargets, err := mainWorkRequestTargets(db, mainSources)
+	if err != nil {
+		return nil, err
 	}
 	members, err := readRelatedRows[models.ChannelThreadMember](db, "chat_id", "thread_id,chat_id,waker_id,display_name", chatIDs)
 	if err != nil {
@@ -308,7 +323,11 @@ func (c *workBoardController) attentionBatch(ctx context.Context, at int64, chat
 		if hasCreation && creation.ID == "" {
 			continue
 		}
-		if !hasMember && !hasEffect && !hasCreation && chat.HiddenFromWakerHistory && chatSources[chat.ID] == "" {
+		main, hasMain := mainTargets[chat.ID]
+		if hasMain && (main.Title == nil || main.Work.WakerID != chat.WakerID || !chat.HiddenFromWakerHistory || hasMember || hasEffect || hasCreation) {
+			continue
+		}
+		if !hasMain && !hasMember && !hasEffect && !hasCreation && chat.HiddenFromWakerHistory && chatSources[chat.ID] == "" {
 			continue
 		}
 		a := models.WorkBoardAttention{OwnerKind: constants.WorkOwnerKindChat, OwnerID: chat.ID, WorkTitle: chat.Title, ExecutorID: chat.WakerID, ActorName: wakerNames[chat.WakerID], Source: "chat", ChatID: chat.ID, WakerID: chat.WakerID}
@@ -335,12 +354,20 @@ func (c *workBoardController) attentionBatch(ctx context.Context, at int64, chat
 			a.Source = "team"
 		}
 		a.Source = source(a.Source, chatSources[chat.ID], threadSources[thread.ID], runSources[root.ID])
+		if hasMain {
+			a.OwnerKind = constants.WorkOwnerKindMainConversation
+			a.OwnerID, a.ExecutorID, a.WorkTitle = main.Owner.ID, main.Owner.SubjectID, *main.Title
+			a.Source = "chat"
+			if main.Owner.SubjectType == "team" {
+				a.ChannelID, a.Source = main.Owner.SubjectID, "team"
+			}
+		}
 		if chat.WaitingApproval {
 			for _, r := range chat.PendingApprovals {
 				v := a
 				v.ID = "approval:" + chat.ID + ":" + chat.ActiveExecutionID + ":" + r.ApprovalID
 				v.RequestID, v.ExecutionID, v.RequestSequence = r.ApprovalID, chat.ActiveExecutionID, r.RequestedSequence
-				v.Kind = "approval"
+				v.Kind = constants.WorkBoardRequestKindApproval
 				v.Title = r.Title
 				v.CreatedAt = r.RequestedAt
 				facts = append(facts, v)
@@ -351,7 +378,7 @@ func (c *workBoardController) attentionBatch(ctx context.Context, at int64, chat
 				v := a
 				v.ID = "input:" + chat.ID + ":" + chat.ActiveExecutionID + ":" + r.ElicitationID
 				v.RequestID, v.ExecutionID, v.RequestSequence = r.ElicitationID, chat.ActiveExecutionID, r.RequestedSequence
-				v.Kind = "input"
+				v.Kind = constants.WorkBoardRequestKindInput
 				v.Title = r.Message
 				v.CreatedAt = r.RequestedAt
 				facts = append(facts, v)

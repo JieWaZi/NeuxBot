@@ -28,7 +28,8 @@ type ChatBrowserViewProps = {
   chatId?: string;
   onClose?: () => void;
   onOpenTerminal?: () => void;
-  onOpenTool?: (kind: "files" | "changes" | "sidechat" | "board") => void;
+  onOpenSideChat?: () => void;
+  onOpenTool?: (kind: "files" | "changes" | "board") => void;
   onTitleChange?: (title: string) => void;
   onURLChange: (url: string) => void;
   url: string;
@@ -49,6 +50,7 @@ export function ChatBrowserView({
   chatId,
   onClose,
   onOpenTerminal,
+  onOpenSideChat,
   onOpenTool,
   onTitleChange,
   onURLChange,
@@ -238,7 +240,11 @@ export function ChatBrowserView({
                   ...(onOpenTerminal
                     ? ([["terminal", TerminalSquare, t("terminal")]] as const)
                     : []),
-                  ["sidechat", MessagesSquare, t("workbench.sideChat")],
+                  ...(onOpenSideChat
+                    ? ([
+                        ["sidechat", MessagesSquare, t("workbench.sideChat")],
+                      ] as const)
+                    : []),
                   ["files", Files, t("workspace.files")],
                   ...(showBoardTool
                     ? ([
@@ -250,8 +256,9 @@ export function ChatBrowserView({
                 const open =
                   kind === "terminal"
                     ? onOpenTerminal
-                    : onOpenTool && (() => onOpenTool(kind));
-                const disabled = !open || (kind === "sidechat" && !chatId);
+                    : kind === "sidechat"
+                      ? onOpenSideChat
+                      : onOpenTool && (() => onOpenTool(kind));
                 return (
                   <button
                     key={kind}
@@ -264,7 +271,7 @@ export function ChatBrowserView({
                       "disabled:pointer-events-none disabled:opacity-45",
                       "[&_svg]:size-icon-md",
                     )}
-                    disabled={disabled}
+                    disabled={!open}
                     onClick={open}
                   >
                     <Icon strokeWidth={1.5} />

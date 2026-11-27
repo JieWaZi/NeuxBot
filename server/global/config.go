@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
+	"github.com/JieWaZi/NeuxBot/server/services/mainconversation"
 	"github.com/JieWaZi/NeuxBot/server/services/mcpconnector"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 	"github.com/JieWaZi/NeuxBot/server/services/skilllearning"
@@ -70,6 +71,10 @@ import (
 )
 
 var (
+	// MainConversationService 保存主体的公开主会话和冻结的工作来源。
+	MainConversationService *mainconversation.Service
+	// MainConversationControllerManager 提供经来源校验的主会话发言查询。
+	MainConversationControllerManager *controllers.MainConversationController
 	// KnowledgeService 复用页面、聊天与自动入口的真实知识维护。
 	KnowledgeService *knowledgeservice.Service
 	// KnowledgeRemoteMountControllerManager 只保存用户明确选择的远端库入口。
@@ -360,6 +365,11 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	ChatControllerManager = controllers.NewChatController(DB)
 	ChatDeletionIntentControllerManager = controllers.NewChatDeletionIntentController(DB)
 	ChannelControllerManager = controllers.NewChannelController(DB)
+	MainConversationControllerManager = controllers.NewMainConversationController(DB)
+	MainConversationService = mainconversation.New(MainConversationControllerManager, TransactionControllerManager, WakerControllerManager, ChannelControllerManager)
+	if err := MainConversationControllerManager.InitializeReadingBaseline(ctx, constants.LocalReaderID); err != nil {
+		return mapCoreError("initialize_main_conversation_reading", status_error.CoreDatabaseInitializationFailed, err)
+	}
 	ChannelThreadControllerManager = controllers.NewChannelThreadController(DB)
 	ChannelTaskControllerManager = controllers.NewChannelTaskController(DB)
 	PluginControllerManager = controllers.NewPluginController(DB, func() {
@@ -682,6 +692,9 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	if err := ChatService.Start(ctx); err != nil {
 		return mapCoreError("start_chat_service", status_error.CoreChatInitializationFailed, err)
 	}
+	if err := MainConversationService.RecoverUserAdmissions(ctx, "", ChatService.ReadSubmission); err != nil {
+		logx.Warn("recover_main_conversation_admissions: ", err)
+	}
 	AgentThreads = threads
 	UsageService = usage.NewService(conversations, usageProjection)
 	conversations.SetUsageChanged(usageChanged)
@@ -724,12 +737,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 			}
 			return WorkflowService.BindWorkflowTurn(ctx, chat, executionID, selection)
 		},
-		ValidateIntent: func(ctx context.Context, intent execution.WorkIntent) error {
-			if KnowledgeService == nil {
-				return nil
-			}
-			return KnowledgeService.ValidateWorkIntent(ctx, intent)
-		},
+		ValidateIntent: validateWorkIntent,
 		AcquireTeamChatInput: func(ctx context.Context, chatID string, userInput bool) (context.Context, func(), error) {
 			if ChannelService == nil {
 				return ctx, func() {}, nil
@@ -857,9 +865,10 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	IMService = imModule
 	WorkflowState = workflowstate.New(WorkflowControllerManager, WorkflowRunControllerManager, TransactionControllerManager)
 	WorkflowService = workflow.New(workflow.Config{
-		RepairOutput:    repairWorkflowOutput,
-		SummarizeOutput: summarizeWorkflowOutput,
-		Commands:        controllers.NewAgentCommandController(DB), Events: EventHub,
+		AuthorizeMainWork: MainConversationService.AuthorizeWorkActor,
+		RepairOutput:      repairWorkflowOutput,
+		SummarizeOutput:   summarizeWorkflowOutput,
+		Commands:          controllers.NewAgentCommandController(DB), Events: EventHub,
 		State:            WorkflowState,
 		Resources:        workflowResources,
 		IMCall:           IMService.WorkflowCall,

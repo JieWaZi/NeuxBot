@@ -43,7 +43,13 @@ func (r *ResolveApproval) Validate(*gin.Context) error {
 }
 
 // Output 把用户选择交给 Execution Core 审批协调器。
+// @err[DatabaseOperationCancelled][40800001001][数据库操作已取消]
+// @err[DatabaseError][50000000002][数据库操作失败]
+// @err[DatabaseBusy][50300001001][数据库暂忙]
 func (r *ResolveApproval) Output(ctx *gin.Context) (interface{}, error) {
+	if err := global.MainConversationService.ValidateWorkEntry(ctx.Request.Context(), r.ChatID, false); err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	if err := global.ExecutionService.ResolveApproval(
 		ctx,
 		r.ChatID,

@@ -1,0 +1,48 @@
+/* 首项停留在轨道起点；后续页签和新建按钮沿同一轨道滚动。 */
+.shell-header-tab-track:has(.shell-header-tab[data-fixed]) {
+  scroll-padding-inline-start: calc(
+    var(--spacing-scene-tab) + 3 * var(--spacing)
+  );
+}
+.shell-header-tab-track:has(.shell-header-tab[data-fixed]) > [role="tablist"] {
+  display: grid;
+  flex-shrink: 1;
+  min-width: min-content;
+  grid-auto-flow: column;
+  grid-template-columns: max-content;
+  grid-auto-columns: minmax(
+    var(--spacing-scene-tab-min),
+    var(--spacing-scene-tab)
+  );
+}
+.shell-header-tab-track:has(.shell-header-tab[data-fixed])
+  .shell-header-tab:not([data-fixed]) {
+  width: auto;
+}
+.shell-header-tab-track:has(.shell-header-tab[data-fixed])
+  .shell-header-tab
+  .shell-header-tab-select {
+  padding-inline-start: calc(var(--spacing) * 1.5);
+}
+/* 可见底色与点击区使用各自的高度。 */
+.shell-header-tab-track:has(.shell-header-tab[data-fixed])
+  .shell-header-tab::after {
+  inset-block: calc(
+    (var(--spacing-control-md) - var(--spacing-control-sm)) / 2
+  );
+}
+.shell-header-tab[data-fixed] {
+  flex: none;
+  width: max-content;
+  min-width: var(--spacing-control-md);
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  background: var(
+    --window-solid-shell-surface-frame,
+    var(--shell-surface-frame)
+  );
+}
+.shell-header-tab[data-fixed]:has(+ .shell-header-tab) {
+  margin-inline-end: var(--spacing);
+}

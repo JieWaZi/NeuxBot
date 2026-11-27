@@ -226,6 +226,46 @@ func (s *Store) ReadTimeline(ctx context.Context, q agent.MessageQuery, through 
 	return s.readTimeline(ctx, q, through, true)
 }
 
+// ReadExecutionQuestions 只读取所选回合的原请求及终态，不展开工作过程或普通消息。
+func (s *Store) ReadExecutionQuestions(ctx context.Context, chatID string, executionIDs []string) ([]TimelineQuestion, error) {
+	if len(executionIDs) == 0 {
+		return nil, nil
+	}
+	if len(executionIDs) > maxPageSize {
+		return nil, status_error.ChatMessageCursorInvalid
+	}
+	r, err := s.openChat(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer r.close()
+	ids := make([]indexIdentity, len(executionIDs))
+	for i, id := range executionIDs {
+		ids[i] = indexIdentity(id)
+	}
+	var anchors []messageAnchor
+	err = r.index.query(func(db *gorm.DB) error {
+		selected := db.Model(&executionLocator{}).Select("ref").
+			Where("stream = ? AND key IN ?", r.index.coverage.Stream, ids)
+		return db.Table("conversation_messages INDEXED BY conversation_anchors_execution").
+			Where("stream = ? AND execution_ref <> 0 AND execution_ref IN (?) AND kind = ?",
+				r.index.coverage.Stream, selected, indexQuestionRequested).
+			Order("cursor").Find(&anchors).Error
+	})
+	if err != nil || len(anchors) == 0 {
+		return nil, err
+	}
+	refs := make([]int64, len(anchors))
+	for i, anchor := range anchors {
+		refs[i] = anchor.Ref
+	}
+	groups, err := r.index.forMessages(refs)
+	if err != nil {
+		return nil, err
+	}
+	return readTimelineQuestions(ctx, r, anchors, groups)
+}
+
 func (s *Store) readTimeline(ctx context.Context, q agent.MessageQuery, through int64, includeQuestions bool) (TimelinePage, error) {
 	var result TimelinePage
 	if q.Limit < 1 || q.Limit > maxPageSize || q.Before < 0 || through < 0 || (q.Before != 0 && through != 0) {

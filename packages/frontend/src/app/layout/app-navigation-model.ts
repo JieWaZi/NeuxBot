@@ -1,3 +1,4 @@
+import { mainConversationOwner } from "../scenes/main-conversation-route";
 import {
   legacyIMSettingsHref,
   integrationSettingsHref,
@@ -51,6 +52,7 @@ export function resolveAppNavigation({
   search,
 }: AppNavigationLocation): AppNavigationRoute {
   const params = new URLSearchParams(search);
+  if (mainConversationOwner(pathname)) return route("partners", "partners");
   if (pathname === "/wakers/new") return route("partners", "partners");
   const waker = /^\/wakers\/([^/]+)(?:\/([^/]+))?/.exec(pathname);
   if (waker?.[1]) {

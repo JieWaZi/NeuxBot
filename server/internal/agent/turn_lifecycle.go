@@ -79,6 +79,8 @@ type TurnPorts struct {
 type TurnResult struct {
 	// BusinessAdmitted is true once the durable BeforeSubmit batch was written.
 	BusinessAdmitted bool
+	// InteractionRequested records native approval or input requests, including requests denied before a business record exists.
+	InteractionRequested bool
 	// Binding is the opened native session, even if the business gate rejected it.
 	Binding NativeBinding
 	// Input is the exact adapter reservation when available.
@@ -160,6 +162,8 @@ type Turn struct {
 	controls sync.WaitGroup
 	// steerRevokes holds additional input grants under the same native turn.
 	steerRevokes []func()
+	// interactionRequested records requests addressed to this input even when no handler is authorized.
+	interactionRequested bool
 	// handoffToolAttempt is set from actual native tool or interaction evidence.
 	handoffToolAttempt bool
 	// summary is a temporary private Turn on the old connection during handoff.
@@ -261,6 +265,7 @@ func (t *Turn) runPrompt() TurnResult {
 	t.phase = turnFinishing
 	revoke := t.revoke
 	res.BusinessAdmitted = t.admitted
+	res.InteractionRequested = t.interactionRequested
 	t.mu.Unlock()
 	t.controls.Wait()
 	for _, revoke := range t.steerRevokes {
@@ -614,6 +619,17 @@ func (l *ThreadLifecycle) rejectHandoffTool(state *threadState, generation uint6
 	return reject
 }
 
+// matchingInteraction records native interaction evidence before handler policy can cancel the request.
+func (l *ThreadLifecycle) matchingInteraction(state *threadState, generation uint64, scope AgentScope) *Turn {
+	t := l.matchingTurn(state, generation, scope)
+	if t != nil {
+		t.mu.Lock()
+		t.interactionRequested = true
+		t.mu.Unlock()
+	}
+	return t
+}
+
 func (l *ThreadLifecycle) callbacks(state *threadState, generation uint64) AgentClientCallbacks {
 	return AgentClientCallbacks{
 		Observe: func(ctx context.Context, scope AgentScope, event AgentEvent) error {
@@ -655,7 +671,7 @@ func (l *ThreadLifecycle) callbacks(state *threadState, generation uint64) Agent
 			if l.rejectHandoffTool(state, generation, scope) {
 				return "", nil
 			}
-			t := l.matchingTurn(state, generation, scope)
+			t := l.matchingInteraction(state, generation, scope)
 			if t == nil || t.ports.Approve == nil || t.ctx.Err() != nil {
 				return "", nil
 			}
@@ -669,7 +685,7 @@ func (l *ThreadLifecycle) callbacks(state *threadState, generation uint64) Agent
 			if l.rejectHandoffTool(state, generation, scope) {
 				return AgentInputResponse{Action: "cancel"}, nil
 			}
-			t := l.matchingTurn(state, generation, scope)
+			t := l.matchingInteraction(state, generation, scope)
 			if t == nil || t.ports.Input == nil || t.ctx.Err() != nil {
 				return AgentInputResponse{Action: "cancel"}, nil
 			}
@@ -680,7 +696,7 @@ func (l *ThreadLifecycle) callbacks(state *threadState, generation uint64) Agent
 			return response, err
 		},
 		CompleteInput: func(_ context.Context, scope AgentScope, id string) error {
-			t := l.matchingTurn(state, generation, scope)
+			t := l.matchingInteraction(state, generation, scope)
 			if t == nil || t.ports.CompleteInput == nil || t.ctx.Err() != nil {
 				return nil
 			}

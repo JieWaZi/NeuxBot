@@ -30,4 +30,28 @@ describe("共享动效合同", () => {
     expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
     expect(styles).not.toMatch(/scale(?:3d)?\(\s*0(?:\s*[,)]|\.0+\s*[,)]?)/);
   });
+
+  it("等待文字的流光裁剪到字形，系统需要静态高对比文字时退出", () => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(styles);
+    const support = [...sheet.cssRules].find(
+      (rule): rule is CSSSupportsRule =>
+        rule instanceof CSSSupportsRule &&
+        rule.conditionText.includes("background-clip: text"),
+    );
+    const media = [...(support?.cssRules ?? [])].find(
+      (rule): rule is CSSMediaRule =>
+        rule instanceof CSSMediaRule &&
+        rule.conditionText.includes("prefers-reduced-motion: no-preference") &&
+        rule.conditionText.includes("prefers-contrast: no-preference") &&
+        rule.conditionText.includes("forced-colors: none"),
+    );
+    const clip = [...(media?.cssRules ?? [])].find(
+      (rule): rule is CSSStyleRule =>
+        rule instanceof CSSStyleRule &&
+        rule.selectorText ===
+          '[data-text-shimmer="true"][data-shimmer-visible]',
+    );
+    expect(clip?.style.getPropertyValue("background-clip")).toBe("text");
+  });
 });

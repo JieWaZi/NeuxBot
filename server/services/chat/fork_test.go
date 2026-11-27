@@ -224,7 +224,7 @@ func TestForkRejectsConcurrentDeletionAndUncertainRetry(t *testing.T) {
 		if err := m.DeleteChat(context.Background(), parent); !errors.Is(err, status_error.ChatHasActiveExecution) {
 			t.Fatalf("concurrent delete: %v", err)
 		}
-		if err := m.DeleteWakerChats(context.Background(), "waker", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); !errors.Is(err, status_error.ChatHasActiveExecution) {
+		if err := m.DeleteWakerChats(context.Background(), "waker", nil, func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); !errors.Is(err, status_error.ChatHasActiveExecution) {
 			t.Fatalf("concurrent waker delete: %v", err)
 		}
 		release, err := chatstorage.AcquireOperation(m.storage.Root(), parent)
@@ -490,7 +490,7 @@ func TestDeleteWakerCancelsPendingFork(t *testing.T) {
 	if err = chatstorage.WriteForkOperation(directory, operation); err != nil {
 		t.Fatal(err)
 	}
-	if err = m.DeleteWakerChats(context.Background(), "waker", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
+	if err = m.DeleteWakerChats(context.Background(), "waker", nil, func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if err = m.Start(context.Background()); err != nil {
@@ -517,7 +517,7 @@ func TestDeleteWakerIncludesPublishedFork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = m.DeleteWakerChats(context.Background(), "waker", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
+	if err = m.DeleteWakerChats(context.Background(), "waker", nil, func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{parent, child} {

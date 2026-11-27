@@ -17,6 +17,7 @@ import (
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
 	"github.com/JieWaZi/NeuxBot/server/internal/uploads"
@@ -26,6 +27,7 @@ import (
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
+	"gorm.io/gorm"
 )
 
 // testMessageInput 统一表达测试中的创建首发和已有对话续发输入。
@@ -99,6 +101,8 @@ type testChatInput struct {
 }
 
 type messageTestService struct {
+	// db 提供测试冷读使用的 SQLite 投影。
+	db *gorm.DB
 	// store owns durable admissions for the fixture.
 	store *conversation.Store
 	// trace records the actual Codex app-server requests.
@@ -945,6 +949,7 @@ func newMessageTestService(
 	executionCore, err := New(Config{
 		Threads: threads, RuntimeSummaries: summaries,
 		Agent: selectedOptions.agent, AgentBinary: selectedOptions.agentBinary, AgentEndpoint: "http://127.0.0.1:1/agent/v1",
+		Events: selectedOptions.events,
 		ResolveAccount: func(_ context.Context, request agent.AccountRequest, _ string) (agent.AccountRequest, error) {
 			request.Subject = "fixture-subject"
 			return request, nil
@@ -980,7 +985,7 @@ func newMessageTestService(
 		store.Close()
 	})
 	return messageTestService{
-		store: store, trace: trace, execution: executionCore,
+		db: database.DB, store: store, trace: trace, execution: executionCore,
 		chats:          chatModule,
 		profiles:       profiles,
 		projects:       projects,
@@ -1033,6 +1038,8 @@ func readyTestModel(id string) agent.ModelOption {
 }
 
 type messageTestOptions struct {
+	// events 提供测试中同一执行的真实、有界观察。
+	events *events.Hub
 	// agent 提供真实执行能力授权和系统技能交付。
 	agent *capability.Registry
 	// agentBinary 是初始化发布的测试 CLI 原件。

@@ -35,6 +35,7 @@ export type SceneTab = {
   description?: string;
   autoFocus?: boolean;
   closeable?: boolean;
+  fixed?: boolean;
   draggable?: boolean;
   notFound?: boolean;
   separatorBefore?: boolean;
@@ -161,6 +162,7 @@ export function SceneTabStrip({
             )}
             data-selected={active || undefined}
             data-invalid={tab.notFound || undefined}
+            data-fixed={tab.fixed || undefined}
             data-scene-tab-item
             role="presentation"
           >
@@ -226,12 +228,12 @@ export function SceneTabStrip({
             ) : null}
           </div>
         );
-        const triggerContent =
-          onRename && onCloseOthers ? (
-            <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
-          ) : (
-            content
-          );
+        const hasMenu = !tab.fixed && onRename && onCloseOthers;
+        const triggerContent = hasMenu ? (
+          <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
+        ) : (
+          content
+        );
         const tabContent = tab.notFound ? (
           <Tooltip key={tab.id}>
             <TooltipTrigger asChild>{triggerContent}</TooltipTrigger>
@@ -240,7 +242,7 @@ export function SceneTabStrip({
         ) : (
           triggerContent
         );
-        return onRename && onCloseOthers ? (
+        return hasMenu ? (
           <ContextMenu key={tab.id}>
             {tabContent}
             <ContextMenuContent

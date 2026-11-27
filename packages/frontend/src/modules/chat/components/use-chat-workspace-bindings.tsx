@@ -32,6 +32,11 @@ import { useWorkbench } from "../workbench/workbench-store";
 import { workbenchDocumentBuffers } from "../workbench/document-buffers";
 import type { WorkbenchFileWorkspaceProps } from "../workbench/file/workbench-file-workspace";
 
+export type ChatCodeReferenceOpenScope = Pick<
+  ChatFileOpenRequest,
+  "sourceChatId" | "rootPath"
+>;
+
 type ChatWorkspaceBindingsOptions = {
   activeChatId?: string;
   additionalWorkingDirectories?: readonly string[];
@@ -95,9 +100,9 @@ export function useChatWorkspaceBindings({
   const downloadChatFile = useCallback(
     async (file: WorkspaceFile) => {
       try {
-        if (!activeChatId)
-          throw new Error(i18n.t("common:errors.chatNotReady"));
-        await downloadChatWorkspaceFile(activeChatId, "", file.path);
+        const chatId = file.sourceChatId ?? activeChatId;
+        if (!chatId) throw new Error(i18n.t("common:errors.chatNotReady"));
+        await downloadChatWorkspaceFile(chatId, "", file.path);
       } catch {
         toast.error(t("workspace.downloadFileError"));
       }
@@ -257,9 +262,10 @@ export function useChatWorkspaceBindings({
     [updateViewState],
   );
   const openCodeReference = useCallback(
-    (reference: ChatCodeReference) => {
+    (reference: ChatCodeReference, scope?: ChatCodeReferenceOpenScope) => {
       if (!reference.path) return;
       openWorkspaceFile({
+        ...scope,
         name: fileName(reference.path),
         path: reference.path,
         mode: "preview",

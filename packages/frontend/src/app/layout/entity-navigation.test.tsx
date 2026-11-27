@@ -136,9 +136,14 @@ describe("EntityNavigation", () => {
     expect(avatar).toHaveAttribute("data-expression", "curieux");
   });
 
-  it.each([false, true])(
-    "伙伴头像在展开和紧凑导航共用等待、工作和未读状态 (%s)",
-    (collapsed) => {
+  it.each([
+    { collapsed: false, source: "普通聊天" },
+    { collapsed: true, source: "普通聊天" },
+    { collapsed: false, source: "主会话" },
+    { collapsed: true, source: "主会话" },
+  ])(
+    "伙伴头像显示$source的提问、审批、运行与空闲状态（折叠：$collapsed）",
+    ({ collapsed, source }) => {
       // jsdom 的帧回调与 Node 的 performance 时钟起点不同，测试统一推进。
       vi.useFakeTimers({
         toFake: [
@@ -155,6 +160,7 @@ describe("EntityNavigation", () => {
       const renderEntity = (
         requestKinds: string[],
         runningChatCount: number,
+        unreadMessageCount = 12,
       ) => (
         <EntityNavigation
           collapsed={collapsed}
@@ -163,13 +169,19 @@ describe("EntityNavigation", () => {
               id: "waker-1",
               key: "waker:waker-1",
               kind: "waker",
-              waker: { id: "waker-1", name: "伙伴一" } as Waker,
+              waker: {
+                id: "waker-1",
+                name: "伙伴一",
+                activityState: "waiting",
+              },
               attention: {
                 executorId: "waker-1",
                 waitingWorkCount: requestKinds.length,
                 runningChatCount,
-                unreadMessageCount: 12,
-                chats: [{ requestKinds }],
+                unreadMessageCount,
+                ...(source === "主会话"
+                  ? { requestKinds, chats: [] }
+                  : { chats: [{ requestKinds }] }),
               },
             },
           ]}
@@ -182,7 +194,7 @@ describe("EntityNavigation", () => {
           selectedKey="waker:waker-1"
         />
       );
-      const view = render(renderEntity(["input"], 3));
+      const view = render(renderEntity(["input", "approval"], 3));
       const avatar = view.container.querySelector<SVGElement>(
         "svg[data-companion-avatar]",
       );
@@ -220,6 +232,11 @@ describe("EntityNavigation", () => {
       expect(
         screen.getByRole("button", { name: "伙伴一，12 条未读消息" }),
       ).toBeInTheDocument();
+
+      view.rerender(renderEntity([], 0, 0));
+      advanceAvatar();
+      expect(avatar).toHaveAttribute("data-animation", "idle");
+      expect(avatar?.querySelector("[data-native-attention]")).toBeNull();
     },
   );
   it.each([false, true])(

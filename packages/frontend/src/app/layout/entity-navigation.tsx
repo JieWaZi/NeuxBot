@@ -304,7 +304,9 @@ function entityMark(item: NavigationEntity) {
   const state = entityActivityState(item);
   const attention = item.attention;
   return conversationAttentionMark({
-    requestKinds: attention?.chats?.flatMap((chat) => chat.requestKinds ?? []),
+    requestKinds:
+      attention?.requestKinds ??
+      attention?.chats?.flatMap((chat) => chat.requestKinds ?? []),
     waiting: attention
       ? Boolean(attention.waitingWorkCount)
       : state === "waiting",

@@ -2,7 +2,7 @@
 
 ## 数据与职责
 
-Chat 是消息与原生会话的容器。用户输入、结构化执行事件和终态结果写入追加式 JSONL；查询索引与当前消息投影可以重建。SQLite 保存聊天聚合摘要、查询定位和其他业务数据，不另存一套 Execution 状态或可编辑聊天正文。
+工作 Chat 是执行消息与原生会话的容器。用户输入、结构化执行事件和终态结果写入追加式 JSONL；查询索引与当前消息投影可以重建。SQLite 保存聊天聚合摘要、查询定位和其他业务数据，不另存一套 Execution 状态或可编辑聊天正文。
 
 Execution 负责中立工作意图、权限和配置校验、业务接纳、执行终态及取消。`ThreadLifecycle` 按 Chat 维护原生绑定和配置兼容；`Turn` 拥有本轮输入；`ProviderRuntime` 独占原生进程、账号与资源租约。共享 cwd 不合并聊天身份或原生进程。
 
@@ -20,6 +20,77 @@ flowchart LR
 ```
 
 `agent.Catalog` 保留 CLI 安装、Profile 与程序定位，acp-go 拥有原生协议和客户端。Chat 与运行时共用 ConversationStore，查询投影不复制执行权威。职责详见[智能体与账号](runtimes-and-accounts-cn.md)。
+
+## 主会话和来源工作记录
+
+主会话由 `(subjectType, subjectId)` 唯一定位。伙伴与团队共用公开消息表、发送入口和来源读取入口。团队的新交办使用其负责人的成员配置，伙伴用自己的模型选择或本机保存的默认智能体。普通聊天继续由工作 Chat 承载。
+
+```mermaid
+sequenceDiagram
+    actor U as 用户
+    participant M as 主会话
+    participant E as 执行服务
+    participant J as 来源工作 Chat
+    participant C as CLI
+    U->>M: 发送交办，或引用一条公开消息
+    M->>M: 新交办使用请求的范围，引用取原消息的来源
+    M->>E: 传入隐藏工作 Chat、用户输入和本轮发言权限
+    E->>M: 接纳公开用户消息
+    E->>J: 记录本次执行
+    E->>C: 开始或继续原生会话
+    loop 有内容要交给用户
+        C->>M: 发布一条消息
+        M-->>U: 提交后通知该主体重新读取
+    end
+    opt CLI 等待用户输入或审批
+        C->>J: 登记带请求标识的待办
+        J-->>M: 通知主会话重读本次工作的待办
+        M-->>U: 在对应交办的消息流展示卡片
+        U->>E: 从主会话或来源提交同一请求
+        E-->>C: 将已记录的决定交回原调用
+        J-->>M: 通知更新待办和头像状态
+    end
+    C-->>J: 原始步骤和回合结果
+    U->>M: 点击一条发言的伙伴头像
+    M->>J: 校验来源后分页读取多回合记录
+    U->>J: 在原工作会话继续提问
+    J->>E: 沿原工作范围接纳下一轮
+    E->>M: 记录这条用户追问
+    E-->>M: 工作开始或结束，刷新伙伴状态
+    C->>M: 发送面向用户的答复
+```
+
+主会话的桌面输入框提交交办正文和执行选项。目录属于具体工作，普通聊天草稿里选择的项目不会随主会话提交。工作来源按会话、实际伙伴和授权范围复用。新的项目交办按当时的配置选择来源，回复按原消息的来源继续工作。临时目录以接纳时解析出的真实路径为准。原选择的路径单独用于核对用户重试，即便目录随后移走，已接纳提交仍可返回原回执。团队更换负责人后，新交办使用新负责人。引用旧交办仍由原执行伙伴在原范围续办，前提是这位伙伴仍为团队成员。
+
+公开消息存入 SQLite，工作过程由 Chat 日志保存。用户提交使用同一提交标识重试，模型发言使用本次工具调用的原请求标识重试。显式发布成功立即取得公开消息标识。原生回合成功结束时，如果只消费了这次交办、没有尝试公开发言，且没有提问、审批或宿主命令，Core 可以沿原回址交付一次已保存的最终答复。CLI 使用原生工具后给出的明确 final 也可交付，命令、工具输出和旁白保留在工作记录。WorkBuddy 仅返回 ACP end_turn 时，Core 只接受可确认的单块助手正文，含工具活动的流式内容仍须显式发言。Core 在提交执行终态前结算这次补发。提取或交付失败时，原交办显示交付错误，原生结果仍可在来源工作记录查看。主会话先预留交办身份，来源日志确认接纳后才公开。若写执行日志失败，可用同一提交标识重试。Core 重启时用原执行回执补齐已接纳的公开交办。后台事件、工单和工作流投递的目标设计见[统一会话架构](../discussions/superagent-conversation-architecture-cn.md)。
+
+两个视图使用同一个聊天输入组件。两个入口提交的用户正文都写入主会话。在工作记录里发送时，宿主将新回合交给当前工作 Chat。伙伴发给用户的答复逐条写入公开时间线，工具步骤和运行旁白保存在来源。读取主会话时，Core 在同一事务内返回消息页和各来源的当前执行。每次执行带上原交办的公开消息标识，以及该执行是否已有公开答复。后者取自已提交的发言，翻页与重连均按同一执行判断。前端按伙伴、来源 Chat 与原交办组织连续发言。首条公开答复随快照出现时收起等待行，头像和名称直接挂在组首，同组后续发言沿用正文列。组首头像可打开工作记录，关联执行运行时播放工作动效，原生回合结算后原位转为静态。兼容的 CLI 连接可供下一轮复用。
+
+删除单条消息只改变它在主会话中的可见性。公开历史、回复定位和未读统计排除该条消息。原消息顺序、送达回执及来源执行记录继续参与对账，已经接纳的工作仍可发布新答复。伙伴发言的分支按来源 Chat 和这条发言对应的回合调用现有分支流程。
+
+读取一页工作记录时，Core 同时返回这一页各次执行实际发到主会话的消息。桌面按执行标识把发言放回对应回合，按公开顺序展示每一段。CLI 的工具调用、返回值和收尾文字仍可在该回合查看。没有公开发言的回合沿用普通聊天的结果展示。
+
+来源 Chat 保存 CLI 的待答问题与审批。主会话先读各工作是否等待，再按主体和工作身份读取待办快照，核对当前执行后，将卡片放在对应交办的消息流。工作记录中的卡片随消息一起滚动。两个入口共用普通聊天的卡片和提交逻辑，提交回到发起请求的工作。待办变化使同一主体的客户端重新读取快照，卡片与侧栏头像随之更新。已处理的问答可在来源工作记录回看。
+
+主会话和工作记录将各自的消息内容放入普通聊天的工作台外壳，共用顶栏概览、侧栏开关及文件查看器。主会话可跨项目查看已经公开的附件，打开文件时使用发出这条消息的工作 Chat。来源记录使用实际工作目录提供项目文件和 Diff。富媒体用户输入的公开行关联来源消息，桌面读取原消息已冻结的附件与代码引用，CLI 读公开历史时沿用文件名摘要。
+
+### 按能力找文件
+
+沿一次交办阅读时，从 `send.go` 开始。新交办在 `assignment.go` 确定工作范围，引用旧消息在 `reply.go` 恢复原来源。CLI 主动发布的正文由 `messages.go` 接纳，用户点击头像后通过 `source_history.go` 读取原工作记录。
+
+| 要修改的行为 | 代码入口 |
+| --- | --- |
+| 打开伙伴或团队的固定主会话，加载更早的公开消息 | [open.go](../../server/apis/main_conversations/open.go) 处理 HTTP 查询。[subject.go](../../server/services/mainconversation/subject.go) 管主体身份及唯一会话地址。 |
+| 接纳新交办，或处理同一次用户提交的重试 | [send.go](../../server/apis/main_conversations/send.go) 串起提交回执、来源选择、执行准入和公开用户消息。[assignment.go](../../server/apis/main_conversations/assignment.go) 选择实际伙伴、CLI 配置与授权目录。 |
+| 引用一条发现并继续原工作 | [reply.go](../../server/apis/main_conversations/reply.go) 校验消息归属，以原作者角色提供有界摘录。[work_source.go](../../server/services/mainconversation/work_source.go) 管来源绑定和成员资格。 |
+| 为已授权范围创建或续用隐藏工作 Chat | [main_conversation_source.go](../../server/services/execution/main_conversation_source.go) 使用冻结的项目和目录准备来源，再进入通用 CLI 执行器。 |
+| 改变 CLI 能看到哪些公开消息、能往哪里发言 | [命令定义](../../server/internal/agent/capability/main_conversation.go) 定义工具参数。[执行授权](../../server/services/execution/main_conversation_tools.go) 绑定本轮主体和回址。[messages.go](../../server/services/mainconversation/messages.go) 保存公开正文并返回可重查的回执。 |
+| 修改公开存储、顺序或来源释放规则 | [主会话存储](../../server/repositories/controllers/main_conversation.go)、[工作来源存储](../../server/repositories/controllers/main_conversation_work.go)、[公开消息存储](../../server/repositories/controllers/main_conversation_messages.go) 共用一个仓储和事务。 |
+| 订阅已提交的公开消息 | [主会话订阅](../../server/apis/events/main_conversations.go) 校验准确的伙伴或团队。[前端查询](../../packages/frontend/src/modules/chat/api/main-conversation.ts) 提供公开消息和来源记录的分页读取。 |
+| 点伙伴头像和名称回主会话，点「＋」开普通对话 | [伙伴聊天页签栏](../../packages/frontend/src/app/layout/partner-conversation-tab-strip.tsx) 固定当前伙伴入口并展示其普通对话。[主体导航](../../packages/frontend/src/app/layout/use-subject-chat-navigation.ts) 处理打开与新建，[主会话路由](../../packages/frontend/src/app/scenes/main-conversation-route.ts) 确定页签身份。 |
+| 编写交办、显示逐条发言 | [原聊天输入组件](../../packages/frontend/src/modules/chat/components/chat-composer-panel.tsx) 管理编辑、附件、资源与执行选项。[主会话提交](../../packages/frontend/src/modules/chat/components/main-conversation-composer.tsx) 选择公开或来源发送地址，[消息组件](../../packages/frontend/src/modules/chat/components/main-conversation-message.tsx) 显示发言和来源入口。 |
+| 在两种会话视图处理同一提问或审批 | [时间线交互卡](../../packages/frontend/src/modules/chat/components/chat-timeline-interactions.tsx) 渲染普通聊天的提问和审批控件。[请求处理](../../packages/frontend/src/modules/chat/model/main-conversation-source-requests.ts) 提交并刷新主会话和来源。[服务端入口](../../server/apis/main_conversations/source_interaction.go) 校验工作归属与执行者后交回原执行。 |
+| 点头像查看工作记录并返回 | [source_history.go](../../server/apis/main_conversations/source_history.go) 校验来源、返回原 Chat 的多回合历史。[来源续聊](../../server/apis/main_conversations/source_send.go) 核对主体与原来源后接纳新输入。[来源视图](../../packages/frontend/src/modules/chat/components/main-conversation-source.tsx) 展示执行步骤并可继续输入，[主会话页](../../packages/frontend/src/modules/chat/pages/main-conversation-page.tsx) 保留原聊天的阅读位置与草稿。 |
 
 ## 输入与接纳
 
@@ -44,6 +115,10 @@ flowchart LR
 Execution 解析一次有效选择，直接构造 ThreadRequest、TurnRequest 与 TurnPorts，再调用 ThreadLifecycle.Prepare。用户原文进入原生正文块，引用、选择、团队结果与交接进入本轮上下文，由 Agent 在协议出口统一编码。固定提示通过[原生会话指令](runtimes-and-accounts-cn.md)交付，输入格式见[模型指令与消息组装](../development/model-input-cn.md)。普通聊天共享伙伴固定 cwd，私有日志与附件始终按 Chat 隔离，具体目录见[工作区与存储](workspace-and-storage-cn.md)。
 
 准备阶段判断原生绑定是否兼容。冷准备通过既有端口取得账号和资源，由 ProviderRuntime 接管实际及部分取得的租约，再初始化原生会话；热续聊保留连接和租约。输入提交前，Turn 通过 Admit 端口提交接纳事实，再发送同一输入。持久编排入口可先提交待执行事实，后续规范接纳批次补充原生输入身份；资源准备成功不能代替输入接纳。
+
+从主会话或对应的工作记录续聊时，若 Codex 明确返回本次请求的旧线程没有可恢复的历史，且没有待核对的交接，准备阶段可在原工作 Chat 中新建一次原生会话。新会话沿用同一工作范围、账号和模型，按现有规则携带近期对话。接纳和派发继续使用原提交标识。连接中断、超时或通用运行时错误仍沿原请求对账。
+
+排查发送失败时，用 HTTP 请求日志中的 trace ID 搜索 Core 日志的 `trace_id`。接纳前的 `native execution preparation failed` 给出工作 Chat、执行标识和失败阶段；同一 trace 的 `native agent operation failed` 记录失败的适配器操作、应用错误码，以及可取得的原生 RPC 错误码和原因。自动恢复时，`action=start_replacement` 的 `opened` 表示 CLI 是否返回了不同的新会话标识。已接纳执行在后台失败时，`native execution settlement failed` 沿用发送请求的 trace，区分原生执行、存储、事件交付和清理故障。
 
 热续聊读取不可变版本摘要、发布目标和必要共享配置声明，不执行完整插件准备、源内容摘要或秘密解密。冷获取核对实际交付与声明一致，并取得资源租约；外部篡改源内容在冷获取或显式刷新时发现。共享技能和账号的所有权见[工作范围与资源](runtimes-and-accounts-cn.md#工作范围与资源)。
 
@@ -170,3 +245,4 @@ flowchart LR
 头像由通用形状、材质、颜色和默认表情组成，既有 avatar 字段保存版本化配置。旧头像标识稳定映射为通用组合，不再加载专属身体资源。共享选择器、消息、列表与欢迎页使用同一 Bloub 渲染层，通过 `@neuxbot/bloub` 依赖自维护 fork 发布的完整 Git 提交，根锁文件固定安装结果；框架无关核心与材质在 fork 维护，主仓库负责 React 集成与业务状态编排，不复制库源码。形状与表情来自固定开源核心，毛绒使用原创完整立体身体图集，粒子由三维体积内细光尘投影成 SVG 图集并作为单张纹理解码，保留体积光照与透明边缘，不裁空眼周。软胶（`balloon`）的轮廓、充气高度场、灯板反射和透明图集烘焙由 Bloub 的材质模块拥有，沿用开屏字标的充气表面，为完整身体单独校准连续环境、上缘分层高光和局部辅助反射，避免地平线亮带和灯条弧线；宿主统一调用 `materialTexture`，同色形状共享准备结果，快照后释放临时 WebGL 上下文，后续继续使用同一 SVG 身体变形。三种材质的十种形状由库内按毛绒的可见身体边界校准尺寸和中心，只变换身体图格，宿主保持共同视域与眼睛坐标，不再追加材质缩放。材质源码在 Bloub 仓库维护，消费方无需本地材质补丁。外观选择将形状与默认表情合并为十个预设，双击所选形状或大预览可在选定的十种表情间轮换，也支持键盘切换；颜色与三种材质独立选择，随机使用同一组预设。外观选择只显示选中背景，不叠加勾选图标；切换保持旧完整外观，待新纹理换色和解码完成才整体交接，首次未准备好保留透明占位。眼睛沿用上游整脸向内增长算法放大至 1.3 倍，保留边距和眨眼。来源见[第三方声明](../../THIRD_PARTY_NOTICES.md#bloub-头像动画核心)。
 
 普通聊天的最近一条助手消息使用动态头像，团队消息的身份与头像交互遵循[团队协作](teams-cn.md#派发与报告)。无可见内容时的等待反馈见[实时与恢复](#实时与恢复)。已有可见思考或工具活动时头像保持空闲，正文输出使用眨眼，等待审批或问答、停止中和取消使用空闲姿态。失败保留警示，完成保留带主题色圆点的通知姿态。侧栏伙伴头像保持空闲，头像角标表达聚合后的待处理、运行、失败或未读状态。可交互头像空闲时，悬停或键盘聚焦临时显示友好表情，指针和键盘焦点都离开后恢复保存的表情。双击或键盘激活侧栏头像可以打开伙伴资料卡。动态头像离屏或页面隐藏时暂停，减少动态效果时使用固定帧。普通、团队和工作流空白会话保留输入与必要状态。
+主会话读取本页交办所对应的执行终态。已接纳的工作在发出首条公开消息之前失败时，公开行带有本轮的安全失败类别和来源伙伴，界面沿用普通聊天的本地化错误提示。错误状态跟随原交办，来源 Chat 保存原始过程。

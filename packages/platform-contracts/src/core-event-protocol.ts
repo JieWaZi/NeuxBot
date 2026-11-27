@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const globalEventTopics = [
   "work-board",
+  "main-conversations",
   "reading",
   "entities",
   "automatic-tasks",
@@ -105,6 +106,7 @@ function validGlobalEventResource(
       !resource.id &&
       !resource.parentId &&
       ![
+        "main-conversations",
         "chat",
         "team",
         "workflow",
@@ -115,6 +117,11 @@ function validGlobalEventResource(
     );
   if (!resource.id) return false;
   switch (topic) {
+    case "main-conversations":
+      return (
+        (resource.kind === "waker" || resource.kind === "team") &&
+        !resource.parentId
+      );
     case "workspace":
       return resource.kind === "workspace_watch" && !resource.parentId;
     case "knowledge":
@@ -141,14 +148,19 @@ function validGlobalEventResource(
       return resource.kind === "account" && Boolean(resource.parentId);
     case "work-board":
       return (
-        ["chat", "team_thread", "workflow_run", "automatic_run"].includes(
-          resource.kind,
-        ) && !resource.parentId
+        [
+          "chat",
+          "main_conversation",
+          "team_thread",
+          "workflow_run",
+          "automatic_run",
+        ].includes(resource.kind) && !resource.parentId
       );
     case "reading":
       return (
-        ["chat", "workflow_run", "automatic_run"].includes(resource.kind) &&
-        !resource.parentId
+        ["chat", "main_conversation", "workflow_run", "automatic_run"].includes(
+          resource.kind,
+        ) && !resource.parentId
       );
     case "entities":
       return (

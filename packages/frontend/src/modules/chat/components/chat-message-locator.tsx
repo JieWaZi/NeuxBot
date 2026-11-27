@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/shared/ui/button";
 import { useVisibleScene } from "@/shared/api/chat-reading";
@@ -17,9 +11,11 @@ export function useChatMessageLocator({
   cancelReplyLocation,
   keyboardReplyTrigger,
   requestedInteractionId,
+  requestedInteractionScope,
   hasEarlierMessages = false,
   onLoadEarlier,
   onProgrammaticScroll,
+  inlineReplyFeedback = false,
 }: {
   viewport: RefObject<HTMLDivElement | null>;
   active: boolean;
@@ -28,9 +24,11 @@ export function useChatMessageLocator({
   cancelReplyLocation?: () => void;
   keyboardReplyTrigger?: HTMLButtonElement;
   requestedInteractionId?: string;
+  requestedInteractionScope?: string;
   hasEarlierMessages?: boolean;
-  onLoadEarlier: () => Promise<boolean | undefined>;
+  onLoadEarlier: () => Promise<boolean | "unavailable" | undefined>;
   onProgrammaticScroll: (top: number) => void;
+  inlineReplyFeedback?: boolean;
 }) {
   const sceneVisible = useVisibleScene();
   const { t } = useTranslation(["workBoard", "chat", "common"]);
@@ -48,7 +46,7 @@ export function useChatMessageLocator({
   useLayoutEffect(() => {
     history.current = { hasEarlierMessages, onLoadEarlier };
   }, [hasEarlierMessages, onLoadEarlier]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const id = messageId ?? requestedInteractionId;
     const container = viewport.current;
     if (!active || !sceneVisible || !routeKey || !id || !container) return;
@@ -72,8 +70,11 @@ export function useChatMessageLocator({
             ),
           ).find(
             (card) =>
-              card.dataset.messageId === id ||
-              card.dataset.chatInteractionId === id,
+              (card.dataset.messageId === id ||
+                card.dataset.chatInteractionId === id) &&
+              (!requestedInteractionScope ||
+                card.closest<HTMLElement>("[data-chat-interaction-scope]")
+                  ?.dataset.chatInteractionScope === requestedInteractionScope),
           );
       if (target) {
         const previousTop = container.scrollTop;
@@ -115,6 +116,10 @@ export function useChatMessageLocator({
         }
         loadingHistory = false;
         if (!live) return;
+        if (loaded === "unavailable") {
+          update("missing");
+          return;
+        }
         if (loaded === false) {
           update("error");
           return;
@@ -127,7 +132,13 @@ export function useChatMessageLocator({
     };
     void locate();
     const observer = new MutationObserver(move);
-    observer.observe(container, { childList: true, subtree: true });
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      attributeFilter: requestedInteractionId
+        ? ["data-chat-interaction-id"]
+        : undefined,
+    });
     return () => {
       live = false;
       observer.disconnect();
@@ -146,12 +157,17 @@ export function useChatMessageLocator({
     viewport,
     batch,
     requestedInteractionId,
+    requestedInteractionScope,
   ]);
   const feedback =
     active && sceneVisible && messageId && status && status !== "positioned" ? (
       <div
         role="status"
-        className="text-content-muted type-ui flex shrink-0 items-center gap-3 px-6 py-2"
+        className={
+          inlineReplyFeedback
+            ? "text-user-message-content/75 type-ui mb-1 flex flex-wrap items-center gap-x-2"
+            : "text-content-muted type-ui flex shrink-0 items-center gap-3 px-6 py-2"
+        }
       >
         {locatingReply
           ? t(
@@ -173,14 +189,33 @@ export function useChatMessageLocator({
         {status === "more" || status === "error" ? (
           <Button
             size="sm"
-            variant="ghost"
+            variant={inlineReplyFeedback ? "plain" : "ghost"}
+            className={
+              inlineReplyFeedback
+                ? "text-user-message-content hover:text-user-message-content active:text-user-message-content"
+                : undefined
+            }
             onClick={() => setBatch((value) => value + 1)}
           >
-            {t("continueLocating")}
+            {t(
+              inlineReplyFeedback && status === "error"
+                ? "common:retry"
+                : "continueLocating",
+            )}
           </Button>
         ) : null}
-        {cancelReplyLocation ? (
-          <Button size="sm" variant="ghost" onClick={cancelReplyLocation}>
+        {cancelReplyLocation &&
+        (!inlineReplyFeedback || status === "loading") ? (
+          <Button
+            size="sm"
+            variant={inlineReplyFeedback ? "plain" : "ghost"}
+            className={
+              inlineReplyFeedback
+                ? "text-user-message-content hover:text-user-message-content active:text-user-message-content"
+                : undefined
+            }
+            onClick={cancelReplyLocation}
+          >
             {t(status === "loading" ? "common:cancel" : "common:close")}
           </Button>
         ) : null}

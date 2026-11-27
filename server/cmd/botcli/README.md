@@ -1,6 +1,6 @@
 # botcli 系统能力
 
-`botcli` 是 NeuxBot 随应用交付的能力命令入口，供智能体在当前执行的授权范围内调用知识库、IM、工作流、团队、记忆和结构化问答。本文列出当前实现的完整操作；某次聊天实际能调用哪些操作，以该执行的 `capabilities` 返回为准。
+`botcli` 是 NeuxBot 随应用交付的能力命令入口，供智能体在当前执行的授权范围内调用主会话、知识库、IM、工作流、团队、记忆和结构化问答。本文列出当前实现的完整操作；某次聊天实际能调用哪些操作，以该执行的 `capabilities` 返回为准。
 
 命令与参数的权威定义是 [contract](../../internal/agent/capability/catalog.go)，命令树直接由该目录建立。本文说明用途和完成语义，完整参数、枚举、限制与输出结构通过 `describe` 获取，避免维护第二套参数表。目录测试检查下列能力是否遗漏、重复，以及影响和完成语义是否与代码一致。
 
@@ -8,7 +8,7 @@
 
 macOS 桌面版和 Linux 本机 Web 版首次启动时安装 `~/.local/bin/botcli`，并为当前用户的 Shell 配置 PATH。Windows 为当前用户安装时注册 `%LOCALAPPDATA%\NeuxBot\bin\botcli.exe`，也会在桌面首次启动时为实际使用者补装。安装后重新打开终端，运行 `botcli --help` 即可看到命令。
 
-伙伴执行可以直接运行 `botcli`。宿主将 Core 当前发布的程序放在该执行的 PATH 首位，并通过 `BOTCLI_CONTEXT_FILE` 绑定连接。Shell 过滤 PATH 时，使用应用指令给出的程序路径。支持 stdio 的工作流由宿主启动内部 MCP，工具与 CLI 共用能力目录、授权及回执。
+伙伴执行可以直接运行 `botcli`。宿主将 Core 当前发布的程序放在该执行的 PATH 首位，并通过 `BOTCLI_CONTEXT_FILE` 绑定连接。Shell 过滤 PATH 时，使用应用指令给出的程序路径。工作流或主会话发言具有授权且运行时支持 stdio 时，宿主启动内部 MCP，工具与 CLI 共用能力目录、授权及回执。
 
 Codex 的 Shell 过滤掉 `BOTCLI_CONTEXT_FILE` 时，随应用交付的 botcli 根据 Codex 提供的原生线程标识查找同一受管连接。其他原生智能体的显式环境过滤须允许 `BOTCLI_CONTEXT_FILE`。
 
@@ -58,6 +58,15 @@ botcli knowledge pages search --library-id library-example --query "部署流程
 以下是静态实现目录；每组说明其适用场景。完整参数请调用 `describe <operation-id>`，对象身份应来自实际发现结果。
 
 <!-- botcli-operations:start -->
+
+### 主会话消息
+
+接到主会话交办的工作 Chat 可按需读取同一主会话已公开的历史，每页按先后顺序返回。使用 `nextBeforeSequence` 作为下一次的 `beforeSequence` 向前翻页。工作 Chat 可以发送多条独立消息。每次提交提供完整的 `content`，由宿主确定发送者、主会话和引用的交办。来自主会话与来源工作记录的用户消息都进入同一主会话。模型通过此操作发送直接回答与阶段结果。正常结束且全程未用工具、未请求审批或补充输入、未尝试发言的回合，宿主可以送达适配器确认的直接答案。工具过程与旁白保存在工作记录。每条新消息使用新的请求标识，重试同一条复用原标识。
+
+| 操作标识                     | 用途                                   | 影响       | 完成语义    |
+| ---------------------------- | -------------------------------------- | ---------- | ----------- |
+| `conversations.messages.list` | 分页读取当前工作绑定的公开主会话消息。 | `read` | `immediate` |
+| `conversations.messages.post` | 将一条正文写入当前工作绑定的公开主会话。 | `mutation` | `immediate` |
 
 ### 知识库
 
@@ -229,6 +238,7 @@ botcli workflow authoring prepare --primitives functionTask
 | 场景                        | 指南                                                                                                                                                                                                                                |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 知识检索、整理与Wiki维护    | [knowledge](../../../skills/bot/references/wiki-guide.md)、[knowledge.maintenance](../../../skills/bot/references/wiki-maintenance.md)                                                                                            |
+| 主会话发言 | [conversations.messages](../../../skills/bot/references/main-conversation.md) |
 | 消息和文件交付              | [im.delivery](../../../skills/bot/references/im-delivery.md)                                                                                                                                                                       |
 | 工作流创作与运行            | [workflow.authoring](../../../skills/bot/references/workflow-authoring.md)、[workflow.execution](../../../skills/bot/references/workflow-execution.md)                                                                            |
 | 工作流结果、交付与 API 查询 | [workflow.results](../../../skills/bot/references/workflow-results.md)、[workflow.output-delivery](../../../skills/bot/references/output-delivery.md)、[workflow.api-retrieval](../../../skills/bot/references/api-retrieval.md) |

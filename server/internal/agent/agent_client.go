@@ -130,6 +130,8 @@ type AgentSession struct {
 	MCPStatus string
 	// ObservedCodexSettings is the last native thread settings receipt, independent of requested intent.
 	ObservedCodexSettings *ObservedCodexSettings
+	// restoreRejected proves the provider refused this thread before opening a native session.
+	restoreRejected bool
 }
 
 // ObservedCodexSettings is the last settings receipt actually reported by Codex for this thread.
@@ -797,7 +799,7 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		return nil, status_error.RuntimeNotRegistered
 	}
 	if err != nil {
-		return nil, safeAgentError(err, status_error.RuntimeConfigurationInvalid)
+		return nil, nativePreparationError(ctx, "provider/new_client", err, status_error.RuntimeConfigurationInvalid)
 	}
 	return client, nil
 }
@@ -1020,10 +1022,12 @@ func (c *directAgentClient) Initialize(ctx context.Context) error {
 		},
 	})
 	if err != nil {
-		return safeAgentError(err, status_error.RuntimeUnavailable)
+		return nativePreparationError(ctx, acp.AgentMethodInitialize, err, status_error.RuntimeUnavailable)
 	}
 	if response.ProtocolVersion != acp.ProtocolVersionNumber {
-		return status_error.RuntimeProtocolIncompatible
+		err := status_error.RuntimeProtocolIncompatible
+		logNativePreparationFailure(ctx, acp.AgentMethodInitialize, "protocol_version_mismatch", err, err)
+		return err
 	}
 	session := response.AgentCapabilities.SessionCapabilities
 	prompt := response.AgentCapabilities.PromptCapabilities
@@ -1088,7 +1092,10 @@ func (c *directAgentClient) NewSession(ctx context.Context, options AgentSession
 	result, err := c.native.NewSession(ctx, acp.NewSessionRequest{
 		Cwd: c.cwd, AdditionalDirectories: directories, McpServers: c.mcp, Meta: meta,
 	})
-	return c.session(string(result.SessionId), result.ConfigOptions, result.Modes, result.Meta, err)
+	if err != nil {
+		return AgentSession{ID: string(result.SessionId)}, nativePreparationError(ctx, acp.AgentMethodSessionNew, err, status_error.RuntimeSessionStartFailed)
+	}
+	return c.session(ctx, acp.AgentMethodSessionNew, string(result.SessionId), result.ConfigOptions, result.Modes, result.Meta)
 }
 
 func (c *directAgentClient) ResumeSession(ctx context.Context, sessionID string, options AgentSessionOptions) (AgentSession, error) {
@@ -1106,9 +1113,30 @@ func (c *directAgentClient) ResumeSession(ctx context.Context, sessionID string,
 		SessionId: acp.SessionId(sessionID), Cwd: c.cwd, AdditionalDirectories: directories, McpServers: c.mcp, Meta: meta,
 	})
 	if err != nil {
-		return AgentSession{}, safeAgentError(err, status_error.RuntimeExecutionFailed)
+		return c.failedSessionRestore(ctx, acp.AgentMethodSessionResume, sessionID, err)
 	}
-	return c.session(sessionID, result.ConfigOptions, result.Modes, result.Meta, nil)
+	return c.session(ctx, acp.AgentMethodSessionResume, sessionID, result.ConfigOptions, result.Modes, result.Meta)
+}
+
+func (c *directAgentClient) failedSessionRestore(ctx context.Context, operation, id string, err error) (AgentSession, error) {
+	_, isCodex := c.native.(*codex.Client)
+	session := AgentSession{restoreRejected: isCodex && codexRestoreRejected(err, id)}
+	mapped := safeAgentError(err, status_error.RuntimeSessionRestoreFailed)
+	reason := ""
+	if session.restoreRejected {
+		reason = "missing_persisted_history"
+	}
+	logNativePreparationFailure(ctx, operation, reason, err, mapped)
+	return session, mapped
+}
+
+// codexRestoreRejected matches the missing-history refusal returned before Codex opens the thread.
+// A generic RPC failure, transport loss, or a rejection joined with another failure is ambiguous.
+func codexRestoreRejected(err error, id string) bool {
+	var request *acp.RequestError
+	// In Codex rust-v0.163.0, stored_thread_to_initial_history runs before native resume.
+	return errors.As(singleNativeFailure(err), &request) && request != nil && request.Code == -32603 &&
+		request.Message == "thread "+id+" did not include persisted history"
 }
 
 func (c *directAgentClient) sessionOptions(operation string, options AgentSessionOptions) ([]string, map[string]any, error) {
@@ -1146,13 +1174,12 @@ func (c *directAgentClient) sessionOptions(operation string, options AgentSessio
 	return directories, meta, nil
 }
 
-func (c *directAgentClient) session(id string, options []acp.SessionConfigOption, mode *acp.SessionModeState, meta map[string]any, err error) (AgentSession, error) {
+func (c *directAgentClient) session(ctx context.Context, operation, id string, options []acp.SessionConfigOption, mode *acp.SessionModeState, meta map[string]any) (AgentSession, error) {
 	session := AgentSession{ID: id}
-	if err != nil {
-		return session, safeAgentError(err, status_error.RuntimeExecutionFailed)
-	}
 	if id == "" {
-		return session, status_error.RuntimeProtocolIncompatible
+		err := status_error.RuntimeProtocolIncompatible
+		logNativePreparationFailure(ctx, operation, "native_session_identity_missing", err, err)
+		return session, err
 	}
 	session.Options = agentSessionOptions(options)
 	if mode != nil {
@@ -1176,7 +1203,9 @@ func (c *directAgentClient) session(id string, options []acp.SessionConfigOption
 		}
 	}
 	if c.requireVerifiedMCP && session.MCPStatus == "load_unverified" {
-		return session, status_error.RuntimePolicyUnsupported
+		err := status_error.RuntimePolicyUnsupported
+		logNativePreparationFailure(ctx, operation, "mcp_readiness_unverified", err, err)
+		return session, err
 	}
 	return session, nil
 }
@@ -1219,8 +1248,10 @@ func verifiedClaudeMCP(meta map[string]any, servers []acp.McpServer) bool {
 
 func (c *directAgentClient) SetSessionOption(ctx context.Context, id, optionID string, value AgentOptionValue) ([]AgentSessionOption, error) {
 	invalidSetting := status_error.RuntimeConfigurationInvalid
+	operation := acp.AgentMethodSessionSetConfigOption
 	if optionID == "model" {
 		invalidSetting = status_error.RuntimeModelSelectionFailed
+		operation = "session/set_model"
 	}
 	var request acp.SetSessionConfigOptionRequest
 	switch {
@@ -1236,12 +1267,12 @@ func (c *directAgentClient) SetSessionOption(ctx context.Context, id, optionID s
 		return nil, invalidSetting
 	}
 	result, err := c.native.SetSessionConfigOption(ctx, request)
-	return agentSessionOptions(result.ConfigOptions), safeAgentError(err, invalidSetting)
+	return agentSessionOptions(result.ConfigOptions), nativePreparationError(ctx, operation, err, invalidSetting)
 }
 
 func (c *directAgentClient) SetSessionMode(ctx context.Context, id, mode string) error {
 	_, err := c.native.SetSessionMode(ctx, acp.SetSessionModeRequest{SessionId: acp.SessionId(id), ModeId: acp.SessionModeId(mode)})
-	return safeAgentError(err, status_error.RuntimeConfigurationInvalid)
+	return nativePreparationError(ctx, acp.AgentMethodSessionSetMode, err, status_error.RuntimeConfigurationInvalid)
 }
 
 func (c *directAgentClient) ReservePrompt(ctx context.Context, input AgentPromptRequest) (func() AgentPromptResult, error) {
@@ -1332,7 +1363,7 @@ func (c *directAgentClient) ConfigureCodexTurn(ctx context.Context, sessionID, m
 		return nil, status_error.RuntimePolicyUnsupported
 	}
 	options, err := native.ConfigureTurn(ctx, acp.SessionId(sessionID), model, effort, fast)
-	return convertSessionOptions(options, true), safeAgentError(err, status_error.RuntimeConfigurationInvalid)
+	return convertSessionOptions(options, true), nativePreparationError(ctx, configureCodexTurnOperation, err, status_error.RuntimeConfigurationInvalid)
 }
 
 func (c *directAgentClient) ReadModels(ctx context.Context) (AgentModelCatalog, error) {
@@ -1443,10 +1474,13 @@ func safeAgentError(err error, fallback status_error.StatusError) error {
 }
 
 func nativeStatusError(mapped status_error.StatusError, request *acp.RequestError) error {
-	if message := native.NativeFailureMessage(request.Message); message != "" && message != "ACP agent request failed" && message != "Internal error" {
+	message := native.NativeFailureMessage(request.Message)
+	switch message {
+	case "", "ACP agent request failed", "Codex rejected the native request", "Internal error":
+		return mapped
+	default:
 		return mapped.WithMessage(message)
 	}
-	return mapped
 }
 
 func safeNativeErrorKind(request *acp.RequestError) string {
@@ -1941,9 +1975,9 @@ func (c *directAgentClient) LoadSession(ctx context.Context, id string, options 
 		SessionId: acp.SessionId(id), Cwd: c.cwd, AdditionalDirectories: directories, McpServers: c.mcp, Meta: meta,
 	})
 	if err != nil {
-		return AgentSession{}, safeAgentError(err, status_error.RuntimeExecutionFailed)
+		return c.failedSessionRestore(ctx, acp.AgentMethodSessionLoad, id, err)
 	}
-	return c.session(id, result.ConfigOptions, result.Modes, result.Meta, nil)
+	return c.session(ctx, acp.AgentMethodSessionLoad, id, result.ConfigOptions, result.Modes, result.Meta)
 }
 
 func (c *directAgentClient) ListSessions(ctx context.Context, next string) (AgentSessionPage, error) {
@@ -2024,7 +2058,7 @@ func (c *directAgentClient) ForkSession(ctx context.Context, input AgentForkRequ
 	if err := translateNativeShape(result.ConfigOptions, &options); err != nil {
 		return AgentSession{ID: string(result.SessionId)}, err
 	}
-	return c.session(string(result.SessionId), options, result.Modes, result.Meta, nil)
+	return c.session(ctx, acp.AgentMethodSessionFork, string(result.SessionId), options, result.Modes, result.Meta)
 }
 
 // Stable and unstable session methods use equivalent SDK unions with different Go names.

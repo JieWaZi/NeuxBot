@@ -25,6 +25,38 @@ export type ChatMessageView = {
   readonly activity: CompanionActivity;
 };
 
+/** 来源结果使用公开存档的正文，原生文本和工具仍可在工作过程中展开查看。 */
+export function segmentsWithPublishedResult(
+  view: ChatMessageView,
+): readonly ChatMessageSegment[] {
+  const published = view.message.publishedResultParts;
+  if (!published?.length) return view.segments;
+  const publishedText = new Set(published.map((part) => part.text?.trim()));
+  const process = view.segments
+    .flatMap((segment) => ("kind" in segment ? segment.nodes : [segment]))
+    .filter(
+      (node) =>
+        "kind" in node ||
+        (node.part.type !== "text" &&
+          node.part.type !== "process_commentary") ||
+        !publishedText.has(node.part.text?.trim()),
+    );
+  const result = published.map((part): ChatPartNode => ({
+    key: `${view.key}:published:${part.id}`,
+    part,
+  }));
+  if (!process.length) return result;
+  const originalProcess = view.segments.find((segment) => "kind" in segment);
+  return [
+    {
+      key: originalProcess?.key ?? `${view.key}:process`,
+      kind: "process",
+      nodes: process,
+    },
+    ...result,
+  ];
+}
+
 /** 领域事件随消息历史窗口呈现，避免把未加载的旧委派挤到最新一页。 */
 export function timelineEventsInMessageWindow<
   T extends {

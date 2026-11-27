@@ -160,11 +160,11 @@ flowchart LR
 
 ### 按能力找文件
 
-一个文件围绕一项能说清的能力组织。上游的 `dm.py` 把发私信、接回信、唤醒原对话放在一起，因为这三步共同兑现“受托方能把结果回给请求者”。Go 版沿用这个尺度。同一能力的入口、判断和辅助函数就近阅读，只有出现独立变化的职责才拆文件。下面的 Go 文件名用于定位目标实现，随对应功能落地。[open-super-agent 代码目录][osa-file-map] · [私信与回件][osa-dm-py]
+一个文件围绕一项能说清的能力组织。上游的 `dm.py` 把发私信、接回信、唤醒原对话放在一起，因为这三步共同兑现“受托方能把结果回给请求者”。Go 版沿用这个尺度。同一能力的入口、判断和辅助函数就近阅读，只有出现独立变化的职责才拆文件。首条链路的实际代码位置见[主会话文件导航](../architecture/chat-and-execution-cn.md#按能力找文件)。下面列出完整架构的模块规划。[open-super-agent 代码目录][osa-file-map] · [私信与回件][osa-dm-py]
 
 | 要改的行为 | Go 侧从哪里读起 | 上游实现 |
 | --- | --- | --- |
-| 点击主体回到主会话，或手动另开普通会话 | `conversation.go` 解析主体的公开会话身份。启动或恢复原生 CLI 会话在对应驱动中处理 | [OpenBot 主会话身份][ob-main-id] · [用户侧线程][ob-tabs] · [原生会话绑定][ob-binding] |
+| 点击主体回到主会话，或手动另开普通会话 | [subject.go](../../server/services/mainconversation/subject.go) 解析主体的公开会话身份。启动或恢复原生 CLI 会话在对应驱动中处理 | [OpenBot 主会话身份][ob-main-id] · [用户侧线程][ob-tabs] · [原生会话绑定][ob-binding] |
 | 用户当前这一轮直接回答还是派工 | `router.go` 决定并发起派工，`worker.go` 从已接受的目标开始执行并报告。只调整停滞判断时读 `watchdog.go` | [open-super-agent 派工][osa-dispatch] · [Worker 入口][osa-worker-py] · [巡检][osa-watch] |
 | 修改工单完成条件，或改变委派和回件 | 完成条件归 `ticket.go`。父单交给谁、子单回给谁归 `delegation.go`。伙伴和团队共用这两处 | [DeepSeek 工单结算][dsh-report] · [OpenBot 分派与移交][ob-delegate] · [返回请求者][ob-team-return] |
 | 增加一种插件事件来源 | 例如 `sources/github_repo.go` 保存该源的字段说明、参数校验和读取方法。`events.go` 负责按已登记的来源接纳事件 | [open-super-agent GitHub 来源][osa-github-fields] · [来源参数校验][osa-event-clean] |
@@ -207,14 +207,14 @@ flowchart LR
 | 建立、编辑、检查事件规则 | 自动任务的筛选和表单接入事件类型与来源字段，详情分别显示来源检查状态、运行历史和已送达的报告。 | 现有规则列表、启停和分页历史。[自动任务列表](../../packages/frontend/src/modules/automatic-task/pages/automatic-task-list-page.tsx) · [规则详情](../../packages/frontend/src/modules/automatic-task/pages/automatic-task-detail-page.tsx) |
 | 在主会话答复委派问题、从看板或通知打开结果 | 待决卡按原请求身份提交；未读按实际投递到公开会话的消息计算，后台步骤和空轮询不增加聊天未读。会话交办的工作流在原处交付，画布手动运行由画布展示。 | 原审批和提问控件、工作流运行详情、工作看板和共享实时订阅。[通知与阅读归属](../architecture/notifications-and-work-board-cn.md) |
 
-以下是待确认的产品选择。可先在新数据上验收“打开主会话 → 独立发布两条消息 → 点头像看来源 → 返回继续回复”。存量升级和没有用户收件人的定时工作流分别按下列选择确定。
+已确认的产品口径如下。首条实现链路覆盖新数据上的主会话、分段发言、引用和来源工作记录。事件配置与工作流投递开关在后续接入。
 
-| 取舍 | 建议与直接影响 |
-| --- | --- |
-| 新建事件规则与后来命中的发现怎样展示 | 建议在发起聊天用一条简短确认并链接规则详情。后来命中时在约定会话发布发现，附外部对象链接，有运行时可打开本次记录。启停和编辑放在现有自动任务页；需审批或选择时使用对应卡片。 |
-| 已有伙伴与团队第一次进入主会话 | 建议从空的主会话开始，既有公开 Chat 与团队 Thread 沿原地址、项目、权限和链接继续访问。旧成员或工作流执行仍从原业务入口查看。对照方案是选定一个已有公开会话接任主会话；现有“最近”会随活动变化。[团队线程归属](../../server/repositories/models/channel_thread.go) · [隐藏会话归属](../../server/repositories/models/chat.go) |
-| 同一主会话先交办项目 A，随后交办项目 B | 建议主体的主会话保持同一个地址，项目选择对当前交办生效，已执行工作的目录和授权随原工作保存。点某条消息头像时查看它实际引用的、可访问的多回合来源记录，文件与步骤按该来源的范围打开。当前普通 Chat 保存首次授权根，升级时需明确区分这两种寿命。[现有目录授权](../architecture/workspace-and-storage-cn.md) |
-| 从全局自动任务页给独立工作流设定时，用户未指定汇报对象 | 建议在新建规则时选择一个收报告的伙伴或团队；从该主体聊天创建时自然带入。已存在且无明确收件人的规则保留原运行详情与输出，直到用户设置。当前服务器绑定的内置工作流伙伴只负责执行。画布手动点「运行」仍在画布看。[全局创建入口](../../server/apis/automatic_tasks/global_tasks.go) · [内置执行身份](../../server/repositories/models/workflow_definition.go) |
+| 场景 | 用户看到的行为 | 后端依据 |
+| --- | --- | --- |
+| 在聊天中创建事件规则，之后收到新发现 | 规则保存后发一条伙伴消息，带可打开的规则链接。命中时，每个需要单独讨论的发现可独立发言，附对应对象或运行链接。只有需要选择、批准时显示交互卡。 | 聊天和管理页读写同一规则。来源检查、无变化轮询和 CLI 步骤留在运行记录。 |
+| 第一次打开伙伴或团队 | 每个主体从一条空的主会话开始，重复打开得到同一地址。仍可手动新建普通会话。 | 开发阶段直接使用新结构，不迁移历史聊天，不从最近聊天推断主会话，也不要求删除已有数据。 |
+| 先交办项目 A，再交办项目 B | 两项工作的公开消息都在同一主会话。引用 A 的任意一条发现，仍在 A 的授权范围内续办。点头像按消息打开对应的多回合记录，返回恢复原阅读位置和草稿。 | 桌面主会话没有全局目录。规划中的 Router 在派工时根据用户意图，从伙伴已添加的项目或用户明确授权的路径中选择范围。指代含糊时先追问。宿主核验项目归属，将目录及指令策略固定到该次工作，引用按原消息恢复范围。当前首条链路已支持接纳结构化范围与按来源续办，项目意图识别随委派接入。[OpenBot 子任务资源](https://github.com/nightly-labs/openbot/blob/100c60e893eda3ce4761b4d10001a8e490c43536/src/backend/channel-service.ts#L3474-L3519) · [目录授权](../architecture/workspace-and-storage-cn.md) |
+| 给全局独立工作流设定时 | 表单提供「回报到主会话」开关。实现默认值取关闭；打开后选择一个伙伴或团队。关闭时仍可在运行详情查看结果。 | 每次运行接纳时固定本次交付约定。改开关只影响后续运行。原审批、步骤输出和详情按工作流配置执行。画布手动启动直接看画布。[全局创建入口](../../server/apis/automatic_tasks/global_tasks.go) |
 
 ## 4. 传递与回调协议
 
@@ -255,7 +255,9 @@ conversationID 定位会话，ticketID 定位承诺，assignmentID 定位一次�
 
 打开伙伴先看到 **Bot 聊天**。伙伴可以在同一轮里先发一个值得跟进的发现，稍后再发结果。每次面向用户的发言都是一条可引用的公开消息。一次执行可以没有公开发言，也可以有多条，普通进展仍记在执行里。[Nuphos 发言约定][nu-post] · [公开发言记录][nu-write]
 
-**点消息旁的伙伴头像，打开这位伙伴发出消息的工作会话。** 工作记录按回合保留触发原因、已记录的运行事件、当时的处理结果，以及有权限查看的过程。已完成回合可以收成一行“处理了多久”，点击再看步骤。这里能连续看到多个回合。返回回到进来时的 Bot 聊天。头像导航只读取已有记录，发送方、原工单和回报地址都保持原有归属。Nuphos 桌面用发言的来源 session 打开这条记录，消息区头像和顶部资料入口各有各的作用。[消息头像的目标][nu-avatar] · [头像与名字的点击行为][nu-avatar-action] · [按回合展开过程][nu-worked]
+**点消息旁的伙伴头像，打开这位伙伴发出消息的工作会话。** 工作记录按回合保留触发原因、已记录的运行事件、当时的处理结果，以及有权限查看的过程。已完成回合可以收成一行“处理了多久”，点击再看步骤。可以在同一工作会话继续提问，工作期间 Bot 聊天显示等待。NeuxBot 将该提问也写入主会话，伙伴可在工作中逐条发布结果。顶栏后退恢复进来时的 Bot 聊天，前进可重访同一工作。[来源会话输入与发送][nu-source-composer]
+
+头像导航只读取已有记录，发送方、原工单和回报地址都保持原有归属。Nuphos 桌面用发言的来源 session 打开这条记录，消息区头像和顶部资料入口各有各的作用。[消息头像的目标][nu-avatar] · [头像与名字的点击行为][nu-avatar-action] · [按回合展开过程][nu-worked]
 
 例如，创建伙伴时，Bot 聊天里出现伙伴给用户的自我介绍。工作记录里则保留“用户已创建 Bot”的触发，以及该轮的回执“已在私聊发布了介绍”。后来用户关闭提问，又触发了一个回合。两个回合都能在工作记录里读到。伙伴只把准备告诉用户的话发回 Bot 聊天。
 
@@ -263,7 +265,7 @@ conversationID 定位会话，ticketID 定位承诺，assignmentID 定位一次�
 
 ### CLI 中谁决定发言，何时分段
 
-**建议采用 Nuphos 的显式发言。** 在有用户收件人的对话回合，Go 宿主给伙伴一项“向本次交办会话发言”的能力。伙伴在需要用户看到一段话时调用它，宿主从当前执行取得发送方、来源工作会话和已授权的回址。一次调用接纳一条完整消息，读者当即可以回复；接纳时无需等待整个 CLI 回合结束。当前可用的 `botcli` 和内部 MCP 都能承载宿主能力，具体连接方式由运行环境决定。这项通用发言能力属于目标设计。[Nuphos 发言与来源][nu-write] · [NeuxBot 宿主能力与授权](../architecture/agent-capabilities-cn.md)
+**建议采用 Nuphos 的显式发言。** 在有用户收件人的对话回合，Go 宿主给伙伴一项“向本次交办会话发言”的能力。伙伴在需要用户看到一段话时调用它，宿主从当前执行取得发送方、来源工作会话和已授权的回址。一次调用接纳一条完整消息，读者当即可以回复；接纳时无需等待整个 CLI 回合结束。当前可用的 `botcli` 和内部 MCP 都能承载宿主能力，具体连接方式由运行环境决定。首条主会话链路用该能力交付公开正文。[Nuphos 发言与来源][nu-write] · [NeuxBot 宿主能力与授权](../architecture/agent-capabilities-cn.md)
 
 给伙伴的发言指引可以用以下场景检验。[Nuphos 工具说明][nu-post] · [OpenBot 的发言指引][ob-speech]
 
@@ -277,7 +279,7 @@ conversationID 定位会话，ticketID 定位承诺，assignmentID 定位一次�
 
 例如用户问“PR #87 今天能合吗”。伙伴读 diff、查 CI 的几次输出都在工作记录。看到兼容性检查失败时可先发“先别合并 #87，兼容性检查失败，我在核对受影响的版本”。查明原因后再发“只有 v1 配置受影响。给超时字段补上默认值后，重跑兼容性检查即可”。用户可以第一时间暂停合并，两次结论也可分别引用。
 
-**CLI 输出与交付各有完成条件。** 有显式发言能力时，普通文本、旁白、工具输出和原生 `final` 都按 CLI 实际提供的内容记入工作记录。伙伴直接答用户时通过发言能力送出答案，工作会话末尾的“已回复”只说明这一轮做过什么。若一次明确要求直接答复的回合结束，既没发言，也没提问或派工，宿主向原请求显示未交付状态。对于确实无法调用宿主工具的 CLI，可在启动前为普通直接问答选用单条回复，由适配器确认的最终答复交付一次；无法确认正文时同样按未交付处理。原生流的换行、停顿和工具边界均不决定公开时机。[Nuphos 无显式发言的用例][nu-silent-test] · [OpenBot 的 ACP 事件][ob-acp-text] · [当前 CLI 事件归类](../../server/internal/agent/delta_buffer.go)
+**CLI 输出与交付各有完成条件。** 两个输入入口都可以用显式发言交付答复，已公开的分段答复沿用原发言回执。原生结果、旁白和工具输出留在来源工作记录。满足当前交付条件时，Core 可以补发已确认的原生 `final`，包括 CLI 使用原生工具后明确给出的最终正文。只有流式正文的回合遵循更严格的归属规则。原生流的换行、停顿和工具边界均不决定公开时机。[当前补发与失败结算](../architecture/chat-and-execution-cn.md#主会话和来源工作记录) · [Nuphos 无显式发言的用例][nu-silent-test] · [OpenBot 的 ACP 事件][ob-acp-text]
 
 **已经接单的工作由结果回件兑现。** Worker 提交 Report，拥有该工作的工单、例行运行或工作流按回址和规则登记交付。已交付的结果卡就是该次结论，Router 仅在有新的用户沟通内容时再发言。较早发过一条进展也不会抵消最后的报告。这样一份报告只走一次结项投递，避免靠比较相似文案、额外模型筛选或为每个流式片段分配 ID 来防重。[OSA 结果与静默回件][osa-quiet] · [OSA 的 Router 分工][osa-result-owner]
 
@@ -292,6 +294,7 @@ conversationID 定位会话，ticketID 定位承诺，assignmentID 定位一次�
 | 为当前请求登记“等 CI 通过再继续” | 事件唤醒 waitID，尝试续办原请求 | 在原线程续办。若普通线程仅归档且有容量，OpenBot 会重新打开。已删除、无资格、容量不足或额外投递失败时，唤醒留在本次例行运行。 |
 | 有主会话授权的插件发现一条新 Issue | 规则命中后给负责主体。若已在跟踪则追加原单输入 | 达到用户约定的汇报条件，就在主体主会话交付并允许继续交代。外部 PR/Issue 的评论地址单独校验授权。 |
 | 会话交办工作流 | 步骤结果归所属 WorkflowRun，启动时记录发起会话和交办消息 | 整图完成、失败或停止后，向原会话交付一次结论。 |
+| 从全局自动任务页给独立工作流设定时 | 规则保存可选的主会话收件人，运行开始时固定该选择 | 开关关闭时只在运行详情查看。开启后，整图终态向所选伙伴或团队的主会话交付一次结论。 |
 | 用户从画布手动启动工作流 | WorkflowRun 持有步骤记录和整图结论。此次启动没有会话回址 | 用户在画布的运行详情查看进度、产物和失败或停止原因。有无 Agent 步骤都适用，无需指定汇报伙伴或团队。 |
 
 DeepSeek 的答案可回到提出具体问题的来源 Channel，最终结果可回 Ticket 的源 Channel。这里将用户在桌面交办和插件在外部发现明确区分。例如 GitHub 提供 PR 评论地址，同时桌面用户订了日报，日报的接收者仍然是桌面用户。发送外部评论要有相应 Mandate。[原型答复资格与地址][dsh-reply] · [OpenBot 委派回件][ob-return] · [显式等待重开原线程][ob-reopen-wait] · [事件续办][ob-wake] · [工作流输出][ob-output]
@@ -352,11 +355,27 @@ sequenceDiagram
 
 **什么情况重新执行。** 重启先读 Ticket、最新报告、报告之后是否又投过输入，以及未确认的意图。原型在 waiting、ready、blocked、failed 且此后没有已投新输入时保留尝试，若有待送 Input 则补送。确实打断仍需继续的工作才创建下一代 Assignment，并附恢复说明。OpenBot 对普通委派中断可退回带原请求引用的受阻结果，部分可重试的例行运行和结果回件另行再排队。Watchdog 请求停止后由宿主记录执行结果，并交业务所有者决定如何续办。[原型中断判断][dsh-recover] · [普通请求失败回件][ob-fail] · [分类重排][ob-requeue]
 
-**长主会话如何面向 CLI。** 公开 conversationID 和消息历史由宿主持有。原生绑定保存 provider、native session 和最近确认的 turn。调度时先接纳输入，再按公开会话和 CLI 能力领取。支持 resume 时恢复绑定。确认原生会话缺失或配置要求替换时，用近期正文、较早消息的摘录、已捕获的工作步骤和消息引用组装有界交接，保留原公开会话。其他暂时性恢复错误进入原绑定重试或故障处理。单回合 CLI 正忙时，主会话和后台工作仍可排队，释放后继续。压缩服从驱动能力，历史仍可按公开引用查询。Go 执行热路径直接使用已选配置，账号、额度、模型目录诊断不作为每次操作的前置步骤。[OpenBot 线程绑定][ob-binding] · [调度限制][ob-lanes] · [上下文交接][ob-context] · [压缩能力][ob-compact] · [后端约定](../development/backend-cn.md)
+**长主会话如何面向 CLI。** 公开 conversationID 和消息历史由宿主持有。原生绑定保存 provider、native session 和最近确认的 turn。调度时按输入绑定的主体、执行伙伴以及项目或目录找到对应的工作会话，再按 CLI 能力领取。不同项目各自保有工作记录，公开会话保持同一地址。支持 resume 时恢复绑定。确认原生会话缺失或配置要求替换时，用近期正文、较早消息的摘录、已捕获的工作步骤和消息引用组装有界交接，保留原公开会话。其他暂时性恢复错误进入原绑定重试或故障处理。单回合 CLI 正忙时，主会话和后台工作仍可排队，释放后继续。压缩服从驱动能力，历史仍可按公开引用查询。Go 执行热路径直接使用已选配置，账号、额度、模型目录诊断不作为每次操作的前置步骤。[OpenBot 线程绑定][ob-binding] · [调度限制][ob-lanes] · [上下文交接][ob-context] · [压缩能力][ob-compact] · [后端约定](../development/backend-cn.md)
 
 ## 8. 实现顺序与可验证结果
 
-每一项都可以从实际入口验收，留下会话、Ticket、运行、投递或外部凭证。以下是开发验收条件，当前没有 NeuxBot 新架构的运行结果。
+各项的开发入口、依赖、自动化用例和桌面验收步骤见[主会话分项规格](superagent-slices/README.md)。每次开发会话交付一项，由用户在桌面验收后启动下一项。
+
+### 首条链路的实现对照
+
+| 决策 | 可核实的上游行为 | 本次实现与本地适配 |
+| --- | --- | --- |
+| 主会话身份 | OpenBot 的 `ensureThreadIdNow` 将主线程身份存到 agent，再次打开直接返回原值。原生线程另行绑定。[公开身份](https://github.com/nightly-labs/openbot/blob/100c60e893eda3ce4761b4d10001a8e490c43536/src/backend/agent-store.ts#L1388-L1394) · [原生绑定][ob-binding] | 一个伙伴或团队各有一条主会话，前端按主体寻址。公共入口下，伙伴用自己的执行配置，团队的新交办用当前负责人的成员配置，引用旧交办沿用仍在队的原执行伙伴。[主会话存储](../../server/repositories/controllers/main_conversation.go) · [输入入口](../../server/apis/main_conversations/send.go) |
+| 伙伴聊天顶栏 | OpenBot 把伙伴头像和名称放在标题栏首位，旁边显示普通会话；加号立即打开草稿，首次发送时取得持久会话身份。[头像与名称](https://github.com/nightly-labs/openbot/blob/100c60e893eda3ce4761b4d10001a8e490c43536/packages/ui/src/features/conversation/ConversationHeader.tsx#L127-L151) · [加号](https://github.com/nightly-labs/openbot/blob/100c60e893eda3ce4761b4d10001a8e490c43536/packages/ui/src/features/conversation/threads/ThreadHeader.tsx#L118-L136) · [草稿首发](https://github.com/nightly-labs/openbot/blob/100c60e893eda3ce4761b4d10001a8e490c43536/src/renderer/src/features/agent-threads/agent-thread-tabs.ts#L335-L351) | 伙伴头像与名称是固定的主会话页签，从任意普通对话点它即可回主会话。「＋」直接打开该伙伴的普通对话草稿，首次发送才建立 Chat。从顶栏和侧栏进入同一份主会话。普通页签沿用 96–140px 的宽度区间，固定伙伴入口与首个普通页签留 8px，适配桌面壳的固定定位和横向滚动。[OpenBot 页签布局](https://github.com/nightly-labs/openbot/blob/100c60e893eda3ce4761b4d10001a8e490c43536/packages/ui/src/features/conversation/styles/agent-threads.css#L117-L169) |
+| 派工与回报地址 | open-super-agent 派工时保存发起 chat 和执行 bot，Worker 的工作带着回址。[派工][osa-dispatch] | 创建工作时冻结可发言的会话和原交办消息。Go 的本地项目有目录授权。新交办按实际目录及其读取策略选择工作 Chat，回复从原消息找到来源。这里落地的是回址，完整 Ticket 和 Worker 编排属于后续阶段。[来源建立](../../server/services/execution/main_conversation_source.go) |
+| 多段公开发言 | Nuphos 的 `channel_post` 一次发布一条，每条记录带发送者及来源 session。其测试覆盖回合有文本却发送零条公开帖。工具还可以按需读取所在频道的发言。[发言约定][nu-post] · [持久化][nu-write] · [零发言测试][nu-silent-test] · [读取频道](https://github.com/nuphos/nuphos/blob/83dce8394b14fc348c4e91ed664b96ed04ee75b1/apps/backend/src/lib/claude-code-preview/preview-tools/channels.ts#L218-L229) | CLI 用发布能力逐条发言，用只读能力按需翻阅同一主会话此前的公开消息。跨项目读取公开历史时只返回公开字段。旁白与原生输出保留在来源。针对人发起的回合，宿主可补送本轮遗漏的独立最终答复。为处理本地工具超时，公开消息标识直接从原调用身份派生，同一调用重试返回原消息。[执行授权与回执](../../server/services/execution/main_conversation_tools.go) |
+| 主会话处理待答和审批 | Nuphos 将 Bot 及其 Agent 的未决问题放入 Bot 的消息时间线，回答交回提问的 session，处理后移除卡片。OpenBot 的审批组件根据请求列出可选决定。[Nuphos 待答时间线](https://github.com/nuphos/nuphos/blob/83dce8394b14fc348c4e91ed664b96ed04ee75b1/apps/desktop/src/components/channels/useBotChatQuestions.tsx) · [OpenBot 审批组件](https://github.com/nightly-labs/openbot/blob/100c60e893eda3ce4761b4d10001a8e490c43536/packages/ui/src/features/conversation/ConversationPrompts.tsx) | 主会话按对应交办放置卡片，与工作记录共用普通聊天已有的提问、审批与提交组件。答复交给实际发起请求的 CLI。处理过的问答保存在工作记录。[时间线卡片](../../packages/frontend/src/modules/chat/components/chat-timeline-interactions.tsx) |
+| 头像打开工作记录 | Nuphos 将伙伴头像绑定到发言的来源 session，工作时长和步骤可展开。[头像][nu-avatar-action] · [步骤][nu-worked] | 按所点消息的真实来源加载多回合记录，并沿同一来源继续提问。来源输入沿用普通 Chat 编辑器，主会话和伙伴状态反映该次工作。返回时保留阅读位置和草稿。Nuphos 在组首放头像，伙伴气泡右侧可回复。NeuxBot 在首条公开答复出现时收起等待行，直接在连续发言的组首显示头像和名称。工作动效集中在组首头像，回合结束后头像原位转为静态。同组后续发言沿用正文列。[Nuphos 消息行](https://github.com/nuphos/nuphos/blob/83dce8394b14fc348c4e91ed664b96ed04ee75b1/apps/desktop/src/components/channels/ChannelPost.tsx#L107-L208) · [OpenBot 气泡侧边操作](https://github.com/nightly-labs/openbot/blob/100c60e893eda3ce4761b4d10001a8e490c43536/packages/ui/src/features/conversation/ChatMessageRow.tsx#L251-L321)。[主会话页](../../packages/frontend/src/modules/chat/pages/main-conversation-page.tsx) · [工作记录](../../packages/frontend/src/modules/chat/components/main-conversation-source.tsx) |
+| 事件、委派与调度 | open-super-agent 在聊天和管理页使用相同的事件规则；OpenBot 调度器有主线程及后台队列。[事件规则](https://github.com/kadaliao/open-super-agent/blob/c217b8e0dcaaa40bb865febad2deeba483d0e1cd/docs/events.md) · [调度器][ob-lanes] | 属于后续接入。当前工作来源同一时刻可运行一个原生回合。该回合仍在执行时可阅读、准备引用；新回合的排队和重启恢复在调度阶段实现。独立工作流的定时回报开关也在后续表单和运行接纳阶段实现。 |
+
+### 后续架构验收
+
+每一项都可以从实际入口验收，留下会话、Ticket、运行、投递或外部凭证。下表列出整套架构的开发验收条件。首条链路及其边界见上表。
 
 | 先落地的能力 | 输入或故障点 | 应可观察的结果 |
 | --- | --- | --- |
@@ -367,10 +386,12 @@ sequenceDiagram
 | 聊天管理定时与事件 | 一句话建立周报和新 PR 提醒，在管理页核对两条规则。首次轮询有历史 PR，随后出现一个新 PR。再从聊天查询最近运行、暂停 PR 提醒 | 首次轮询建立基线，新 PR 按约定交付一次。聊天和管理页显示同一份规则及运行事实；暂停仅影响指定规则，周报仍按时执行。 |
 | 工作流与等待 | 步骤 D 已完成、处理通知前退出。再测步骤失败、拒绝审批和单独续办投递失败 | 重启按保存的 delivery 核对步骤，只推进一次。普通子单失败不会解除成功依赖。审批按原 step 结算，事件唤醒保留正确的等待关联。 |
 | 工作流启动来源 | 从画布手动运行纯脚本流程和含 Agent 步骤的流程，覆盖成功、失败和停止。再从普通会话交办同一流程 | 画布运行在详情中显示结论，自动会话回执数为零。会话交办的运行向原会话交付一次结论。 |
+| 全局定时工作流的回报开关 | 关闭后触发一次，开启并选择团队后再触发一次；第二次运行中关闭开关 | 第一次只在运行详情可见。第二次仍向选定团队交付一次整图结论。之后接纳的运行按关闭处理。 |
+| 引用恢复项目 | 依次向同一伙伴交办项目 A 和 B，留在 B 的选择上回复 A 的其中一段消息 | 公开地址相同。原 A 的 CLI 工作记录出现后续回合，B 的工作记录没有该回合。 |
 | 执行领取 | 常规派发与恢复扫描同时争用同一条 pending 启动意图，CLI 回执可能迟到 | 只有一个领取者启动。回执不明先对账，旧尝试的回执不能确认新尝试。 |
 | 交付与对账 | 业务完成后崩溃。收件后 ACK 前崩溃且随即归档原会话。外部请求发出后失联 | 前两种按原键核实并补投，用户只见一份报告。第三种按平台能力查证或出现待核实记录。 |
 | Bot 聊天与头像返回 | 同一工作回合发布两条不同的发现，其中一次发布重投。随后另一个事件唤醒该伙伴，再从消息头像进入工作记录并返回 | 两条发现各出现一次，可分别引用。工作记录能按先后查看两个回合的触发、过程与结果。返回后仍是原 Bot 聊天，工单与执行数不因导航增加。 |
-| CLI 发言与最终回执 | 对同一交办分别用有原生旁白和只有普通文本的 CLI。具备发言能力时先发发现，结项后 CLI 写“已报告”。再测一次漏发的直接问答，以及工具不可用时的普通问答 | 前两种 CLI 的用户都只收到该发现和约定的最终报告，来源记录可见两者各自的步骤与小结。漏发显示未交付。工具不可用的直接问答只交付一条可确认的最终答复。 |
+| CLI 发言与最终回执 | 对同一交办分别用有原生旁白和只有普通文本的 CLI。具备发言能力时先发发现，结项后 CLI 写“已报告”。再测一次漏发的直接问答，以及工具不可用时的普通问答 | 前两种 CLI 的用户都只收到该发现和约定的最终报告，来源记录可见两者各自的步骤与小结。成功的直接问答若遗漏显式发言，只交付一条可确认的最终答复。发布被拒绝时不会从执行日志再发布。 |
 | Watchdog 与单回合 CLI | 一次工作卡住，另一次正等审批。期间用户向主会话提问 | 只有符合巡检条件的在途执行被取消，等待审批的保持待决。用户消息已接纳，可在 CLI 可用后继续处理。 |
 
 [osa-file-map]: https://github.com/kadaliao/open-super-agent/blob/e9722c7462cbf220ece4e03f74257cfc7d19962a/docs/architecture.md#L37-L57
@@ -408,6 +429,7 @@ sequenceDiagram
 [osa-result-owner]: https://github.com/kadaliao/open-super-agent/blob/e9722c7462cbf220ece4e03f74257cfc7d19962a/docs/architecture.md#L157-L163
 [nu-avatar]: https://github.com/nuphos/nuphos/blob/83dce8394b14fc348c4e91ed664b96ed04ee75b1/apps/desktop/src/components/channels/ChannelPost.tsx#L74-L81
 [nu-avatar-action]: https://github.com/nuphos/nuphos/blob/83dce8394b14fc348c4e91ed664b96ed04ee75b1/apps/desktop/src/components/channels/ChannelPost.tsx#L152-L185
+[nu-source-composer]: https://github.com/nuphos/nuphos/blob/83dce8394b14fc348c4e91ed664b96ed04ee75b1/apps/desktop/src/components/agent/panel/Composer.tsx#L145-L156
 [nu-worked]: https://github.com/nuphos/nuphos/blob/83dce8394b14fc348c4e91ed664b96ed04ee75b1/apps/desktop/src/components/agent/panel/partChrome.tsx#L55-L114
 [dsh-domain]: https://github.com/deepseek-ai/dsh-superagent-prototype/blob/8c32a9dc5d72c033816c6a8110b37f40cf94fba4/docs/001-domain.md#L23-L43
 [dsh-philosophy]: https://github.com/deepseek-ai/dsh-superagent-prototype/blob/8c32a9dc5d72c033816c6a8110b37f40cf94fba4/docs/000-philosophy.md#L5-L21

@@ -107,6 +107,11 @@ func TestNativeQuestionHistoryPagesAtRequestAndReadsLateResolution(t *testing.T)
 		t.Fatalf("question identity, revision or reading state = %+v", first)
 	}
 	assertSafeQuestionResult(t, marshalData(first))
+	byExecution, err := chats.ReadResolvedExecutionQuestions(ctx, id, []string{"other-exec", "exec"})
+	if err != nil || !reflect.DeepEqual(byExecution["exec"], []messageview.MessageQuestion{*first.Question, *latest.Resources[0].Question}) ||
+		len(byExecution) != 1 {
+		t.Fatalf("execution-scoped question history differs from ordinary timeline: %+v, err=%v", byExecution, err)
+	}
 	older, err := chats.ReadMessageTimeline(ctx, id, previous.NextBeforeSequence, 0, 2)
 	if err != nil || len(older.Resources) != 2 || older.HasMore || older.Resources[0].ID != "user" ||
 		older.Resources[1].ID != "exec" || older.Resources[1].Content != "final answer" || older.Resources[1].Status != constants.ExecutionStatusCompleted {

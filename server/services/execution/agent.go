@@ -108,6 +108,11 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 		}
 	}
 	for _, capability := range request.toolCapabilities {
+		if capability.validateWork != nil {
+			if err := capability.validateWork(chat, executionID); err != nil {
+				return preparedAgentConnection{}, err
+			}
+		}
 		bindings = append(bindings, capability.Bindings...)
 	}
 	if workflow := request.workflowBinding.Capability; workflow != nil {
@@ -167,8 +172,12 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 		baseRuntimeID = request.runtime.RuntimeID
 	}
 	supportsStdio, _ := agentapi.ConnectorCompatibility(baseRuntimeID, agentapi.ConnectorTransportStdio)
-	useMCP := hasWorkflowCapabilities && supportsStdio
+	publicGuidance, hasPublicPost := mainConversationInstruction(bindings)
+	useMCP := (hasWorkflowCapabilities || hasPublicPost) && supportsStdio
 	*instructions = append(*instructions, agentapi.CapabilitiesInstructions(useMCP, binary, skill))
+	if hasPublicPost {
+		*instructions = append(*instructions, publicGuidance)
+	}
 	if guidance, ok := agentapi.ResourceManagementInstructions(hasSkillManagement, hasConnectorManagement); ok {
 		*instructions = append(*instructions, guidance)
 	}

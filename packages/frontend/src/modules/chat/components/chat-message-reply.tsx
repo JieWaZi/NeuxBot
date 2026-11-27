@@ -15,7 +15,11 @@ import {
 
 export const ChatMessageReplyActions = createContext<{
   select?: (replyTo: ChatReplyReference) => void;
-  locate?: (messageId: string, keyboardTrigger?: HTMLButtonElement) => void;
+  locate?: (
+    messageId: string,
+    keyboardTrigger?: HTMLButtonElement,
+    replyingMessageId?: string,
+  ) => void;
 }>({});
 
 const replyPreviewLimit = 160;
@@ -88,14 +92,20 @@ export function useSelectMessageReply(
   };
 }
 
-export function MessageReplyAction({ onSelect }: { onSelect: () => void }) {
+export function MessageReplyAction({
+  onSelect,
+  size = "icon-sm",
+}: {
+  onSelect: () => void;
+  size?: "icon-sm" | "icon";
+}) {
   const { t } = useTranslation("chat");
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
           type="button"
-          size="icon-sm"
+          size={size}
           variant="ghost"
           aria-label={t("reply")}
           onClick={onSelect}
@@ -111,28 +121,35 @@ export function MessageReplyAction({ onSelect }: { onSelect: () => void }) {
 export function MessageReplyQuote({
   replyTo,
   authorName,
+  replyingMessageId,
 }: {
-  replyTo: ChatReplyReference;
+  replyTo: Pick<ChatReplyReference, "messageId"> &
+    Partial<Pick<ChatReplyReference, "role" | "preview">>;
   authorName?: string;
+  replyingMessageId?: string;
 }) {
   const { t } = useTranslation("chat");
   const { locate } = useContext(ChatMessageReplyActions);
   const authorId = useId();
   const author =
     authorName ?? (replyTo.role === "user" ? t("replyAuthorYou") : undefined);
+  const label = replyTo.preview
+    ? t("locateReply", { preview: replyTo.preview })
+    : t("locateOriginalMessage");
   return (
     <Button
       type="button"
       variant="plain"
       size={null}
       className="text-user-message-content/75 hover:text-user-message-content active:text-user-message-content mb-1 flex w-fit max-w-full min-w-0 justify-start text-start"
-      aria-label={t("locateReply", { preview: replyTo.preview })}
+      aria-label={label}
       aria-describedby={author ? authorId : undefined}
       title={replyTo.preview}
       onClick={(event) =>
         locate?.(
           replyTo.messageId,
           event.detail === 0 ? event.currentTarget : undefined,
+          replyingMessageId,
         )
       }
       disabled={!locate}
@@ -147,7 +164,7 @@ export function MessageReplyQuote({
           </span>
         ) : null}
         <span className="line-clamp-3 font-normal wrap-anywhere whitespace-pre-line">
-          {replyTo.preview}
+          {replyTo.preview || label}
         </span>
       </span>
     </Button>

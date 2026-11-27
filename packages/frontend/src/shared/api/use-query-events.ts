@@ -18,7 +18,7 @@ import {
 
 type Consumer = {
   current: { active: boolean; queryKeys: readonly QueryKey[] };
-  read?: () => Promise<unknown>;
+  read?: (queryKey: QueryKey) => Promise<unknown>;
   priority?: number;
   authority?: boolean;
 };
@@ -263,7 +263,7 @@ function reconcile(
           await client.invalidateQueries({ ...filters, refetchType: "none" });
         if (!alive() || !visible()) return;
         refresh.ownedFetch = true;
-        await command.read();
+        await command.read(refresh.query.queryKey);
       } else if (!command?.authority) {
         refresh.ownedFetch = read;
         await client.invalidateQueries(
@@ -357,17 +357,22 @@ function waitForRefresh(completion: Promise<void>, signal?: AbortSignal) {
   });
 }
 
-/** 命令与领域推送共用实际 Query 的变化代次；前台显式命令无 observer 时也读取。
+/** 命令与领域推送共用实际 Query 的变化代次。
+ * 没有指定 read 时复用已挂载查询的读取策略，或按普通策略刷新活跃查询。
  * priority 仅声明同批读取范围的完整程度，较完整策略覆盖较窄策略，不保存领域事实。
  */
 export async function refreshQueryFromEvent(
   client: QueryClient,
   queryKey: QueryKey,
-  read: () => Promise<unknown>,
+  read?: () => Promise<unknown>,
   priority = 0,
   signal?: AbortSignal,
 ): Promise<void> {
   signal?.throwIfAborted();
+  const cache = client.getQueryCache();
+  const existing = cache.find({ queryKey, exact: true });
+  // 只刷新已有查询。指定读取命令可主动建立权威查询。
+  if (!existing && !read) return;
   const owner = acquireOwner(client);
   const consumer: Consumer = {
     current: { active: true, queryKeys: [queryKey] },
@@ -375,15 +380,21 @@ export async function refreshQueryFromEvent(
     priority,
   };
   owner.consumers.add(consumer);
-  const query =
-    client.getQueryCache().find({ queryKey, exact: true }) ??
-    client.getQueryCache().build(client, { queryKey });
+  const query = existing ?? cache.build(client, { queryKey });
   let pending = owner.queries.get(query.queryHash);
   if (!pending) {
     pending = { query, dirty: new Set(), revision: 0, running: false };
     owner.queries.set(query.queryHash, pending);
   }
   pending.dirty.add(consumer);
+  if (!read)
+    for (const ownerConsumer of owner.consumers)
+      if (
+        ownerConsumer.read &&
+        ownerConsumer.current.active &&
+        matches(ownerConsumer, query)
+      )
+        pending.dirty.add(ownerConsumer);
   pending.revision++;
   const abort = () => releaseConsumer(client, owner, consumer, true);
   signal?.addEventListener("abort", abort, { once: true });
@@ -442,7 +453,7 @@ export function useQueryEvents({
   /** 只订阅连接状态时可保留部分测量结果，不启动完整快照恢复重试。 */
   observeConnection?: boolean;
   /** 权威查询可提供自身的有界读取；它仍由原 owner 调度与核对。 */
-  read?: () => Promise<unknown>;
+  read?: (queryKey: QueryKey) => Promise<unknown>;
 }) {
   const client = useQueryClient();
   const current = useRef({ active, queryKeys, eventTypes, eventFilter });

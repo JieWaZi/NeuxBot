@@ -9,7 +9,6 @@ import {
   type ComponentType,
   lazy,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -19,7 +18,6 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  UNSAFE_DataRouterContext,
   useLocation,
   useNavigate,
   useNavigationType,
@@ -28,7 +26,7 @@ import {
 
 import { isPartnerReviewDetail } from "@/shared/lib/partner-review-settings";
 import type { ChatRightPanel } from "@/modules/chat";
-import { listChatsOptions, getChatOptions } from "@/modules/chat";
+import { getChatOptions } from "@/modules/chat";
 import {
   SettingsNavigationGuardProvider,
   useSettingsNavigationGuard,
@@ -44,9 +42,13 @@ import {
 } from "@/modules/workspaceattention";
 import {
   captureChatOpenIntent,
+  captureMainConversationOpenIntent,
   discardUnmatchedChatOpenIntent,
 } from "@/shared/api/chat-reading";
-import { workspaceAttentionOpenHref } from "../notifications/workspace-attention-navigation";
+import {
+  workspaceAttentionMainOwner,
+  workspaceAttentionOpenHref,
+} from "../notifications/workspace-attention-navigation";
 import { RuntimeUpdateNotifications } from "../notifications/runtime-update-notifications";
 import { platform } from "@/shared/platform/provider";
 import { useMissingQueries } from "@/shared/api/use-missing-queries";
@@ -68,7 +70,6 @@ import {
   getChannelOptions,
   getChannelThreadOptions,
   teamChannelsInfiniteOptions,
-  teamThreadsInfiniteOptions,
   TeamFormDialog,
 } from "@/modules/team";
 import {
@@ -76,7 +77,6 @@ import {
   useAppSceneWorkspace,
 } from "@/shared/workspace/app-scene-workspace";
 import {
-  chatDraftHref,
   chatEntryHref,
   chatHref,
   chatLastActiveFromLocation,
@@ -85,18 +85,13 @@ import {
   subscribeChatNavigation,
 } from "@/shared/lib/chat-navigation";
 import { cn } from "@/shared/lib/cn";
+import { mainConversationSourceId } from "@/shared/lib/main-conversation-navigation";
 import { Button } from "@/shared/ui/button";
 import {
   ConversationAttentionMark,
   conversationAttentionMark,
 } from "@/shared/ui/conversation-attention";
-import {
-  prepareWorkBoardAvatarPhysics,
-  workAttentionHref,
-  waitingConversations,
-  WorkRequestChooser,
-  type WaitingConversation,
-} from "@/modules/work-board";
+import { prepareWorkBoardAvatarPhysics } from "@/modules/work-board";
 import { SceneChromeActionsProvider } from "@/shared/ui/scene-chrome-actions";
 import {
   AppTitlebar,
@@ -104,7 +99,7 @@ import {
   AppNavigationHistoryControls,
   useAppNavigationHistory,
 } from "./app-titlebar";
-import { SceneTabStrip } from "@/shared/ui/scene-tab-strip";
+import { PartnerConversationTabStrip } from "./partner-conversation-tab-strip";
 import {
   chatOwnerForScene,
   chatScenesForOwner,
@@ -127,6 +122,8 @@ import {
 } from "../pages/resources-navigation";
 import { PartnerNavigationLayout } from "./partner-navigation-layout";
 import { TeamMemberMenu } from "./team-context-sidebar";
+import { mainConversationOwner } from "../scenes/main-conversation-route";
+import { useSubjectChatNavigation } from "./use-subject-chat-navigation";
 import { WelcomeScene } from "../scenes/welcome-scene";
 import {
   AppRouteScene,
@@ -228,7 +225,6 @@ function AppShellContent({
   const { t } = useTranslation(["team", "chat", "common", "automaticTask"]);
   const location = useLocation();
   const navigate = useNavigate();
-  const router = useContext(UNSAFE_DataRouterContext)?.router;
   const queryClient = useQueryClient();
   const navigation = resolveAppNavigation(location);
   const appScenes = useAppSceneWorkspace();
@@ -248,23 +244,6 @@ function AppShellContent({
         ? activeScene.ownerTabId
         : undefined;
   const settingsOpen = appScenes.snapshot.activeTabId === "settings";
-  const entitySelectionRequestRef = useRef(0);
-  useLayoutEffect(() => {
-    return () => {
-      // 旧的实体选择只属于发起时的路由和页签，离开后查询仍可写入缓存。
-      entitySelectionRequestRef.current += 1;
-    };
-  }, [location.key, appScenes.snapshot.activeTabId]);
-  function beginEntitySelection() {
-    const request = ++entitySelectionRequestRef.current;
-    const route = router?.state.location.key;
-    const pendingRoute = router?.state.navigation.location?.key;
-    // Router 可以在 React 提交前切换地址；晚到的查询要核对实时导航状态。
-    return () =>
-      entitySelectionRequestRef.current === request &&
-      router?.state.location.key === route &&
-      router?.state.navigation.location?.key === pendingRoute;
-  }
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [lastSettingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
@@ -331,12 +310,22 @@ function AppShellContent({
       platform().host?.onWorkspaceAttentionOpen?.((target) => {
         guardSettingsNavigation(() => {
           const targetHref = workspaceAttentionOpenHref(target);
+          const main = workspaceAttentionMainOwner(target);
           navigate(targetHref, {
             flushSync: true,
             state:
-              target?.chatId && target.operation !== "request_opened"
-                ? captureChatOpenIntent(queryClient, target.chatId)
-                : undefined,
+              main && target?.operation !== "request_opened"
+                ? captureMainConversationOpenIntent(
+                    queryClient,
+                    { subjectType: main.kind, subjectId: main.id },
+                    {
+                      observedGeneration: target?.unreadGeneration,
+                      freezeObservedGeneration: true,
+                    },
+                  )
+                : target?.chatId && target.operation !== "request_opened"
+                  ? captureChatOpenIntent(queryClient, target.chatId)
+                  : undefined,
           });
         });
       }),
@@ -362,6 +351,8 @@ function AppShellContent({
     resource: { kind: "global" },
     queryKeys: [listRuntimesQueryKey(), nativeModelCatalogQueryKey()],
   });
+  const mainOwner = mainConversationOwner(location.pathname);
+  const workSource = mainOwner && mainConversationSourceId(searchParams);
   const isChat =
     location.pathname === "/" ||
     location.pathname === "/chat" ||
@@ -369,11 +360,12 @@ function AppShellContent({
   const teamRoute = /^\/teams\/([^/]+)(?:\/threads\/([^/]+)|\/chats)?$/.exec(
     location.pathname,
   );
-  const teamChannelId = teamRoute?.[1] ?? "";
+  const teamChannelId =
+    teamRoute?.[1] ?? (mainOwner?.kind === "team" ? mainOwner.id : "");
   const teamThreadId = teamRoute?.[2];
   const isTeamContext = Boolean(teamChannelId);
   const isTeamChat = Boolean(
-    teamChannelId && !location.pathname.endsWith("/chats"),
+    teamRoute && !location.pathname.endsWith("/chats"),
   );
   const teamChatScope = isTeamChat
     ? `${teamChannelId}:${teamThreadId ?? `draft:${searchParams.get("draftId") ?? "default"}`}`
@@ -392,7 +384,7 @@ function AppShellContent({
     defaultedTeamChat.current = teamChatScope;
     setChatRightPanel(undefined);
   }, [teamChatScope]);
-  const isChatSurface = isChat || isTeamChat;
+  const isChatSurface = isChat || isTeamChat || Boolean(mainOwner);
   const activeRightPanel = chatRightPanel;
   const isWakerCreate = location.pathname === "/wakers/new";
   const isWakerDetail =
@@ -437,7 +429,8 @@ function AppShellContent({
   const showChatChromeActions =
     hasOpenSceneTabs &&
     isChatSurface &&
-    (!activeChatWorkspaceTab ||
+    (Boolean(mainOwner) ||
+      !activeChatWorkspaceTab ||
       activeChatWorkspaceTab.kind === "chat" ||
       activeChatWorkspaceTab.kind === "member");
   const lastActiveValidationQuery = useQuery({
@@ -472,6 +465,7 @@ function AppShellContent({
   const selectedPartnerId =
     currentChatQuery.data?.chat?.wakerId ||
     (activeRouteOwner?.kind === "waker" ? activeRouteOwner.id : undefined) ||
+    (mainOwner?.kind === "waker" ? mainOwner.id : undefined) ||
     routePartnerId ||
     currentChat?.wakerId ||
     (isChat && currentChatId ? "" : storedPartnerId || wakers[0]?.id || "");
@@ -524,158 +518,6 @@ function AppShellContent({
       navigate(`/wakers/${partnerId}`, { flushSync: true });
     });
 
-  const [actionChoices, setActionChoices] = useState<WaitingConversation[]>();
-  const openPendingAction = (executorId: string) => {
-    const attention = executorAttention.get(executorId);
-    const choices = waitingConversations(attention?.requests);
-    const first = choices[0];
-    if (choices.length === 1 && first) {
-      navigate(workAttentionHref(first.request), { flushSync: true });
-      return true;
-    }
-    if (choices.length) {
-      setActionChoices(choices);
-      return true;
-    }
-    if (
-      attention?.waitingWorkCount ||
-      (!attention &&
-        (wakers.some(
-          (waker) =>
-            waker.id === executorId && waker.activityState === "waiting",
-        ) ||
-          channels.some(
-            (team) =>
-              team.channel?.id === executorId &&
-              team.activityState === "waiting",
-          )))
-    ) {
-      navigate(
-        `/work-board?mode=action&executorId=${encodeURIComponent(executorId)}`,
-        { flushSync: true },
-      );
-      return true;
-    }
-    return false;
-  };
-
-  const selectPartner = (partnerId: string) =>
-    guardSettingsNavigation(() => {
-      const isCurrent = beginEntitySelection();
-      setPreferences((current) => ({
-        ...current,
-        currentPartnerId: partnerId,
-        currentRailKey: `waker:${partnerId}`,
-        entityMode: "waker",
-      }));
-      setChatRightPanel(undefined);
-      if (openPendingAction(partnerId)) return;
-      const preferredChatId = executorAttention.get(partnerId)?.latestChatId;
-      const openState = preferredChatId
-        ? captureChatOpenIntent(queryClient, preferredChatId)
-        : undefined;
-      // 原关注摘要已按活动时间定位最近公开对话，点击不再等待重复的列表读取。
-      if (preferredChatId) {
-        navigate(chatHref(preferredChatId, partnerId), {
-          flushSync: true,
-          state: openState,
-        });
-        return;
-      }
-      return queryClient
-        .fetchQuery({
-          ...listChatsOptions({ query: { wakerId: partnerId, limit: 1 } }),
-          staleTime: 0,
-        })
-        .then((data) => {
-          if (!isCurrent()) return;
-          const latestChatId = data.resources?.[0]?.id;
-          if (
-            !latestChatId &&
-            appScenes.openNewChat?.({ kind: "waker", id: partnerId })
-          )
-            return;
-          navigate(
-            latestChatId
-              ? chatHref(latestChatId, partnerId)
-              : chatDraftHref(partnerId),
-            {
-              flushSync: true,
-              state: latestChatId === preferredChatId ? openState : undefined,
-            },
-          );
-        })
-        .catch(() => {
-          if (!isCurrent()) return;
-          navigate(chatEntryHref(partnerId), { flushSync: true });
-        });
-    });
-
-  const selectTeam = (channelId: string) =>
-    guardSettingsNavigation(() => {
-      const isCurrent = beginEntitySelection();
-      setPreferences((current) => ({
-        ...current,
-        currentRailKey: `team:${channelId}`,
-        entityMode: "team",
-      }));
-      setChatRightPanel(undefined);
-      if (openPendingAction(channelId)) return;
-      const preferred = executorAttention.get(channelId);
-      const openState = preferred?.latestChatId
-        ? captureChatOpenIntent(queryClient, preferred.latestChatId)
-        : undefined;
-      if (
-        preferred?.latestWork?.kind === "team_thread" &&
-        preferred.latestWork.id
-      ) {
-        navigate(`/teams/${channelId}/threads/${preferred.latestWork.id}`, {
-          flushSync: true,
-          state: openState,
-        });
-        return;
-      }
-      void import("@/app/pages/team-thread-page");
-      return queryClient
-        .fetchInfiniteQuery(teamThreadsInfiniteOptions(channelId))
-        .then((data) => {
-          if (!isCurrent()) return;
-          const latestThreadId = data.pages[0]?.resources?.[0]?.id;
-          if (
-            !latestThreadId &&
-            appScenes.openNewChat?.({ kind: "team", id: channelId })
-          )
-            return;
-          navigate(
-            latestThreadId
-              ? `/teams/${channelId}/threads/${latestThreadId}`
-              : `/teams/${channelId}?draftId=${crypto.randomUUID()}`,
-            {
-              flushSync: true,
-              state:
-                latestThreadId === preferred?.latestWork?.id
-                  ? openState
-                  : undefined,
-            },
-          );
-        })
-        .catch(() => {
-          if (!isCurrent()) return;
-          const rememberedThreadId = preferences.lastTeamThreads[channelId];
-          if (
-            !rememberedThreadId &&
-            appScenes.openNewChat?.({ kind: "team", id: channelId })
-          )
-            return;
-          navigate(
-            rememberedThreadId
-              ? `/teams/${channelId}/threads/${rememberedThreadId}`
-              : `/teams/${channelId}?draftId=${crypto.randomUUID()}`,
-            { flushSync: true },
-          );
-        });
-    });
-
   const routeSceneLabels = useMemo<RouteSceneLabels>(
     () => ({
       resources: t("plugin:title"),
@@ -686,6 +528,7 @@ function AppShellContent({
       automaticTask: t("automaticTask:title"),
       workflow: t("workflow:title"),
       chat: t("common:sceneTabs.chat"),
+      mainConversation: t("chat:mainConversation"),
       detail: t("common:sceneTabs.detail"),
       newChat: t("common:sceneTabs.newChat"),
       newWaker: t("common:partnerNavigation.createWaker"),
@@ -778,8 +621,6 @@ function AppShellContent({
   const navigateModule = (moduleId: AppModuleId) => {
     if (moduleId === "settings" && settingsOpen) return;
     guardSettingsNavigation(() => {
-      // 再次点击当前模块也会覆盖尚未完成的实体选择。
-      entitySelectionRequestRef.current += 1;
       if (moduleId === "settings") {
         openSettings();
         return;
@@ -914,8 +755,25 @@ function AppShellContent({
         : undefined;
   const cache = queryClient.getQueryCache();
   const missingQueries = useMissingQueries();
+  const subjectNavigation = useSubjectChatNavigation(
+    activeChatOwner,
+    setPreferences,
+    () => setChatRightPanel(undefined),
+  );
+  const openMainConversation = (
+    owner: Parameters<typeof subjectNavigation.openMain>[0],
+  ) =>
+    subjectNavigation.openMain(owner, {
+      observedGeneration: executorAttention.get(owner.id)
+        ?.mainConversationUnreadGeneration,
+    });
   const navigationHistory = useAppNavigationHistory({
-    owner: isChatSurface ? activeChatOwner : undefined,
+    owner: mainOwner
+      ? { ...mainOwner, workChatId: workSource }
+      : isChatSurface
+        ? activeChatOwner
+        : undefined,
+    includeWorkSources: Boolean(mainOwner),
     // 历史记录已访问实体；分页缺席或其某个Chat删除不能证明实体失效。
     available: (owner) =>
       !cache
@@ -926,21 +784,9 @@ function AppShellContent({
               : getChannelQueryKey({ path: { channelId: owner.id } }),
         })
         .some((query) => missingQueries.has(query.queryHash)),
-    onSelect: (owner) =>
-      owner.kind === "waker" ? selectPartner(owner.id) : selectTeam(owner.id),
+    onSelect: subjectNavigation.openMain,
     onPageBack: pageBack,
   });
-  const newOwnerChat = () => {
-    if (appScenes.openNewChat?.(activeChatOwner)) return;
-    if (!activeChatOwner) return;
-    setChatRightPanel(undefined);
-    navigate(
-      activeChatOwner.kind === "team"
-        ? `/teams/${activeChatOwner.id}?draftId=${crypto.randomUUID()}`
-        : chatDraftHref(activeChatOwner.id),
-      { flushSync: true },
-    );
-  };
   const sceneActions =
     hasActiveScene &&
     !settingsOpen &&
@@ -961,11 +807,6 @@ function AppShellContent({
 
   return (
     <SceneChromeActionsProvider actions={sceneActions}>
-      <WorkRequestChooser
-        choices={actionChoices}
-        onClose={() => setActionChoices(undefined)}
-        onOpen={(href) => navigate(href, { flushSync: true })}
-      />
       <div
         data-app-shell-root
         className="bg-canvas relative h-full overflow-hidden"
@@ -976,13 +817,20 @@ function AppShellContent({
           }
           renderTitlebar={() =>
             isChatSurface && hasActiveScene ? (
-              <SceneTabStrip
+              <PartnerConversationTabStrip
+                showingSource={Boolean(workSource)}
+                owner={activeChatOwner}
+                partners={wakers}
+                loadingPartners={wakersQuery.isPending}
+                missingQueries={missingQueries}
+                onOpenMain={openMainConversation}
                 activeTabId={appScenes.snapshot.activeTabId ?? ""}
                 ariaLabel={t("chat:workspace.content")}
                 tabs={[
                   ...(ownerTabs.length
                     ? ownerTabs
-                    : activeRouteScene
+                    : activeRouteScene &&
+                        !activeRouteScene.id.startsWith("chat-entry:")
                       ? [activeRouteScene]
                       : []),
                   ...memberTabs,
@@ -1051,9 +899,9 @@ function AppShellContent({
                     }
                   });
                 }}
-                onClose={(tabId) => {
+                onClose={(tabId, fallbackTab) => {
                   const close = () =>
-                    appScenes.dispatch({ type: "close", tabId });
+                    appScenes.dispatch({ type: "close", tabId, fallbackTab });
                   if (tabId === appScenes.snapshot.activeTabId)
                     guardSettingsNavigation(close);
                   else close();
@@ -1061,25 +909,29 @@ function AppShellContent({
                 onRename={(tabId, label) =>
                   appScenes.dispatch({ type: "rename-tab", tabId, label })
                 }
-                onCloseOthers={(tabId) =>
+                onCloseOthers={(tabId, keepId) =>
                   appScenes.dispatch({
                     type: "close-others",
                     tabId,
                     candidateTabIds: (memberTabs.some((tab) => tab.id === tabId)
                       ? memberTabs
                       : ownerTabs
-                    ).map((tab) => tab.id),
+                    )
+                      .filter((tab) => tab.id !== keepId)
+                      .map((tab) => tab.id),
                   })
                 }
                 trailing={
                   <Button
-                    aria-label={t("common:partnerNavigation.newChat")}
-                    onClick={newOwnerChat}
+                    aria-label={subjectNavigation.draftLabel}
+                    onClick={subjectNavigation.openDraft}
                     disabled={!activeChatOwner}
                     size="icon"
-                    title={t("common:partnerNavigation.newChat")}
+                    title={subjectNavigation.draftLabel}
                     type="button"
-                    variant="ghost"
+                    variant={
+                      activeChatOwner?.kind === "waker" ? "plain" : "ghost"
+                    }
                   >
                     <Plus />
                   </Button>
@@ -1119,7 +971,6 @@ function AppShellContent({
             if (mode === "team") setCreatingTeam(true);
             else
               guardSettingsNavigation(() => {
-                entitySelectionRequestRef.current += 1;
                 navigate("/wakers/new", { flushSync: true });
               });
           }}
@@ -1156,8 +1007,8 @@ function AppShellContent({
             ) : undefined
           }
           onPreferencesChange={setPreferences}
-          onSelectPartner={selectPartner}
-          onSelectTeam={selectTeam}
+          onSelectPartner={(id) => openMainConversation({ kind: "waker", id })}
+          onSelectTeam={(id) => openMainConversation({ kind: "team", id })}
           preferences={preferences}
           sceneContentFlush={
             settingsOpen ||

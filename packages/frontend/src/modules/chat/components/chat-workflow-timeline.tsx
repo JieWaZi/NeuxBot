@@ -52,7 +52,8 @@ import { Skeleton } from "@/shared/ui/skeleton";
 import type { BotChatMessage } from "../runtime/chat-projection";
 import { openWorkflowRunTab } from "../workbench/workflow-run-reference";
 import { useWorkbench } from "../workbench/workbench-store";
-import { ChatQuestionRow, type ChatTimelineEvent } from "./chat-thread";
+import type { ChatTimelineEvent } from "./chat-thread";
+import { ChatQuestionRow } from "./chat-timeline-interactions";
 import { ChatTimelineMarker } from "./chat-timeline-marker";
 import type { WorkflowInvocationStop } from "./chat-workflow-cancel";
 

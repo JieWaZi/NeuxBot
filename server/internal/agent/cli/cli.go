@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// client holds the Core connection and pins each external command to its execution before sending it.
+// client holds the Core connection and pins public messages and external commands to its execution before sending it.
 type client struct {
 	// connection holds connection data validated against the fixed local entry point.
 	connection capability.Connection
@@ -43,7 +43,7 @@ func (c client) request(ctx context.Context, method, path string, payload any, m
 			// Both transports keep the tool call open while the user resolves host approval.
 			httpClient.Timeout = 2 * time.Minute
 		}
-		if operation.Effect == constants.AgentCLIEffectExternal {
+		if operation.RequiresExecutionID() {
 			scope, err := c.send(ctx, httpClient, http.MethodGet, constants.AgentCLIExecutionPath, nil, false, "")
 			if err != nil {
 				return capability.Response{}, err

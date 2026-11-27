@@ -18,6 +18,8 @@ func (v WorkOwnerKind) String() string {
 		return "automatic_run"
 	case WorkOwnerKindChat:
 		return "chat"
+	case WorkOwnerKindMainConversation:
+		return "main_conversation"
 	case WorkOwnerKindTeamThread:
 		return "team_thread"
 	case WorkOwnerKindWorkflowRun:
@@ -32,6 +34,8 @@ func (v WorkOwnerKind) Label() string {
 		return "WorkOwnerKindAutomaticRun 表示没有接纳目标的自动机会。"
 	case WorkOwnerKindChat:
 		return "WorkOwnerKindChat 表示独立会话。"
+	case WorkOwnerKindMainConversation:
+		return "WorkOwnerKindMainConversation 表示伙伴或团队的公开主会话。"
 	case WorkOwnerKindTeamThread:
 		return "WorkOwnerKindTeamThread 表示团队对话。"
 	case WorkOwnerKindWorkflowRun:
@@ -41,7 +45,7 @@ func (v WorkOwnerKind) Label() string {
 }
 
 func (v WorkOwnerKind) Values() []enum.Enum {
-	return []enum.Enum{WorkOwnerKindAutomaticRun, WorkOwnerKindChat, WorkOwnerKindTeamThread, WorkOwnerKindWorkflowRun}
+	return []enum.Enum{WorkOwnerKindAutomaticRun, WorkOwnerKindChat, WorkOwnerKindMainConversation, WorkOwnerKindTeamThread, WorkOwnerKindWorkflowRun}
 }
 
 func (v WorkOwnerKind) Type() string {
@@ -50,7 +54,7 @@ func (v WorkOwnerKind) Type() string {
 
 func (v WorkOwnerKind) MarshalText() ([]byte, error) {
 	switch v {
-	case WorkOwnerKindAutomaticRun, WorkOwnerKindChat, WorkOwnerKindTeamThread, WorkOwnerKindWorkflowRun:
+	case WorkOwnerKindAutomaticRun, WorkOwnerKindChat, WorkOwnerKindMainConversation, WorkOwnerKindTeamThread, WorkOwnerKindWorkflowRun:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -63,6 +67,8 @@ func (v *WorkOwnerKind) UnmarshalText(text []byte) error {
 		*v = WorkOwnerKindAutomaticRun
 	case WorkOwnerKindChat.String():
 		*v = WorkOwnerKindChat
+	case WorkOwnerKindMainConversation.String():
+		*v = WorkOwnerKindMainConversation
 	case WorkOwnerKindTeamThread.String():
 		*v = WorkOwnerKindTeamThread
 	case WorkOwnerKindWorkflowRun.String():

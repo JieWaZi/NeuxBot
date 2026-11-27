@@ -315,9 +315,9 @@ func (c *workBoardController) List(ctx context.Context, query WorkBoardQuery) ([
 // attachWorkEntries 在身份窗口确定后按种类批量读取详情，保留成果时间与原窗口顺序。
 func (c *workBoardController) attachWorkEntries(ctx context.Context, keys []models.WorkBoardEntry) ([]models.WorkBoardEntry, error) {
 	db := controllerDB(ctx, c.db)
-	kinds := []constants.WorkOwnerKind{constants.WorkOwnerKindChat, constants.WorkOwnerKindTeamThread, constants.WorkOwnerKindWorkflowRun, constants.WorkOwnerKindAutomaticRun}
+	kinds := []constants.WorkOwnerKind{constants.WorkOwnerKindChat, constants.WorkOwnerKindTeamThread, constants.WorkOwnerKindWorkflowRun, constants.WorkOwnerKindAutomaticRun, constants.WorkOwnerKindMainConversation}
 	byID := map[string]models.WorkBoardEntry{}
-	for i, branch := range workBoardBranches() {
+	for i, branch := range append(workBoardBranches(), workBoardMainConversationSelect) {
 		ids := []string{}
 		for _, key := range keys {
 			if key.OwnerKind == kinds[i] {

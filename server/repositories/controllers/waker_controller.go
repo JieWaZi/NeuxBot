@@ -238,7 +238,11 @@ func (c *wakerController) UpdateProfileProjection(
 
 // Delete 删除伙伴。
 func (c *wakerController) Delete(ctx context.Context, id string) error {
-	result := controllerDB(ctx, c.db).Where("id = ?", id).Delete(&models.Waker{})
+	db := controllerDB(ctx, c.db)
+	if err := deleteMainConversation(db, "waker", id); err != nil {
+		return err
+	}
+	result := db.Where("id = ?", id).Delete(&models.Waker{})
 	if result.Error != nil {
 		return databaseError("delete_waker", "waker_id="+id, result.Error)
 	}

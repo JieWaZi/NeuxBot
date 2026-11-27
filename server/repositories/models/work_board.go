@@ -64,6 +64,8 @@ type WorkBoardEntry struct {
 	FirstUnreadMessageID string `gorm:"-" json:"firstUnreadMessageID,omitempty"`
 	// LatestReadableMessageID 是冻结阅读目标的最后消息身份。
 	LatestReadableMessageID string `gorm:"-" json:"latestReadableMessageID,omitempty"`
+	// UnreadGeneration 是当前公开会话的手动未读代次。
+	UnreadGeneration int64 `gorm:"-" json:"unreadGeneration"`
 }
 
 // WorkBoardAttention 是一个有效用户交互的只读定位信息。

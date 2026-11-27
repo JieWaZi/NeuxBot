@@ -19,7 +19,7 @@ func TestSendMessagePreservesSubmissionIdentityAtHTTPBoundary(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"submissionId":" continued-input ","text":"正文"}`), &request.Body); err != nil {
 		t.Fatal(err)
 	}
-	input, _ := request.Body.workInput()
+	input, _ := request.Body.WorkInput()
 	if input.SubmissionID != "continued-input" {
 		t.Fatalf("HTTP request identity = %q", input.SubmissionID)
 	}
@@ -28,7 +28,7 @@ func TestSendMessagePreservesSubmissionIdentityAtHTTPBoundary(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"clientRequestId":"first-input","text":"正文"}`), &create); err != nil {
 		t.Fatal(err)
 	}
-	first, _ := create.MessageRequest.workInput()
+	first, _ := create.MessageRequest.WorkInput()
 	if create.ClientRequestID != "first-input" || first.SubmissionID != "" {
 		t.Fatal("creation must retain its one existing request identity")
 	}
@@ -39,7 +39,7 @@ func TestMessagePreservesSteerExecution(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"steerExecutionId":" previous ","text":"追加要求"}`), &request); err != nil {
 		t.Fatal(err)
 	}
-	input, _ := request.workInput()
+	input, _ := request.WorkInput()
 	if input.SteerExecutionID != "previous" {
 		t.Fatalf("steer identity = %q", input.SteerExecutionID)
 	}
@@ -66,12 +66,12 @@ func TestSendMessagePassesOnlyTheReplyTargetIdentity(t *testing.T) {
 
 func TestPrivateChatAttachmentOnlyKeepsTheRuntimePrompt(t *testing.T) {
 	for _, request := range []interface {
-		workInput() (execution.WorkInput, execution.WorkOptions)
+		WorkInput() (execution.WorkInput, execution.WorkOptions)
 	}{&MessageRequest{}, &SendMessageRequest{}} {
 		if err := json.Unmarshal([]byte(`{"text":"请查看附件。","attachmentOnly":true,"attachments":[{"sourcePath":"notice.txt"}]}`), request); err != nil {
 			t.Fatal(err)
 		}
-		input, options := request.workInput()
+		input, options := request.WorkInput()
 		if !input.AttachmentOnly || input.Content != "请查看附件。" || len(input.Attachments) != 1 || options.EntryPoint != execution.WorkbenchEntryPoint {
 			t.Fatalf("附件输入转换丢失来源或执行正文: %+v", input)
 		}
@@ -80,12 +80,12 @@ func TestPrivateChatAttachmentOnlyKeepsTheRuntimePrompt(t *testing.T) {
 
 func TestPrivateChatCodeReferencePromptKeepsItsSource(t *testing.T) {
 	for _, request := range []interface {
-		workInput() (execution.WorkInput, execution.WorkOptions)
+		WorkInput() (execution.WorkInput, execution.WorkOptions)
 	}{&MessageRequest{}, &SendMessageRequest{}} {
 		if err := json.Unmarshal([]byte(`{"text":"请查看引用的代码片段。","codeReferenceOnly":true,"codeReferences":[{"path":"/work/example.go"}]}`), request); err != nil {
 			t.Fatal(err)
 		}
-		input, _ := request.workInput()
+		input, _ := request.WorkInput()
 		if !input.CodeReferenceOnly || input.Content != "请查看引用的代码片段。" || len(input.CodeReferences) != 1 {
 			t.Fatalf("代码引用输入转换丢失来源或执行正文: %+v", input)
 		}
@@ -94,12 +94,12 @@ func TestPrivateChatCodeReferencePromptKeepsItsSource(t *testing.T) {
 
 func TestChatWorkflowSelectionKeepsOnlyTheDefinitionFromHTTP(t *testing.T) {
 	for _, request := range []interface {
-		workInput() (execution.WorkInput, execution.WorkOptions)
+		WorkInput() (execution.WorkInput, execution.WorkOptions)
 	}{&MessageRequest{}, &SendMessageRequest{}} {
 		if err := json.Unmarshal([]byte(`{"workflowId":" selected-flow ","revisionId":"forged","name":"forged"}`), request); err != nil {
 			t.Fatal(err)
 		}
-		input, _ := request.workInput()
+		input, _ := request.WorkInput()
 		encoded, err := json.Marshal(input)
 		if err != nil {
 			t.Fatal(err)

@@ -802,6 +802,53 @@ it("无observer显式命令合并一次原Query读取，完成后释放owner监�
   client.clear();
 });
 
+it("提交后回读复用已挂载查询的读取策略并合并同步命令", async () => {
+  const client = new QueryClient();
+  const key = ["chat", "chat-1"];
+  const initial = vi.fn(async () => "初次读取");
+  const read = vi.fn(() =>
+    client.fetchQuery({
+      queryKey: key,
+      queryFn: async () => "已重新对账",
+      staleTime: 0,
+    }),
+  );
+  function Content() {
+    const query = useQuery({
+      queryKey: key,
+      queryFn: initial,
+      staleTime: Infinity,
+    });
+    useQueryEvents({
+      topic: "chat",
+      resource: { kind: "chat", id: "chat-1" },
+      queryKeys: [key],
+      read,
+    });
+    return <p>{query.data}</p>;
+  }
+  const view = render(
+    <QueryClientProvider client={client}>
+      <Content />
+    </QueryClientProvider>,
+  );
+  try {
+    await screen.findByText("初次读取");
+    await act(async () => {
+      await Promise.all([
+        refreshQueryFromEvent(client, key),
+        refreshQueryFromEvent(client, key),
+      ]);
+    });
+    expect(await screen.findByText("已重新对账")).toBeVisible();
+    expect(initial).toHaveBeenCalledOnce();
+    expect(read).toHaveBeenCalledExactlyOnceWith(key);
+  } finally {
+    view.unmount();
+    client.clear();
+  }
+});
+
 it("命令排队后开始的更早页正常提交，但不覆盖头部恢复或提前完成命令", async () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },

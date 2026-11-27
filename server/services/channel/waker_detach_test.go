@@ -33,7 +33,7 @@ func TestDetachWakerRemovesMemberAndReassignsLead(t *testing.T) {
 		t.Fatalf("Create(channel) error = %v", err)
 	}
 
-	if err := fixture.service.DetachWaker(ctx, leadID); err != nil {
+	if err := fixture.service.DetachWaker(ctx, leadID, fixture.service.chats.DeleteChatsAtomically); err != nil {
 		t.Fatalf("DetachWaker() error = %v", err)
 	}
 	channel, err := fixture.channels.Get(ctx, channelID)
@@ -71,7 +71,7 @@ func TestDetachWakerDeletesTeamWhenOnlyOneMemberRemains(t *testing.T) {
 		t.Fatalf("Create(channel) error = %v", err)
 	}
 
-	if err := fixture.service.DetachWaker(ctx, memberID); err != nil {
+	if err := fixture.service.DetachWaker(ctx, memberID, fixture.service.chats.DeleteChatsAtomically); err != nil {
 		t.Fatalf("DetachWaker() error = %v", err)
 	}
 	if _, err := fixture.channels.Get(ctx, channelID); !hasStatusErrorCode(
@@ -119,7 +119,7 @@ func TestDetachWakerKeepsMembershipWhenActiveWorkBlocksTeamDeletion(t *testing.T
 		t.Fatalf("Create(task) error = %v", err)
 	}
 
-	if err := fixture.service.DetachWaker(ctx, memberID); !errors.Is(
+	if err := fixture.service.DetachWaker(ctx, memberID, fixture.service.chats.DeleteChatsAtomically); !errors.Is(
 		err,
 		status_error.ChannelHasActiveWork,
 	) {

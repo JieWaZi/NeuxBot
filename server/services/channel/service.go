@@ -34,10 +34,8 @@ type Service interface {
 	DeleteChannel(ctx context.Context, channelID string) error
 	// DeleteThread 永久删除一个团队对话及其成员 Chat。
 	DeleteThread(ctx context.Context, channelID string, threadID string) error
-	// DetachWaker 从全部团队中移除指定伙伴，并在成员不足时级联删除团队。
-	DetachWaker(ctx context.Context, wakerID string) error
-	// ValidateWakerDetachment 校验伙伴退出全部团队时不会被活跃工作阻止。
-	ValidateWakerDetachment(ctx context.Context, wakerID string) error
+	// DetachWaker 在团队操作门内准备受影响的 Chat 和团队事实，由同一次聚合删除统一提交。
+	DetachWaker(ctx context.Context, wakerID string, apply func(context.Context, []string, func(context.Context) error) error) error
 	// ReadTimeline 读取负责人主 Chat 的公开消息，并包含持久投递的成员结果报告。
 	ReadTimeline(ctx context.Context, input TimelineQuery) (TimelinePage, error)
 	// CreateTask 创建负责人维护的正式任务，并按入口语义立即或在负责人回合后派发。

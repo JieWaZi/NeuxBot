@@ -32,9 +32,9 @@ type ChatTableProps = ComponentPropsWithoutRef<"table"> & {
 const tableFormats: readonly TableExportFormat[] = ["markdown", "csv", "tsv"];
 
 const tableClassName = cn(
-  "type-body w-max max-w-max table-auto border-collapse [&_thead]:bg-muted/60 [&_th]:type-body [&_th]:text-muted-foreground [&_th]:px-3 [&_th]:py-1.5 [&_th:not([data-markdown-align])]:text-left [&_th]:font-medium [&_td]:px-3 [&_td]:py-1.5 [&_td]:align-middle [&_tr]:border-border/70 [&_tr]:border-b [&_tr:last-child]:border-b-0 [&_th]:min-w-24 [&_th]:max-w-xs [&_th]:break-words [&_th]:whitespace-normal [&_td]:min-w-24 [&_td]:max-w-xs [&_td]:break-words",
-  // 比较矩阵保留自然宽度；短表及引用内的表填满所属内容列。
-  "[&:not(:has(th:nth-child(4),td:nth-child(4)))]:w-full [&:not(:has(th:nth-child(4),td:nth-child(4)))]:max-w-none [blockquote_&]:w-full [blockquote_&]:max-w-none",
+  "type-body w-max min-w-full table-auto border-collapse [&_thead]:bg-muted/60 [&_th]:type-body [&_th]:text-muted-foreground [&_th]:px-3 [&_th]:py-1.5 [&_th:not([data-markdown-align])]:text-left [&_th]:font-medium [&_td]:px-3 [&_td]:py-1.5 [&_td]:align-middle [&_tr]:border-border/70 [&_tr]:border-b [&_tr:last-child]:border-b-0 [&_th]:min-w-24 [&_th]:max-w-xs [&_th]:break-words [&_th]:whitespace-normal [&_td]:min-w-24 [&_td]:max-w-xs [&_td]:break-words",
+  // 所有表格至少填满外框，少列及引用内的表格优先在可用宽度内换行。
+  "[&:not(:has(th:nth-child(4),td:nth-child(4)))]:w-full [blockquote_&]:w-full",
 );
 
 function TableFrame({

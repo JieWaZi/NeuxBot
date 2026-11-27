@@ -58,7 +58,7 @@ func (c *workBoardController) MissingReading(ctx context.Context, reader string,
 			return true, nil
 		}
 	}
-	return false, nil
+	return mainBoardMissingReading(db, reader, q)
 }
 
 // ReadingChatIDs 只在投影健康异常时定位受到影响的原会话范围。
@@ -92,6 +92,11 @@ func (c *workBoardController) HasAttention(ctx context.Context, reader string, q
 		}
 		if value.HasUnread {
 			break
+		}
+	}
+	if !value.HasUnread {
+		if err := db.Raw("SELECT EXISTS(?)", boardMainUnreadScope(db, reader, q).Select("1")).Scan(&value.HasUnread).Error; err != nil {
+			return value, databaseError("check_main_board_unread", "", err)
 		}
 	}
 	err = c.walkAttention(ctx, time.Now().UnixMilli(), boardAttentionScope{}, false, func(a models.WorkBoardAttention) error {
@@ -135,6 +140,25 @@ COALESCE(MAX(through_sequence IS NULL),0) AS missing`
 		value.RunningChatCount += row.RunningChatCount
 		missing = missing || row.Missing
 	}
+	var main struct {
+		// Conversations 是至少有一条未读公开发言的主会话数。
+		Conversations int64
+		// Messages 是这些主会话阅读边界之后的公开发言数。
+		Messages int64
+	}
+	if err := boardMainUnreadScope(db, reader, q).
+		Select("COUNT(*) AS conversations, COALESCE(SUM(" + boardMainUnreadCount + "),0) AS messages").Scan(&main).Error; err != nil {
+		return value, missing, databaseError("count_main_board_reading", "", err)
+	}
+	value.UnreadChatCount += main.Conversations
+	value.UnreadMessageCount += main.Messages
+	if !missing {
+		var err error
+		missing, err = mainBoardMissingReading(db, reader, q)
+		if err != nil {
+			return value, false, err
+		}
+	}
 	value.AwaitingViewWorkCount = value.UnreadChatCount
 	for _, source := range boardUnreadRuns(db, reader, q) {
 		var count int64
@@ -149,8 +173,8 @@ COALESCE(MAX(through_sequence IS NULL),0) AS missing`
 // AwaitingView 先选择跨来源的窄身份窗口，再补齐本页展示信息。
 func (c *workBoardController) AwaitingView(ctx context.Context, reader string, q WorkBoardQuery) ([]models.WorkBoardEntry, error) {
 	db := controllerDB(ctx, c.db)
-	sources := boardUnreadScopes(db, reader, q)
-	kinds := []constants.WorkOwnerKind{constants.WorkOwnerKindChat, constants.WorkOwnerKindTeamThread, constants.WorkOwnerKindWorkflowRun, constants.WorkOwnerKindAutomaticRun}
+	sources := append(boardUnreadScopes(db, reader, q), boardMainUnreadScope(db, reader, q))
+	kinds := []constants.WorkOwnerKind{constants.WorkOwnerKindChat, constants.WorkOwnerKindTeamThread, constants.WorkOwnerKindWorkflowRun, constants.WorkOwnerKindAutomaticRun, constants.WorkOwnerKindMainConversation}
 	parts := make([]string, 0, len(sources))
 	args := make([]any, 0, len(sources))
 	for i, source := range sources {
@@ -192,12 +216,33 @@ func (c *workBoardController) AttachReadings(ctx context.Context, reader string,
 		entries[i].UnreadMessageCount = reading.UnreadMessageCount
 		entries[i].FirstUnreadMessageID = reading.FirstUnreadMessageID
 		entries[i].LatestReadableMessageID = reading.LatestReadableMessageID
+		entries[i].UnreadGeneration = reading.UnreadGeneration
 	}
-	return readings, nil
+	return readings, attachMainBoardReadings(controllerDB(ctx, c.db), reader, entries)
+}
+
+// MainConversationSubjectActivity 是主会话在原主体侧栏中的活动摘要。
+type MainConversationSubjectActivity struct {
+	// SubjectType 区分活动所属伙伴或团队。
+	SubjectType string
+	// RunningCount 是正在运行且没有待答请求的工作来源数。
+	RunningCount int64
+}
+
+// MainConversationSubjectUnread 是同次读取获得的主会话未读数和阅读代次。
+type MainConversationSubjectUnread struct {
+	// Count 是主会话中合格的未读发言数。
+	Count int64
+	// UnreadGeneration 是当前主会话的手动未读代次。
+	UnreadGeneration int64
 }
 
 // ExecutorAttentionFacts 保存指定执行对象的公开会话与原有效请求。
 type ExecutorAttentionFacts struct {
+	// MainWorkCounts 按公开主体统计仍在执行的工作来源。
+	MainWorkCounts map[string]MainConversationSubjectActivity
+	// MainUnread 是各主体的主会话未读数及阅读代次。
+	MainUnread map[string]MainConversationSubjectUnread
 	// Chats 是该执行对象范围内可见的会话容器。
 	Chats []models.WorkBoardEntry
 	// Readings 以公开 Chat 标识映射可验证的阅读状态。
@@ -222,6 +267,14 @@ func (c *workBoardController) ExecutorAttentionFacts(ctx context.Context, reader
 		value.Chats = append(value.Chats, entries...)
 	}
 	var err error
+	value.MainWorkCounts, err = mainWorkCounts(db, executors)
+	if err != nil {
+		return value, err
+	}
+	value.MainUnread, err = mainBoardUnreadBySubject(db, reader, executors)
+	if err != nil {
+		return value, err
+	}
 	value.Readings, err = c.AttachReadings(ctx, reader, value.Chats, isolated)
 	if err != nil {
 		return value, err
@@ -252,6 +305,8 @@ func (c *workBoardController) ResolveWorkRef(ctx context.Context, ref models.Wor
 		branch = workBoardRunSelect
 	case constants.WorkOwnerKindAutomaticRun:
 		branch = workBoardAutomaticSelect
+	case constants.WorkOwnerKindMainConversation:
+		branch = workBoardMainConversationSelect
 	default:
 		return models.WorkBoardEntry{}, status_error.BadRequest
 	}
@@ -282,7 +337,7 @@ func (c *workBoardController) ResolveWorkRefs(ctx context.Context, refs []models
 	keys := make([]models.WorkBoardEntry, 0, len(refs))
 	for _, ref := range refs {
 		switch ref.Kind {
-		case constants.WorkOwnerKindChat, constants.WorkOwnerKindTeamThread, constants.WorkOwnerKindWorkflowRun, constants.WorkOwnerKindAutomaticRun:
+		case constants.WorkOwnerKindChat, constants.WorkOwnerKindTeamThread, constants.WorkOwnerKindWorkflowRun, constants.WorkOwnerKindAutomaticRun, constants.WorkOwnerKindMainConversation:
 			keys = append(keys, models.WorkBoardEntry{OwnerKind: ref.Kind, OwnerID: ref.ID})
 		default:
 			return nil, status_error.BadRequest

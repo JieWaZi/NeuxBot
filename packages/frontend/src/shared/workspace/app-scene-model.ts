@@ -34,7 +34,11 @@ export type AppSceneCommand =
       replaceTemporary?: boolean;
     }
   | { type: "select"; tabId: string; now?: number }
-  | { type: "close"; tabId: string }
+  | {
+      type: "close";
+      tabId: string;
+      fallbackTab?: Omit<AppSceneTab, "lastUsed">;
+    }
   | { type: "rename-tab"; tabId: string; label: string }
   | { type: "close-others"; tabId: string; candidateTabIds?: readonly string[] }
   | { type: "rename"; tabId: string; label: string }
@@ -117,6 +121,23 @@ export function appSceneReducer(
     const activeTab = snapshot.tabs.find(
       (tab) => tab.id === snapshot.activeTabId,
     );
+    // 默认入口和创建表单完成导航后释放；目标主会话沿用自己的挂载与未发正文。
+    if (
+      command.replaceTemporary &&
+      command.tab.id.startsWith("main:") &&
+      (activeTab?.id.startsWith("chat-entry:") ||
+        activeTab?.id === "waker-create")
+    ) {
+      return appSceneReducer(
+        {
+          ...snapshot,
+          tabs: snapshot.tabs.filter(
+            (tab) => tab.id !== activeTab.id && tab.ownerTabId !== activeTab.id,
+          ),
+        },
+        { ...command, replaceTemporary: false },
+      );
+    }
     if (
       command.replaceTemporary &&
       replacesTemporaryScene(activeTab, command.tab)
@@ -334,6 +355,11 @@ export function appSceneReducer(
     tabs.some((tab) => tab.id === snapshot.activeTabId)
   )
     return { ...snapshot, tabs };
+  if (command.fallbackTab)
+    return appSceneReducer(
+      { tabs },
+      { type: "open", tab: command.fallbackTab },
+    );
   const fallback = [...tabs].sort(
     (left, right) => right.lastUsed - left.lastUsed,
   )[0];

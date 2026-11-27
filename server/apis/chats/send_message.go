@@ -21,8 +21,9 @@ type SendMessageRequest struct {
 	MessageRequest
 }
 
-func (r SendMessageRequest) workInput() (execution.WorkInput, execution.WorkOptions) {
-	input, options := r.MessageRequest.workInput()
+// WorkInput 在普通消息内容之外保留来源内提交与引用身份。
+func (r SendMessageRequest) WorkInput() (execution.WorkInput, execution.WorkOptions) {
+	input, options := r.MessageRequest.WorkInput()
 	input.SubmissionID = strings.TrimSpace(r.SubmissionID)
 	input.ReplyToMessageID = strings.TrimSpace(r.ReplyToMessageID)
 	return input, options
@@ -45,7 +46,7 @@ func (s *SendMessage) Path() string { return "/:chatId/messages" }
 // [MessageAttachmentInvalid][40000000017][消息附件不合法或不可读取]
 // [ChatReplyTargetUnavailable][40400007202][当前对话中没有可引用的这条消息]
 func (s *SendMessage) Output(ctx *gin.Context) (interface{}, error) {
-	input, options := s.Body.workInput()
+	input, options := s.Body.WorkInput()
 	release, err := uploads.ClaimWork(ctx, &input)
 	if err != nil {
 		return nil, err

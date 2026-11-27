@@ -54,7 +54,7 @@ func (c *CreateChat) Validate(*gin.Context) error {
 // Output 调用 Chat 首发用例并返回启动后的对话和执行标识。
 // [MessageAttachmentInvalid][40000000017][消息附件不合法或不可读取]
 func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
-	input, options := c.Body.MessageRequest.workInput()
+	input, options := c.Body.MessageRequest.WorkInput()
 	if c.Body.OptimizeProfile {
 		input.ContextInstructions = []workinput.Instruction{{
 			Name:    agent.ProfileEditContextName,

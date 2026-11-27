@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -96,6 +98,25 @@ func (c *chatController) chatAttentionChanges(ctx context.Context, id string, fi
 	if string(before) == string(after) {
 		return nothing, nil
 	}
+	requestsChanged := current.WaitingApproval != old.WaitingApproval || current.WaitingElicitation != old.WaitingElicitation ||
+		(current.WaitingApproval && !reflect.DeepEqual(current.PendingApprovals, old.PendingApprovals)) ||
+		(current.WaitingElicitation && !reflect.DeepEqual(current.PendingElicitations, old.PendingElicitations))
+	if old.HiddenFromWakerHistory && (current.ActiveExecutionID != old.ActiveExecutionID || requestsChanged) {
+		owner, err := mainWorkSubject(controllerDB(ctx, c.db), id, old.WakerID)
+		if err != nil {
+			return nil, databaseError("main_work_activity_subject", id, err)
+		}
+		if owner.ID != "" {
+			entity := eventsResource(owner.SubjectType, owner.SubjectID)
+			if owner.SubjectType == "team" {
+				entity.Kind = "channel"
+			}
+			changed = func() {
+				publishCommittedChange(ctx, c.db, "work-board", eventsResource("chat", id), entity)
+				publishCommittedChange(ctx, c.db, constants.MainConversationEventTopic, eventsResource(owner.SubjectType, owner.SubjectID))
+			}
+		}
+	}
 	if old.WaitingApproval || current.WaitingApproval || old.WaitingElicitation || current.WaitingElicitation {
 		return func() {
 			changed()
@@ -167,6 +188,8 @@ func (c *chatController) RecheckChatRequests(ctx context.Context, id string) {
 	publishWorkRequestRecheck(ctx, c.db, eventsResource("chat", id))
 }
 
+const workRequestsChangedReason = "requests-changed"
+
 func publishWorkRequestRecheck(ctx context.Context, db *gorm.DB, resource events.Resource) {
 	configured, _ := db.Get(eventPublisherSetting)
 	publisher, ok := configured.(events.Publisher)
@@ -174,8 +197,44 @@ func publishWorkRequestRecheck(ctx context.Context, db *gorm.DB, resource events
 		return
 	}
 	events.AfterCommit(ctx, func() {
-		_ = events.EmitTransient(publisher, "work-board", "work-board.changed", resource, map[string]string{"reason": "requests-changed"})
+		_ = events.EmitTransient(publisher, "work-board", "work-board.changed", resource, map[string]string{"reason": workRequestsChangedReason})
 	})
+}
+
+// captureMainTeamRequestScope 比较实际有权处理来源请求的伙伴集合，在配置提交后刷新原主会话待办。
+func (c *channelController) captureMainTeamRequestScope(ctx context.Context, channelID string) func() {
+	if _, configured := c.db.Get(eventPublisherSetting); !configured {
+		return func() {}
+	}
+	db := controllerDB(ctx, c.db)
+	conversationID, err := publicSubjectConversationID(db, "team", channelID)
+	if err != nil {
+		return func() {
+			publishCommittedWorkBoardChange(ctx, c.db, eventsResource("global", ""), workRequestsChangedReason)
+			publishCommittedChange(ctx, c.db, constants.MainConversationEventTopic, eventsResource("team", channelID))
+		}
+	}
+	if conversationID == "" {
+		return func() {}
+	}
+	readActors := func() ([]string, error) {
+		leaders := db.Model(&models.Channel{}).Select("lead_waker_id AS actor_id").Where("id = ?", channelID)
+		members := db.Model(&models.ChannelMember{}).Select("waker_id AS actor_id").Where("channel_id = ?", channelID)
+		var actors []string
+		if err := db.Raw("? UNION ? ORDER BY actor_id", leaders, members).Scan(&actors).Error; err != nil {
+			return nil, databaseError("read_team_request_actors", channelID, err)
+		}
+		return actors, nil
+	}
+	before, beforeErr := readActors()
+	return func() {
+		after, afterErr := readActors()
+		if beforeErr != nil || afterErr != nil || !slices.Equal(before, after) {
+			resource := eventsResource(string(constants.WorkOwnerKindMainConversation), conversationID)
+			publishCommittedWorkBoardChange(ctx, c.db, resource, workRequestsChangedReason)
+			publishCommittedChange(ctx, c.db, constants.MainConversationEventTopic, eventsResource("team", channelID))
+		}
+	}
 }
 
 func publishRequestChanges(ctx context.Context, db *gorm.DB, before, after map[string]models.WorkBoardLiveEvent) {

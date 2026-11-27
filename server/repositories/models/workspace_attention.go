@@ -102,6 +102,8 @@ type ExecutorAttentionSummary struct {
 	Kind string `json:"kind"`
 	// AttentionMetrics 是归属到此执行对象的精确指标。
 	AttentionMetrics
+	// 主会话未读代次
+	MainConversationUnreadGeneration *int64 `json:"mainConversationUnreadGeneration,omitempty"`
 	// LatestChatID 是按当前活动时间及稳定身份选出的最近公开对话。
 	LatestChatID string `json:"latestChatId,omitempty"`
 	// LatestWork 定位最近公开对话所属原工作。
@@ -112,6 +114,8 @@ type ExecutorAttentionSummary struct {
 	Chats []ExecutorAttentionChat `json:"chats"`
 	// Requests 定位每个仍有效的原操作及真实成员或子运行。
 	Requests []WorkBoardAttention `json:"requests"`
+	// 请求类型
+	RequestKinds []string `json:"requestKinds,omitempty"`
 }
 
 // WorkBoardLiveEvent 只描述来自本次真实提交的安全提醒身份。

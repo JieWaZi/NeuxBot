@@ -1,9 +1,14 @@
+import type { ConversationDestination } from "@/shared/lib/main-conversation-navigation";
+import { mainConversationOwner } from "../scenes/main-conversation-route";
 import type {
   AppSceneTab,
   ChatSceneOwner,
 } from "@/shared/workspace/app-scene-model";
 
-export type EntityHistory = { entries: ChatSceneOwner[]; index: number };
+export type EntityHistory = {
+  entries: ConversationDestination[];
+  index: number;
+};
 export function sameChatOwner(
   left: ChatSceneOwner | undefined,
   right: ChatSceneOwner | undefined,
@@ -11,27 +16,30 @@ export function sameChatOwner(
   return left?.kind === right?.kind && left?.id === right?.id;
 }
 
-/** 历史只保存聊天实体，不保存 Router、文件或覆盖页的访问。 */
+/** 记录聊天主体与明确打开的工作来源。普通页签、文件和资料页沿用主体历史。 */
 export function recordEntityHistory(
   history: EntityHistory,
-  owner: ChatSceneOwner | undefined,
+  visit: ConversationDestination | undefined,
   target?: number,
 ): EntityHistory {
-  if (!owner) return history;
-  if (target !== undefined && sameChatOwner(history.entries[target], owner)) {
+  if (!visit) return history;
+  const sameVisit = (entry: ConversationDestination | undefined) =>
+    sameChatOwner(entry, visit) && entry?.workChatId === visit.workChatId;
+  if (target !== undefined && sameVisit(history.entries[target]))
     return target === history.index ? history : { ...history, index: target };
-  }
-  if (sameChatOwner(history.entries[history.index], owner)) return history;
-  return {
-    entries: [...history.entries.slice(0, history.index + 1), owner],
-    index: history.index + 1,
-  };
+  const current = history.entries[history.index];
+  if (sameVisit(current)) return history;
+  const entries = history.entries.slice(0, history.index + 1);
+  if (visit.workChatId && !sameChatOwner(current, visit))
+    entries.push({ kind: visit.kind, id: visit.id });
+  entries.push(visit);
+  return { entries, index: entries.length - 1 };
 }
 
 export function nearestEntityHistory(
   history: EntityHistory,
   offset: -1 | 1,
-  available: (owner: ChatSceneOwner) => boolean,
+  available: (owner: ConversationDestination) => boolean,
 ): number | undefined {
   for (
     let index = history.index + offset;
@@ -50,6 +58,8 @@ export function chatOwnerForScene(
 ): ChatSceneOwner | undefined {
   if (tab?.kind !== "route" || !tab.href) return undefined;
   const [pathname = "", search = ""] = tab.href.split("?");
+  const main = mainConversationOwner(pathname);
+  if (main) return main;
   const team = /^\/teams\/([^/]+)(?:\/threads\/[^/]+)?$/.exec(pathname);
   if (team?.[1]) return { kind: "team", id: team[1] };
   if (
@@ -68,7 +78,11 @@ export function chatScenesForOwner(
   owner: ChatSceneOwner | undefined,
 ) {
   return owner
-    ? tabs.filter((tab) => sameChatOwner(chatOwnerForScene(tab), owner))
+    ? tabs.filter(
+        (tab) =>
+          !tab.id.startsWith("chat-entry:") &&
+          sameChatOwner(chatOwnerForScene(tab), owner),
+      )
     : [];
 }
 
@@ -81,9 +95,7 @@ export function unsentChatSceneForOwner(
     .filter(
       (tab) =>
         !tab.notFound &&
-        (tab.id.startsWith("chat-draft:") ||
-          tab.id.startsWith("chat-entry:") ||
-          tab.id.startsWith("team-draft:")),
+        (tab.id.startsWith("chat-draft:") || tab.id.startsWith("team-draft:")),
     )
     .sort((left, right) => right.lastUsed - left.lastUsed)[0];
 }

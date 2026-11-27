@@ -390,3 +390,18 @@ describe("Renderer 全局事件边界", () => {
     await vi.waitFor(() => expect(mocks.unsubscribe).toHaveBeenCalledTimes(1));
   });
 });
+
+it("公开主会话只接受带具体身份的伙伴或团队订阅", async () => {
+  const { globalEventSubscriptionSchema } =
+    await import("@neuxbot/platform-contracts/core-event-protocol");
+  const subscribe = (resource: object) =>
+    globalEventSubscriptionSchema.safeParse({
+      subscriptionId: crypto.randomUUID(),
+      topic: "main-conversations",
+      resource,
+    }).success;
+  expect(subscribe({ kind: "waker", id: "w" })).toBe(true);
+  expect(subscribe({ kind: "team", id: "t" })).toBe(true);
+  expect(subscribe({ kind: "global" })).toBe(false);
+  expect(subscribe({ kind: "chat", id: "foreign" })).toBe(false);
+});

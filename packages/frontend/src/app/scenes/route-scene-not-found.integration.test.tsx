@@ -26,6 +26,10 @@ import {
   getWorkflowQueryKey,
   getWorkflowRunQueryKey,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
+import {
+  mainConversationOptions,
+  sourceHistoryOptions,
+} from "@/modules/chat/api/main-conversation";
 import { SceneTabStrip } from "@/shared/ui/scene-tab-strip";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import { useAppSceneWorkspace } from "@/shared/workspace/app-scene-workspace";
@@ -95,12 +99,7 @@ function renderScene(href: string) {
   };
 }
 
-async function fetchRecord(
-  queryClient: QueryClient,
-  queryKey: QueryKey,
-  url: string,
-  status = 404,
-) {
+function respondWithStatus(status: number) {
   client.setConfig({
     fetch: vi.fn(
       async () =>
@@ -112,6 +111,15 @@ async function fetchRecord(
         ),
     ),
   });
+}
+
+async function fetchRecord(
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+  url: string,
+  status = 404,
+) {
+  respondWithStatus(status);
   await act(async () => {
     const result = queryClient.fetchQuery({
       queryKey,
@@ -193,6 +201,16 @@ describe("页面主记录不存在时的 Scene 标签", () => {
   });
 
   it.each([
+    [
+      "/chat/main/waker/w1",
+      getWakerQueryKey({ path: { wakerId: "w1" } }),
+      "/api/v1/wakers/w1",
+    ],
+    [
+      "/chat/main/team/t1",
+      getChannelQueryKey({ path: { channelId: "t1" } }),
+      "/api/v1/channels/t1",
+    ],
     [
       "/chats/c1",
       getChatQueryKey({ path: { chatId: "c1" } }),
@@ -278,6 +296,59 @@ describe("页面主记录不存在时的 Scene 标签", () => {
     rerender("/wakers/w1/projects");
     expect(screen.getByRole("tab", { name: "详情" })).not.toHaveAttribute(
       "aria-description",
+    );
+  });
+
+  it("公开主会话的 404 标记失效，查询恢复后清除", async () => {
+    const { queryClient } = renderScene("/chat/main/waker/w1");
+    const main = mainConversationOptions({
+      subjectType: "waker",
+      subjectId: "w1",
+    });
+    respondWithStatus(404);
+    await act(async () => {
+      await expect(queryClient.fetchInfiniteQuery(main)).rejects.toMatchObject({
+        status: 404,
+      });
+    });
+    expect(screen.getByRole("tab").parentElement).toHaveAttribute(
+      "data-invalid",
+      "true",
+    );
+    expect(screen.getByLabelText("错误通知数量")).toHaveTextContent("0");
+    respondWithStatus(200);
+    await act(async () => {
+      await queryClient.fetchInfiniteQuery(main);
+    });
+    expect(screen.getByRole("tab").parentElement).not.toHaveAttribute(
+      "data-invalid",
+    );
+  });
+
+  it("来源不存在、其他伙伴不存在和暂时性错误都保留当前主会话", async () => {
+    const { queryClient } = renderScene("/chat/main/waker/w1");
+    const subject = { subjectType: "waker" as const, subjectId: "w1" };
+    respondWithStatus(404);
+    await act(async () => {
+      await expect(
+        queryClient.fetchInfiniteQuery(
+          sourceHistoryOptions(subject, "missing"),
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+    await fetchRecord(
+      queryClient,
+      getWakerQueryKey({ path: { wakerId: "other" } }),
+      "/api/v1/wakers/other",
+    );
+    respondWithStatus(503);
+    await act(async () => {
+      await expect(
+        queryClient.fetchInfiniteQuery(mainConversationOptions(subject)),
+      ).rejects.toMatchObject({ status: 503 });
+    });
+    expect(screen.getByRole("tab").parentElement).not.toHaveAttribute(
+      "data-invalid",
     );
   });
 

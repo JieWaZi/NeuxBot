@@ -230,6 +230,26 @@ func (c *chatReadingController) MarkUnread(ctx context.Context, reader, chat, me
 	return err
 }
 
+// readingPosition 在普通聊天和主会话之间共用阅读前缀与手动未读的推进规则。
+type readingPosition struct {
+	// through 是最后确认的显示序号。
+	through int64
+	// generation 是最后一次手动设置未读的代次。
+	generation int64
+	// hold 阻止自动阅读解除手动未读。
+	hold bool
+}
+
+func (p readingPosition) move(boundary, observed int64, intent constants.ReadingIntent) (readingPosition, error) {
+	if p.generation != observed || (intent == constants.ReadingIntentAutomatic && p.hold) {
+		return p, status_error.ReadingIntentConflict
+	}
+	if intent == "" {
+		return readingPosition{boundary - 1, observed + 1, true}, nil
+	}
+	return readingPosition{max(p.through, boundary), observed, false}, nil
+}
+
 func (c *chatReadingController) moveCursor(ctx context.Context, reader, chat, message string, generation int64, intent constants.ReadingIntent, boardBatch bool) (bool, error) {
 	if chat == "" || message == "" || generation < 0 {
 		return false, status_error.BadRequest
@@ -254,25 +274,16 @@ func (c *chatReadingController) moveCursor(ctx context.Context, reader, chat, me
 		if result.RowsAffected == 0 {
 			return status_error.ReadingProjectionIncomplete
 		}
-		if row.UnreadGeneration != generation || (intent == constants.ReadingIntentAutomatic && row.HoldUnread) {
-			return status_error.ReadingIntentConflict
-		}
-		next := max(row.ThroughSequence, boundary.OrderSequence)
-		hold := false
-		nextGeneration := generation
-		if intent == "" {
-			next = boundary.OrderSequence - 1
-			hold = true
-			nextGeneration++
-		}
-		if next == row.ThroughSequence && hold == row.HoldUnread && nextGeneration == row.UnreadGeneration {
-			return nil
+		previous := readingPosition{row.ThroughSequence, row.UnreadGeneration, row.HoldUnread}
+		next, err := previous.move(boundary.OrderSequence, generation, intent)
+		if err != nil || next == previous {
+			return err
 		}
 		condition := db.Model(&models.ChatReadCursor{}).Where("reader_id = ? AND chat_id = ? AND unread_generation = ?", reader, chat, generation)
 		if intent == constants.ReadingIntentAutomatic {
 			condition = condition.Where("hold_unread = ?", false)
 		}
-		result = condition.Updates(map[string]any{"through_sequence": next, "hold_unread": hold, "unread_generation": nextGeneration, "updated_at": time.Now().UnixMilli()})
+		result = condition.Updates(map[string]any{"through_sequence": next.through, "hold_unread": next.hold, "unread_generation": next.generation, "updated_at": time.Now().UnixMilli()})
 		if result.Error != nil {
 			return databaseError("update_chat_read_cursor", chat, result.Error)
 		}

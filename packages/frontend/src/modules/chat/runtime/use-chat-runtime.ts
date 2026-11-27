@@ -40,8 +40,10 @@ import {
 import {
   attachmentPathsOf,
   chatAttachmentAdapter,
+  fileForFreshSubmission,
   pathFile,
   renewReplyAttachments,
+  type BotPathFile,
 } from "./chat-attachment-adapter";
 import {
   useChatHandoff,
@@ -118,7 +120,7 @@ type ChatRuntimeOptions = {
   incompleteErrorText: string;
   selection: ChatSendSelection;
   onMessageAccepted?: () => void;
-  onMessageRejected?: (selection: ChatSendSelection) => void;
+  onMessageRejected?: (selection: ChatSendSelection, mode?: "edit") => void;
   captureDraft?: (message: AppendMessage) => QueuedChatEntry["settleDraft"];
   captureReplyDraft?: () => QueuedChatEntry["replyDraft"];
   onApprovalRequested?: (approval: PendingApproval) => void;
@@ -140,6 +142,7 @@ type ChatRuntimeResult = {
   hasVisibleMessages: boolean;
   sendFailure: ChatSendFailure;
   retryFirstSubmission?: () => void;
+  editFirstSubmission?: () => void;
   contextMetrics?: ChatRunMetrics;
   pendingApprovals: PendingApproval[];
   pendingElicitations: ChatPendingElicitation[];
@@ -627,31 +630,32 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         value: NO_SEND_FAILURE,
       });
       const currentOverlay = overlayRef.current;
+      const optimisticUser = {
+        id: userID,
+        submissionId: prepared.submissionId,
+        role: "user",
+        content: text,
+        attachments: optimisticAttachments,
+        ...automaticBody,
+        plugins: snapshot.selection.selectedPlugins?.map((plugin) => ({
+          ...plugin,
+        })),
+        skills: (snapshot.selection.selectedSkills ?? []).map((skill) => ({
+          ...skill,
+        })),
+        connectors: (snapshot.selection.selectedConnectors ?? []).map(
+          (connector) => ({ ...connector }),
+        ),
+        codeReferences: (snapshot.selection.codeReferences ?? []).map(
+          (reference) => ({ ...reference }),
+        ),
+        replyTo: snapshot.selection.replyTo,
+        workflow: snapshot.selection.workflow,
+        updatedAt: now,
+        optimistic: true,
+      } satisfies BotChatMessage;
       const optimisticMessages = [
-        {
-          id: userID,
-          submissionId: prepared.submissionId,
-          role: "user",
-          content: text,
-          attachments: optimisticAttachments,
-          ...automaticBody,
-          plugins: snapshot.selection.selectedPlugins?.map((plugin) => ({
-            ...plugin,
-          })),
-          skills: (snapshot.selection.selectedSkills ?? []).map((skill) => ({
-            ...skill,
-          })),
-          connectors: (snapshot.selection.selectedConnectors ?? []).map(
-            (connector) => ({ ...connector }),
-          ),
-          codeReferences: (snapshot.selection.codeReferences ?? []).map(
-            (reference) => ({ ...reference }),
-          ),
-          replyTo: snapshot.selection.replyTo,
-          workflow: snapshot.selection.workflow,
-          updatedAt: now,
-          optimistic: true,
-        },
+        optimisticUser,
         {
           id: assistantID,
           submissionId: prepared.submissionId,
@@ -677,7 +681,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       setOverlay(optimisticOverlay);
 
       try {
-        const result = await prepared.accept();
+        const result = await prepared.accept(optimisticUser);
         const execution = result.execution;
         const queuedInputId = result.queuedInput?.id;
         const submissionId = prepared.submissionId;
@@ -712,7 +716,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
             const assistant = item.id === assistantID;
             if (item.id !== userID && !assistant) return [item];
             if (!execution) {
-              if (snapshot.chatId) return [];
+              if (snapshot.chatId || result.published) return [];
               return [assistant ? { ...item, preparingSession: false } : item];
             }
             const id =
@@ -814,7 +818,9 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         const canceled =
           error instanceof ApiError &&
           applicationErrorKey(error.code) === "OperationCanceled";
-        const needsReceipt = prepared.hasUnconfirmedReceipt?.() === true;
+        const needsReceipt =
+          prepared.hasUnconfirmedReceipt?.() === true ||
+          prepared.canReturnToDraft?.() === true;
         const rejected =
           !needsReceipt && prepared.confirmRejected?.(error) === true;
         const renewSubmission =
@@ -998,7 +1004,11 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           );
         if (current && !canceled)
           setSendFailure({ chatId: snapshot.chatId, value: failure, noticeId });
-        if (!snapshot.settleDraft && !isReply)
+        if (
+          !snapshot.settleDraft &&
+          !isReply &&
+          (!needsReceipt || !prepared.canReturnToDraft)
+        )
           window.setTimeout(() => {
             if (
               !mountedRef.current ||
@@ -1742,6 +1752,25 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     };
   }, [runtime]);
 
+  const recoveryForCurrentConversation =
+    firstSubmissionRecovery?.snapshot.conversationKey ===
+    options.conversationKey
+      ? firstSubmissionRecovery
+      : undefined;
+  const getCurrentRecovery = () => {
+    const recovery = recoveryRef.current;
+    if (
+      !mountedRef.current ||
+      observedChatKeyRef.current !== options.conversationKey ||
+      recovery !== recoveryForCurrentConversation ||
+      runningRef.current ||
+      options.queueActive === false
+    ) {
+      return undefined;
+    }
+    return recovery;
+  };
+
   return {
     runtime,
     messages,
@@ -1749,20 +1778,53 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     isRunning,
     hasVisibleMessages: messages.length > 0,
     sendFailure: currentSendFailure,
-    retryFirstSubmission:
-      firstSubmissionRecovery?.snapshot.conversationKey ===
-      options.conversationKey
+    retryFirstSubmission: recoveryForCurrentConversation
+      ? () => {
+          const recovery = getCurrentRecovery();
+          if (!recovery) return;
+          // 允许返回编辑的入口保留首次清空前的文档，重放无需再次清空。
+          if (!recovery.prepared.canReturnToDraft)
+            messageAcceptedRef.current?.();
+          void submit(recovery.message, recovery.snapshot, recovery.prepared);
+        }
+      : undefined,
+    editFirstSubmission:
+      recoveryForCurrentConversation?.prepared.canReturnToDraft?.()
         ? () => {
-            const recovery = recoveryRef.current;
+            const recovery = getCurrentRecovery();
+            if (!recovery?.prepared.canReturnToDraft?.()) return;
+            const { prepared, snapshot, message } = recovery;
+            const submissionId = prepared.submissionId;
             if (
-              !recovery ||
-              recovery !== firstSubmissionRecovery ||
-              runningRef.current ||
-              options.queueActive === false
+              !submissionId ||
+              pendingSubmissionsRef.current.get(submissionId)?.submission !==
+                prepared
             )
               return;
-            messageAcceptedRef.current?.();
-            void submit(recovery.message, recovery.snapshot, recovery.prepared);
+
+            pendingSubmissionsRef.current.delete(submissionId);
+            currentSubmissionRef.current = undefined;
+            recoveryRef.current = undefined;
+            setFirstSubmissionRecovery(undefined);
+            setSendFailure({ chatId: snapshot.chatId, value: NO_SEND_FAILURE });
+            messageRejectedRef.current?.(snapshot.selection, "edit");
+            for (const attachment of message.attachments ?? []) {
+              const file = attachment.file as BotPathFile | undefined;
+              const files = file?.botSourcePath
+                ? [fileForFreshSubmission(file)]
+                : attachment.content.flatMap((part) =>
+                    part.type === "file"
+                      ? [
+                          pathFile(part.data, {
+                            name: attachment.name,
+                            contentType: part.mimeType,
+                          }),
+                        ]
+                      : [],
+                  );
+              for (const file of files)
+                void runtime.thread.composer.addAttachment(file);
+            }
           }
         : undefined,
     contextMetrics: latestContextMetrics(messages),

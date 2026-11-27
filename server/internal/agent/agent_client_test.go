@@ -52,6 +52,101 @@ func TestKnownNativeErrorMessagePassesThroughProductBoundary(t *testing.T) {
 	}
 }
 
+func TestNativeSessionPreparationReportsFailedOperation(t *testing.T) {
+	for _, operation := range []struct {
+		// name identifies the native operation under test.
+		name string
+		// key is the stable public fallback for this operation.
+		key string
+		// run invokes the production adapter operation.
+		run func(*directAgentClient, context.Context) (AgentSession, error)
+	}{
+		{"new", "RuntimeSessionStartFailed", func(client *directAgentClient, ctx context.Context) (AgentSession, error) {
+			return client.NewSession(ctx, AgentSessionOptions{})
+		}},
+		{"resume", "RuntimeSessionRestoreFailed", func(client *directAgentClient, ctx context.Context) (AgentSession, error) {
+			return client.ResumeSession(ctx, "session", AgentSessionOptions{})
+		}},
+		{"load", "RuntimeSessionRestoreFailed", func(client *directAgentClient, ctx context.Context) (AgentSession, error) {
+			return client.LoadSession(ctx, "session", AgentSessionOptions{})
+		}},
+	} {
+		t.Run(operation.name, func(t *testing.T) {
+			client := &directAgentClient{
+				native:       failingNativeSessionClient{err: errors.New("native transport details")},
+				capabilities: AgentCapabilities{Resume: true, Load: true},
+			}
+			_, err := operation.run(client, t.Context())
+			var public statuserror.CommonError
+			if !errors.As(err, &public) || public.Key() != operation.key || status_error.PublicMessage(err) != "" {
+				t.Fatalf("native session transport failure = %v, want %s without private details", err, operation.key)
+			}
+
+			for _, message := range []string{"password=secret-fixture", "Codex rejected the native request"} {
+				client.native = failingNativeSessionClient{err: &acp.RequestError{Code: -32603, Message: message}}
+				_, err = operation.run(client, t.Context())
+				if !errors.As(err, &public) || public.Key() != operation.key || status_error.PublicMessage(err) != "" {
+					t.Fatalf("native session protocol failure = %v, want %s without credential details or a generic protocol rejection", err, operation.key)
+				}
+			}
+
+			client.native = failingNativeSessionClient{err: &acp.RequestError{
+				Code: -32000, Message: "Authentication required",
+			}}
+			_, err = operation.run(client, t.Context())
+			if !errors.Is(err, status_error.RuntimeAuthRequired) || status_error.PublicMessage(err) != "Authentication required" {
+				t.Fatalf("native session authentication failure = %v, want known reason", err)
+			}
+		})
+	}
+}
+
+func TestCodexRestoreRejectionRequiresConclusiveReceiptForTheSameThread(t *testing.T) {
+	const id = "019aadbc-18f4-7000-a000-123456789abd"
+	noHistory := &acp.RequestError{Code: -32603, Message: "thread " + id + " did not include persisted history"}
+	for _, specimen := range []struct {
+		// name describes the evidence supplied by the adapter.
+		name string
+		// err is the native open error, before product conversion.
+		err error
+		// rejected indicates positive evidence that native session restore was refused.
+		rejected bool
+	}{
+		{"history absent", errors.Join(noHistory), true},
+		{"rollout lost after possible start", &acp.RequestError{Code: -32600, Message: "no rollout found for thread id " + id}, false},
+		{"generic internal error", &acp.RequestError{Code: -32603, Message: "Internal error"}, false},
+		{"different thread", &acp.RequestError{Code: -32603, Message: "thread 019aadbc-18f4-7000-a000-123456789abf did not include persisted history"}, false},
+		{"unexpected code", &acp.RequestError{Code: -32000, Message: noHistory.Message}, false},
+		{"transport error", errors.New(noHistory.Message), false},
+		{"additional failure", errors.Join(errors.Join(noHistory), context.DeadlineExceeded), false},
+	} {
+		t.Run(specimen.name, func(t *testing.T) {
+			if rejected := codexRestoreRejected(specimen.err, id); rejected != specimen.rejected {
+				t.Fatalf("confirmed restore rejection = %v, want %v", rejected, specimen.rejected)
+			}
+		})
+	}
+}
+
+type failingNativeSessionClient struct {
+	// Client embeds the unused native protocol operations.
+	native.Client
+	// err is returned by each native session operation.
+	err error
+}
+
+func (c failingNativeSessionClient) NewSession(context.Context, acp.NewSessionRequest) (acp.NewSessionResponse, error) {
+	return acp.NewSessionResponse{}, c.err
+}
+
+func (c failingNativeSessionClient) ResumeSession(context.Context, acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
+	return acp.ResumeSessionResponse{}, c.err
+}
+
+func (c failingNativeSessionClient) LoadSession(context.Context, acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
+	return acp.LoadSessionResponse{}, c.err
+}
+
 func TestCursorLaunchUsesSelectedConfigHome(t *testing.T) {
 	home := t.TempDir()
 	env, err := nativeLaunchEnvironment("cursor", ProviderLaunch{

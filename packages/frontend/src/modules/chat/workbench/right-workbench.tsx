@@ -100,7 +100,9 @@ type RightWorkbenchProps = {
   contentTab?: WorkbenchContentTab;
   displayWidth?: number;
   animateLayout?: boolean;
-  onAddCodeReference: (reference: ChatCodeReference) => void;
+  onAddCodeReference?: (reference: ChatCodeReference) => void;
+  defaultFileSource?: "project" | "chat";
+  allowSideChat?: boolean;
   onDismiss: () => void;
   onOpenFile?: (file: ResolvedFileReference, sourceChatId?: string) => void;
   onOpenURL?: (url: string) => unknown;
@@ -125,6 +127,8 @@ export function RightWorkbench({
   displayWidth,
   animateLayout = false,
   onAddCodeReference,
+  defaultFileSource = "project",
+  allowSideChat = true,
   onDismiss,
   onOpenFile,
   onOpenURL,
@@ -267,11 +271,11 @@ export function RightWorkbench({
   };
   const openPage = (kind: "files" | "changes") => {
     if (kind === "files") {
-      fileWorkspaceProps?.onFileSourceChange?.("project");
+      fileWorkspaceProps?.onFileSourceChange?.(defaultFileSource);
       dispatch({
         type: "open-page",
         kind,
-        fileSource: "project",
+        fileSource: defaultFileSource,
         title: t("workspace.files"),
       });
     } else {
@@ -280,13 +284,15 @@ export function RightWorkbench({
   };
   const openScopedFile = async (
     origin: WorkbenchTab,
-    file: { name: string; path: string },
+    file: { name: string; path: string; sourceChatId?: string },
     rootPath?: string,
     replaceBrowser = false,
   ) => {
     if (!file.path) return;
     const path = workspacePathAtRoot(rootPath, file.path) ?? file.path;
-    const chatId = origin.kind === "changes" ? gitScopeChatId : fileScopeChatId;
+    const chatId =
+      file.sourceChatId ??
+      (origin.kind === "changes" ? gitScopeChatId : fileScopeChatId);
     const request = ++fileOpenRequest.current;
     const pending = () =>
       request === fileOpenRequest.current &&
@@ -382,12 +388,15 @@ export function RightWorkbench({
             rootPath: terminalWorkingDirectory,
           })
       : undefined;
-  const openSideChat = () =>
-    dispatch({
-      type: "open-sidechat",
-      title: t("workbench.sideChat"),
-      parentChatId,
-    });
+  const openSideChat =
+    parentChatId && allowSideChat
+      ? () =>
+          dispatch({
+            type: "open-sidechat",
+            title: t("workbench.sideChat"),
+            parentChatId,
+          })
+      : undefined;
   const openTaskBoard = (paneId?: string) =>
     dispatch({
       type: "open-task-board",
@@ -474,7 +483,7 @@ export function RightWorkbench({
                 {t("workspace.diffTab")}
               </DropdownMenuItem>
             ) : null}
-            {parentChatId ? (
+            {openSideChat ? (
               <DropdownMenuItem onSelect={openSideChat}>
                 <MessagesSquare />
                 {t("workbench.sideChat")}
@@ -629,9 +638,9 @@ export function RightWorkbench({
           active={active && visible}
           chatId={parentChatId}
           onOpenTerminal={openTerminal}
+          onOpenSideChat={openSideChat}
           onOpenTool={(kind) => {
             if (kind === "files" || kind === "changes") openPage(kind);
-            else if (kind === "sidechat") openSideChat();
             else
               openTaskBoard(workbenchPaneWithTab(snapshot.layout, tab.id)?.id);
           }}
@@ -747,7 +756,7 @@ export function RightWorkbench({
         </Suspense>
       );
     }
-    if (tab.kind === "sidechat")
+    if (tab.kind === "sidechat" && openSideChat)
       return (
         <Suspense
           fallback={

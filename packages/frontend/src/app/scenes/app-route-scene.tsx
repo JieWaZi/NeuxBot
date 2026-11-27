@@ -45,6 +45,9 @@ import {
   WakerSkillsPage,
 } from "./waker-partner-routes";
 
+import { MainConversationEntry } from "./main-conversation-entry";
+import { mainConversationPath } from "./main-conversation-route";
+import { MainConversationPage } from "@/modules/chat/pages/main-conversation-page";
 import { ChatEntryPage } from "@/modules/chat/pages/chat-entry-page";
 import { PartnerManagementPage } from "@/app/pages/partner-management-page";
 import { TeamThreadPage } from "@/app/pages/team-thread-page";
@@ -112,14 +115,27 @@ export function AppRouteScene({
   const currentLocation = useLocation();
   const routeCurrent =
     location === `${currentLocation.pathname}${currentLocation.search}`;
+  const parsed = parsePath(location);
+  const defaultConversation =
+    (parsed.pathname === "/" || parsed.pathname === "/chat") &&
+    !new URLSearchParams(parsed.search).get("draftId");
   return (
-    <Routes location={{ ...parsePath(location), state: locationState }}>
+    <Routes location={{ ...parsed, state: locationState }}>
       <Route element={<RouteSceneOutlet context={outletContext} />}>
-        <Route element={<ChatEntryPage routeCurrent={routeCurrent} />}>
+        <Route
+          element={
+            defaultConversation ? (
+              <MainConversationEntry current={routeCurrent} />
+            ) : (
+              <ChatEntryPage routeCurrent={routeCurrent} />
+            )
+          }
+        >
           <Route index element={<></>} />
           <Route path="chat" element={<></>} />
           <Route path="chats/:chatId" element={<></>} />
         </Route>
+        <Route path={mainConversationPath} element={<MainConversationPage />} />
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="knowledge" element={<KnowledgeScene />} />
         <Route path="knowledge/:libraryId" element={<KnowledgeScene />} />

@@ -14,6 +14,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ComponentProps,
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -41,7 +42,11 @@ import {
 import { workspaceAttentionResource } from "@/shared/api/reading-queries";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { WorkExecutorAvatar } from "./work-executor-avatar";
-import { workAttentionHref, workEntryHref } from "../model/navigation";
+import {
+  mainConversationWorkOwner,
+  workAttentionHref,
+  workEntryHref,
+} from "../model/navigation";
 import { PaginatedTable } from "@/shared/ui/paginated-table";
 import type { PaginationProps } from "@/shared/ui/pagination";
 import {
@@ -110,6 +115,7 @@ function WorkFocusRow({
   at,
   href,
   chatId,
+  mainConversation,
   status,
   action,
 }: {
@@ -119,6 +125,7 @@ function WorkFocusRow({
   at?: number;
   href: string;
   chatId?: string;
+  mainConversation?: ComponentProps<typeof ChatReadingLink>["mainConversation"];
   status?: ReactNode;
   action: boolean;
 }) {
@@ -131,6 +138,7 @@ function WorkFocusRow({
           <p className="type-label min-w-0 font-medium break-words">
             <ChatReadingLink
               chatId={chatId}
+              mainConversation={mainConversation}
               className="hover:text-link"
               to={href}
             >
@@ -147,13 +155,30 @@ function WorkFocusRow({
         ) : null}
       </div>
       <Button asChild size="sm" variant="ghost">
-        <ChatReadingLink chatId={chatId} to={href}>
+        <ChatReadingLink
+          chatId={chatId}
+          mainConversation={mainConversation}
+          to={href}
+        >
           {t(action ? "handle" : "view")}
           <ArrowRight />
         </ChatReadingLink>
       </Button>
     </div>
   );
+}
+
+function resultReadingTarget(entry: Entry) {
+  const owner = mainConversationWorkOwner(entry);
+  return owner
+    ? {
+        mainConversation: {
+          subjectType: owner.kind,
+          subjectId: owner.id,
+          observedGeneration: entry.unreadGeneration,
+        },
+      }
+    : { chatId: entry.chatId };
 }
 
 function WorkEntryRow({ entry }: { entry: Entry }) {
@@ -173,17 +198,17 @@ function WorkEntryRow({ entry }: { entry: Entry }) {
                   : entry.wakerId
                     ? "waker"
                     : undefined
-              : undefined
+              : mainConversationWorkOwner(entry)?.kind
           }
           ownerKind={entry.ownerKind}
-          executorId={entry.executorId || entry.wakerId}
+          executorId={entry.executorId || entry.wakerId || entry.channelId}
         />
       }
       title={title}
       context={entry.executorName !== title ? entry.executorName : undefined}
       at={entry.updatedAt}
       href={workEntryHref(entry, true)}
-      chatId={entry.chatId}
+      {...resultReadingTarget(entry)}
       status={
         entry.lastStatus === "failed" ? (
           <Badge variant="destructive">{t("failed")}</Badge>
@@ -681,7 +706,7 @@ export function WorkBoardTable({
               >
                 <TableCell className="max-w-64">
                   <ChatReadingLink
-                    chatId={entry.chatId}
+                    {...resultReadingTarget(entry)}
                     className="hover:text-link font-medium"
                     to={workEntryHref(entry, mode === "awaiting_view")}
                   >
@@ -698,7 +723,10 @@ export function WorkBoardTable({
                     <WorkExecutorAvatar
                       name={entry.executorName ?? ""}
                       ownerKind={entry.ownerKind}
-                      executorId={entry.executorId || entry.wakerId}
+                      kind={mainConversationWorkOwner(entry)?.kind}
+                      executorId={
+                        entry.executorId || entry.wakerId || entry.channelId
+                      }
                       size="xs"
                     />
                   </span>
@@ -715,7 +743,7 @@ export function WorkBoardTable({
                 <TableCell>
                   <Button asChild variant="ghost" size="sm">
                     <ChatReadingLink
-                      chatId={entry.chatId}
+                      {...resultReadingTarget(entry)}
                       to={workEntryHref(
                         entry,
                         mode === "awaiting_view" || unread,

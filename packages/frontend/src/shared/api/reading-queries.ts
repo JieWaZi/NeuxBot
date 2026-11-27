@@ -1,13 +1,17 @@
 import { queryOptions } from "@tanstack/react-query";
 import {
   getChatReading,
+  getMainConversationReading,
   getRunViewing,
   markChatRead as postChatRead,
   markChatUnread as postChatUnread,
+  markMainConversationRead as postMainConversationRead,
+  markMainConversationUnread as postMainConversationUnread,
   markRunViewed as postRunViewed,
 } from "./generated/sdk.gen";
 import type {
   GetChatReadingResponse,
+  GetMainConversationReadingResponse,
   MarkChatReadData,
   MarkChatUnreadData,
   GetRunViewingData,
@@ -34,24 +38,52 @@ export function checkAttentionEpoch<T extends { epoch?: string }>(
 }
 
 export type ChatReadingState = GetChatReadingResponse;
+export type MainConversationReadingSubject = {
+  subjectType: "waker" | "team";
+  subjectId: string;
+};
+export type ReadingTarget = string | MainConversationReadingSubject;
+export type ConversationReadingState =
+  ChatReadingState | GetMainConversationReadingResponse;
 export type ChatReadCommand = MarkChatReadData["body"];
 export type RunReadingKind = GetRunViewingData["path"]["ownerKind"];
 
 export function chatReadingOptions(chatId: string) {
-  return queryOptions({
-    queryKey: ["chat-reading", chatId] as const,
+  return conversationReadingOptions(chatId);
+}
+
+export function conversationReadingOptions(target: ReadingTarget) {
+  return queryOptions<ConversationReadingState | null>({
+    queryKey:
+      typeof target === "string"
+        ? ["chat-reading", target]
+        : ["main-conversation-reading", target.subjectType, target.subjectId],
     queryFn: async ({ signal }) => {
       try {
+        if (typeof target !== "string") {
+          const { data } = await getMainConversationReading(
+            withLocalErrorSurface({
+              path: target,
+              signal,
+              throwOnError: true as const,
+            }),
+          );
+          return checkAttentionEpoch(
+            "reading",
+            { kind: "main_conversation", id: data.conversationId },
+            data,
+          );
+        }
         const { data } = await getChatReading(
           withLocalErrorSurface({
-            path: { chatId },
+            path: { chatId: target },
             signal,
             throwOnError: true as const,
           }),
         );
         return checkAttentionEpoch(
           "reading",
-          { kind: "chat", id: chatId },
+          { kind: "chat", id: target },
           data,
         );
       } catch (error) {
@@ -66,23 +98,46 @@ export function chatReadingOptions(chatId: string) {
   });
 }
 
-export async function markChatRead(chatId: string, body: ChatReadCommand) {
+export async function markConversationRead(
+  target: ReadingTarget,
+  body: ChatReadCommand,
+) {
+  if (typeof target !== "string") {
+    await postMainConversationRead(
+      withLocalErrorSurface({
+        path: target,
+        body,
+        throwOnError: true as const,
+      }),
+    );
+    return;
+  }
   await postChatRead(
     withLocalErrorSurface({
-      path: { chatId },
+      path: { chatId: target },
       body,
       throwOnError: true as const,
     }),
   );
 }
 
-export async function markChatUnread(
-  chatId: string,
+export async function markConversationUnread(
+  target: ReadingTarget,
   body: MarkChatUnreadData["body"],
 ) {
+  if (typeof target !== "string") {
+    await postMainConversationUnread(
+      withLocalErrorSurface({
+        path: target,
+        body,
+        throwOnError: true as const,
+      }),
+    );
+    return;
+  }
   await postChatUnread(
     withLocalErrorSurface({
-      path: { chatId },
+      path: { chatId: target },
       body,
       throwOnError: true as const,
     }),

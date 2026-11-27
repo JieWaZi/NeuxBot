@@ -2946,6 +2946,32 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  RuntimeSessionRestoreFailed: {
+    code: 50000000055,
+    en: [
+      {
+        text: "the agent could not restore the existing session; try again",
+      },
+    ],
+    zh: [
+      {
+        text: "无法恢复已有的智能体会话，请重试",
+      },
+    ],
+  },
+  RuntimeSessionStartFailed: {
+    code: 50000000054,
+    en: [
+      {
+        text: "the agent could not start a new session; try again",
+      },
+    ],
+    zh: [
+      {
+        text: "无法新建智能体会话，请重试",
+      },
+    ],
+  },
   RuntimeShutdownFailed: {
     code: 50000000041,
     en: [

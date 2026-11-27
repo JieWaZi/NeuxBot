@@ -8,6 +8,14 @@ import (
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 )
 
+func TestQuestionWaitReturnsGuidanceWhenObservationExpires(t *testing.T) {
+	op, _ := Find("interaction.questions.wait")
+	data := map[string]any{"completed": false, "resource": map[string]any{"questionId": "question"}, "nextAction": "Repeat interaction.questions.wait for question"}
+	if err := workflowdsl.ValidateJSON(op.OutputSchema, data); err != nil {
+		t.Fatalf("pending question response rejected by MCP: %v", err)
+	}
+}
+
 func TestWorkflowV2SaveReceiptMatchesClosedOutputContract(t *testing.T) {
 	receipt := workflowdsl.SaveReceipt{DefinitionID: "definition", RevisionID: "revision", Ordinal: 2, SourceDigest: "source-digest", ManifestDigest: "canvas-digest"}
 	encoded, err := json.Marshal(receipt)

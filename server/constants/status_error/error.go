@@ -652,6 +652,12 @@ const (
 	// @errZH 无法切换到所选模型，请重新选择模型后重试
 	// @errEN the selected model could not be applied; select a model again and retry
 	RuntimeModelSelectionFailed
+	// @errZH 无法新建智能体会话，请重试
+	// @errEN the agent could not start a new session; try again
+	RuntimeSessionStartFailed
+	// @errZH 无法恢复已有的智能体会话，请重试
+	// @errEN the agent could not restore the existing session; try again
+	RuntimeSessionRestoreFailed
 )
 
 const (

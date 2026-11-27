@@ -241,6 +241,32 @@ func (m *service) ReadMessageTimeline(
 	return m.readMessageHistory(ctx, chatID, beforeSequence, throughSequence, limit, true)
 }
 
+// ReadResolvedExecutionQuestions 使用普通聊天的安全投影重读已结束的问题。
+func (m *service) ReadResolvedExecutionQuestions(ctx context.Context, chatID string, executionIDs []string) (map[string][]messageview.MessageQuestion, error) {
+	journal, ok := m.logStore.(*conversationJournal)
+	if !ok {
+		return nil, status_error.ChatLogError
+	}
+	questions, err := journal.ReadExecutionQuestions(ctx, chatID, executionIDs)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string][]messageview.MessageQuestion)
+	for _, question := range questions {
+		if question.Outcome.Cursor == 0 {
+			continue
+		}
+		message, err := messageview.ProjectQuestionMessage(factRecord(chatID, question.Request), factRecord(chatID, question.Outcome))
+		if err != nil {
+			return nil, err
+		}
+		if message.Question.Result != "" {
+			result[message.ExecutionID] = append(result[message.ExecutionID], *message.Question)
+		}
+	}
+	return result, nil
+}
+
 func (m *service) readMessageHistory(
 	ctx context.Context,
 	chatID string,
@@ -1145,8 +1171,8 @@ func uniqueChatIDs(values []string) []string {
 	return result
 }
 
-// DeleteWakerChats 从权威 JSONL 枚举并删除一位伙伴的全部对话。
-func (m *service) DeleteWakerChats(ctx context.Context, wakerID string, prepare func([]string) (func() error, error), finalize func(context.Context) error) error {
+// DeleteWakerChats 从权威日志枚举伙伴的对话，和级联团队的 Chat 一次取得删除所有权。
+func (m *service) DeleteWakerChats(ctx context.Context, wakerID string, relatedChatIDs []string, prepare func([]string) (func() error, error), finalize func(context.Context) error) error {
 	wakerID = strings.TrimSpace(wakerID)
 	if wakerID == "" {
 		return status_error.BadRequest
@@ -1187,7 +1213,8 @@ func (m *service) DeleteWakerChats(ctx context.Context, wakerID string, prepare 
 		return status_error.BadRequest
 	}
 	var settle func() error
-	deletionErr := m.deleteChatsAtomically(ctx, targetIDs, func() error {
+	allTargets := append(targetIDs, relatedChatIDs...)
+	deletionErr := m.deleteChatsAtomically(ctx, allTargets, func() error {
 		var err error
 		settle, err = prepare(append([]string(nil), targetIDs...))
 		return err

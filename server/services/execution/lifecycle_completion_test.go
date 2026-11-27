@@ -2,12 +2,14 @@ package execution
 
 import (
 	"context"
-
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -16,6 +18,8 @@ import (
 type terminalJournal struct {
 	// Journal 保留本测试不使用的执行查询边界。
 	chatservice.Journal
+	// commitErr 模拟终态持久化失败。
+	commitErr error
 	// terminal 是最近一次先持久的执行终态。
 	terminal chatservice.TerminalFact
 	// published 在注册表交出执行占用后接收公开通知。
@@ -52,7 +56,7 @@ func (*terminalJournal) PublishInteractionFact(context.Context, eventlog.Record)
 
 func (j *terminalJournal) CommitTerminal(_ context.Context, fact chatservice.TerminalFact) (chatservice.TerminalCommit, error) {
 	j.terminal = fact
-	return chatservice.TerminalCommit{}, nil
+	return chatservice.TerminalCommit{}, j.commitErr
 }
 
 func (j *terminalJournal) PublishTerminal(chatservice.TerminalCommit) {
@@ -78,6 +82,7 @@ func TestFinishExecutionReleasesReservationAndPublishesDurableTerminal(t *testin
 	executionCore.finishExecution(
 		models.Chat{ID: chatID},
 		models.Execution{ID: executionID, ChatID: chatID},
+		nil, agent.TurnResult{},
 		eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted},
 	)
 	select {
@@ -105,4 +110,34 @@ func (j *terminalJournal) LoadExecutionChat(context.Context, string) (models.Cha
 
 func (j *terminalJournal) ReadExecutionRecords(string, string) ([]eventlog.Record, error) {
 	panic("unexpected ReadExecutionRecords call")
+}
+
+func TestFinishExecutionReleasesBeforePublishingEvenWhenTerminalWriteFails(t *testing.T) {
+	const chatID = "0123456789abcdef0123456789abcdef"
+	const executionID = "11111111111111111111111111111111"
+	registry := newExecutionRegistry()
+	registry.start(t.Context())
+	t.Cleanup(func() {
+		registry.release(chatID, executionID)
+		registry.close()
+	})
+	journal := &terminalJournal{commitErr: status_error.ChatLogError, published: make(chan struct{}, 1)}
+	core := &service{journal: journal, executions: registry}
+	if _, err := registry.reserve(chatID, executionID, ""); err != nil {
+		t.Fatal(err)
+	}
+	notified := false
+	tools := []ToolCapability{{publishFinal: func(ctx context.Context, _ func(context.Context) (string, error)) error {
+		events.AfterCommit(ctx, func() {
+			notified = true
+			if core.IsExecutionActive(chatID, executionID) {
+				t.Error("the public reply event arrived before the execution slot was released")
+			}
+		})
+		return nil
+	}}}
+	core.finishExecution(models.Chat{ID: chatID}, models.Execution{ID: executionID, ChatID: chatID}, tools, agent.TurnResult{}, eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})
+	if !notified || len(journal.published) != 0 {
+		t.Fatal("only the committed answer event should be released")
+	}
 }
