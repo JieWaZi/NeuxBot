@@ -99,6 +99,12 @@ type WorkflowRunController interface {
 	FinishChatRunFiles(ctx context.Context, chatID, runID, errorCode string, files map[string]models.WorkflowOutputFile, at int64) error
 	// FinishChatRunSummary 记录原回合已完成的手动补写。
 	FinishChatRunSummary(ctx context.Context, chatID, runID string, at int64) error
+	// ListPendingConclusions 读取已提交终态且尚未结算回件的运行。
+	ListPendingConclusions(context.Context, string, int) ([]models.WorkflowRun, error)
+	// FinishConclusion 持久确认本次回件或记录无法送达的原因。
+	FinishConclusion(ctx context.Context, runID, errorCode string, at int64) error
+	// ListMainWorkflowRuns 返回一页主会话交办关联的可见运行。
+	ListMainWorkflowRuns(context.Context, string, []string) ([]models.WorkflowRun, error)
 
 	// AcquireLease 续期或取得过期租约，首次接管增加 fence。
 	AcquireLease(context.Context, string, string, int64, int64) (models.WorkflowRun, bool, error)
@@ -313,6 +319,9 @@ func (c *workflowRunController) CreateRun(ctx context.Context, run models.Workfl
 		return err
 	}
 	publishChatWorkflowChanges(ctx, c.db, []models.WorkflowRun{run})
+	if err := c.publishMainWorkflowAdmission(ctx, run); err != nil {
+		return err
+	}
 	publishCommittedChange(ctx, c.db, "work-board", eventsResource("workflow_run", run.ID))
 	return nil
 }

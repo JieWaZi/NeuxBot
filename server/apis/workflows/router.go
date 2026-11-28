@@ -16,6 +16,7 @@ func init() {
 	Router.Register(&DeleteWorkflowRevision{})
 	Router.Register(&DeleteWorkflowRun{})
 	Router.Register(&RetryWorkflowRun{})
+	Router.Register(&RetryWorkflowConclusion{})
 	Router.Register(&GetWorkflowRetryPlan{})
 	Router.Register(&SkipWorkflowWorker{})
 	Router.Register(&GetWorkflowInstance{})

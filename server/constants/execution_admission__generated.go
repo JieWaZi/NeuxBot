@@ -14,6 +14,8 @@ func (v ExecutionAdmission) Int() int {
 
 func (v ExecutionAdmission) String() string {
 	switch v {
+	case ExecutionAdmissionCommitAtQueuedNativeGate:
+		return "commit_at_queued_native_gate"
 	case ExecutionAdmissionCommitBeforeDispatch:
 		return "commit_before_dispatch"
 	case ExecutionAdmissionCommitOnRuntimeAccept:
@@ -24,6 +26,8 @@ func (v ExecutionAdmission) String() string {
 
 func (v ExecutionAdmission) Label() string {
 	switch v {
+	case ExecutionAdmissionCommitAtQueuedNativeGate:
+		return "ExecutionAdmissionCommitAtQueuedNativeGate 表示持久队列在原生发送门同时记录执行和实际输入。"
 	case ExecutionAdmissionCommitBeforeDispatch:
 		return "ExecutionAdmissionCommitBeforeDispatch 表示先持久化事实再派发 Runtime。"
 	case ExecutionAdmissionCommitOnRuntimeAccept:
@@ -33,7 +37,7 @@ func (v ExecutionAdmission) Label() string {
 }
 
 func (v ExecutionAdmission) Values() []enum.Enum {
-	return []enum.Enum{ExecutionAdmissionCommitBeforeDispatch, ExecutionAdmissionCommitOnRuntimeAccept}
+	return []enum.Enum{ExecutionAdmissionCommitAtQueuedNativeGate, ExecutionAdmissionCommitBeforeDispatch, ExecutionAdmissionCommitOnRuntimeAccept}
 }
 
 func (v ExecutionAdmission) Type() string {
@@ -42,7 +46,7 @@ func (v ExecutionAdmission) Type() string {
 
 func (v ExecutionAdmission) MarshalText() ([]byte, error) {
 	switch v {
-	case ExecutionAdmissionCommitBeforeDispatch, ExecutionAdmissionCommitOnRuntimeAccept:
+	case ExecutionAdmissionCommitAtQueuedNativeGate, ExecutionAdmissionCommitBeforeDispatch, ExecutionAdmissionCommitOnRuntimeAccept:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -51,6 +55,8 @@ func (v ExecutionAdmission) MarshalText() ([]byte, error) {
 
 func (v *ExecutionAdmission) UnmarshalText(text []byte) error {
 	switch string(text) {
+	case ExecutionAdmissionCommitAtQueuedNativeGate.String():
+		*v = ExecutionAdmissionCommitAtQueuedNativeGate
 	case ExecutionAdmissionCommitBeforeDispatch.String():
 		*v = ExecutionAdmissionCommitBeforeDispatch
 	case ExecutionAdmissionCommitOnRuntimeAccept.String():

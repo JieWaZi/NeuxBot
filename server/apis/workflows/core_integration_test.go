@@ -33,6 +33,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/services/mainconversation"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -237,8 +238,12 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime workflowFixtu
 	if len(domain) != 0 && domain[0] {
 		worker = domainWorkflowWorker{CoreWorkerAdapter: workflow.CoreWorkerAdapter{Executions: core, Chats: chats}, model: runtime}
 	}
-	s := workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Events: hub, Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Transactions: transactions, Executions: core, Chats: chats, Worker: worker, Wakers: wakers, Projects: projects, DataDirectory: directory})
+	main := mainconversation.New(controllers.NewMainConversationController(database.DB), transactions, wakers, controllers.NewChannelController(database.DB))
+	s := workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Events: hub, Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Transactions: transactions, Executions: core, Chats: chats, Worker: worker, Wakers: wakers, Projects: projects, DataDirectory: directory,
+		AuthorizeMainWork: main.AuthorizeWorkActor, ResolveMainOrigin: main.ResolveWorkflowOrigin, PublishMainConclusion: main.PublishWorkflowConclusion})
 	fixture = s
+	s.main = main
+	s.db = database.DB
 	if err := s.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -311,8 +316,13 @@ func awaitFixtureState(t *testing.T, s *workflowFixture, id string, ready func(c
 // waitingWorkflowAfterSourceTurn 用真实日志接纳工作流，并结束先于它完成的原生回合。
 func waitingWorkflowAfterSourceTurn(t *testing.T, s *workflowFixture) (models.Chat, models.Execution, string) {
 	t.Helper()
-	ctx := t.Context()
 	definition := savedTestWorkflow(t, s, humanSource)
+	return startWaitingWorkflowFromChat(t, s, definition)
+}
+
+func startWaitingWorkflowFromChat(t *testing.T, s *workflowFixture, definition models.WorkflowDefinition, publicScope ...string) (models.Chat, models.Execution, string) {
+	t.Helper()
+	ctx := t.Context()
 	directory := filepath.Join(s.DataDirectory, "Agents", "fixture-waker")
 	if err := workspace.EnsureAgentWorkspace(directory, "fixture-waker"); err != nil {
 		t.Fatal(err)
@@ -322,6 +332,13 @@ func waitingWorkflowAfterSourceTurn(t *testing.T, s *workflowFixture) (models.Ch
 		t.Fatal(err)
 	}
 	sourceChat := models.Chat{ID: util.New(), WakerID: "fixture-waker", Title: "来源对话", WorkspaceDirectory: directory, AdditionalWorkingDirectories: []string{directory}}
+	if len(publicScope) > 0 {
+		work, err := s.main.ReserveWork(ctx, "waker", sourceChat.WakerID, sourceChat.WakerID, publicScope[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		sourceChat.ID, sourceChat.HiddenFromWakerHistory = work.WorkChatID, true
+	}
 	sourceExecution := models.Execution{ID: util.New(), ChatID: sourceChat.ID, UserMessageID: util.New(), SubmissionID: "source-submission", RuntimeID: "codex", Model: "fixture", PermissionLevel: constants.PermissionLevelDefault, Status: constants.ExecutionStatusRunning}
 	encode := func(value any) json.RawMessage {
 		data, err := json.Marshal(value)
@@ -336,11 +353,26 @@ func waitingWorkflowAfterSourceTurn(t *testing.T, s *workflowFixture) (models.Ch
 		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: sourceExecution.ID, Data: encode(eventlog.ExecutionCreatedData{UserMessageID: sourceExecution.UserMessageID, SubmissionID: sourceExecution.SubmissionID, RuntimeID: "codex", Model: "fixture", PermissionLevel: constants.PermissionLevelDefault})},
 		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: sourceExecution.ID},
 	}
-	accepted, err := s.Chats.CommitAcceptedTurn(ctx, chatservice.StartedTurn{NewChat: true, Chat: sourceChat, Execution: sourceExecution, Facts: facts})
+	var accepted chatservice.AcceptedTurn
+	commit := func(ctx context.Context) error {
+		var err error
+		accepted, err = s.Chats.CommitAcceptedTurn(ctx, chatservice.StartedTurn{NewChat: true, Chat: sourceChat, Execution: sourceExecution, Facts: facts})
+		return err
+	}
+	if sourceChat.HiddenFromWakerHistory {
+		_, err = s.main.AdmitUser(ctx, "waker", sourceChat.WakerID, sourceExecution.SubmissionID, "运行人工关卡", "", sourceChat.ID, sourceExecution.ID, sourceExecution.UserMessageID, "", "", commit)
+	} else {
+		err = commit(ctx)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	bound, err := s.BindLocalWorkflowTurn(ctx, accepted.Chat, sourceExecution.ID, workinput.SelectWorkflow(definition.ID), "")
+	var bound execution.WorkflowTurnBinding
+	if sourceChat.HiddenFromWakerHistory {
+		bound, err = s.BindWorkflowTurn(ctx, accepted.Chat, sourceExecution.ID, workinput.SelectWorkflow(definition.ID))
+	} else {
+		bound, err = s.BindLocalWorkflowTurn(ctx, accepted.Chat, sourceExecution.ID, workinput.SelectWorkflow(definition.ID), "")
+	}
 	if err != nil || bound.Capability == nil {
 		t.Fatalf("workflow binding: %+v %v", bound, err)
 	}

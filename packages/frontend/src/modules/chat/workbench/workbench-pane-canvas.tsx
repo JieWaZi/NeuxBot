@@ -32,6 +32,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/shared/ui/context-menu";
+import { useSceneTabMotion } from "@/shared/ui/use-scene-tab-motion";
 
 import type { WorkbenchTab } from "./workbench-model";
 import type {
@@ -121,6 +122,7 @@ export function WorkbenchPaneTabStrip({
   onSplit,
 }: PaneTabStripProps) {
   const { t } = useTranslation("chat");
+  const trackRef = useSceneTabMotion();
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const focusContext = useRef({ active, paneId: pane.id, scopeKey });
   const pendingCloseFocus = useRef<{
@@ -208,17 +210,23 @@ export function WorkbenchPaneTabStrip({
   };
   return (
     <div
+      ref={trackRef}
       className="shell-header-tab-track"
       role="region"
       aria-label={t("workbench.tabs")}
       data-workbench-pane-scroll={pane.id}
     >
       <div
-        className="workbench-pane-tabs"
+        className="shell-header-tab-list workbench-pane-tabs"
         role="tablist"
         aria-label={t("workbench.tabs")}
         data-workbench-pane-tabs={pane.id}
       >
+        <span
+          className="shell-header-tab-highlight"
+          data-scene-tab-highlight
+          aria-hidden="true"
+        />
         {ordered.map((tab) => {
           const Icon = tabIcon(tab.kind);
           const title =
@@ -234,6 +242,7 @@ export function WorkbenchPaneTabStrip({
                 <div
                   className="shell-header-tab"
                   data-selected={selected || undefined}
+                  data-scene-tab-item
                   draggable
                   onDragStart={(event) => {
                     draggedTabId.current = tab.id;
@@ -324,6 +333,7 @@ export function WorkbenchPaneTabStrip({
         <div
           className="flex shrink-0 items-center"
           data-workbench-pane-trailing
+          data-scene-tab-trailing
         >
           {trailing}
         </div>

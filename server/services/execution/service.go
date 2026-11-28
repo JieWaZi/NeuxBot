@@ -32,6 +32,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
+	"github.com/JieWaZi/NeuxBot/server/services/workticket"
 )
 
 // Service 是 Chat、团队、工作流、自动任务和 IM 共用的执行接口。
@@ -108,6 +109,8 @@ type Core interface {
 	ChatGroupPreparer
 	// OccupiedChatIDs 返回仍有执行或文件收尾所有者的聊天。
 	OccupiedChatIDs() []string
+	// WaitForChatIdle waits on the current source Chat owner without acquiring the seat.
+	WaitForChatIdle(ctx context.Context, chatID string) error
 }
 
 // service 是 Execution Core 的唯一实现。
@@ -122,6 +125,10 @@ type service struct {
 	systemSkillDirectory string
 	// agentBindings 提供伙伴当前普通业务能力的领域绑定。
 	agentBindings func(models.Chat, string, []string, string, string) []capability.Binding
+	// conversationRuleBindings 仅为宿主认定的用户交办入口签发规则管理。
+	conversationRuleBindings func(context.Context, models.Chat, string, WorkOptions, string) []capability.Binding
+	// automaticReportBinding 为真实自动运行的负责人签发当前回合的投递权限。
+	automaticReportBinding func(context.Context, models.Chat, string, string) (capability.Binding, error)
 	// resourceManagementBindings 为已核验的本地聊天签发资源管理能力。
 	resourceManagementBindings func(models.Chat, string, func(context.Context, string) error) []capability.Binding
 	// validateIntent 在首发和续发接纳前校验领域持久约束。
@@ -146,6 +153,14 @@ type service struct {
 	nativeResources sync.Map
 	// journal 读写 Chat 权威事实、窄投影和 committed SSE。
 	journal chatservice.Journal
+	// workTickets 管理已接纳工单、尝试和报告结算。
+	workTickets *workticket.Service
+	// resolveDelegationTarget 在宿主分配独立目标工作源，不沿用父单的目录。
+	resolveDelegationTarget DelegationTargetResolver
+	// resolveEventRule 验证工单可引用的已观察事件和等待授权。
+	resolveEventRule WorkTicketEventRuleResolver
+	// wakeDelegations 唤醒持久委派启动和直接回件消费。
+	wakeDelegations func()
 	// dormantChats 批量建立尚无消息和执行的独立 Chat。
 	dormantChats dormantChatCreator
 	// wakerController 读取并验证伙伴。
@@ -210,6 +225,10 @@ type Config struct {
 	AgentBinary string
 	// AgentBindings 按伙伴、目录与受信工作来源签发普通能力。
 	AgentBindings func(models.Chat, string, []string, string, string) []capability.Binding
+	// ConversationRuleBindings 按真实主体与执行配置签发本轮定时规则管理工具。
+	ConversationRuleBindings func(context.Context, models.Chat, string, WorkOptions, string) []capability.Binding
+	// AutomaticReportBinding 为冻结的自动运行提供发言工具。
+	AutomaticReportBinding func(context.Context, models.Chat, string, string) (capability.Binding, error)
 	// ResourceManagementBindings 根据当前伙伴签发技能和 MCP 管理能力，确认由宿主处理。
 	ResourceManagementBindings func(models.Chat, string, func(context.Context, string) error) []capability.Binding
 	// ValidateIntent 校验入口无关的领域接纳约束；为空时不增加额外限制。
@@ -228,6 +247,14 @@ type Config struct {
 	RuntimeSummaries []agent.RuntimeSummary
 	// Journal 读写 Chat 权威事实和可重建投影。
 	Journal chatservice.Journal
+	// WorkTickets 保存显式交办的业务责任并核验工作报告。
+	WorkTickets *workticket.Service
+	// ResolveDelegationTarget 将本地伙伴或团队身份约束到独立受管工作来源。
+	ResolveDelegationTarget DelegationTargetResolver
+	// ResolveEventRule 核对工单主体的真实事件规则及来源授权。
+	ResolveEventRule WorkTicketEventRuleResolver
+	// WakeDelegations 唤醒持久委派协调器。
+	WakeDelegations func()
 	// DormantChats 批量建立团队首发所需的独立空闲 Chat。
 	DormantChats dormantChatCreator
 	// Wakers 读取并验证伙伴。
@@ -332,18 +359,32 @@ func New(config Config) (Core, error) {
 		}
 	}
 	registry := newExecutionRegistry()
+	registry.recordWatchdogStop = func(chatID string, stop eventlog.WatchdogStopRequestedData) error {
+		_, err := config.Journal.AppendExecutionFacts(context.Background(), chatID, []eventlog.AppendInput{{
+			Type: constants.ChatEventTypeExecutionWatchdogStopRequested, MessageID: stop.ExecutionID, ExecutionID: stop.ExecutionID, Data: marshalData(stop),
+		}})
+		return err
+	}
+	elicitations := newElicitationCoordinator(config.Journal, config.Events)
+	elicitations.pauseWatchdog = registry.pauseWatchdog
 	return &service{
 		agent:                      config.Agent,
 		events:                     config.Events,
 		agentEndpoint:              config.AgentEndpoint,
 		systemSkillDirectory:       systemSkillDirectory,
 		agentBindings:              config.AgentBindings,
+		conversationRuleBindings:   config.ConversationRuleBindings,
+		automaticReportBinding:     config.AutomaticReportBinding,
 		resourceManagementBindings: config.ResourceManagementBindings,
 		coreMemory:                 config.CoreMemory,
 		validateIntent:             config.ValidateIntent,
 		bindWorkflowTurn:           config.BindWorkflowTurn,
 		bindLocalWorkflowTurn:      config.BindLocalWorkflowTurn,
 		accounts:                   config.Accounts,
+		workTickets:                config.WorkTickets,
+		resolveDelegationTarget:    config.ResolveDelegationTarget,
+		resolveEventRule:           config.ResolveEventRule,
+		wakeDelegations:            config.WakeDelegations,
 		acquireTeamChatInput:       config.AcquireTeamChatInput,
 		threads:                    config.Threads,
 		resolveAccount:             config.ResolveAccount,
@@ -368,7 +409,7 @@ func New(config Config) (Core, error) {
 		executions:          registry,
 		createRequests:      newCreateRequestRegistry(),
 		approvals:           newApprovalCoordinator(config.Journal),
-		elicitations:        newElicitationCoordinator(config.Journal, config.Events),
+		elicitations:        elicitations,
 	}, nil
 }
 

@@ -1952,6 +1952,19 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  MainConversationProjectRequired: {
+    code: 40000007201,
+    en: [
+      {
+        text: "specify an available project or an absolute working directory, then resend",
+      },
+    ],
+    zh: [
+      {
+        text: "请指定一个可用的项目或绝对工作目录，然后重新发送",
+      },
+    ],
+  },
   ManagedWorkspaceError: {
     code: 50000000033,
     en: [
@@ -3024,6 +3037,242 @@ export const statusErrorCatalog = {
       },
     ],
   },
+  RuntimeWatchdogElapsed: {
+    code: 40800009401,
+    en: [
+      {
+        text: "The execution reached its time limit. The host requested a stop. ",
+      },
+      {
+        if: "Confirmed",
+        then: [
+          {
+            text: "The agent confirmed the stop.",
+          },
+        ],
+        else: [
+          {
+            if: "Settled",
+            then: [
+              {
+                text: "No stop confirmation was received from the agent.",
+              },
+            ],
+            else: [
+              {
+                text: "Waiting for the agent to confirm.",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    zh: [
+      {
+        text: "执行已达到最长用时，宿主已请求停止。",
+      },
+      {
+        if: "Confirmed",
+        then: [
+          {
+            text: "智能体已确认停止。",
+          },
+        ],
+        else: [
+          {
+            if: "Settled",
+            then: [
+              {
+                text: "未收到智能体停止确认。",
+              },
+            ],
+            else: [
+              {
+                text: "等待智能体确认。",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  RuntimeWatchdogStall: {
+    code: 40800009402,
+    en: [
+      {
+        text: "The execution stopped making progress. The host requested a stop. ",
+      },
+      {
+        if: "Confirmed",
+        then: [
+          {
+            text: "The agent confirmed the stop.",
+          },
+        ],
+        else: [
+          {
+            if: "Settled",
+            then: [
+              {
+                text: "No stop confirmation was received from the agent.",
+              },
+            ],
+            else: [
+              {
+                text: "Waiting for the agent to confirm.",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    zh: [
+      {
+        text: "执行长时间没有进展，宿主已请求停止。",
+      },
+      {
+        if: "Confirmed",
+        then: [
+          {
+            text: "智能体已确认停止。",
+          },
+        ],
+        else: [
+          {
+            if: "Settled",
+            then: [
+              {
+                text: "未收到智能体停止确认。",
+              },
+            ],
+            else: [
+              {
+                text: "等待智能体确认。",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  RuntimeWatchdogTokenBudget: {
+    code: 40800009404,
+    en: [
+      {
+        text: "The execution reached its token budget. The host requested a stop. ",
+      },
+      {
+        if: "Confirmed",
+        then: [
+          {
+            text: "The agent confirmed the stop.",
+          },
+        ],
+        else: [
+          {
+            if: "Settled",
+            then: [
+              {
+                text: "No stop confirmation was received from the agent.",
+              },
+            ],
+            else: [
+              {
+                text: "Waiting for the agent to confirm.",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    zh: [
+      {
+        text: "执行已达到本轮 Token 预算，宿主已请求停止。",
+      },
+      {
+        if: "Confirmed",
+        then: [
+          {
+            text: "智能体已确认停止。",
+          },
+        ],
+        else: [
+          {
+            if: "Settled",
+            then: [
+              {
+                text: "未收到智能体停止确认。",
+              },
+            ],
+            else: [
+              {
+                text: "等待智能体确认。",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  RuntimeWatchdogToolLoop: {
+    code: 40800009403,
+    en: [
+      {
+        text: "The execution repeatedly called the same tool with the same input. The host requested a stop. ",
+      },
+      {
+        if: "Confirmed",
+        then: [
+          {
+            text: "The agent confirmed the stop.",
+          },
+        ],
+        else: [
+          {
+            if: "Settled",
+            then: [
+              {
+                text: "No stop confirmation was received from the agent.",
+              },
+            ],
+            else: [
+              {
+                text: "Waiting for the agent to confirm.",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    zh: [
+      {
+        text: "执行连续重复同一工具调用，宿主已请求停止。",
+      },
+      {
+        if: "Confirmed",
+        then: [
+          {
+            text: "智能体已确认停止。",
+          },
+        ],
+        else: [
+          {
+            if: "Settled",
+            then: [
+              {
+                text: "未收到智能体停止确认。",
+              },
+            ],
+            else: [
+              {
+                text: "等待智能体确认。",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
   RuntimeWorkspaceScopeUnsupported: {
     code: 40000007108,
     en: [
@@ -3577,6 +3826,45 @@ export const statusErrorCatalog = {
       },
       {
         text: " token 以内",
+      },
+    ],
+  },
+  WorkTicketAttemptUnavailable: {
+    code: 40900007212,
+    en: [
+      {
+        text: "this execution can no longer update the work ticket",
+      },
+    ],
+    zh: [
+      {
+        text: "这轮执行已无权更新工单",
+      },
+    ],
+  },
+  WorkTicketCannotContinue: {
+    code: 40900007211,
+    en: [
+      {
+        text: "the work ticket cannot continue or be stopped in its current state",
+      },
+    ],
+    zh: [
+      {
+        text: "工单当前无法继续或停止",
+      },
+    ],
+  },
+  WorkTicketNotFound: {
+    code: 40400007211,
+    en: [
+      {
+        text: "the work ticket does not exist in this conversation",
+      },
+    ],
+    zh: [
+      {
+        text: "当前会话没有这张工单",
       },
     ],
   },

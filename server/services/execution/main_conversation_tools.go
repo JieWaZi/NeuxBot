@@ -16,6 +16,8 @@ import (
 type MainConversationMessages interface {
 	WorkMessages(ctx context.Context, workChatID string, before int64, limit int) ([]models.MainConversationMessage, bool, error)
 	PublishWithReceipt(ctx context.Context, chatID, executionID, callKey, content, replyID string) (models.MainConversationMessage, bool, error)
+	PublishQuotedWithReceipt(ctx context.Context, chatID, executionID, callKey, content, replyID string) (models.MainConversationMessage, bool, error)
+	PublishReportWithReceipt(ctx context.Context, chatID, executionID, callKey, content, replyID string) (models.MainConversationMessage, bool, error)
 	Published(ctx context.Context, chatID, executionID, callKey string) (models.MainConversationMessage, bool, error)
 }
 
@@ -25,14 +27,11 @@ func mainConversationInstruction(bindings []capability.Binding) (agentapi.Instru
 		if binding.Operation == constants.ConversationMessagePostOperation {
 			return agentapi.Instruction{
 				Name: "Public conversation messages",
-				Content: "Publish complete messages with conversations.messages.post (conversations_messages_post over MCP). " +
-					"Each call delivers immediately to the same main conversation from either input view. " +
-					"For short answers, one post is enough. For longer work, publish a useful, self-contained finding or a change that affects the user's next decision as soon as you have it, then continue. " +
-					"Publish the finished result when ready. Use a structured question when you need the user's answer to proceed. " +
-					"While a question is pending, keep the turn open. Call interaction.questions.wait with its questionId. On completed=false, repeat the wait with the same ID until resolved. Continue from the actual answer. " +
-					"Keep reasoning, tool steps and routine progress in the work transcript. Give each message its own requestId. " +
-					"If its receipt is uncertain, look it up or retry with the original requestId and content. " +
-					"Read earlier public messages when needed via conversations.messages.list (conversations_messages_list over MCP).",
+				Content: "Use conversations.messages.post (conversations_messages_post over MCP) for the bound main conversation. The work transcript stays private. " +
+					"Answer main conversation inputs there and follow any input destination. Whatever started the turn, post results, findings or blockers meant for the main conversation within its authorized scope. " +
+					"For longer work that has not been acknowledged, post one short first-step message before the first slow operation. If the Router already acknowledged it, skip this greeting. When asked for multiple independent results, post each verified finding with its own evidence as soon as it is ready, before collecting the next. For five news items, make five separate posts, each with a title, significance, and source link. Do not hold the first four for the fifth or repeat the list at the end. Do not post reasoning, tool chatter, or empty progress. Use quoteReply on the post that answers the assigned input when a quote helps. " +
+					"Use a structured question when you need an answer. Keep the turn open and call interaction.questions.wait with its questionId. On completed=false, wait again with the same ID. " +
+					"Use a separate requestId per post. Recover uncertain receipts with the original requestId and content. Read earlier posts via conversations.messages.list.",
 			}, true
 		}
 	}
@@ -45,6 +44,7 @@ func MainConversationTools(workChatID, executionID, originalPublicMessageID stri
 		return nil
 	}
 	var attempted atomic.Bool
+	var posted atomic.Bool
 	markAttempt := func() { attempted.Store(true) }
 	post := capability.Binding{
 		Attempt:   markAttempt,
@@ -52,13 +52,19 @@ func MainConversationTools(workChatID, executionID, originalPublicMessageID stri
 		Call: func(ctx context.Context, req capability.Request) (capability.Result, error) {
 			markAttempt()
 			content, _ := req.Params["content"].(string)
-			msg, replayed, err := conversation.PublishWithReceipt(ctx, workChatID, executionID, req.RequestID, content, originalPublicMessageID)
+			quoteReply, _ := req.Params["quoteReply"].(bool)
+			publish := conversation.PublishWithReceipt
+			if quoteReply {
+				publish = conversation.PublishQuotedWithReceipt
+			}
+			msg, replayed, err := publish(ctx, workChatID, executionID, req.RequestID, content, originalPublicMessageID)
 			if util.HasStatusCode(err, status_error.CreateRequestConflict) {
 				return capability.Result{}, status_error.AgentCommandRequestConflict
 			}
 			if err != nil {
 				return capability.Result{}, err
 			}
+			posted.Store(true)
 			return publicMessageReceipt(msg.ID, replayed), nil
 		},
 		Receipt: func(ctx context.Context, key string) (capability.Result, error) {
@@ -75,12 +81,26 @@ func MainConversationTools(workChatID, executionID, originalPublicMessageID stri
 	return []ToolCapability{{
 		ID: constants.ConversationMessagesGuide, Name: "主会话消息", Bindings: []capability.Binding{publicHistoryBinding(workChatID, conversation), post},
 		publishFinal: func(ctx context.Context, answer func(context.Context) (string, error)) error {
-			if attempted.Load() || originalPublicMessageID == "" {
+			if posted.Load() || originalPublicMessageID == "" {
 				return nil
 			}
+			if attempted.Load() {
+				return status_error.RuntimeExecutionFailed
+			}
 			text, err := answer(ctx)
-			if err != nil || text == "" {
+			if err != nil {
 				return err
+			}
+			if text == "" {
+				if receipts, ok := conversation.(interface {
+					HasAutomaticTaskReceipt(context.Context, string, string) (bool, error)
+				}); ok {
+					found, err := receipts.HasAutomaticTaskReceipt(ctx, workChatID, executionID)
+					if found || err != nil {
+						return err
+					}
+				}
+				return status_error.RuntimeExecutionFailed
 			}
 			// 宿主保留键保证同一回合的直接答复只投递一次。
 			_, _, err = conversation.PublishWithReceipt(ctx, workChatID, executionID, "\x00final-answer", text, originalPublicMessageID)

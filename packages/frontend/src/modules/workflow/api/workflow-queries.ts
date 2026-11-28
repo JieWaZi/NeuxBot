@@ -22,6 +22,7 @@ export {
   getWorkflowInstanceOptions,
   getWorkflowInstanceQueryKey,
   cancelWorkflowRunMutation,
+  retryWorkflowConclusionMutation,
   answerWorkflowHumanMutation,
   sendWorkflowCreationMessageMutation,
   createWorkflowAnnotationMutation,

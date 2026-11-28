@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { useVisibleScene } from "@/shared/api/chat-reading";
 
@@ -15,7 +16,8 @@ export function useChatMessageLocator({
   hasEarlierMessages = false,
   onLoadEarlier,
   onProgrammaticScroll,
-  inlineReplyFeedback = false,
+  inlineReplyFeedback,
+  messageLookup = false,
 }: {
   viewport: RefObject<HTMLDivElement | null>;
   active: boolean;
@@ -28,7 +30,8 @@ export function useChatMessageLocator({
   hasEarlierMessages?: boolean;
   onLoadEarlier: () => Promise<boolean | "unavailable" | undefined>;
   onProgrammaticScroll: (top: number) => void;
-  inlineReplyFeedback?: boolean;
+  inlineReplyFeedback?: "assistant" | "user";
+  messageLookup?: boolean;
 }) {
   const sceneVisible = useVisibleScene();
   const { t } = useTranslation(["workBoard", "chat", "common"]);
@@ -159,17 +162,26 @@ export function useChatMessageLocator({
     requestedInteractionId,
     requestedInteractionScope,
   ]);
+  const inlineActionClassName =
+    inlineReplyFeedback === "user"
+      ? "text-user-message-content hover:text-user-message-content active:text-user-message-content"
+      : undefined;
   const feedback =
     active && sceneVisible && messageId && status && status !== "positioned" ? (
       <div
         role="status"
         className={
           inlineReplyFeedback
-            ? "text-user-message-content/75 type-ui mb-1 flex flex-wrap items-center gap-x-2"
+            ? cn(
+                "type-ui mb-1 flex flex-wrap items-center gap-x-2",
+                inlineReplyFeedback === "user"
+                  ? "text-user-message-content/75"
+                  : "text-content-secondary",
+              )
             : "text-content-muted type-ui flex shrink-0 items-center gap-3 px-6 py-2"
         }
       >
-        {locatingReply
+        {locatingReply || messageLookup
           ? t(
               {
                 loading: "chat:locatingReply",
@@ -190,11 +202,7 @@ export function useChatMessageLocator({
           <Button
             size="sm"
             variant={inlineReplyFeedback ? "plain" : "ghost"}
-            className={
-              inlineReplyFeedback
-                ? "text-user-message-content hover:text-user-message-content active:text-user-message-content"
-                : undefined
-            }
+            className={inlineActionClassName}
             onClick={() => setBatch((value) => value + 1)}
           >
             {t(
@@ -209,11 +217,7 @@ export function useChatMessageLocator({
           <Button
             size="sm"
             variant={inlineReplyFeedback ? "plain" : "ghost"}
-            className={
-              inlineReplyFeedback
-                ? "text-user-message-content hover:text-user-message-content active:text-user-message-content"
-                : undefined
-            }
+            className={inlineActionClassName}
             onClick={cancelReplyLocation}
           >
             {t(status === "loading" ? "common:cancel" : "common:close")}

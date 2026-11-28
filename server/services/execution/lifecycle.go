@@ -24,6 +24,12 @@ type activeExecution struct {
 	submissionID string
 	// cancel 结束 Runtime 运行使用的 Context。
 	cancel context.CancelFunc
+	// context 检查该执行是否已经收到取消信号。
+	context context.Context
+	// watchdog 仅在受巡检的原生输入耐久接纳后登记。
+	watchdog *watchdogAttempt
+	// released is closed when this exact owner releases the source input seat.
+	released chan struct{}
 }
 
 // executionSettlement 记录同一后台所有者的文件冻结与最终退出屏障，不复制业务状态。
@@ -70,13 +76,20 @@ type executionRegistry struct {
 	waitGroup sync.WaitGroup
 	// started 表示注册表已经绑定进程根 Context。
 	started bool
+	// watchdogPolicy 是宿主固定的巡检条件。
+	watchdogPolicy watchdogPolicy
+	// watchdogNow 提供巡检和执行事件共用的单调时钟。
+	watchdogNow func() time.Time
+	// recordWatchdogStop 在取消确切尝试前耐久保存巡检依据。
+	recordWatchdogStop func(string, eventlog.WatchdogStopRequestedData) error
 }
 
 // newExecutionRegistry 创建尚未绑定进程生命周期的执行注册表。
 func newExecutionRegistry() *executionRegistry {
 	return &executionRegistry{
 		active: make(map[string]activeExecution), settling: make(map[string]map[string]*executionSettlement),
-		pendingStops: make(map[submissionStopKey]*time.Timer),
+		pendingStops:   make(map[submissionStopKey]*time.Timer),
+		watchdogPolicy: defaultWatchdogPolicy(), watchdogNow: time.Now,
 	}
 }
 
@@ -89,6 +102,14 @@ func (r *executionRegistry) start(ctx context.Context) {
 	}
 	r.lifecycleContext, r.lifecycleCancel = context.WithCancel(ctx)
 	r.started = true
+	if r.recordWatchdogStop != nil {
+		lifecycle := r.lifecycleContext
+		r.waitGroup.Add(1)
+		go func() {
+			defer r.waitGroup.Done()
+			r.watchExecutions(lifecycle)
+		}()
+	}
 }
 
 // close 取消全部执行并等待后台流程完成。
@@ -142,6 +163,8 @@ func (r *executionRegistry) reserve(
 		executionID:  executionID,
 		submissionID: submissionID,
 		cancel:       cancel,
+		context:      executionContext,
+		released:     make(chan struct{}),
 	}
 	return executionContext, nil
 }
@@ -163,9 +186,7 @@ func (r *executionRegistry) launch(
 func (r *executionRegistry) release(chatID string, executionID string) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	if active, exists := r.active[chatID]; exists && active.executionID == executionID {
-		delete(r.active, chatID)
-	}
+	r.releaseActive(chatID, executionID)
 	if settlement, exists := r.settling[chatID][executionID]; exists {
 		settlement.cancel()
 		delete(r.settling[chatID], executionID)
@@ -224,6 +245,38 @@ func (m *service) IsExecutionActive(chatID, executionID string) bool {
 	return exists && active.executionID == executionID
 }
 
+// WaitForChatIdle waits on the existing execution owner. The next Start still acquires the native input gate.
+func (m *service) WaitForChatIdle(ctx context.Context, chatID string) error {
+	r := m.executions
+	r.mutex.Lock()
+	active := r.active[chatID]
+	r.mutex.Unlock()
+	if active.released == nil {
+		return ctx.Err()
+	}
+	select {
+	case <-active.released:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// releaseActive removes only the matching owner while the registry mutex is held.
+func (r *executionRegistry) releaseActive(chatID, executionID string) {
+	if active, exists := r.active[chatID]; exists && active.executionID == executionID {
+		if active.watchdog != nil {
+			active.watchdog.mutex.Lock()
+			active.watchdog.finished = true
+			active.watchdog.mutex.Unlock()
+		}
+		delete(r.active, chatID)
+		if active.released != nil {
+			close(active.released)
+		}
+	}
+}
+
 // OccupiedChatIDs 读取现有占用与文件收尾登记，不影响正在执行的工作。
 func (m *service) OccupiedChatIDs() []string {
 	r := m.executions
@@ -244,9 +297,7 @@ func (r *executionRegistry) complete(
 ) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	if active, exists := r.active[chatID]; exists && active.executionID == executionID {
-		delete(r.active, chatID)
-	}
+	r.releaseActive(chatID, executionID)
 	if publish != nil {
 		publish()
 	}
@@ -419,6 +470,16 @@ func (m *service) finishExecution(
 		logx.Errorf("commit execution terminal: chat_id=%s execution_id=%s error=%v", chat.ID, execution.ID, err)
 		m.executions.complete(chat.ID, execution.ID, nil)
 		return
+	}
+	for _, tool := range tools {
+		if tool.finishTurn == nil {
+			continue
+		}
+		ctx, publish := events.HoldCommitEvents(context.Background())
+		defer publish()
+		if err := tool.finishTurn(ctx, finished.Status); err != nil {
+			logx.Warnf("settle work ticket turn: execution_id=%s error=%v", execution.ID, err)
+		}
 	}
 	m.executions.complete(chat.ID, execution.ID, func() {
 		m.journal.PublishTerminal(commit)

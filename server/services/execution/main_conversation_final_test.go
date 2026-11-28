@@ -27,8 +27,14 @@ type finalReplyPublisher struct {
 	writes []string
 	// reject 模拟公开发言被拒绝。
 	reject bool
+	// automaticReceipt 模拟预先提交的精确定时回执。
+	automaticReceipt bool
 	// notify 登记公开提交后唤醒订阅者的事件。
 	notify func()
+}
+
+func (p *finalReplyPublisher) HasAutomaticTaskReceipt(_ context.Context, chatID, executionID string) (bool, error) {
+	return p.automaticReceipt && chatID == p.chatID && executionID == p.executionID, nil
 }
 
 func (p *finalReplyPublisher) PublishWithReceipt(ctx context.Context, chatID, executionID, key, content, replyID string) (models.MainConversationMessage, bool, error) {
@@ -43,6 +49,10 @@ func (p *finalReplyPublisher) PublishWithReceipt(ctx context.Context, chatID, ex
 		events.AfterCommit(ctx, p.notify)
 	}
 	return models.MainConversationMessage{ID: "post"}, false, nil
+}
+
+func (p *finalReplyPublisher) PublishReportWithReceipt(ctx context.Context, chatID, executionID, key, content, replyID string) (models.MainConversationMessage, bool, error) {
+	return p.PublishWithReceipt(ctx, chatID, executionID, key, content, replyID)
 }
 
 func TestMainConversationFinalUsesOnlyUnpublishedAnswer(t *testing.T) {
@@ -61,13 +71,15 @@ func TestMainConversationFinalUsesOnlyUnpublishedAnswer(t *testing.T) {
 					publisher.reject = false
 				}
 			}
-			if err := grant.publishFinal(t.Context(), func(context.Context) (string, error) {
+			err := grant.publishFinal(t.Context(), func(context.Context) (string, error) {
 				if attempt != "none" {
 					t.Fatal("read an answer after an explicit send attempt")
 				}
 				return "final", nil
-			}); err != nil {
-				t.Fatal(err)
+			})
+			wantFailure := attempt == "denied" || attempt == "invalid"
+			if wantFailure && !errors.Is(err, status_error.RuntimeExecutionFailed) || !wantFailure && err != nil {
+				t.Fatalf("unexpected settlement error: %v", err)
 			}
 			if attempt == "none" && (len(publisher.writes) != 1 || publisher.writes[0] != "final") ||
 				attempt == "posted" && (len(publisher.writes) != 1 || publisher.writes[0] != "published") ||
@@ -75,6 +87,17 @@ func TestMainConversationFinalUsesOnlyUnpublishedAnswer(t *testing.T) {
 				t.Fatalf("unexpected deliveries: %v", publisher.writes)
 			}
 		})
+	}
+}
+
+func TestMainConversationFinalAcceptsACommittedRuleReceiptWithoutText(t *testing.T) {
+	publisher := &finalReplyPublisher{chatID: "source", executionID: "work", automaticReceipt: true}
+	grant := MainConversationTools("source", "work", "input", publisher)[0]
+	if err := grant.publishFinal(t.Context(), func(context.Context) (string, error) { return "", nil }); err != nil {
+		t.Fatal(err)
+	}
+	if len(publisher.writes) != 0 {
+		t.Fatalf("receipt-only turn posted duplicate text: %v", publisher.writes)
 	}
 }
 

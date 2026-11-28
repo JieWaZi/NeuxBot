@@ -374,6 +374,76 @@ func bindLocalWorkflowFixture(t *testing.T, s *Service, conversation models.Chat
 	return bound, call
 }
 
+func TestMainConversationWorkflowAuthoringRechecksTheWorkActor(t *testing.T) {
+	s, _ := workflowTestService(t)
+	conversation := consumerFixtureChat(t, "main-monitor-chat")
+	conversation.WakerID, conversation.HiddenFromWakerHistory = "fixture", true
+	active := true
+	s.authorizeMainWork = func(_ context.Context, chat models.Chat) error {
+		if chat.ID != conversation.ID || chat.WakerID != conversation.WakerID || !active {
+			return status_error.AgentOperationForbidden
+		}
+		return nil
+	}
+	foreign, err := s.CreateDefinition(t.Context(), CreateDefinitionCommand{RequestID: "foreign", Title: "Another partner's draft", CreationWakerID: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, call := bindLocalWorkflowFixture(t, s, conversation, nil)
+	if _, err := call("workflow.definitions.create", "draft", map[string]any{"title": "Monitor inventory"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range bound.Capability.Bindings {
+		if binding.Operation == "workflow.runs.start" || binding.Operation == "workflow.evidence.list" {
+			t.Fatalf("unselected chat received unrelated execution access: %s", binding.Operation)
+		}
+	}
+	discovered, err := call("workflow.definitions.list", "", nil)
+	if err != nil || len(discovered.Data.(map[string]any)["items"].([]map[string]any)) != 1 {
+		t.Fatalf("scope of workflow discovery: %+v %v", discovered, err)
+	}
+	if _, err := call("workflow.source.get", "", map[string]any{"workflowId": foreign.ID}); !errors.Is(err, status_error.AgentOperationForbidden) {
+		t.Fatalf("read source owned by another partner: %v", err)
+	}
+	active = false
+	if _, err := call("workflow.definitions.list", "", nil); !errors.Is(err, status_error.AgentOperationForbidden) {
+		t.Fatalf("revoked source could still inspect workflows: %v", err)
+	}
+	if _, err := call("workflow.definitions.create", "revoked", map[string]any{"title": "Revoked draft"}); !errors.Is(err, status_error.AgentOperationForbidden) {
+		t.Fatalf("revoked source could still create a draft: %v", err)
+	}
+}
+
+func TestLocalChatCreatesWorkflowDraftAndSavesAnImmutableRevision(t *testing.T) {
+	s, _ := workflowTestService(t)
+	conversation := consumerFixtureChat(t, "local-monitor-chat")
+	conversation.WakerID = "fixture"
+	_, call := bindLocalWorkflowFixture(t, s, conversation, nil)
+	params := map[string]any{"title": "Monitor inventory"}
+	first, err := call("workflow.definitions.create", "draft", params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := first.Data.(map[string]any)["definitionId"].(string)
+	replay, err := call("workflow.definitions.create", "draft", params)
+	if err != nil || id == "" || !replay.Replayed || replay.Data.(map[string]any)["definitionId"] != id {
+		t.Fatalf("draft receipt: first=%+v replay=%+v error=%v", first, replay, err)
+	}
+	if _, err := call("workflow.definitions.create", "draft", map[string]any{"title": "Another draft"}); err == nil {
+		t.Fatal("reusing the draft request for a different workflow succeeded")
+	}
+	definition, err := s.store.GetDefinition(t.Context(), id)
+	if err != nil || definition.CreationWakerID != conversation.WakerID || definition.CurrentRevisionID != "" {
+		t.Fatalf("draft was not created for the current partner: %+v %v", definition, err)
+	}
+	saved, err := call("workflow.source.save", "source", map[string]any{
+		"workflowId": id, "expectedRevisionId": "", "source": runtimeTestMeta + "return 'changed';",
+	})
+	if err != nil || saved.Data.(map[string]any)["revisionId"] == "" {
+		t.Fatalf("draft was not published: %+v %v", saved, err)
+	}
+}
+
 func TestLocalChatCanRepairAndRunAWorkflowWithoutAnAuthoringSession(t *testing.T) {
 	ctx := t.Context()
 	s, _ := workflowTestService(t)

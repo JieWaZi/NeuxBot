@@ -1,6 +1,10 @@
 package capability
 
-import "github.com/JieWaZi/NeuxBot/server/constants"
+import (
+	"strings"
+
+	"github.com/JieWaZi/NeuxBot/server/constants"
+)
 
 // mainConversationOperations defines the two commands available to a worker with a public addressee.
 func mainConversationOperations() []Operation {
@@ -26,9 +30,10 @@ func mainConversationOperations() []Operation {
 	}
 
 	post := operation(constants.ConversationMessagePostOperation,
-		"Publish one complete message to the public conversation bound to this work.",
+		"Send one short user-facing message to the bound conversation now. For longer work, acknowledge before the first slow operation unless already acknowledged. Post each independently useful, verified finding before searching for the next; do not wait for the end of the turn. Keep private tool steps in the work conversation. Set quoteReply to quote the input assigned by the host.",
 		constants.AgentCLIEffectMutation, constants.AgentCLICompletionImmediate, constants.ConversationMessagesGuide,
-		Field{Name: "content", Required: true, Schema: map[string]any{"type": "string", "minLength": 1, "pattern": `\S`}})
+		Field{Name: "content", Required: true, Schema: map[string]any{"type": "string", "minLength": 1, "pattern": `\S`}},
+		Field{Name: "quoteReply", Schema: map[string]any{"type": "boolean"}})
 	post.OutputSchema = map[string]any{
 		"type": "object", "additionalProperties": false, "required": []string{"messageId"},
 		"properties": map[string]any{"messageId": map[string]any{"type": "string"}},
@@ -43,5 +48,7 @@ var mainConversationLabels = map[string]string{
 
 // RequiresExecutionID pins public messages and external effects to the turn which originated them.
 func (o Operation) RequiresExecutionID() bool {
-	return o.Effect == constants.AgentCLIEffectExternal || o.ID == constants.ConversationMessagePostOperation
+	return o.Effect == constants.AgentCLIEffectExternal || o.ID == constants.ConversationMessagePostOperation ||
+		o.ID == constants.WorkTicketReportOperation || o.ID == constants.WorkTicketDelegateOperation ||
+		strings.HasPrefix(o.ID, "routine.rules.")
 }

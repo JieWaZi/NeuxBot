@@ -3,6 +3,7 @@ import { getChannelOptions } from "@/shared/api/generated/@tanstack/react-query.
 import {
   sendMainConversationMessage,
   sendMainConversationSourceMessage,
+  setMainConversationSourceModel,
 } from "@/shared/api/generated/sdk.gen";
 import type { GetMainConversationSourceResponse } from "@/shared/api/generated/types.gen";
 import { applicationErrorKey } from "@/shared/api/error-presentation";
@@ -10,30 +11,43 @@ import { ApiError } from "@/shared/api/errors";
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import { refreshQueryFromEvent } from "@/shared/api/use-query-events";
 import {
+  authorizedSourceChat,
   mainConversationOptions,
   sourceHistoryOptions,
   sourceScopeOptions,
   conversationSubmissionKey,
   type ConversationSubject,
+  type PendingMainConversationInput,
   type PublicMessage,
 } from "../api/main-conversation";
 import {
+  mainConversationInputId,
   mainConversationUserPreview,
+  pendingMainConversationMessage,
   type MainConversationSubmission,
 } from "../model/main-conversation-submission";
-import type { ChatReplyReference } from "../runtime/chat-projection";
+import type {
+  BotChatMessage,
+  ChatReplyReference,
+} from "../runtime/chat-projection";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
 import { ChatComposerPanel } from "./chat-composer-panel";
+import { dismissExecutionFailure } from "./chat-error-card";
 
 type Props = {
   subject: ConversationSubject;
   conversationId?: string;
   reply?: ChatReplyReference;
+  contextReplyId?: string;
+  replyHasTicket?: boolean;
   setReply?: (reply: ChatReplyReference | undefined) => void;
   /** 公开输入引用的原工作，或当前正在查看的工作会话。 */
   replySourceId?: string;
   workChatId?: string;
+  privateContinuation?: boolean;
   sourceChat?: GetMainConversationSourceResponse["chat"];
+  sourceModel?: string;
+  executionFailure?: BotChatMessage;
   codeReferenceRequest?: ChatCodeReference;
   active: boolean;
   ready: boolean;
@@ -45,10 +59,15 @@ export function MainConversationComposer({
   subject,
   conversationId,
   reply,
+  contextReplyId,
+  replyHasTicket = false,
   setReply = clearNoReply,
   replySourceId,
   workChatId,
+  privateContinuation = false,
   sourceChat,
+  sourceModel,
+  executionFailure,
   codeReferenceRequest,
   active,
   ready,
@@ -61,6 +80,9 @@ export function MainConversationComposer({
     staleTime: Infinity,
   });
   const chat = sourceChat ?? source.data;
+  const sessionSource = sourceId
+    ? authorizedSourceChat(sourceId, chat, source.error)
+    : undefined;
   const isTeam = subject.subjectType === "team";
   const team = useQuery({
     ...getChannelOptions({ path: { channelId: subject.subjectId } }),
@@ -74,23 +96,51 @@ export function MainConversationComposer({
   const scopeKey = workChatId
     ? `source:${workChatId}`
     : `main:${subject.subjectType}:${subject.subjectId}`;
+  const updateModel = useMutation({
+    scope: { id: scopeKey },
+    mutationFn: async ({
+      chatId,
+      model,
+    }: {
+      chatId: string;
+      model: string;
+    }) => {
+      await setMainConversationSourceModel({
+        path: { ...subject, workChatId: chatId },
+        body: { model },
+        throwOnError: true,
+      });
+      await refreshQueryFromEvent(
+        client,
+        sourceHistoryOptions(subject, chatId).queryKey,
+      );
+    },
+  });
   const send = useMutation({
     mutationKey: conversationSubmissionKey(subject),
     mutationFn: async ({
-      request: { message, submissionId, replyId },
+      request: { message, submissionId, replyId, historySourceChatId },
       preview,
     }: MainConversationSubmission) => {
       const { queryKey } = mainConversationOptions(subject);
+      const sourceKey = workChatId
+        ? sourceHistoryOptions(subject, workChatId).queryKey
+        : undefined;
       let receipt: PublicMessage | undefined;
+      let queued: PendingMainConversationInput | undefined;
       try {
         if (workChatId) {
-          await sendMainConversationSourceMessage(
+          const response = await sendMainConversationSourceMessage(
             withLocalErrorSurface({
               path: { ...subject, workChatId },
+              ...(historySourceChatId
+                ? { query: { switchSession: true } }
+                : {}),
               body: { ...message, submissionId, replyToMessageId: replyId },
               throwOnError: true,
             }),
           );
+          queued = response.data.queuedInput;
           // 来源回执确认原输入，但公开记录的顺序仍由主会话读取提供。
           if (preview?.id && !preview.id.startsWith("submission:"))
             receipt = preview;
@@ -102,33 +152,104 @@ export function MainConversationComposer({
                 message,
                 submissionId,
                 replyToMessageId: replyId,
+                ...(historySourceChatId ? { historySourceChatId } : {}),
               },
               throwOnError: true,
             }),
           );
           receipt = response.data.message;
+          queued = response.data.queuedInput;
         }
       } catch (error) {
-        // 公开历史只返回已由工作日志接纳的用户消息，可以确认丢失的 HTTP 回执。
-        const committed =
-          preview?.id &&
-          client
-            .getQueryData(queryKey)
-            ?.pages.flatMap((page) => page.messages ?? [])
-            .find((row) => row.id === preview.id);
-        if (committed) return { receipt: committed, historyUpdates: 0 };
-        throw error;
+        if (sourceKey && privateContinuation) {
+          const pages = client.getQueryData(sourceKey)?.pages;
+          if (
+            pages?.some(({ resources }) =>
+              resources?.some((item) => item.submissionId === submissionId),
+            )
+          )
+            return { historyUpdates: 0 };
+          const inputId = await mainConversationInputId(
+            conversationId,
+            submissionId,
+          );
+          queued = pages?.[0]?.pendingInputs?.find(
+            (input) => input.id === inputId,
+          );
+        } else {
+          const pages = client.getQueryData(queryKey)?.pages;
+          const committed = preview?.id
+            ? pages
+                ?.flatMap((page) => page.messages ?? [])
+                .find((row) => row.id === preview.id)
+            : undefined;
+          if (committed) return { receipt: committed, historyUpdates: 0 };
+          queued = pages?.[0]?.pendingInputs?.find(
+            (input) => input.id === preview?.id,
+          );
+        }
+        if (!queued) throw error;
+      }
+      if (queued) {
+        const input = queued;
+        if (sourceKey && input.privateSource) {
+          client.setQueryData(sourceKey, (current) => {
+            if (!current) return current;
+            const first = current.pages[0];
+            if (
+              !first ||
+              first.pendingInputs?.some(({ id }) => id === input.id)
+            )
+              return current;
+            return {
+              ...current,
+              pages: [
+                {
+                  ...first,
+                  pendingInputs: [...(first.pendingInputs ?? []), input],
+                },
+                ...current.pages.slice(1),
+              ],
+            };
+          });
+        } else {
+          receipt = pendingMainConversationMessage(input, conversationId);
+          client.setQueryData(queryKey, (current) => {
+            if (!current) return current;
+            const first = current.pages[0];
+            if (
+              !first ||
+              current.pages.some((page) =>
+                page.messages?.some((row) => row.id === input.id),
+              ) ||
+              first.pendingInputs?.some((row) => row.id === input.id)
+            )
+              return current;
+            return {
+              ...current,
+              pages: [
+                {
+                  ...first,
+                  pendingInputs: [...(first.pendingInputs ?? []), input],
+                },
+                ...current.pages.slice(1),
+              ],
+            };
+          });
+        }
       }
       const historyUpdates =
         client.getQueryState(queryKey)?.dataUpdateCount ?? 0;
-      const affected = workChatId
-        ? [queryKey, sourceHistoryOptions(subject, workChatId).queryKey]
+      const affectedSource = workChatId ?? queued?.workChatId;
+      const affected = affectedSource
+        ? [queryKey, sourceHistoryOptions(subject, affectedSource).queryKey]
         : [queryKey];
-      await Promise.all(
+      const refresh = Promise.all(
         affected.map((key) =>
           refreshQueryFromEvent(client, key).catch(() => {}),
         ),
       );
+      if (!queued) await refresh;
       return { receipt, historyUpdates };
     },
   });
@@ -153,7 +274,7 @@ export function MainConversationComposer({
               ? {
                   runtimeId: chat.lastRuntimeId,
                   accountId: chat.lastAccountId,
-                  model: chat.lastModel,
+                  model: sourceModel || chat.lastModel,
                   reasoning: chat.lastReasoning,
                   fast: chat.lastFast,
                   contextWindow: chat.lastContextWindow,
@@ -162,39 +283,73 @@ export function MainConversationComposer({
               : undefined
         }
         isSendDisabled={
-          !ready || !wakerId || Boolean(sourceId && !chat) || send.isPending
+          !ready ||
+          !wakerId ||
+          Boolean(sourceId && !chat) ||
+          send.isPending ||
+          updateModel.isPending
+        }
+        onSourceModelChange={
+          workChatId && !isTeam
+            ? (model) => updateModel.mutate({ chatId: workChatId, model })
+            : undefined
         }
         conversation={{
           reply,
           setReply,
           source: chat,
+          sessionSource,
+          executionFailure,
           view: workChatId ? "source" : "main",
           fixedMember: isTeam,
         }}
+        workTicketTransfer={
+          active && !workChatId && conversationId
+            ? {
+                origin: { originKind: "main", originId: conversationId },
+                replyHasTicket,
+                refresh: () =>
+                  refreshQueryFromEvent(
+                    client,
+                    mainConversationOptions(subject).queryKey,
+                  ),
+              }
+            : undefined
+        }
         onAccepted={() => {}}
         prepareSubmission={(message) => {
           const submissionId = crypto.randomUUID();
+          const failureId =
+            executionFailure?.executionId || executionFailure?.id;
           const request = {
             message,
             submissionId,
-            replyId: reply?.messageId,
+            replyId: reply?.messageId ?? contextReplyId,
+            historySourceChatId: message.startNewSession
+              ? sessionSource?.id
+              : undefined,
           };
           let receipt:
             "rejected" | "preparation-failed" | "unknown" | undefined;
           return {
             submissionId,
+            confirmAccepted: () => {
+              if (failureId) dismissExecutionFailure(failureId);
+            },
             hasUnconfirmedReceipt: () => receipt === "unknown",
             canReturnToDraft: () => receipt === "preparation-failed",
             confirmRejected: () => !receipt || receipt === "rejected",
             accept: async (userMessage) => {
-              const preview = userMessage
-                ? await mainConversationUserPreview(
-                    conversationId,
-                    submissionId,
-                    userMessage,
-                    workChatId,
-                  )
-                : undefined;
+              const preview =
+                userMessage && !privateContinuation
+                  ? await mainConversationUserPreview(
+                      conversationId,
+                      submissionId,
+                      userMessage,
+                      workChatId,
+                      request.replyId,
+                    )
+                  : undefined;
               try {
                 await send.mutateAsync({ request, preview });
                 receipt = undefined;

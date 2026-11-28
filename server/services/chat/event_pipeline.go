@@ -381,9 +381,15 @@ func (p *queryIndexStore) renameChat(
 func (p *queryIndexStore) deleteChats(
 	ctx context.Context,
 	chatIDs []string,
+	preserve func(context.Context) error,
 	finalize func(context.Context) error,
 ) error {
 	return p.transactionController.Transaction(ctx, func(transactionContext context.Context) error {
+		if preserve != nil {
+			if err := preserve(transactionContext); err != nil {
+				return err
+			}
+		}
 		for _, chatID := range chatIDs {
 			if p.deleted != nil {
 				events.AfterCommit(transactionContext, func() { p.deleted(chatID) })

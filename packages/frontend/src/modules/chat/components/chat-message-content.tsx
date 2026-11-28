@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { Link, useInRouterContext } from "react-router-dom";
 import { cn } from "@/shared/lib/cn";
 import {
   MarkdownText,
@@ -150,10 +151,24 @@ function ChatLink({
   standalone,
   allowFileReferences,
   showImageLinks,
+  allowAutomaticTaskLinks,
 }: MarkdownLinkProps & {
   allowFileReferences: boolean;
   showImageLinks: boolean;
+  allowAutomaticTaskLinks: boolean;
 }) {
+  const inRouter = useInRouterContext();
+  if (
+    inRouter &&
+    allowAutomaticTaskLinks &&
+    /^\/automatic-tasks\/[A-Za-z0-9_-]{1,32}$/.test(href)
+  ) {
+    return (
+      <Link to={href} className={className} title={title}>
+        {children}
+      </Link>
+    );
+  }
   const reference = allowFileReferences
     ? parseReference(href, "link")
     : /^https?:\/\//i.test(href)
@@ -242,6 +257,7 @@ function MarkdownBody({
           {...props}
           allowFileReferences={allowFileReferences}
           showImageLinks={isTerminal && !CustomImage}
+          allowAutomaticTaskLinks={role === "assistant"}
         />
       ),
       inlineCode: (props) => (
@@ -260,7 +276,7 @@ function MarkdownBody({
           ? { image: ChatImage }
           : {}),
     }),
-    [allowFileReferences, CustomImage, isTerminal],
+    [allowFileReferences, CustomImage, isTerminal, role],
   );
   return (
     <MarkdownText

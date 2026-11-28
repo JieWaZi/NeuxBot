@@ -13,6 +13,31 @@ import (
 
 // ReserveWork 对同一会话、伙伴和范围只预留一个服务端工作 Chat。
 func (c *MainConversationController) ReserveWork(ctx context.Context, convID, wakerID, scope string) (models.MainConversationWork, error) {
+	return c.reserveWork(ctx, convID, wakerID, scope, "")
+}
+
+// ActiveScopedSources 分页读取重启时仍占用执行槽的指定来源。
+func (c *MainConversationController) ActiveScopedSources(ctx context.Context, scope, after string, limit int) ([]models.Chat, error) {
+	db := controllerDB(ctx, c.db)
+	owned := db.Model(&models.MainConversationWork{}).Select("work_chat_id").Where("scope_key = ? AND work_chat_id > ?", scope, after)
+	var rows []models.Chat
+	if err := db.Select("id", "active_execution_id").Where("id IN (?) AND hidden_from_waker_history AND active_execution_id <> ''", owned).
+		Order("id").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, databaseError("list_active_main_scoped_sources", "", err)
+	}
+	return rows, nil
+}
+
+// ReserveExactWork 将已有持久派工身份与授权的来源工作绑定。
+func (c *MainConversationController) ReserveExactWork(ctx context.Context, convID, wakerID, scope, chatID string) (models.MainConversationWork, error) {
+	row, err := c.reserveWork(ctx, convID, wakerID, scope, chatID)
+	if err == nil && row.WorkChatID != chatID {
+		err = status_error.CreateRequestConflict
+	}
+	return row, err
+}
+
+func (c *MainConversationController) reserveWork(ctx context.Context, convID, wakerID, scope, chatID string) (models.MainConversationWork, error) {
 	db := controllerDB(ctx, c.db)
 	filter := models.MainConversationWork{ConversationID: convID, WakerID: wakerID, ScopeKey: scope}
 	var row models.MainConversationWork
@@ -23,7 +48,10 @@ func (c *MainConversationController) ReserveWork(ctx context.Context, convID, wa
 		return row, nil
 	}
 	row = filter
-	row.WorkChatID = util.New()
+	row.WorkChatID = chatID
+	if row.WorkChatID == "" {
+		row.WorkChatID = util.New()
+	}
 	res := db.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "conversation_id"}, {Name: "waker_id"}, {Name: "scope_key"}}, DoNothing: true}).Create(&row)
 	if res.Error != nil {
 		return row, databaseError("reserve_main_work", convID, res.Error)
@@ -85,6 +113,9 @@ func (c *channelController) ListMainWorkChatIDs(ctx context.Context, id string) 
 
 // releaseMainWorkChat 使来源资格随工作 Chat 一起失效，公开正文仍由主会话持有。
 func releaseMainWorkChat(db *gorm.DB, chatID string) error {
+	if err := db.Where("work_chat_id = ?", chatID).Delete(&models.MainConversationInput{}).Error; err != nil {
+		return databaseError("delete_main_work_inputs", chatID, err)
+	}
 	if err := db.Where("work_chat_id = ?", chatID).Delete(&models.MainConversationWork{}).Error; err != nil {
 		return databaseError("release_main_work_chat", chatID, err)
 	}

@@ -1407,6 +1407,8 @@ export const workspaceResources = {
       sessionTransitionTitle: "在当前聊天中继续",
       sessionTransitionDescription:
         "切换智能体或账号后，下一条消息会按你选择的方式继续当前聊天。完整聊天记录仍可查看。",
+      sourceSessionTransitionDescription:
+        "下一条消息如果接续原工作，新会话会按你选择的方式带上此前内容。完整记录仍可查看。",
       sessionRecoveryDescription:
         "当前智能体无法接着之前的对话继续。确认后，下一条消息会按你选择的方式继续当前聊天。完整聊天记录仍可查看。",
       sessionTransitionTurns: "携带最近对话轮数",

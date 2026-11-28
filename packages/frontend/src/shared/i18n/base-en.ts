@@ -1933,6 +1933,8 @@ export const baseEn = {
     },
     sessionTransitionDescription:
       "After switching agents or accounts, your next message will continue this chat using your chosen method. Your full chat history stays visible.",
+    sourceSessionTransitionDescription:
+      "If your next message continues the same work, the new session will carry over context as you choose. The full record remains available.",
     sessionRecoveryDescription:
       "This agent cannot continue from its previous chat. After you confirm, your next message will continue this chat using your chosen method. The full chat will remain available.",
     sessionTransitionTurns: "Recent turns to include",

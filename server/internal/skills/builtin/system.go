@@ -94,6 +94,7 @@ func Guide(id string) (string, error) {
 	files[constants.WakerProfileOptimizationGuide] = "partner-profile-optimization.md"
 	files["skills.management"] = "skill-management.md"
 	files["mcp.management"] = "mcp-management.md"
+	files["routine.rules"] = "automatic-tasks.md"
 	name, ok := files[id]
 	if !ok {
 		return "", status_error.AgentOperationForbidden

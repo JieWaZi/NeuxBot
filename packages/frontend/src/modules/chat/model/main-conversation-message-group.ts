@@ -5,45 +5,52 @@ export type MainConversationWork = NonNullable<
   GetMainConversationResponse["activeWork"]
 >[number];
 
-export type MainConversationAvatarActivity = "working" | "input" | "approval";
+export type MainConversationRequest = "input" | "approval";
+
+const messageTimeGapMs = 15 * 60 * 1000;
 
 export function mainConversationWorkRequest(work?: MainConversationWork) {
   if (work?.waitingElicitation) return "input";
   if (work?.waitingApproval) return "approval";
 }
 
-function turnKey(workChatId: string, wakerId: string, inputId: string) {
-  return JSON.stringify([workChatId, wakerId, inputId]);
-}
-
-function assistantTurn(row: PublicMessage) {
-  if (
-    row.role === "assistant" &&
-    row.id &&
-    row.sourceChatId &&
-    row.sourceWakerId &&
-    row.replyToMessageId
-  ) {
-    return turnKey(row.sourceChatId, row.sourceWakerId, row.replyToMessageId);
-  }
+function turnKeys(
+  chatId: string | undefined,
+  wakerId: string | undefined,
+  executionId: string | undefined,
+  inputId: string | undefined,
+) {
+  if (!chatId || !wakerId) return;
+  return {
+    execution: executionId && JSON.stringify([chatId, wakerId, executionId]),
+    input: inputId && JSON.stringify([chatId, wakerId, inputId]),
+  };
 }
 
 export function mainConversationMessageGroups(
   messages: PublicMessage[],
   activeWork: GetMainConversationResponse["activeWork"] = [],
+  pendingMainInputs?: ReadonlySet<string>,
 ) {
-  const repliesByTurn = new Map<
-    string,
-    { first: PublicMessage; last: PublicMessage }
-  >();
+  const lastReplyByExecution = new Map<string, PublicMessage>();
+  const lastReplyByInput = new Map<string, PublicMessage>();
+  const lastLegacyReplyByInput = new Map<string, PublicMessage>();
   const inputsById = new Map<string, PublicMessage>();
   const answeredInputs = new Set<string>();
   const turns = messages.map((row) => {
-    const turn = assistantTurn(row);
-    if (turn) {
-      const replies = repliesByTurn.get(turn);
-      if (replies) replies.last = row;
-      else repliesByTurn.set(turn, { first: row, last: row });
+    const turn =
+      row.role === "assistant" && row.id
+        ? turnKeys(
+            row.sourceChatId,
+            row.sourceWakerId,
+            row.forkExecutionId,
+            row.replyToMessageId,
+          )
+        : undefined;
+    if (turn?.execution) lastReplyByExecution.set(turn.execution, row);
+    if (turn?.input) {
+      lastReplyByInput.set(turn.input, row);
+      if (!turn.execution) lastLegacyReplyByInput.set(turn.input, row);
     }
     if (row.role === "user" && row.id && row.sourceChatId) {
       inputsById.set(row.id, row);
@@ -53,46 +60,67 @@ export function mainConversationMessageGroups(
     }
     return turn;
   });
-  const replyActivity = new Map<
-    PublicMessage,
-    MainConversationAvatarActivity
-  >();
   const inlineWork = new Map<PublicMessage, MainConversationWork>();
+  const waitingWork = new Map<PublicMessage, MainConversationWork>();
   const inputsWithWork = new Set<PublicMessage>();
   const trailingWork: MainConversationWork[] = [];
   for (const work of activeWork) {
-    const { workChatId, sourceWakerId, inputMessageId } = work;
+    const { workChatId, sourceWakerId, executionId, inputMessageId } = work;
     if (!workChatId) continue;
     const candidate = inputMessageId
       ? inputsById.get(inputMessageId)
       : undefined;
     const input =
       candidate?.sourceChatId === workChatId ? candidate : undefined;
-    const turn =
-      inputMessageId && sourceWakerId
-        ? turnKey(workChatId, sourceWakerId, inputMessageId)
-        : undefined;
-    const replies = turn ? repliesByTurn.get(turn) : undefined;
-    const request = mainConversationWorkRequest(work);
-    // 本轮动效留在首条发言，待处理卡片跟随本轮最后一条发言。
-    if (replies) replyActivity.set(replies.first, request ?? "working");
-    const anchor = replies?.last ?? input;
-    if (request && anchor) {
-      inlineWork.set(anchor, work);
-    } else if (request || (!replies && !work.hasPublicReply)) {
-      trailingWork.push(work);
-    } else {
+    if (!mainConversationWorkRequest(work)) {
+      if (input && executionId && !work.hasPublicReply)
+        waitingWork.set(input, work);
       continue;
     }
+    const turn = turnKeys(
+      workChatId,
+      sourceWakerId,
+      executionId,
+      inputMessageId,
+    );
+    const exactReply = turn?.execution
+      ? lastReplyByExecution.get(turn.execution)
+      : undefined;
+    const fallbackReply = turn?.input
+      ? (turn.execution ? lastLegacyReplyByInput : lastReplyByInput).get(
+          turn.input,
+        )
+      : undefined;
+    // 续跑报告可能指向原工单交办。只有缺少执行身份的记录按交办匹配。
+    const anchor = exactReply ?? fallbackReply ?? input;
+    if (anchor) inlineWork.set(anchor, work);
+    else trailingWork.push(work);
     if (input) inputsWithWork.add(input);
   }
 
+  let previousTime: Date | undefined;
   return {
     rows: messages.map((row, index) => {
+      const time = new Date(row.createdAt ?? 0);
+      const timestamp = time.getTime();
+      const validTime = Boolean(row.id) && timestamp > 0;
+      const startsTimeGroup =
+        validTime &&
+        (!previousTime ||
+          timestamp - previousTime.getTime() > messageTimeGapMs ||
+          (timestamp > previousTime.getTime() &&
+            time.toDateString() !== previousTime.toDateString()));
+      if (validTime) previousTime = time;
       const turn = turns[index];
-      const continued = Boolean(turn && turn === turns[index - 1]);
+      const previous = turns[index - 1];
+      const continued =
+        turn?.execution && previous?.execution
+          ? turn.execution === previous.execution
+          : Boolean(turn?.input && turn.input === previous?.input);
+      const waiting = waitingWork.get(row);
       return {
         row,
+        timeDivider: startsTimeGroup ? time : undefined,
         continued,
         showWorkRecord:
           row.role === "user" &&
@@ -100,12 +128,20 @@ export function mainConversationMessageGroups(
             row.id &&
             row.sequence &&
             row.sourceChatId &&
-            !row.failureCode &&
             !answeredInputs.has(row.id) &&
             !inputsWithWork.has(row),
           ),
         work: inlineWork.get(row),
-        replyActivity: replyActivity.get(row),
+        waitingWork: waiting,
+        awaitingReply:
+          row.role === "user" &&
+          Boolean(
+            row.id &&
+            !row.failureCode &&
+            !answeredInputs.has(row.id) &&
+            !inputsWithWork.has(row) &&
+            (waiting || pendingMainInputs?.has(row.id)),
+          ),
       };
     }),
     trailingWork,

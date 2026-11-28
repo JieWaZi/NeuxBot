@@ -55,7 +55,7 @@ type frame struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-var allowedTopics = map[string]bool{constants.MainConversationEventTopic: true, "reading": true, "work-board": true, "entities": true, "automatic-tasks": true, "im": true, "runtimes": true, "usage": true, "storage": true, "system": true, "chat": true, "team": true, "workflow": true, "account-login": true, "plugins": true, "resources": true, "knowledge": true, "workspace": true}
+var allowedTopics = map[string]bool{constants.MainConversationEventTopic: true, constants.WorkTicketEventTopic: true, "reading": true, "work-board": true, "entities": true, "automatic-tasks": true, "im": true, "runtimes": true, "usage": true, "storage": true, "system": true, "chat": true, "team": true, "workflow": true, "account-login": true, "plugins": true, "resources": true, "knowledge": true, "workspace": true}
 
 func decodeControl(data []byte) (control, error) {
 	var result control
@@ -94,6 +94,11 @@ func validResourceShape(topic string, resource eventhub.Resource) bool {
 	}
 	if topic == constants.MainConversationEventTopic {
 		return validMainConversationSubject(resource)
+	}
+	if topic == constants.WorkTicketEventTopic {
+		kind := constants.WorkTicketOrigin(resource.Kind)
+		return resource.ID != "" && len(resource.ID) <= 32 && resource.ParentID == "" &&
+			(kind == constants.WorkTicketOriginChat || kind == constants.WorkTicketOriginMain)
 	}
 	if resource.Kind == "global" {
 		return resource.ID == "" && resource.ParentID == "" && topic != "chat" && topic != "team" && topic != "workflow" && topic != "account-login" && topic != "workspace" && topic != "reading"

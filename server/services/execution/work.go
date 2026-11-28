@@ -22,7 +22,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
-	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
@@ -87,6 +86,8 @@ type runtimeSelection struct {
 	WorkspaceReadOnly bool
 	// SessionPolicy 决定本次是续接还是强制新建 Runtime Session。
 	SessionPolicy constants.RuntimeSessionPolicy
+	// HistorySourceChatID 将接力限制在确实更换智能体或账号的原工作来源。
+	HistorySourceChatID string
 	// HistoryTurns 是新原生会话携带的最近完整对话轮数。
 	HistoryTurns int
 	// HistoryMode 决定新会话使用近期对话还是隐藏交接内容。
@@ -141,6 +142,12 @@ type pendingMessage struct {
 	chatID string
 	// replyToMessageID 是客户端选中的同一 Chat 消息身份。
 	replyToMessageID string
+	// ticket 是用户明确选择的工单动作和调用入口核对的公开归属。
+	ticket WorkTicketInput
+	// ticketReference 仅保存由真实可引用消息解析出的工单。
+	ticketReference models.WorkTicket
+	// watchdogTicket 核对本轮工单尝试仍拥有执行授权。
+	watchdogTicket *workTicketTurn
 	// teamReplyThreadID 固定负责人队列回复所属的团队对话。
 	teamReplyThreadID string
 	// replyTarget 保存已核验的公开引用和本轮模型摘录。
@@ -161,6 +168,8 @@ type pendingMessage struct {
 	admission constants.ExecutionAdmission
 	// admissionBoundary 是调用方针对原输入的可选接纳边界。
 	admissionBoundary AdmissionBoundary
+	// beforeQueuedNativeCommit 在工作授权已经完成后，为耐久队列记录即将提交原生批次。
+	beforeQueuedNativeCommit func(context.Context) error
 	// toolCapabilities 保存上层入口为本次执行签发的短期内部能力。
 	toolCapabilities []ToolCapability
 	// workflowCreationSessionID 是创作页提供的工作流目标和记录归属。
@@ -329,6 +338,9 @@ func (m *service) startMessage(
 		if request.replyToMessageID != "" {
 			content = append(content, map[string]string{"replyToMessageId": request.replyToMessageID})
 		}
+		if request.ticket.Start {
+			content = append(content, map[string]bool{"startWork": true})
+		}
 		if len(request.messagePlugins) != 0 {
 			content = append(content, request.messagePlugins)
 		}
@@ -344,6 +356,9 @@ func (m *service) startMessage(
 			}
 			if receipt != nil {
 				if err := identity.ValidateReplay(receipt.SubmissionID, receipt.SubmissionHash, true); err != nil {
+					return AcceptedExecution{}, err
+				}
+				if err := m.confirmTicketReplay(ctx, request, *receipt); err != nil {
 					return AcceptedExecution{}, err
 				}
 				chat, err := m.journal.LoadExecutionChat(ctx, request.chatID)
@@ -374,10 +389,15 @@ func (m *service) startMessage(
 			return AcceptedExecution{}, status_error.BadRequest
 		}
 	}
+	if err := m.resolveWorkTicketReference(ctx, &request); err != nil {
+		return AcceptedExecution{}, err
+	}
 	if request.replyToMessageID != "" {
 		var target chatservice.ReplyTarget
 		var err error
-		if request.entryPoint == MainConversationSourceEntryPoint {
+		if request.ticketReference.ID != "" {
+			target, err = m.journal.ReadWorkTicketReplyTarget(ctx, request.chatID, request.replyToMessageID, request.entryPoint == MainConversationSourceEntryPoint)
+		} else if request.entryPoint == MainConversationSourceEntryPoint {
 			target, err = m.journal.ReadSourceReplyTarget(ctx, request.chatID, request.replyToMessageID)
 		} else if request.teamReplyThreadID == "" {
 			target, err = m.journal.ReadReplyTarget(ctx, request.chatID, request.replyToMessageID)
@@ -415,6 +435,9 @@ func (m *service) startMessage(
 			request.createChatID,
 			createRequestIdentity,
 		); err != nil || exists {
+			if err == nil {
+				err = m.confirmTicketReplay(ctx, request, replayed.Execution)
+			}
 			return replayed, err
 		}
 		if m.createRequests == nil || !m.createRequests.reserve(request.createChatID) {
@@ -427,6 +450,9 @@ func (m *service) startMessage(
 			request.createChatID,
 			createRequestIdentity,
 		); err != nil || exists {
+			if err == nil {
+				err = m.confirmTicketReplay(ctx, request, replayed.Execution)
+			}
 			return replayed, err
 		}
 	}
@@ -440,10 +466,26 @@ func (m *service) startMessage(
 	}
 	// 一次性生成本轮全部稳定标识，后续 JSONL、SQLite 查询索引和 Runtime 调用共用同一身份。
 	executionID := request.executionID
+	userMessageID := request.userMessageID
+	if request.ticket.Start || request.ticketReference.ID != "" {
+		submissionKey, chatID := request.submissionID, request.chatID
+		if isNew {
+			chatID = request.createChatID
+			if submissionKey == "" {
+				submissionKey = request.clientRequestID
+			}
+		}
+		identity := requestidempotency.Identity{ID: submissionKey}
+		if executionID == "" {
+			executionID = identity.ResourceID("work-ticket-execution", chatID)
+		}
+		if userMessageID == "" {
+			userMessageID = identity.ResourceID("work-ticket-input", chatID)
+		}
+	}
 	if executionID == "" {
 		executionID = util.New()
 	}
-	userMessageID := request.userMessageID
 	if userMessageID == "" {
 		userMessageID = util.New()
 	}
@@ -520,6 +562,9 @@ func (m *service) startMessage(
 			if err := identity.ValidateReplay(receipt.SubmissionID, receipt.SubmissionHash, true); err != nil {
 				return AcceptedExecution{}, err
 			}
+			if err := m.confirmTicketReplay(ctx, request, *receipt); err != nil {
+				return AcceptedExecution{}, err
+			}
 			chat, err := m.journal.LoadExecutionChat(ctx, request.chatID)
 			if err != nil {
 				return AcceptedExecution{}, err
@@ -539,8 +584,10 @@ func (m *service) startMessage(
 	if request.message.Actor == string(constants.ChannelMessageActorUser) && request.imReplyLinkID == "" {
 		var binding WorkflowTurnBinding
 		var err error
+		mainAuthoring := (request.entryPoint == MainConversationEntryPoint || request.entryPoint == MainConversationSourceEntryPoint) &&
+			(request.allowedAgentDomains == nil || slices.Contains(*request.allowedAgentDomains, "workflow"))
 		if m.bindLocalWorkflowTurn != nil && request.automaticRunID == "" &&
-			(!state.chat.HiddenFromWakerHistory || request.workflowCreationSessionID != "") {
+			(!state.chat.HiddenFromWakerHistory || request.workflowCreationSessionID != "" || mainAuthoring) {
 			binding, err = m.bindLocalWorkflowTurn(ctx, state.chat, executionID, request.message.Workflow, request.workflowCreationSessionID)
 			request.localWorkflowTools = binding.Capability != nil
 		} else if m.bindWorkflowTurn != nil {
@@ -581,32 +628,8 @@ func (m *service) startMessage(
 	}
 	// 普通续聊只在同一 Runtime 中沿用最近有效选择；已接纳配置的空值不再继承默认。
 	config := ExecutionConfiguration{Resolved: request.runtime.ConfigurationResolved, RuntimeID: request.runtime.RuntimeID, AccountID: request.runtime.AccountID, Model: request.runtime.Model, Reasoning: request.runtime.Reasoning, Fast: request.runtime.Fast, PermissionLevel: requiredPermissionLevel}
-	if !config.Resolved && !state.isNew && state.chat.LastRuntimeID == config.RuntimeID && state.lastExecutionID != "" {
-		if config.AccountID == "" {
-			config.AccountID = state.chat.LastAccountID
-			if config.AccountID == "" {
-				config.AccountID = constants.AiAccountSystemID
-			}
-		}
-		lastAccountID := state.chat.LastAccountID
-		if lastAccountID == "" {
-			lastAccountID = constants.AiAccountSystemID
-		}
-		if config.AccountID == lastAccountID {
-			if config.Model == "" {
-				config.Model = state.chat.LastModel
-			}
-			if config.Reasoning == "" && config.Model == state.chat.LastModel {
-				config.Reasoning = state.chat.LastReasoning
-			}
-			if config.Fast == nil {
-				config.Fast = state.chat.LastFast
-			}
-			if request.runtime.ContextWindow == "" {
-				request.runtime.ContextWindow = state.chat.LastContextWindow
-			}
-			config.Resolved = true
-		}
+	if !state.isNew && state.lastExecutionID != "" {
+		config, request.runtime.ContextWindow = inheritContinuationOptions(config, request.runtime.ContextWindow, state.chat)
 	}
 	config, err = m.resolveConfiguration(ctx, config, runtimeEnvironment)
 	if err != nil {
@@ -614,8 +637,26 @@ func (m *service) startMessage(
 	}
 	request.runtime.AccountID, request.runtime.Model, request.runtime.Reasoning, request.runtime.Fast = config.AccountID, config.Model, config.Reasoning, config.Fast
 	request.runtime.ConfigurationResolved = true
+	if request.runtime.HistorySourceChatID != "" {
+		account := state.chat.LastAccountID
+		if account == "" {
+			account = constants.AiAccountSystemID
+		}
+		// 派发时核对真实来源与执行配置。此前已接管同一切换的输入保留原生会话。
+		if request.runtime.HistorySourceChatID != state.chat.ID || state.chat.LastRuntimeID == "" ||
+			(state.chat.LastRuntimeID == request.runtime.RuntimeID && account == request.runtime.AccountID) {
+			request.runtime.SessionPolicy = constants.RuntimeSessionPolicyContinue
+			request.runtime.HistoryTurns = 0
+			request.runtime.HistoryMode = ""
+			request.runtime.SummaryModel = ""
+			request.runtime.SummaryReasoning = ""
+		}
+	}
 	if !constants.SelectablePermissionLevel(requiredPermissionLevel) {
 		return AcceptedExecution{}, status_error.BadRequest
+	}
+	if err := m.bindWorkTicket(ctx, state, &request, newExecutionIndex(state, request, executionID, userMessageID)); err != nil {
+		return AcceptedExecution{}, err
 	}
 	// 已有对话的活跃事实来自权威 JSONL；SQLite 只保存可重建查询投影，不能反向阻断新执行。
 	if !state.isNew && state.chat.ActiveExecutionID != "" {
@@ -703,6 +744,9 @@ func createRequestContent(request pendingMessage) []interface{} {
 	}
 	if request.create.profileOptimization {
 		content = append(content, map[string]bool{"profileOptimization": true})
+	}
+	if request.ticket.Start {
+		content = append(content, map[string]bool{"startWork": true})
 	}
 	if request.message.AttachmentOnly {
 		content = append(content, map[string]bool{"attachmentOnly": true})
@@ -1081,6 +1125,9 @@ func (m *service) resolveChatWorkspaceScope(ctx context.Context, input pendingCh
 	}
 	project, directories := projectScope.Project, projectScope.directories
 	// 项目工作范围必须整体可用；不能静默忽略失效的任何目录。
+	if err := projectScope.ValidateAvailable(); err != nil {
+		return resolvedChatWorkspace{}, err
+	}
 	authorizedDirectories := make([]string, 0, len(directories))
 	projectLinks := make([]workspace.ProjectLink, 0, len(directories))
 	projectSources := make([]eventlog.ProjectSourceSnapshot, 0, len(directories))
@@ -1104,9 +1151,6 @@ func (m *service) resolveChatWorkspaceScope(ctx context.Context, input pendingCh
 			EntryName:  entryName,
 			SourcePath: source.Path,
 		})
-		if !projectsource.Available(source) {
-			return resolvedChatWorkspace{}, status_error.ProjectSourceUnavailable
-		}
 		authorizedDirectories = append(authorizedDirectories, source.Path)
 		projectSources = append(projectSources, eventlog.ProjectSourceSnapshot{
 			EntryName:        entryName,
@@ -1116,9 +1160,6 @@ func (m *service) resolveChatWorkspaceScope(ctx context.Context, input pendingCh
 		if directory.IsDefault {
 			defaultWorkingDirectory = source.Path
 		}
-	}
-	if len(directories) == 0 || defaultWorkingDirectory == "" {
-		return resolvedChatWorkspace{}, status_error.ProjectSourceUnavailable
 	}
 	additionalDirectories := make([]string, 0, len(authorizedDirectories))
 	additionalDirectories = append(additionalDirectories, defaultWorkingDirectory)
@@ -1466,6 +1507,11 @@ func startedMessageEvents(
 	if request.replyTarget != nil {
 		reply = &request.replyTarget.Reference
 	}
+	var mainTriggerID string
+	if request.entryPoint == MainConversationEntryPoint && state.chat.HiddenFromWakerHistory && request.message.Actor == "user" {
+		// 主会话将公开输入身份用作本轮执行身份。来源内发送使用独立执行身份。
+		mainTriggerID = execution.ID
+	}
 	inputs := make([]eventlog.AppendInput, 0, 3)
 	if state.isNew {
 		inputs = append(inputs, eventlog.AppendInput{
@@ -1493,19 +1539,20 @@ func startedMessageEvents(
 			Type:      constants.ChatEventTypeUserMessageCreated,
 			MessageID: execution.UserMessageID,
 			Data: marshalData(eventlog.MessageCreatedData{
-				SubmissionID:      execution.SubmissionID,
-				Role:              constants.MessageRoleUser,
-				Actor:             request.message.Actor,
-				Content:           request.message.Text,
-				AttachmentOnly:    request.message.AttachmentOnly,
-				CodeReferenceOnly: request.message.CodeReferenceOnly,
-				ReplyTo:           reply,
-				Attachments:       attachments,
-				Plugins:           selectedPlugins,
-				Skills:            skills,
-				Connectors:        connectors,
-				CodeReferences:    codeReferences,
-				Workflow:          request.message.Workflow,
+				MainConversationTriggerID: mainTriggerID,
+				SubmissionID:              execution.SubmissionID,
+				Role:                      constants.MessageRoleUser,
+				Actor:                     request.message.Actor,
+				Content:                   request.message.Text,
+				AttachmentOnly:            request.message.AttachmentOnly,
+				CodeReferenceOnly:         request.message.CodeReferenceOnly,
+				ReplyTo:                   reply,
+				Attachments:               attachments,
+				Plugins:                   selectedPlugins,
+				Skills:                    skills,
+				Connectors:                connectors,
+				CodeReferences:            codeReferences,
+				Workflow:                  request.message.Workflow,
 			}),
 		},
 		eventlog.AppendInput{

@@ -73,6 +73,20 @@ type WorkflowRun struct {
 	ChatDeliveryError string `gorm:"not null;default:''" json:"-"`
 	// ChatSummaryFinishedAt 标记用户要求的总结补写已经完成。
 	ChatSummaryFinishedAt *int64 `json:"-"`
+	// ConclusionRequested 表示接纳时已经确定了整图结论的接收地址。
+	ConclusionRequested bool `gorm:"not null;default:false" json:"-"`
+	// ConclusionMainID 是冻结的主会话地址，普通会话回件沿用来源 Chat。
+	ConclusionMainID string `gorm:"size:32;not null;default:'';index:idx_workflow_main_origin,priority:1,where:conclusion_reply_id <> ''" json:"-"`
+	// ConclusionReplyID 是主会话中被回件引用的原交办，定时运行没有原交办。
+	ConclusionReplyID string `gorm:"size:32;not null;default:'';index:idx_workflow_main_origin,priority:2" json:"-"`
+	// ConclusionRecipient 保存定时运行冻结的收件主体。
+	ConclusionRecipient *MainConversationRecipient `gorm:"serializer:json;type:text" json:"-"`
+	// ConclusionPolicy 保存定时运行冻结的汇报策略。
+	ConclusionPolicy constants.AutomaticReportPolicy `gorm:"size:24;not null;default:''" json:"-"`
+	// ConclusionFinishedAt 是整图回件完成投递、静默结算或目标确认不可用的时间。
+	ConclusionFinishedAt *int64 `json:"-"`
+	// ConclusionDeliveryError 保留本次送达失败的业务错误码。
+	ConclusionDeliveryError string `gorm:"not null;default:''" json:"-"`
 	// SourceThreadID 是团队成员所属的原线程；伙伴独立对话为空。
 	SourceThreadID string `gorm:"size:32;index:idx_workflow_thread_stop,priority:1,where:source_workbench = false" json:"-"`
 	// SourceWakerID 是发起执行的负责人或成员。
@@ -84,7 +98,7 @@ type WorkflowRun struct {
 	// RootRunID 绑定调用树，统一限制全部后代的数量。
 	RootRunID string `gorm:"index;size:32" json:"rootRunId"`
 	// ID 是运行身份。
-	ID string `gorm:"type:varchar(32);primaryKey;index:idx_workflow_board_identity,priority:1;index:idx_workflow_board_activity,priority:3,sort:desc;index:idx_workflow_board_executor,priority:4,sort:desc;index:idx_workflow_chat_visible_runs,priority:4,sort:desc;index:idx_workflow_chat_unsettled_delivery,where:source_chat_id <> '' AND source_workbench = false AND chat_delivery_finished_at IS NULL" json:"id"`
+	ID string `gorm:"type:varchar(32);primaryKey;index:idx_workflow_board_identity,priority:1;index:idx_workflow_board_activity,priority:3,sort:desc;index:idx_workflow_board_executor,priority:4,sort:desc;index:idx_workflow_chat_visible_runs,priority:4,sort:desc;index:idx_workflow_chat_unsettled_delivery,where:source_chat_id <> '' AND source_workbench = false AND chat_delivery_finished_at IS NULL;index:idx_workflow_unsettled_conclusion,where:conclusion_requested = true AND conclusion_finished_at IS NULL AND completed_at IS NOT NULL" json:"id"`
 	// DefinitionID 是所属定义。
 	DefinitionID string `gorm:"index:idx_workflow_board_identity,priority:2;type:varchar(32);not null;index;index:idx_workflow_board_executor,priority:1;index:idx_workflow_run_history,priority:1" json:"definitionId"`
 	// RevisionID 是本次不可变版本。

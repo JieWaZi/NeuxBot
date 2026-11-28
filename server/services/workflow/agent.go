@@ -59,6 +59,9 @@ func (s *Service) agentBindings(scope workflowtool.Scope, ids []string) []capabi
 		binding := capability.Binding{Operation: id}
 		binding.Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
 			if scope.LocalChatID != "" && (id == "workflow.definitions.list" || id == "workflow.definitions.describe") {
+				if _, err := s.authorizeWorkflowTool(ctx, scope); err != nil {
+					return capability.Result{}, err
+				}
 				return s.readLocalWorkflowDefinitions(ctx, scope, request)
 			}
 			if op.Effect != constants.AgentCLIEffectRead {
@@ -88,6 +91,19 @@ func (s *Service) agentBindings(scope workflowtool.Scope, ids []string) []capabi
 					return s.startAgentRun(ctx, scope, access.owner, request)
 				}
 				result, err := capability.Execute(ctx, s.commands, access.owner, request, func(ctx context.Context) error {
+					if id == "workflow.definitions.create" {
+						_, chat, err := s.readWorkflowExecution(ctx, scope.LocalChatID, scope.ExecutionID)
+						if err != nil {
+							return err
+						}
+						title, _ := request.Params["title"].(string)
+						_, err = s.CreateDefinition(ctx, CreateDefinitionCommand{
+							Title: title, CreationWakerID: chat.WakerID, ExecutionChatID: chat.ID,
+							ExecutionID: scope.ExecutionID, RequestID: capability.ID(access.owner, id, request.RequestID),
+							ScopeBinding: models.WorkflowScopeBinding{ProjectID: chat.ProjectID},
+						})
+						return err
+					}
 					input := workflowAgentInput(request)
 					input.RequestID = capability.ID(access.owner, id, request.RequestID)
 					_, err := access.call(ctx, input)

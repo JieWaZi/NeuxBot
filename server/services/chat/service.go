@@ -79,6 +79,12 @@ type Service interface {
 	ReadMessageHistory(ctx context.Context, chatID string, beforeSequence int64, limit int) (MessageHistoryPage, error)
 	// ReadMessageTimeline 读取界面消息及问答项，团队页可提供冻结日志上界。
 	ReadMessageTimeline(ctx context.Context, chatID string, beforeSequence, throughSequence int64, limit int) (MessageHistoryPage, error)
+	// SetMainConversationSourceModel 保存来源下一轮模型选择及其原时间线变更。
+	SetMainConversationSourceModel(ctx context.Context, chatID, model string) (string, *MainConversationSourceModelChange, error)
+	// ReadMainConversationSourceModel 返回当前 Runtime 和账号上的已选模型。
+	ReadMainConversationSourceModel(ctx context.Context, source models.Chat) (string, error)
+	// ReadMainConversationSourceModelChanges 读取当前来源历史窗口的模型变更。
+	ReadMainConversationSourceModelChanges(ctx context.Context, chatID string, from, before int64) ([]MainConversationSourceModelChange, error)
 	// ReadTeamReplyTarget 按同一团队主会话中的已公开消息身份读取引用。
 	ReadTeamReplyTarget(ctx context.Context, threadID, leadChatID, messageID string) (ReplyTarget, error)
 	// ReadManagedResourceChanges 只读取已提交的资源变更及其原时间线位置。
@@ -136,6 +142,8 @@ type Module interface {
 type service struct {
 	// managedCommands 保存资源命令回执和投影确认。
 	managedCommands controllers.AgentCommandController
+	// publishAutomaticTaskReceipt 核对原执行来自公开交办时将定时规则快照回投主会话。
+	publishAutomaticTaskReceipt func(context.Context, string, string, string, eventlog.AutomaticTaskReceipt) (bool, error)
 	// freezeReview 在普通 Chat 接纳时冻结当前复盘授权。
 	freezeReview func(context.Context, models.Chat) *reviewstate.Admission
 	// reviewTerminal 在接纳的轮次结束后唤醒复盘。
@@ -162,6 +170,8 @@ type service struct {
 	stopExecution func(context.Context, string) error
 	// preserveIMAdmissions 在清理权威日志前保留已接纳的外部收件事实。
 	preserveIMAdmissions func(context.Context, []models.Execution) error
+	// preserveOrdinaryOriginReports 核对普通会话的原结案收据，并返回可与删除原子提交的操作。
+	preserveOrdinaryOriginReports func(context.Context, []models.Chat, func(string, string) ([]eventlog.Record, error)) (func(context.Context) error, error)
 	// logStore 持久化每个对话的权威追加日志。
 	logStore chatJournalStorage
 	// eventCommitter 固化 JSONL 提交后的发布和消息位置索引顺序。
@@ -187,6 +197,8 @@ var _ Module = (*service)(nil)
 type Config struct {
 	// ManagedCommands 读取并结算已提交的资源命令。
 	ManagedCommands controllers.AgentCommandController
+	// PublishAutomaticTaskReceipt 在实际发起的公开会话中保存同一命令快照。
+	PublishAutomaticTaskReceipt func(context.Context, string, string, string, eventlog.AutomaticTaskReceipt) (bool, error)
 	// FreezeReview 捕获已授权的配置及功能代次。
 	FreezeReview func(context.Context, models.Chat) *reviewstate.Admission
 	// ReviewTerminal 观察已提交的终态。
@@ -205,6 +217,8 @@ type Config struct {
 	StopExecution func(context.Context, string) error
 	// PreserveIMAdmissions 以权威回执补齐尚未挂接的 IM 收件。
 	PreserveIMAdmissions func(context.Context, []models.Execution) error
+	// PreserveOrdinaryOriginReports 在日志暂存前核对已结案的待投报告。
+	PreserveOrdinaryOriginReports func(context.Context, []models.Chat, func(string, string) ([]eventlog.Record, error)) (func(context.Context) error, error)
 	// ResetUsageProjection 在权威分片清理后使旧用量投影失效。
 	ResetUsageProjection func(context.Context) error
 	// Conversations 是原生与公开会话共用的权威存储。
@@ -284,18 +298,20 @@ func newService(config Config) (*service, error) {
 	queryIndexes.reading = config.QueryIndexes.Reading
 	queryIndexes.logStore = logStore
 	implementation := &service{freezeReview: config.FreezeReview, reviewTerminal: config.ReviewTerminal, reviewDeleted: config.ReviewDeleted,
-		managedCommands:       config.ManagedCommands,
-		storage:               storage,
-		deletions:             deletions,
-		deletionIntents:       config.QueryIndexes.DeletionIntents,
-		closeNativeThread:     config.CloseNativeThread,
-		prepareDelete:         config.PrepareDelete,
-		stopExecution:         config.StopExecution,
-		preserveIMAdmissions:  config.PreserveIMAdmissions,
-		logStore:              logStore,
-		projectController:     config.Projects,
-		queryIndexes:          queryIndexes,
-		closeIdleNativeThread: config.CloseIdleNativeThread,
+		managedCommands:               config.ManagedCommands,
+		publishAutomaticTaskReceipt:   config.PublishAutomaticTaskReceipt,
+		storage:                       storage,
+		deletions:                     deletions,
+		deletionIntents:               config.QueryIndexes.DeletionIntents,
+		closeNativeThread:             config.CloseNativeThread,
+		prepareDelete:                 config.PrepareDelete,
+		stopExecution:                 config.StopExecution,
+		preserveIMAdmissions:          config.PreserveIMAdmissions,
+		preserveOrdinaryOriginReports: config.PreserveOrdinaryOriginReports,
+		logStore:                      logStore,
+		projectController:             config.Projects,
+		queryIndexes:                  queryIndexes,
+		closeIdleNativeThread:         config.CloseIdleNativeThread,
 		eventCommitter: newEventCommitter(
 			logStore,
 			subscriptions,

@@ -57,8 +57,14 @@ func TestMainConversationSourceReturnsActualPublicationsForItsWorkPage(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	directPublicID := mainconversation.UserMessageID(work.ConversationID, "direct-submission")
+	olderPublicID := mainconversation.UserMessageID(work.ConversationID, "older-submission")
 	rows := []models.MainConversationMessage{
-		{ID: "legacy", Sequence: 1, Role: "user", ConversationID: work.ConversationID, SourceChatID: work.WorkChatID},
+		{ID: "legacy", Sequence: 1, Role: "user", ConversationID: work.ConversationID, SourceChatID: work.WorkChatID, Content: "Legacy trigger"},
+		{ID: directPublicID, Sequence: 8, Role: "user", ConversationID: work.ConversationID, SourceChatID: work.WorkChatID, SourceExecutionID: "source-run", SourceMessageID: "direct", Content: "Direct source input"},
+		{ID: "main-public", Sequence: 9, Role: "user", ConversationID: work.ConversationID, SourceChatID: work.WorkChatID, SourceExecutionID: "main-public", SourceMessageID: "main-native", Content: "Authoritative trigger\nLong continuation"},
+		{ID: olderPublicID, Sequence: 11, Role: "user", ConversationID: work.ConversationID, SourceChatID: work.WorkChatID, SourceExecutionID: olderPublicID, AdmissionSubmissionID: "older-submission", Content: "Older trigger"},
+		{ID: "hidden-trigger", Sequence: 10, Role: "user", ConversationID: work.ConversationID, SourceChatID: work.WorkChatID, Content: "Removed trigger", RemovedAt: 1},
 		{ID: "explicit", Sequence: 2, Role: "assistant", ConversationID: work.ConversationID, SourceChatID: work.WorkChatID, SourceExecutionID: "run", Content: "First public result"},
 		{ID: "old-answer", Sequence: 3, Role: "assistant", ConversationID: work.ConversationID, SourceChatID: work.WorkChatID, ReplyToMessageID: "legacy", Content: "Legacy public result"},
 		{ID: "second", Sequence: 4, Role: "assistant", ConversationID: work.ConversationID, SourceChatID: work.WorkChatID, SourceExecutionID: "run", Content: "Second public result"},
@@ -87,6 +93,11 @@ func TestMainConversationSourceReturnsActualPublicationsForItsWorkPage(t *testin
 		page: chat.MessageHistoryPage{Resources: []messageview.Message{
 			{ID: "assistant-legacy", Role: constants.MessageRoleAssistant, ExecutionID: "legacy"},
 			native,
+			{ID: "legacy", Role: constants.MessageRoleUser},
+			{ID: "main-native", Role: constants.MessageRoleUser, MainConversationTriggerID: "main-public"},
+			{ID: "older-native", Role: constants.MessageRoleUser, SubmissionID: "older-submission"},
+			{ID: "direct", Role: constants.MessageRoleUser, SubmissionID: "direct-submission"},
+			{ID: "hidden-trigger", Role: constants.MessageRoleUser, Content: "Removed trigger"},
 			{ID: "assistant-missing", Role: constants.MessageRoleAssistant, ExecutionID: "missing"},
 		}},
 	}
@@ -103,6 +114,15 @@ func TestMainConversationSourceReturnsActualPublicationsForItsWorkPage(t *testin
 	var response struct {
 		// Resources 保存权威工作记录。
 		Resources []messageview.Message
+		// InputTriggers 只引用与来源输入一致的公开主会话原话。
+		InputTriggers []struct {
+			// SourceMessageID 是原生输入的身份。
+			SourceMessageID string
+			// PublicMessageID 是当前仍可访问的公开原话。
+			PublicMessageID string
+			// Preview 是原话的首行。
+			Preview string
+		}
 		// PublishedMessages 保存本页真实公开发言及其执行归属。
 		PublishedMessages []struct {
 			// ID 是公开消息的真实身份。
@@ -128,7 +148,20 @@ func TestMainConversationSourceReturnsActualPublicationsForItsWorkPage(t *testin
 	if !reflect.DeepEqual(actual, want) {
 		t.Fatalf("publications = %+v, want %+v", actual, want)
 	}
-	if len(response.Resources) != 3 || !reflect.DeepEqual(response.Resources[1], native) {
+	if len(response.Resources) != 8 || !reflect.DeepEqual(response.Resources[1], native) {
 		t.Fatalf("native message changed: %+v", response.Resources)
+	}
+	var triggers [][3]string
+	for _, trigger := range response.InputTriggers {
+		triggers = append(triggers, [3]string{trigger.SourceMessageID, trigger.PublicMessageID, trigger.Preview})
+	}
+	wantTriggers := [][3]string{
+		{"legacy", "legacy", "Legacy trigger"},
+		{"main-native", "main-public", "Authoritative trigger"},
+		{"older-native", olderPublicID, "Older trigger"},
+		{"hidden-trigger", "", "Removed trigger"},
+	}
+	if !reflect.DeepEqual(triggers, wantTriggers) {
+		t.Fatalf("triggers = %+v, want %+v", triggers, wantTriggers)
 	}
 }

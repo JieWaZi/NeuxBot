@@ -53,7 +53,10 @@ import {
 
 import "@/shared/i18n";
 import { ApiError } from "@/shared/api/errors";
-import { getWorkflowRunQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
+import {
+  getWorkflowRunQueryKey,
+  listWorkTicketsQueryKey,
+} from "@/shared/api/generated/@tanstack/react-query.gen";
 import type { TeamChatContext } from "@/modules/team";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import {
@@ -416,9 +419,13 @@ const skillSuggestions = vi.hoisted(() => ({
   list: vi.fn(),
   resolve: vi.fn(),
 }));
+const readWorkTickets = vi.hoisted(() =>
+  vi.fn<typeof GeneratedSDK.listWorkTickets>(),
+);
 
 vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
   ...(await importOriginal<typeof GeneratedSDK>()),
+  listWorkTickets: readWorkTickets,
   listChatSkillSuggestions: skillSuggestions.list,
   resolveChatSkillSuggestion: skillSuggestions.resolve,
   getChatReading: async ({ path }: { path: { chatId: string } }) => {
@@ -977,6 +984,11 @@ beforeEach(() => {
   // 恢复初始发送实现，丢弃失败用例尚未消费的一次性回执。
   createChat.mockReset();
   sendMessage.mockReset();
+  readWorkTickets.mockReset().mockImplementation(async () => ({
+    data: [],
+    request: new Request("http://127.0.0.1:8080/api/v1/work-tickets"),
+    response: new Response(),
+  }));
   resolveApproval.mockClear();
   skillSuggestions.items = [];
   skillSuggestions.changes = [];
@@ -1771,6 +1783,239 @@ describe("ChatPage", () => {
     expect(createChat).not.toHaveBeenCalled();
     view.unmount();
     client.clear();
+  });
+
+  it("普通对话直接发送首条输入，并在回执不明后用恢复的草稿重试同一请求", async () => {
+    createChat.mockRejectedValueOnce(new TypeError("network interrupted"));
+    const { client, view } = renderProfileOptimizationDraft(false);
+    const user = userEvent.setup();
+    const editor = await screen.findByRole("textbox", { name: "输入消息" });
+    expect(screen.queryByRole("button", { name: "交办" })).toBeNull();
+    const sendButton = screen.getByRole("button", { name: "发送消息" });
+    await user.type(editor, "持续核对本周发布");
+    await user.click(sendButton);
+    await waitFor(() => expect(createChat).toHaveBeenCalledOnce());
+    const original = createChat.mock.calls[0]?.[0];
+    expect(original).toMatchObject({
+      body: { text: "持续核对本周发布" },
+    });
+    expect(original?.body).not.toHaveProperty("startWork");
+    await waitFor(() => expect(editor).toHaveValue("持续核对本周发布"));
+    await user.click(sendButton);
+    await waitFor(() => expect(createChat).toHaveBeenCalledTimes(2));
+    expect(createChat.mock.calls[1]?.[0]).toEqual(original);
+    view.unmount();
+    client.clear();
+  });
+
+  it.each([{}, { attachmentOnly: true }, { codeReferenceOnly: true }])(
+    "普通会话在时间线保留回报和原交办引用 %j",
+    async (inputKind) => {
+      const messageId = "a".repeat(32);
+      const ordinaryId = "b".repeat(32);
+      const reportId = "f".repeat(32);
+      const report = "已经核对三条交付";
+      const content = inputKind.attachmentOnly
+        ? "请查看附件。"
+        : inputKind.codeReferenceOnly
+          ? "请查看引用的代码片段。"
+          : "核对交付记录";
+      const input = inputKind.attachmentOnly
+        ? {
+            ...inputKind,
+            attachments: [
+              {
+                type: "file",
+                name: "交付记录.md",
+                path: "attachments/sent/交付记录.md",
+              },
+            ],
+          }
+        : inputKind.codeReferenceOnly
+          ? {
+              ...inputKind,
+              codeReferences: [
+                {
+                  path: "records.md",
+                  startLine: 1,
+                  endLine: 1,
+                  content: "记录",
+                },
+              ],
+            }
+          : inputKind;
+      historyMessages.current = [
+        {
+          id: messageId,
+          role: "user",
+          content,
+          createdSequence: 1,
+          ...input,
+        },
+        ...(inputKind.attachmentOnly || inputKind.codeReferenceOnly
+          ? [
+              {
+                id: ordinaryId,
+                role: "user",
+                content: "普通附件或引用",
+                createdSequence: 2,
+                ...input,
+              },
+            ]
+          : []),
+        {
+          id: reportId,
+          executionId: "reported-execution",
+          role: "assistant",
+          status: "completed",
+          createdSequence: 3,
+          displayParts: [{ id: "report", type: "text", text: report }],
+        },
+      ];
+      const messageIds = historyMessages.current.map(({ id }) => id);
+      readWorkTickets.mockResolvedValue({
+        data: [
+          {
+            messageId,
+            ticket: {
+              id: messageId,
+              workChatId: "chat-1",
+              status: "waiting",
+              summary: report,
+              updatedAt: 1795650000,
+            },
+          },
+        ],
+        request: new Request("http://127.0.0.1:8080/api/v1/work-tickets"),
+        response: new Response(),
+      });
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={client}>
+          <ChatQueueProvider>
+            <TooltipProvider>
+              <MemoryRouter initialEntries={["/chats/chat-1?wakerId=waker-1"]}>
+                <Routes>
+                  <Route element={<ChatLayout />}>
+                    <Route path="/chats/:chatId" element={<ChatPage />} />
+                  </Route>
+                </Routes>
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </QueryClientProvider>,
+      );
+      const user = userEvent.setup();
+      const reported = await screen.findByText(report);
+      expect(reported.closest("[data-message-id]")).toHaveAttribute(
+        "data-message-id",
+        reportId,
+      );
+      await waitFor(() =>
+        expect(readWorkTickets).toHaveBeenCalledWith(
+          expect.objectContaining({
+            query: {
+              originKind: "chat",
+              originId: "chat-1",
+              messageId: messageIds,
+            },
+          }),
+        ),
+      );
+      const submitted = document.querySelector<HTMLElement>(
+        `[data-message-id="${messageId}"]`,
+      );
+      if (!submitted) throw Error("缺少原交办消息");
+      expect(
+        within(submitted).queryByRole("button", { name: "查看工作记录" }),
+      ).toBeNull();
+      expect(screen.queryByText("等待输入")).toBeNull();
+      const other = document.querySelector<HTMLElement>(
+        `[data-message-id="${ordinaryId}"]`,
+      );
+      if (other)
+        expect(
+          within(other).queryByRole("button", { name: "回复" }),
+        ).toBeNull();
+      await user.click(
+        await within(submitted).findByRole("button", { name: "回复" }),
+      );
+      expect(screen.getByText(`回复：${content}`)).toBeVisible();
+      const editor = screen.getByRole("textbox", { name: "输入消息" });
+      await user.type(editor, "也核对今天的记录");
+      await user.click(screen.getByRole("button", { name: "发送消息" }));
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+      expect(sendMessage.mock.calls[0]?.[0]).toMatchObject({
+        path: { chatId: "chat-1" },
+        body: { replyToMessageId: messageId, text: "也核对今天的记录" },
+      });
+      expect(sendMessage.mock.calls[0]?.[0]?.body).not.toHaveProperty(
+        "startWork",
+      );
+    },
+  );
+
+  it("普通会话读取引用关联失败时保留消息，并可就地重试", async () => {
+    const messageId = "a".repeat(32);
+    const query = {
+      originKind: "chat",
+      originId: "chat-1",
+      messageId: [messageId],
+    };
+    historyMessages.current = [
+      {
+        id: messageId,
+        role: "user",
+        content: "核对交付记录",
+        createdSequence: 1,
+      },
+    ];
+    readWorkTickets
+      .mockResolvedValueOnce({
+        data: [
+          {
+            messageId,
+            ticket: { id: messageId, status: "waiting", workChatId: "chat-1" },
+          },
+        ],
+        request: new Request("http://127.0.0.1:8080/api/v1/work-tickets"),
+        response: new Response(),
+      })
+      .mockRejectedValueOnce(
+        new ApiError("工单服务暂不可用", "ServiceUnavailable", 503),
+      );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter initialEntries={["/chats/chat-1?wakerId=waker-1"]}>
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chats/:chatId" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+    const original = await screen.findByText("核对交付记录");
+    await waitFor(() => expect(readWorkTickets).toHaveBeenCalledOnce());
+    await act(() =>
+      client.refetchQueries({ queryKey: listWorkTicketsQueryKey({ query }) }),
+    );
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("工单服务暂不可用");
+    expect(original).toBeVisible();
+    expect(screen.queryByRole("button", { name: "查看工作记录" })).toBeNull();
+    await userEvent.click(within(alert).getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(alert).not.toBeInTheDocument());
+    expect(readWorkTickets).toHaveBeenCalledTimes(3);
   });
 
   it("伙伴档案优化首发明确拒绝后恢复标签和正文，允许移除标签后重新发送", async () => {

@@ -47,6 +47,7 @@ type chatJournalStorage interface {
 	ReadCompletedHistoryCandidates(string, int64, int) (eventlog.HistoryCandidateWindow, error)
 	ReadExecutionIndexTail(string, int64) (eventlog.ExecutionIndexTail, error)
 	ReadExecutionFacts(string, eventlog.ExecutionFactPositions) (eventlog.ExecutionWindow, error)
+	nativeOutcome(context.Context, string, string) (*agent.NativeResult, error)
 	ReadLatestSequence(string) (int64, error)
 	MessageRecordedTimes(string, int64, int64) ([]int64, error)
 	CountUserMessages(string) (int64, error)
@@ -109,7 +110,27 @@ func (j *conversationJournal) commitFacts(id string, facts []eventlog.AppendInpu
 		return nil, status_error.ChatLogRecordInvalid
 	}
 	ctx := context.Background()
-	batch := agent.ConversationBatch{ChatID: id, Key: util.New(), Changes: factsToChanges(facts)}
+	key := ""
+	if len(facts) == 1 && facts[0].Type == constants.ChatEventTypeExecutionDelivery {
+		var delivery eventlog.ExecutionDeliveryData
+		if json.Unmarshal(facts[0].Data, &delivery) == nil && delivery.WorkTicketReport && delivery.SourceID != "" {
+			// 原报告身份也约束目的端批次，两个领取者不能分别追加同一结果。
+			key = "work-ticket-report:" + delivery.SourceID
+		}
+	}
+	if len(facts) == 1 && facts[0].Type == constants.ChatEventTypeUserMessageCreated && facts[0].ExecutionID == "" {
+		var message eventlog.MessageCreatedData
+		if json.Unmarshal(facts[0].Data, &message) == nil && message.Actor == "user" && message.SubmissionID != "" && message.ReplyTo != nil {
+			key = "work-ticket-user-reply:" + facts[0].MessageID
+		}
+		if message.Actor == constants.WorkTicketHandoffActor && message.Role == constants.MessageRoleAssistant {
+			key = "work-ticket-handoff:" + facts[0].MessageID
+		}
+	}
+	if key == "" {
+		key = util.New()
+	}
+	batch := agent.ConversationBatch{ChatID: id, Key: key, Changes: factsToChanges(facts)}
 	for {
 		version, err := j.ReadVersion(ctx, id)
 		if err != nil {

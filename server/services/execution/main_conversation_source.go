@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -36,6 +37,21 @@ func (s *MainProjectScope) ScopeKey() string {
 		fmt.Fprintf(digest, "%q:%t:%t\n", dir.Source.ID, dir.IsDefault, dir.LoadInstructions)
 	}
 	return hex.EncodeToString(digest.Sum(nil))
+}
+
+// ValidateAvailable 核验已选项目的全部冻结目录仍可访问，且有默认入口。
+func (s *MainProjectScope) ValidateAvailable() error {
+	defaultDirectory := false
+	for _, directory := range s.directories {
+		if !projectsource.Available(directory.Source) {
+			return status_error.ProjectSourceUnavailable
+		}
+		defaultDirectory = defaultDirectory || directory.IsDefault
+	}
+	if !defaultDirectory {
+		return status_error.ProjectSourceUnavailable
+	}
+	return nil
 }
 
 // CaptureMainProjectScope 在同一读事务内核对项目归属并冻结目录，供主会话选源和首次建源共用。

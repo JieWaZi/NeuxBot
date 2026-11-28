@@ -21,13 +21,14 @@ func stableTurnKey(kind string, parts ...string) string {
 	return kind + ":" + hex.EncodeToString(sum[:])
 }
 
-func (l *ThreadLifecycle) commitAndAcknowledge(ctx context.Context, client AgentClient, session NativeSessionKey, outcome AgentNativeOutcome, committed func(CommitReceipt)) error {
+func (l *ThreadLifecycle) commitAndAcknowledge(ctx context.Context, client AgentClient, session NativeSessionKey, outcome AgentNativeOutcome, committed func(CommitReceipt), privateText bool) error {
 	if outcome.Turn.InvocationID == "" || outcome.Turn.Status == "" {
 		return status_error.ChatLogNativeOutcomePending
 	}
 	key := NativeResultKey{Session: session, InvocationID: outcome.Turn.InvocationID}
 	result := NativeResult{Key: key, Turn: outcome.Turn, StopReason: outcome.StopReason,
 		ForkMode: client.Capabilities().ForkMode, ForkPosition: outcome.ForkPosition, Unavailable: outcome.Unavailable,
+		StreamAnswerEligible: outcome.streamAnswerEligible,
 	}
 	used, window := outcome.ContextUsedTokens, outcome.ContextWindowTokens
 	if used != nil && window != nil && *used >= 0 && *window > 0 {
@@ -46,7 +47,11 @@ func (l *ThreadLifecycle) commitAndAcknowledge(ctx context.Context, client Agent
 			result.Failure.Message = public.Value()
 		}
 	}
-	if err := l.store.CommitNativeResult(ctx, result); err != nil {
+	stored := result
+	if privateText {
+		stored = ephemeralUsageResult(result)
+	}
+	if err := l.store.CommitNativeResult(ctx, stored); err != nil {
 		return err
 	}
 	if slices.Contains(result.Unavailable, acpmeta.ReceiptConsumedInputsUnavailable) {
@@ -63,16 +68,7 @@ func (l *ThreadLifecycle) commitAndAcknowledge(ctx context.Context, client Agent
 		if ref.ChatID == "" {
 			continue
 		}
-		changes := []ConversationChange{{Consumption: &InputConsumption{
-			HostInvocationID: ref.HostInvocationID, Result: key,
-		}}}
-		if id := item.Input.AssistantMessageID; id != "" {
-			changes = append(changes, terminalMessageChanges(key, id, item.Input.ExecutionID, result.FinalMessage != nil)...)
-		}
-		receipt, err := commitConversation(ctx, l.store, ConversationBatch{
-			ChatID: ref.ChatID, Key: stableTurnKey("consume", session.Provider, session.Subject, session.SessionID, ref.HostInvocationID, key.InvocationID),
-			Changes: changes,
-		})
+		receipt, err := l.linkNativeConsumption(ctx, item, result)
 		if err != nil {
 			return err
 		}
@@ -89,11 +85,25 @@ func (l *ThreadLifecycle) commitAndAcknowledge(ctx context.Context, client Agent
 	return err
 }
 
+func (l *ThreadLifecycle) linkNativeConsumption(ctx context.Context, item DurableHostInput, result NativeResult) (CommitReceipt, error) {
+	key, ref := result.Key, item.Ref
+	changes := []ConversationChange{{Consumption: &InputConsumption{HostInvocationID: ref.HostInvocationID, Result: key}}}
+	if id := item.Input.AssistantMessageID; id != "" {
+		changes = append(changes, terminalMessageChanges(key, id, item.Input.ExecutionID, result.FinalMessage != nil)...)
+	}
+	return commitConversation(ctx, l.store, ConversationBatch{
+		ChatID: ref.ChatID, Key: stableTurnKey("consume", key.Session.Provider, key.Session.Subject, key.Session.SessionID, ref.HostInvocationID, key.InvocationID),
+		Changes: changes,
+	})
+}
+
 type nativeOutcomeReader struct {
 	// client borrows the adapter's receipt ledger through process shutdown and ACK retry.
 	client AgentClient
 	// session freezes the exact native receipt address.
 	session NativeSessionKey
+	// privateText keeps detached output bodies out of the canonical usage ledger.
+	privateText bool
 	// cancel stops the long read without canceling native work.
 	cancel context.CancelFunc
 	// done closes after the reader leaves the native and durable stores.
@@ -108,7 +118,7 @@ type nativeOutcomeReader struct {
 
 func (l *ThreadLifecycle) startNativeOutcomeReader(client AgentClient, state *threadState, session NativeSessionKey) *nativeOutcomeReader {
 	ctx, cancel := context.WithCancel(context.Background())
-	r := &nativeOutcomeReader{client: client, session: session, cancel: cancel, done: make(chan struct{}),
+	r := &nativeOutcomeReader{client: client, session: session, privateText: state.textSession != "", cancel: cancel, done: make(chan struct{}),
 		target: deltaTarget{store: l.store, session: session}, autonomous: make(map[string]*DeltaBuffer)}
 	go func() {
 		defer close(r.done)
@@ -296,7 +306,7 @@ func (l *ThreadLifecycle) persistReceipt(ctx context.Context, reader *nativeOutc
 	if err, pending := reader.flushInvocation(ctx, outcome.Turn.InvocationID); pending {
 		return err
 	}
-	return l.commitAndAcknowledge(ctx, reader.client, reader.session, outcome, committed)
+	return l.commitAndAcknowledge(ctx, reader.client, reader.session, outcome, committed, reader.privateText)
 }
 
 func terminalMessageChanges(key NativeResultKey, messageID, executionID string, final bool) []ConversationChange {

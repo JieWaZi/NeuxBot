@@ -14,4 +14,8 @@ const (
 	AutomaticRunSourceAPI AutomaticRunSource = "api"
 	// AutomaticRunSourceManual 表示用户明确点击立即运行。
 	AutomaticRunSourceManual AutomaticRunSource = "manual"
+	// AutomaticRunSourceEvent 表示规则接纳的真实来源变化。
+	AutomaticRunSourceEvent AutomaticRunSource = "event"
+	// AutomaticRunSourceEventTest 表示用户明确请求的事件测试。
+	AutomaticRunSourceEventTest AutomaticRunSource = "event_test"
 )

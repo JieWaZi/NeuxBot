@@ -16,8 +16,19 @@ import {
   type GlobalEventFrame,
 } from "./global-events";
 
+type QueryEventRefreshSource = "change" | "recovery";
+export type QueryEventRefreshCommit = {
+  queryKey: QueryKey;
+  dataUpdateCount: number;
+  source: QueryEventRefreshSource;
+};
+
 type Consumer = {
-  current: { active: boolean; queryKeys: readonly QueryKey[] };
+  current: {
+    active: boolean;
+    queryKeys: readonly QueryKey[];
+    onRefreshCommit?: (commit: QueryEventRefreshCommit) => void;
+  };
   read?: (queryKey: QueryKey) => Promise<unknown>;
   priority?: number;
   authority?: boolean;
@@ -25,6 +36,7 @@ type Consumer = {
 type Refresh = {
   query: Query;
   dirty: Set<Consumer>;
+  sources?: Map<Consumer, QueryEventRefreshSource>;
   revision: number;
   freshFetchRevision?: number;
   timer?: ReturnType<typeof setTimeout>;
@@ -97,6 +109,7 @@ export function hasPendingQueryEventRefresh(
 
 function completeRefresh(refresh: Refresh) {
   refresh.dirty.clear();
+  refresh.sources?.clear();
   refresh.failures = 0;
   if (refresh.timer !== undefined) clearTimeout(refresh.timer);
   refresh.timer = undefined;
@@ -128,6 +141,16 @@ function acquireOwner(client: QueryClient): RefreshOwner {
         !isPageFetch(event.query) &&
         refresh.freshFetchRevision === refresh.revision
       ) {
+        if (event.action.type === "success" && !event.action.manual) {
+          for (const [consumer, source] of refresh.sources ?? []) {
+            if (consumer.current.active && matches(consumer, event.query))
+              consumer.current.onRefreshCommit?.({
+                queryKey: event.query.queryKey,
+                dataUpdateCount: event.query.state.dataUpdateCount,
+                source,
+              });
+          }
+        }
         if (
           !requiresCompleteRead(refresh) ||
           (event.action.type === "success" &&
@@ -273,7 +296,10 @@ function reconcile(
       }
       if (read && refresh.revision === revision) {
         if (!requiresCompleteRead(refresh)) completeRefresh(refresh);
-        else if (command && !command.authority) refresh.dirty.delete(command);
+        else if (command && !command.authority) {
+          refresh.dirty.delete(command);
+          refresh.sources?.delete(command);
+        }
       }
     } finally {
       refresh.ownedFetch = false;
@@ -307,6 +333,7 @@ function releaseConsumer(
   owner.consumers.delete(consumer);
   for (const [hash, pending] of owner.queries) {
     const waiting = pending.dirty.delete(consumer);
+    pending.sources?.delete(consumer);
     const cancel =
       cancelOwned &&
       waiting &&
@@ -440,6 +467,7 @@ export function useQueryEvents({
   eventFilter,
   authority = false,
   observeConnection = authority,
+  onRefreshCommit,
   read,
 }: {
   topic: GlobalEventTopic;
@@ -452,18 +480,32 @@ export function useQueryEvents({
   authority?: boolean;
   /** 只订阅连接状态时可保留部分测量结果，不启动完整快照恢复重试。 */
   observeConnection?: boolean;
+  /** 通知已成功提交的头部刷新及其来源，供界面选择呈现方式。 */
+  onRefreshCommit?: (commit: QueryEventRefreshCommit) => void;
   /** 权威查询可提供自身的有界读取；它仍由原 owner 调度与核对。 */
   read?: (queryKey: QueryKey) => Promise<unknown>;
 }) {
   const client = useQueryClient();
-  const current = useRef({ active, queryKeys, eventTypes, eventFilter });
+  const current = useRef({
+    active,
+    queryKeys,
+    eventTypes,
+    eventFilter,
+    onRefreshCommit,
+  });
   const [connection, setConnection] = useState<{
     state: GlobalEventState;
     epoch?: string;
   }>({ state: "connecting" });
   useEffect(() => {
-    current.current = { active, queryKeys, eventTypes, eventFilter };
-  }, [active, queryKeys, eventTypes, eventFilter]);
+    current.current = {
+      active,
+      queryKeys,
+      eventTypes,
+      eventFilter,
+      onRefreshCommit,
+    };
+  }, [active, queryKeys, eventTypes, eventFilter, onRefreshCommit]);
   const restore = useRef<(() => void) | undefined>(undefined);
   const resourceRef = useRef(resource);
   useEffect(() => {
@@ -481,7 +523,7 @@ export function useQueryEvents({
       read,
     };
     owner.consumers.add(consumer);
-    const refresh = (immediate = false) => {
+    const refresh = (source: QueryEventRefreshSource, immediate = false) => {
       const queries = new Set(
         current.current.queryKeys.flatMap((queryKey) =>
           client.getQueryCache().findAll({ queryKey }),
@@ -494,6 +536,15 @@ export function useQueryEvents({
           owner.queries.set(query.queryHash, pending);
         }
         pending.dirty.add(consumer);
+        if (current.current.onRefreshCommit) {
+          pending.sources ??= new Map();
+          // 同一批次含连接补读时，以补读为准。
+          if (pending.sources.get(consumer) !== "recovery")
+            pending.sources.set(
+              consumer,
+              document.hidden ? "recovery" : source,
+            );
+        }
         if (pending.failures && pending.timer !== undefined) {
           clearTimeout(pending.timer);
           pending.timer = undefined;
@@ -503,12 +554,16 @@ export function useQueryEvents({
         scheduleRefresh(client, owner, pending, immediate);
       }
     };
-    const restoreVisible = () => {
+    const restoreVisible = (event?: Event) => {
       if (!current.current.active || document.visibilityState !== "visible")
         return;
-      for (const pending of owner.queries.values())
-        if (pending.dirty.has(consumer) && matches(consumer, pending.query))
-          scheduleRefresh(client, owner, pending, true);
+      for (const pending of owner.queries.values()) {
+        if (!pending.dirty.has(consumer) || !matches(consumer, pending.query))
+          continue;
+        if (event && pending.sources?.has(consumer))
+          pending.sources.set(consumer, "recovery");
+        scheduleRefresh(client, owner, pending, true);
+      }
     };
     restore.current = restoreVisible;
     const close = subscribeGlobalEvents(topic, resourceRef.current, {
@@ -516,7 +571,7 @@ export function useQueryEvents({
         if (frame.type === `${topic}.ready`) {
           if (observeConnection)
             setConnection({ state: "open", epoch: frame.epoch });
-          refresh(true);
+          refresh("recovery", true);
           return;
         }
         if (
@@ -541,7 +596,7 @@ export function useQueryEvents({
           (current.current.eventFilter && !current.current.eventFilter(frame))
         )
           return;
-        refresh();
+        refresh("change");
       },
       onState: (state) => {
         if (observeConnection && state !== "open") setConnection({ state });
@@ -553,7 +608,7 @@ export function useQueryEvents({
             epoch ? { state: "open", epoch } : { state: "connecting" },
           );
         }
-        refresh(true);
+        refresh("recovery", true);
       },
     });
     document.addEventListener("visibilitychange", restoreVisible);

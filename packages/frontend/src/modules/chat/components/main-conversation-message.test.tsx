@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type * as SDK from "@/shared/api/generated/sdk.gen";
 import type * as Platform from "@/shared/platform";
@@ -54,30 +55,121 @@ function show(message: PublicMessage) {
   });
   const openFile = vi.fn();
   const openCodeReference = vi.fn();
+  const openRecord = vi.fn();
   const select = vi.fn();
   const tree = (active: boolean) => (
-    <QueryClientProvider client={client}>
-      <TooltipProvider>
-        <PublicConversationMessage
-          subject={subject}
-          row={message}
-          active={active}
-          select={select}
-          openSource={() => {}}
-          openFile={openFile}
-          openCodeReference={openCodeReference}
-        />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <PublicConversationMessage
+            subject={subject}
+            row={message}
+            inTimeline
+            active={active}
+            select={select}
+            openSource={() => {}}
+            openRecord={openRecord}
+            openFile={openFile}
+            openCodeReference={openCodeReference}
+          />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
   const view = render(tree(true));
   return {
     openFile,
     openCodeReference,
+    openRecord,
     select,
     hide: () => view.rerender(tree(false)),
   };
 }
+
+it("shows one persisted task card with the updated run time and detail link", () => {
+  const taskReceipt = {
+    receiptId: "update-receipt",
+    taskId: "saved-task",
+    name: "Review schedule",
+    wakerName: "Planner",
+    instructionPreview: "Review the report",
+    schedule: { kind: "once" as const, timezone: "Asia/Shanghai" },
+    nextRunAt: Date.parse("2026-11-29T01:00:00Z"),
+    updated: true,
+    enabled: true,
+  };
+  const message = {
+    ...row,
+    role: "assistant",
+    content: "",
+    readable: true,
+    sequence: 4,
+    automaticTaskReceipts: [taskReceipt],
+  };
+  show(message);
+  expect(screen.getByText("Review schedule")).toBeInTheDocument();
+  expect(screen.getByText("Review the report")).toBeInTheDocument();
+  expect(screen.getAllByRole("link")).toHaveLength(1);
+  expect(screen.getByRole("link")).toHaveAttribute(
+    "href",
+    "/automatic-tasks/saved-task",
+  );
+  expect(screen.getByRole("article").querySelector("time")).toHaveAttribute(
+    "datetime",
+    "2026-11-29T01:00:00.000Z",
+  );
+});
+
+it.each(["user", "assistant"])(
+  "从主会话的 %s 消息打开确切的工作流运行",
+  (role) => {
+    show({
+      ...row,
+      role,
+      content: "审核流程",
+      workflowRun: { definitionId: "definition", runId: "accepted-run" },
+    });
+    expect(screen.getByRole("link", { name: "查看运行" })).toHaveAttribute(
+      "href",
+      "/workflows/definition/runs/accepted-run",
+    );
+  },
+);
+
+it.each([undefined, { definitionId: "definition", runId: "scheduled-run" }])(
+  "定时通知使用静态头像并保留运行链接 %#",
+  (workflowRun) => {
+    show({
+      id: "scheduled-notice",
+      role: "assistant",
+      sourceChatId: "",
+      content: "发现一项需要关注的变更。",
+      workflowRun,
+    });
+    expect(screen.getByText("发现一项需要关注的变更。")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "打开工作会话" }),
+    ).not.toBeInTheDocument();
+    if (workflowRun) {
+      expect(screen.getByRole("link", { name: "查看运行" })).toHaveAttribute(
+        "href",
+        "/workflows/definition/runs/scheduled-run",
+      );
+    }
+  },
+);
+
+it("没有来源会话的直接答复仍可打开原问答记录", async () => {
+  const { openRecord } = show({
+    id: "direct-answer",
+    role: "assistant",
+    sourceChatId: "",
+    replyToMessageId: "original-question",
+    content: "这里是直接答复。",
+  });
+  await userEvent.click(screen.getByRole("button", { name: "打开默认会话" }));
+  expect(openRecord).toHaveBeenCalledOnce();
+});
 
 it("主会话用户消息可用键盘直接回复，复制收在更多菜单", async () => {
   const user = userEvent.setup();
@@ -96,7 +188,7 @@ it("主会话用户消息可用键盘直接回复，复制收在更多菜单", a
   await user.tab();
   expect(menu).toHaveFocus();
   await user.keyboard("{Enter}");
-  expect(screen.queryByRole("menuitem", { name: "查看工作记录" })).toBeNull();
+  expect(screen.queryByRole("menuitem", { name: "打开工作会话" })).toBeNull();
   expect(screen.queryByRole("menuitem", { name: "回复" })).toBeNull();
   await user.keyboard("{End}");
   expect(screen.getByRole("menuitem", { name: "复制消息" })).toHaveFocus();

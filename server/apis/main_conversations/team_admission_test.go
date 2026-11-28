@@ -118,7 +118,7 @@ func TestTeamMainAdmissionAllowsOtherRequestsDuringPreparationAndRechecksActor(t
 			} else {
 				_, err = (&SendMainConversationMessage{SubjectType: "team", SubjectID: team.ID,
 					Body: MainConversationInput{SubmissionID: submission, Content: "new assignment"},
-				}).Output(httpCtx)
+				}).send(ctx, httpCtx, nil)
 			}
 			if !util.HasStatusCode(err, status_error.ChatReplyTargetUnavailable) || runner.committed {
 				t.Fatalf("obsolete team role admitted: committed=%t error=%v", runner.committed, err)

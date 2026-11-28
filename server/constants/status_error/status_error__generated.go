@@ -125,6 +125,8 @@ func (v StatusError) Key() string {
 		return "TerminalInvalid"
 	case WorkspaceGitTargetInvalid:
 		return "WorkspaceGitTargetInvalid"
+	case MainConversationProjectRequired:
+		return "MainConversationProjectRequired"
 	case AgentInputInvalid:
 		return "AgentInputInvalid"
 	case KnowledgeInvalid:
@@ -219,6 +221,8 @@ func (v StatusError) Key() string {
 		return "ChatMessageNotFound"
 	case ChatReplyTargetUnavailable:
 		return "ChatReplyTargetUnavailable"
+	case WorkTicketNotFound:
+		return "WorkTicketNotFound"
 	case AgentReceiptNotFound:
 		return "AgentReceiptNotFound"
 	case KnowledgeNotFound:
@@ -231,6 +235,14 @@ func (v StatusError) Key() string {
 		return "OperationTimeout"
 	case DatabaseOperationCancelled:
 		return "DatabaseOperationCancelled"
+	case RuntimeWatchdogElapsed:
+		return "RuntimeWatchdogElapsed"
+	case RuntimeWatchdogStall:
+		return "RuntimeWatchdogStall"
+	case RuntimeWatchdogToolLoop:
+		return "RuntimeWatchdogToolLoop"
+	case RuntimeWatchdogTokenBudget:
+		return "RuntimeWatchdogTokenBudget"
 	case Conflict:
 		return "Conflict"
 	case WakerNameConflict:
@@ -351,6 +363,10 @@ func (v StatusError) Key() string {
 		return "ChatLogIdempotencyConflict"
 	case ChatLogNativeOutcomePending:
 		return "ChatLogNativeOutcomePending"
+	case WorkTicketCannotContinue:
+		return "WorkTicketCannotContinue"
+	case WorkTicketAttemptUnavailable:
+		return "WorkTicketAttemptUnavailable"
 	case RuntimeInstallationBusy:
 		return "RuntimeInstallationBusy"
 	case RuntimeRestartBusy:
@@ -712,6 +728,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeWorkspaceScopeUnsupported:     "{{if .MaxDirectories}}the selected agent supports up to {{.MaxDirectories}} project directories; adjust the workspace scope{{else}}the selected agent cannot use the requested workspace scope{{end}}",
 			TerminalInvalid:                      "terminal request is invalid",
 			WorkspaceGitTargetInvalid:            "the Git remote or branch is invalid; select it again",
+			MainConversationProjectRequired:      "specify an available project or an absolute working directory, then resend",
 			AgentInputInvalid:                    "command input does not satisfy the operation contract",
 			KnowledgeInvalid:                     "invalid knowledge request",
 			IntegrationInvalid:                   "integration name, expiration or grants are invalid",
@@ -759,12 +776,17 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			TerminalNotFound:                     "terminal session was not found or has ended",
 			ChatMessageNotFound:                  "the conversation message does not exist",
 			ChatReplyTargetUnavailable:           "this message is unavailable for reply in the current conversation",
+			WorkTicketNotFound:                   "the work ticket does not exist in this conversation",
 			AgentReceiptNotFound:                 "command acceptance receipt was not found in the current scope",
 			KnowledgeNotFound:                    "knowledge resource not found",
 			IntegrationNotFound:                  "integration record was not found",
 			OperationCanceled:                    "operation canceled",
 			OperationTimeout:                     "operation timed out",
 			DatabaseOperationCancelled:           "database operation was cancelled",
+			RuntimeWatchdogElapsed:               "The execution reached its time limit. The host requested a stop. {{if .Confirmed}}The agent confirmed the stop.{{else}}{{if .Settled}}No stop confirmation was received from the agent.{{else}}Waiting for the agent to confirm.{{end}}{{end}}",
+			RuntimeWatchdogStall:                 "The execution stopped making progress. The host requested a stop. {{if .Confirmed}}The agent confirmed the stop.{{else}}{{if .Settled}}No stop confirmation was received from the agent.{{else}}Waiting for the agent to confirm.{{end}}{{end}}",
+			RuntimeWatchdogToolLoop:              "The execution repeatedly called the same tool with the same input. The host requested a stop. {{if .Confirmed}}The agent confirmed the stop.{{else}}{{if .Settled}}No stop confirmation was received from the agent.{{else}}Waiting for the agent to confirm.{{end}}{{end}}",
+			RuntimeWatchdogTokenBudget:           "The execution reached its token budget. The host requested a stop. {{if .Confirmed}}The agent confirmed the stop.{{else}}{{if .Settled}}No stop confirmation was received from the agent.{{else}}Waiting for the agent to confirm.{{end}}{{end}}",
 			Conflict:                             "resource state conflict",
 			WakerNameConflict:                    "waker name already exists",
 			RolePresetNameConflict:               "role preset name already exists",
@@ -825,6 +847,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			ChatLogVersionConflict:               "the conversation version changed; reload before retrying",
 			ChatLogIdempotencyConflict:           "a conversation commit identity cannot be reused with different content",
 			ChatLogNativeOutcomePending:          "the previous message result is not confirmed yet; try again shortly",
+			WorkTicketCannotContinue:             "the work ticket cannot continue or be stopped in its current state",
+			WorkTicketAttemptUnavailable:         "this execution can no longer update the work ticket",
 			RuntimeInstallationBusy:              "this agent program is being maintained; wait or cancel the operation",
 			RuntimeRestartBusy:                   "this agent is executing work and cannot be restarted yet",
 			RuntimeUpdateCheckBusy:               "this agent's version is being checked; retry shortly",
@@ -1013,6 +1037,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			RuntimeWorkspaceScopeUnsupported:     "{{if .MaxDirectories}}当前智能体最多支持 {{.MaxDirectories}} 个项目目录，请调整工作范围{{else}}当前智能体无法接入所选工作范围{{end}}",
 			TerminalInvalid:                      "终端请求无效",
 			WorkspaceGitTargetInvalid:            "Git 远端或分支无效，请重新选择",
+			MainConversationProjectRequired:      "请指定一个可用的项目或绝对工作目录，然后重新发送",
 			AgentInputInvalid:                    "软件能力命令参数不符合契约",
 			KnowledgeInvalid:                     "知识请求参数不合法",
 			IntegrationInvalid:                   "API 集成名称、有效期或授权范围无效",
@@ -1060,12 +1085,17 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			TerminalNotFound:                     "终端会话不存在或已结束",
 			ChatMessageNotFound:                  "对话消息不存在",
 			ChatReplyTargetUnavailable:           "当前对话中没有可引用的这条消息",
+			WorkTicketNotFound:                   "当前会话没有这张工单",
 			AgentReceiptNotFound:                 "当前范围内尚无该命令的接纳回执",
 			KnowledgeNotFound:                    "知识资源不存在",
 			IntegrationNotFound:                  "未找到对应的 API 集成记录",
 			OperationCanceled:                    "操作已取消",
 			OperationTimeout:                     "操作等待超时",
 			DatabaseOperationCancelled:           "数据库操作已取消",
+			RuntimeWatchdogElapsed:               "执行已达到最长用时，宿主已请求停止。{{if .Confirmed}}智能体已确认停止。{{else}}{{if .Settled}}未收到智能体停止确认。{{else}}等待智能体确认。{{end}}{{end}}",
+			RuntimeWatchdogStall:                 "执行长时间没有进展，宿主已请求停止。{{if .Confirmed}}智能体已确认停止。{{else}}{{if .Settled}}未收到智能体停止确认。{{else}}等待智能体确认。{{end}}{{end}}",
+			RuntimeWatchdogToolLoop:              "执行连续重复同一工具调用，宿主已请求停止。{{if .Confirmed}}智能体已确认停止。{{else}}{{if .Settled}}未收到智能体停止确认。{{else}}等待智能体确认。{{end}}{{end}}",
+			RuntimeWatchdogTokenBudget:           "执行已达到本轮 Token 预算，宿主已请求停止。{{if .Confirmed}}智能体已确认停止。{{else}}{{if .Settled}}未收到智能体停止确认。{{else}}等待智能体确认。{{end}}{{end}}",
 			Conflict:                             "资源状态冲突",
 			WakerNameConflict:                    "伙伴名称已存在",
 			RolePresetNameConflict:               "角色预设名称已存在",
@@ -1126,6 +1156,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			ChatLogVersionConflict:               "对话已更新，请重新读取后重试",
 			ChatLogIdempotencyConflict:           "同一对话提交标识不能用于不同内容",
 			ChatLogNativeOutcomePending:          "上一条消息的执行结果尚未确认，请稍后重试",
+			WorkTicketCannotContinue:             "工单当前无法继续或停止",
+			WorkTicketAttemptUnavailable:         "这轮执行已无权更新工单",
 			RuntimeInstallationBusy:              "此智能体的程序维护尚未完成，请等待或取消",
 			RuntimeRestartBusy:                   "当前智能体正在执行工作，暂不能重启",
 			RuntimeUpdateCheckBusy:               "正在检查此智能体的版本，请稍后重试",

@@ -50,6 +50,10 @@ type Service struct {
 	consumers controllers.WorkflowConsumerController
 	// authorizeMainWork 核对独立隐藏工作来源及当前执行伙伴。
 	authorizeMainWork func(context.Context, models.Chat) error
+	// resolveMainOrigin 保存主会话交办的实际公开地址和原消息。
+	resolveMainOrigin func(context.Context, string, string) (string, string, error)
+	// publishMainConclusion 向冻结的主会话幂等发表整图结论。
+	publishMainConclusion func(context.Context, models.WorkflowRun, string) error
 	// channelThreads 确认隐藏 Chat 是否是公开团队线程中的成员对话。
 	channelThreads controllers.ChannelThreadController
 	// executions 为真实创作派发中立工作。
@@ -98,6 +102,10 @@ type Config struct {
 	Consumers controllers.WorkflowConsumerController
 	// AuthorizeMainWork 核对主会话工作来源及当前执行权限。
 	AuthorizeMainWork func(context.Context, models.Chat) error
+	// ResolveMainOrigin 按真实工作 Chat 和执行查询原公开消息。
+	ResolveMainOrigin func(context.Context, string, string) (string, string, error)
+	// PublishMainConclusion 向已核验的公开地址提交一条运行回件。
+	PublishMainConclusion func(context.Context, models.WorkflowRun, string) error
 	// ChannelThreads 按真实 Chat 读取团队线程来源。
 	ChannelThreads controllers.ChannelThreadController
 	// Executions 是中立执行入口。
@@ -126,7 +134,17 @@ type Config struct {
 
 // New 只构造服务，不启动任何后台流程。
 func New(config Config) *Service {
-	return &Service{repairOutput: config.RepairOutput, summarizeOutput: config.SummarizeOutput, commands: config.Commands, events: config.Events, store: config.Store, transactions: config.Transactions, runs: config.Runs, state: config.State, worker: config.Worker, creationSessions: config.CreationSessions, consumers: config.Consumers, channelThreads: config.ChannelThreads, authorizeMainWork: config.AuthorizeMainWork, executions: config.Executions, chats: config.Chats, wakers: config.Wakers, resources: config.Resources, pythonExecutable: config.PythonExecutable, connectors: config.Connectors, dataDirectory: config.DataDirectory, projects: config.Projects, imCall: config.IMCall, imValidate: config.IMValidate}
+	return &Service{
+		commands: config.Commands, events: config.Events, store: config.Store,
+		transactions: config.Transactions, runs: config.Runs, state: config.State,
+		repairOutput: config.RepairOutput, summarizeOutput: config.SummarizeOutput,
+		worker: config.Worker, creationSessions: config.CreationSessions, consumers: config.Consumers,
+		channelThreads: config.ChannelThreads, authorizeMainWork: config.AuthorizeMainWork,
+		resolveMainOrigin: config.ResolveMainOrigin, publishMainConclusion: config.PublishMainConclusion,
+		executions: config.Executions, chats: config.Chats, wakers: config.Wakers,
+		resources: config.Resources, pythonExecutable: config.PythonExecutable, connectors: config.Connectors,
+		dataDirectory: config.DataDirectory, projects: config.Projects, imCall: config.IMCall, imValidate: config.IMValidate,
+	}
 }
 
 // runnerLifecycle 拥有调度循环、在途派发和取消生命周期。
@@ -158,7 +176,7 @@ func (s *Service) Start(ctx context.Context) error {
 	}
 	child, cancel := context.WithCancel(ctx)
 	s.runner = &runnerLifecycle{ctx: child, cancel: cancel, done: make(chan struct{}), deliveryWake: make(chan struct{}, 1)}
-	if s.chats != nil {
+	if s.chats != nil || s.publishMainConclusion != nil {
 		s.runner.workers.Add(1)
 		go s.runChatDeliveryLoop(s.runner)
 	}

@@ -72,6 +72,8 @@ type GrantSpec struct {
 	ExecutionID string
 	// SharedLocalToken uses the Core credential for an interactive local chat connection.
 	SharedLocalToken bool
+	// SingleExecution keeps the descriptor and credential bound to one execution until revocation.
+	SingleExecution bool
 	// Bindings is the set of exact invocations granted by domain entry points.
 	Bindings []Binding
 	// FileRoots freezes directory access during execution preparation and rejects HTTP overrides.
@@ -197,9 +199,12 @@ func (r *Registry) PrepareConnection(root, identity, endpoint string, spec Grant
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	key, exists := r.connections[path]
+	if exists && spec.SingleExecution {
+		return "", nil, nil, status_error.AgentConnectionUnavailable
+	}
 	var grant Grant
 	if !exists {
-		grant = r.newGrant(spec.SharedLocalToken)
+		grant = r.newGrant(spec.SharedLocalToken && !spec.SingleExecution)
 		key = r.connectionKey(grant.Token, grant.ID)
 	}
 	activate, finish, err := r.bindExecutionLocked(key, spec)
@@ -216,6 +221,21 @@ func (r *Registry) PrepareConnection(root, identity, endpoint string, spec Grant
 			return "", nil, nil, err
 		}
 		r.connections[path] = key
+	}
+	if spec.SingleExecution {
+		revoke := finish
+		finish = sync.OnceFunc(func() {
+			revoke()
+			r.mutex.Lock()
+			defer r.mutex.Unlock()
+			if r.connections[path] == key {
+				delete(r.connections, path)
+				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+					logx.Warnf("remove execution-scoped agent connection failed: error=%v", err)
+				}
+				_ = os.Remove(directory)
+			}
+		})
 	}
 	return path, activate, finish, nil
 }

@@ -24,6 +24,12 @@ func TestConversationPostOnlyAcceptsThePublicBody(t *testing.T) {
 	if err := op.Validate(map[string]any{"content": "发现一项需要处理的变更。\n\n这是证据。"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := op.Validate(map[string]any{"content": "同行证据", "quoteReply": true}); err != nil {
+		t.Fatalf("cannot quote the host-bound input: %v", err)
+	}
+	if op.Validate(map[string]any{"content": "同行证据", "quoteReply": "true"}) == nil {
+		t.Fatal("accepted a non-boolean quote option")
+	}
 	for _, override := range []string{"conversationId", "workChatId", "executionId", "wakerId", "replyToMessageId"} {
 		if op.Validate(map[string]any{"content": "message", override: "other"}) == nil {
 			t.Fatalf("accepted a model-supplied %s", override)

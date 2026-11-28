@@ -85,7 +85,10 @@ import {
   subscribeChatNavigation,
 } from "@/shared/lib/chat-navigation";
 import { cn } from "@/shared/lib/cn";
-import { mainConversationSourceId } from "@/shared/lib/main-conversation-navigation";
+import {
+  mainConversationRecordId,
+  mainConversationSourceId,
+} from "@/shared/lib/main-conversation-navigation";
 import { Button } from "@/shared/ui/button";
 import {
   ConversationAttentionMark,
@@ -353,6 +356,10 @@ function AppShellContent({
   });
   const mainOwner = mainConversationOwner(location.pathname);
   const workSource = mainOwner && mainConversationSourceId(searchParams);
+  const publicRecord =
+    mainOwner && !workSource
+      ? mainConversationRecordId(searchParams)
+      : undefined;
   const isChat =
     location.pathname === "/" ||
     location.pathname === "/chat" ||
@@ -769,7 +776,14 @@ function AppShellContent({
     });
   const navigationHistory = useAppNavigationHistory({
     owner: mainOwner
-      ? { ...mainOwner, workChatId: workSource }
+      ? {
+          ...mainOwner,
+          workChatId: workSource,
+          messageId: workSource
+            ? searchParams.get("message") || undefined
+            : undefined,
+          recordMessageId: publicRecord,
+        }
       : isChatSurface
         ? activeChatOwner
         : undefined,
@@ -818,7 +832,7 @@ function AppShellContent({
           renderTitlebar={() =>
             isChatSurface && hasActiveScene ? (
               <PartnerConversationTabStrip
-                showingSource={Boolean(workSource)}
+                showingSource={Boolean(workSource || publicRecord)}
                 owner={activeChatOwner}
                 partners={wakers}
                 loadingPartners={wakersQuery.isPending}

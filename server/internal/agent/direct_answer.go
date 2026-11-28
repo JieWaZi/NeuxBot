@@ -2,17 +2,72 @@ package agent
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
+
+// RecoverCompletedAnswer verifies exact native completion and the evidence required to deliver its answer.
+func (l *ThreadLifecycle) RecoverCompletedAnswer(ctx context.Context, chatID, executionID string) (bool, string, error) {
+	ref := HostInputRef{ChatID: chatID, HostInvocationID: executionID}
+	input, consumption, err := l.store.ReadHostInputConsumption(ctx, ref)
+	if err != nil {
+		return false, "", err
+	}
+	if input.ExecutionID != executionID || input.AssistantMessageID != executionID {
+		return false, "", status_error.ChatLogCorrupted
+	}
+	var result *NativeResult
+	if consumption != nil {
+		terminal, err := l.store.ReadNativeResult(ctx, consumption.Result)
+		if err != nil {
+			return false, "", err
+		}
+		result = &terminal
+	} else if reader, ok := l.store.(interface {
+		ReadNativeResultForInput(context.Context, HostInput) (*NativeResult, error)
+	}); ok {
+		result, err = reader.ReadNativeResultForInput(ctx, input)
+		if err != nil {
+			return false, "", err
+		}
+	}
+	if result == nil || result.Turn.Status != acpmeta.NativeTurnCompleted || result.Failure != nil || len(result.Turn.ConsumedInputIDs) != 1 ||
+		slices.Contains(result.Unavailable, acpmeta.ReceiptConsumedInputsUnavailable) {
+		return false, "", nil
+	}
+	if result.Key.Session != input.Session || result.Turn.ConsumedInputIDs[0] != input.AdapterInputID {
+		return false, "", status_error.ChatLogCorrupted
+	}
+	if consumption == nil {
+		if _, err := l.linkNativeConsumption(ctx, DurableHostInput{Ref: ref, Input: input}, *result); err != nil {
+			return false, "", err
+		}
+	}
+	if result.FinalMessage == nil && !result.StreamAnswerEligible {
+		return true, "", nil
+	}
+	outcome := &AgentNativeOutcome{Turn: result.Turn, StopReason: result.StopReason}
+	if final := result.FinalMessage; final != nil {
+		outcome.FinalMessage = &AgentFinalMessage{ID: final.ID, Text: final.Text}
+	}
+	answer, err := l.DirectAnswer(ctx, chatID, executionID, TurnResult{
+		BusinessAdmitted: true,
+		Binding:          NativeBinding{Session: input.Session},
+		Input:            AgentPromptSubmission{HostInvocationID: input.HostInvocationID, InputID: input.AdapterInputID},
+		Outcome:          outcome,
+	})
+	return true, answer, err
+}
 
 // DirectAnswer reads only the native invocation that consumed this admitted host input.
 // An empty result means the turn did not prove a final answer for the user.
 func (l *ThreadLifecycle) DirectAnswer(ctx context.Context, chatID, executionID string, result TurnResult) (string, error) {
 	outcome := result.Outcome
-	if !result.BusinessAdmitted || result.InteractionRequested || outcome == nil || outcome.Turn.Status != acpmeta.NativeTurnCompleted ||
+	if !result.BusinessAdmitted || outcome == nil || outcome.Turn.Status != acpmeta.NativeTurnCompleted ||
 		result.Input.HostInvocationID != executionID || result.Input.InputID == "" ||
 		len(outcome.Turn.ConsumedInputIDs) != 1 || outcome.Turn.ConsumedInputIDs[0] != result.Input.InputID {
 		return "", nil
@@ -20,7 +75,7 @@ func (l *ThreadLifecycle) DirectAnswer(ctx context.Context, chatID, executionID 
 	key := NativeResultKey{Session: result.Binding.Session, InvocationID: outcome.Turn.InvocationID}
 	// WorkBuddy's ACP end_turn can omit finalMessage while identifying the assistant's message lane.
 	streamOnly := outcome.FinalMessage == nil
-	if streamOnly && (key.Session.Provider != constants.RuntimeIDWorkBuddy || outcome.StopReason != "end_turn") {
+	if streamOnly && (key.Session.Provider != constants.RuntimeIDWorkBuddy || outcome.StopReason != "end_turn" || result.InteractionRequested) {
 		return "", nil
 	}
 	if !streamOnly && (outcome.FinalMessage.ID == "" || strings.TrimSpace(outcome.FinalMessage.Text) == "") {
@@ -35,7 +90,7 @@ func (l *ThreadLifecycle) DirectAnswer(ctx context.Context, chatID, executionID 
 	sawComplete := false
 	sawNativeFinal := false
 	for _, row := range rows {
-		if fact := row.Change.Fact; fact != nil {
+		if fact := row.Change.Fact; streamOnly && fact != nil {
 			switch fact.Type {
 			case constants.ChatEventTypeApprovalRequested, constants.ChatEventTypeApprovalResolved,
 				constants.ChatEventTypeElicitationRequested, constants.ChatEventTypeElicitationResolved,

@@ -38,7 +38,7 @@ export function useSubjectChatNavigation(
       navigate(mainConversationHref(target), {
         flushSync: true,
         state:
-          reading && !target.workChatId
+          reading && !target.workChatId && !target.recordMessageId
             ? captureMainConversationOpenIntent(
                 client,
                 { subjectType: target.kind, subjectId: target.id },

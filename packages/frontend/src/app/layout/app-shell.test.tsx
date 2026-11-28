@@ -974,6 +974,7 @@ describe("AppShell 伙伴导航", () => {
     renderShell("/chats/waker-2-chat?wakerId=waker-2");
     const main = await findContent({ name: "伙伴二" });
     expect(allContents()[0]).toBe(main);
+    expect(main).not.toHaveTextContent("伙伴二");
     expect(main).toHaveAccessibleDescription("主会话");
     expect(screen.queryByRole("button", { name: "关闭 伙伴二" })).toBeNull();
     fireEvent.contextMenu(main);
@@ -1318,18 +1319,18 @@ describe("AppShell 伙伴导航", () => {
         expect(router.state.location.pathname).toBe("/chat/main/waker/waker-1"),
       );
       await waitFor(() =>
-        expect(allContents().map((tab) => tab.textContent)).toEqual(["伙伴一"]),
+        expect(allContents()).toEqual([getContent({ name: "伙伴一" })]),
       );
       await user.click(screen.getByRole("button", { name: "伙伴二" }));
       await waitFor(() =>
-        expect(allContents().map((tab) => tab.textContent)).toEqual(["伙伴二"]),
+        expect(allContents()).toEqual([getContent({ name: "伙伴二" })]),
       );
       await user.click(screen.getByRole("button", { name: "新建会话" }));
       const draft = router.state.location.search;
       expect(new URLSearchParams(draft).get("draftId")).toBeTruthy();
       await user.click(screen.getByRole("button", { name: "伙伴一" }));
       await waitFor(() =>
-        expect(allContents().map((tab) => tab.textContent)).toEqual(["伙伴一"]),
+        expect(allContents()).toEqual([getContent({ name: "伙伴一" })]),
       );
       await user.click(screen.getByRole("button", { name: "伙伴二" }));
       expect(allContents()).toHaveLength(2);

@@ -9,9 +9,28 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/robfig/cron/v3"
 )
+
+// AutomaticTaskSchedule 保存可预览与持久化的当地定时规则。
+type AutomaticTaskSchedule struct {
+	// Kind 是一次性、常用周期或自定义 Cron 的规则类型。
+	Kind constants.AutomaticScheduleKind `json:"kind"`
+	// Timezone 是保存与计算规则使用的 IANA 时区。
+	Timezone string `json:"timezone" validate:"max=120"`
+	// OnceAt 是一次性计划的当地日期时间，格式为 YYYY-MM-DDTHH:mm。
+	OnceAt string `json:"onceAt" validate:"max=16"`
+	// Minute 是每小时或固定时间规则的分钟。
+	Minute int `json:"minute"`
+	// Hour 是每天、每周或每月规则的小时。
+	Hour int `json:"hour"`
+	// Weekday 是每周规则的星期，星期日为 0。
+	Weekday int `json:"weekday"`
+	// DayOfMonth 是每月规则的日期，不存在的日期跳过该月。
+	DayOfMonth int `json:"dayOfMonth"`
+	// Cron 是仅包含分、时、日、月、周的自定义表达式。
+	Cron string `json:"cron" validate:"max=120"`
+}
 
 // Rule 是已校验并固定时区的规则计算器。
 type Rule struct {
@@ -24,7 +43,7 @@ type Rule struct {
 }
 
 // Compile 校验结构化规则并建立与前端预览共用的分钟计算器。
-func Compile(input models.AutomaticTaskSchedule) (Rule, error) {
+func Compile(input AutomaticTaskSchedule) (Rule, error) {
 	location, err := time.LoadLocation(strings.TrimSpace(input.Timezone))
 	if err != nil || input.Timezone == "" || input.Timezone == "Local" {
 		return Rule{}, status_error.AutomaticScheduleInvalid

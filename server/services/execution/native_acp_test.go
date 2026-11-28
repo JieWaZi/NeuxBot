@@ -499,6 +499,7 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 		reply(id, result)
 	}
 	var held any
+	var approvalPrompt any
 	for in.Scan() {
 		fmt.Fprintln(trace, in.Text())
 		var frame struct {
@@ -596,6 +597,13 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 			case strings.Contains(line, acpHeldQuestion) && mode == "default":
 				held = id
 				notify("agent_message_chunk", acpFixturePartial)
+			case strings.Contains(line, acpWatchdogApprovalQuestion):
+				approvalPrompt = id
+				_ = out.Encode(map[string]any{"jsonrpc": "2.0", "id": "watchdog-approval", "method": "session/request_permission", "params": map[string]any{
+					"sessionId": session,
+					"toolCall":  map[string]any{"toolCallId": "watchdog-tool", "title": "Confirm fixture tool"},
+					"options":   []any{map[string]any{"optionId": "native-allow", "name": "Allow", "kind": "allow_once"}},
+				}})
 			case strings.Contains(line, acpResumeQuestion) && mode == "default":
 				notify("agent_message_chunk", acpFixtureResponse)
 				finish(id, "end_turn", 4, 12)
@@ -612,8 +620,27 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 			if held == nil || value("sessionId") != session {
 				os.Exit(4)
 			}
+			if gate := os.Getenv("NEUX_EXECUTION_FIXTURE_WATCHDOG_GATE"); gate != "" {
+				deadline := time.Now().Add(8 * time.Second)
+				for {
+					if _, err := os.Stat(gate); err == nil {
+						break
+					}
+					if time.Now().After(deadline) {
+						os.Exit(8)
+					}
+					time.Sleep(5 * time.Millisecond)
+				}
+			}
 			finish(held, "cancelled", 3, 0)
 			held = nil
+		case "":
+			if approvalPrompt == nil || string(id) != `"watchdog-approval"` || !strings.Contains(in.Text(), "native-allow") {
+				os.Exit(4)
+			}
+			notify("agent_message_chunk", acpFixtureResponse)
+			finish(approvalPrompt, "end_turn", 6, 4)
+			approvalPrompt = nil
 		case "session/close":
 			reply(id, map[string]any{})
 		default:

@@ -13,6 +13,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/eventsource"
 	integrationapi "github.com/JieWaZi/NeuxBot/server/internal/integration"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/schedulecalc"
@@ -72,6 +73,24 @@ type Workflows interface {
 
 // Config 提供自动任务需要的稳定依赖，时钟可用于确定性验收。
 type Config struct {
+	// Events 保存事件检查游标、事件身份与派工收据。
+	Events *controllers.AutomaticEventController
+	// EventAdapter 读取当前 Core 已登记的事件来源。
+	EventAdapter eventsource.Adapter
+	// EventPushAdapter 核验已接入的推送来源交付签名。
+	EventPushAdapter eventsource.PushAdapter
+	// EvaluateEvent 只为明确配置语义条件的规则执行判断。
+	EvaluateEvent func(context.Context, models.AutomaticTask, eventsource.Event) (bool, error)
+	// EventFollowUp 在新派工前向已有订阅工单尝试交付持久事件。
+	EventFollowUp func(context.Context, models.AutomaticTask, models.AutomaticEventObservation) (EventFollowUpResult, error)
+	// BindEventWork 为实际伙伴事件建立已授权的跟进工作。
+	BindEventWork func(context.Context, models.AutomaticRun, execution.WorkIntent) (execution.WorkIntent, error)
+	// ReadReport 仅为旧版已接纳机会读取原运行的已提交最终正文。
+	ReadReport func(context.Context, models.AutomaticRun) (string, error)
+	// ReportReady 核验原执行已释放占位后再公开结果。
+	ReportReady func(models.AutomaticRun) bool
+	// PublishReport 按冻结的收件位置和原运行身份提交可重试报告，并返回实际消息链接。
+	PublishReport func(context.Context, models.AutomaticRun, string) (string, error)
 	// AuthorizationWrite 将任务授权变更与知识提交置于统一协调锁内，回调只含数据库写入。
 	AuthorizationWrite func(context.Context, func(context.Context) error) error
 	// BindKnowledge 为已有自动任务冻结明确的知识维护授权，不另设调度器。
@@ -118,6 +137,8 @@ type Service struct {
 	config Config
 	// gate 串行保护配置、接纳及删除边界，不覆盖 Runtime 的实际执行。
 	gate sync.Mutex
+	// eventEvaluations 串行同一来源讨论的语义评估，单个等待者可取消。
+	eventEvaluations [64]chan struct{}
 	// life 保护后台上下文、监听器及关闭等待的登记。
 	life sync.Mutex
 	// ctx 是显式 Start 后生效的 Core 子上下文。
@@ -148,6 +169,9 @@ func New(config Config) *Service {
 		config.Now = time.Now
 	}
 	s := &Service{config: config, rates: map[string][]time.Time{}, sealedWakers: map[string]bool{}, pendingTeamRuns: map[string]struct{}{}, apiOwner: config.APIListener}
+	for i := range s.eventEvaluations {
+		s.eventEvaluations[i] = make(chan struct{}, 1)
+	}
 	if s.apiOwner == nil {
 		s.ownsAPI = true
 		s.apiOwner = integrationapi.NewListener(config.DataDirectory, func(address string) http.Handler { return config.APIHandler(s, config, address) })
@@ -243,6 +267,10 @@ func (s *Service) StartAfterRecovery(ctx context.Context, afterRecovery func(con
 			}
 		}
 	}()
+	if s.config.Events != nil && (s.config.EventAdapter != nil || s.config.EventPushAdapter != nil) {
+		s.workers.Add(1)
+		go s.watchEvents()
+	}
 	return nil
 }
 
@@ -314,6 +342,8 @@ func (s *Service) Tick(ctx context.Context) error {
 		return nil
 	}
 	s.reconcilePendingTeamRuns(ctx)
+	s.reconcileReports(ctx)
+	s.dispatchQueuedReportRuns(ctx)
 	now := s.config.Now()
 	gap := now.Sub(s.lastTick)
 	wallGap := time.Duration(now.UnixMilli()-s.lastTick.UnixMilli()) * time.Millisecond

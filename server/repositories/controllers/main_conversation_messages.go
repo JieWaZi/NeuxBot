@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -30,6 +31,21 @@ func (c *MainConversationController) FindMessage(ctx context.Context, convID, ms
 		return row, false, databaseError("find_main_message", msgID, err)
 	}
 	return row, row.ID != "", nil
+}
+
+// FindWorkflowInput 依据已绑定的对话与实际执行定位唯一的原交办。
+func (c *MainConversationController) FindWorkflowInput(ctx context.Context, conversationID, chatID, executionID string) (models.MainConversationMessage, error) {
+	var row models.MainConversationMessage
+	err := controllerDB(ctx, c.db).
+		Where("source_execution_id = ? AND source_chat_id = ? AND conversation_id = ? AND role = ?", executionID, chatID, conversationID, constants.MessageRoleUser).
+		Order("sequence ASC").Limit(1).Find(&row).Error
+	if err != nil {
+		return row, databaseError("find_workflow_origin_input", executionID, err)
+	}
+	if row.ID == "" {
+		return row, status_error.ChatReplyTargetUnavailable
+	}
+	return row, nil
 }
 
 // Append 在事务内保存发言或返回原发言；同键不得改变来源、引用或正文。
@@ -64,16 +80,81 @@ func (c *MainConversationController) Append(ctx context.Context, msg models.Main
 		}
 		return msg, false, nil
 	}
-	prev, found, err := c.FindMessage(ctx, msg.ConversationID, msg.ID)
+	prev, found, err := c.FindAppendReceipt(ctx, msg)
 	if err != nil {
 		return models.MainConversationMessage{}, false, err
 	}
-	if !found || prev.Content != msg.Content || prev.Role != msg.Role ||
-		prev.SourceWakerID != msg.SourceWakerID || prev.SourceChatID != msg.SourceChatID || prev.SourceMessageID != msg.SourceMessageID ||
-		(prev.SourceExecutionID != "" && prev.SourceExecutionID != msg.SourceExecutionID) || prev.ReplyToMessageID != msg.ReplyToMessageID || prev.RequestedDirectory != msg.RequestedDirectory || prev.InputDigest != msg.InputDigest {
+	if !found {
 		return models.MainConversationMessage{}, false, status_error.CreateRequestConflict
 	}
 	return prev, true, nil
+}
+
+// FindAppendReceipt 核对重投的原始请求，并返回首次提交的发言。
+func (c *MainConversationController) FindAppendReceipt(ctx context.Context, msg models.MainConversationMessage) (models.MainConversationMessage, bool, error) {
+	prev, found, err := c.FindMessage(ctx, msg.ConversationID, msg.ID)
+	if err != nil || !found {
+		return prev, found, err
+	}
+	if prev.Content != msg.Content || prev.Role != msg.Role ||
+		prev.SourceWakerID != msg.SourceWakerID || prev.SourceChatID != msg.SourceChatID || prev.SourceMessageID != msg.SourceMessageID || prev.SourceReadOnly != msg.SourceReadOnly ||
+		(prev.SourceExecutionID != "" && prev.SourceExecutionID != msg.SourceExecutionID) || prev.ReplyToMessageID != msg.ReplyToMessageID || prev.RequestedQuote() != msg.RequestedQuote() ||
+		!sameOptionalValue(prev.OriginalWork, msg.OriginalWork) || !sameOptionalValue(prev.WorkflowRun, msg.WorkflowRun) ||
+		!slices.Equal(prev.AutomaticTaskReceipts, msg.AutomaticTaskReceipts) ||
+		prev.RequestedDirectory != msg.RequestedDirectory || prev.InputDigest != msg.InputDigest {
+		return models.MainConversationMessage{}, false, status_error.CreateRequestConflict
+	}
+	return prev, true, nil
+}
+
+// HasVisibleMessageAfter 判断指定位置之后是否已有一条可见发言。
+func (c *MainConversationController) HasVisibleMessageAfter(ctx context.Context, conversationID string, sequence int64) (bool, error) {
+	db := controllerDB(ctx, c.db)
+	visible := db.Model(&models.MainConversationMessage{}).Select("1").
+		Where("conversation_id = ? AND sequence > ? AND removed_at = 0 AND admission_pending = ?", conversationID, sequence, false)
+	var later bool
+	if err := db.Raw("SELECT EXISTS (?)", visible).Scan(&later).Error; err != nil {
+		return false, databaseError("check_later_main_messages", conversationID, err)
+	}
+	return later, nil
+}
+
+// FindPublishedBody 查找当前执行已交付的同一正文，供工单报告沿用原发言。
+func (c *MainConversationController) FindPublishedBody(ctx context.Context, convID, chatID, executionID, content string) (models.MainConversationMessage, error) {
+	// 与报告的 strings.TrimSpace 采用同一组空白，同时保留原气泡的 Markdown。
+	const whitespace = " \t\n\v\f\r\u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+	var row models.MainConversationMessage
+	err := mainPublicationQuery(controllerDB(ctx, c.db), convID, chatID, executionID).
+		Where("id <> ?", models.MainConversationDispatchAcknowledgmentID(convID, chatID, executionID)).
+		Where("removed_at = 0 AND trim(content, ?) = ?", whitespace, strings.TrimSpace(content)).
+		Order("sequence ASC").Limit(1).Find(&row).Error
+	if err != nil {
+		return row, databaseError("find_main_published_body", executionID, err)
+	}
+	return row, nil
+}
+
+func mainPublicationQuery(db *gorm.DB, convID, chatID, executionID string) *gorm.DB {
+	return db.Where("conversation_id = ? AND source_chat_id = ? AND source_execution_id = ? AND role = ? AND admission_pending = 0",
+		convID, chatID, executionID, constants.MessageRoleAssistant)
+}
+
+// HasAutomaticTaskReceipt 只核对原执行是否已提交定时任务回执。
+func (c *MainConversationController) HasAutomaticTaskReceipt(ctx context.Context, conversationID, chatID, executionID string) (bool, error) {
+	var row models.MainConversationMessage
+	result := mainPublicationQuery(controllerDB(ctx, c.db), conversationID, chatID, executionID).
+		Select("id").Where("automatic_task_receipts IS NOT NULL").Limit(1).Find(&row)
+	if result.Error != nil {
+		return false, databaseError("find_automatic_task_receipt", executionID, result.Error)
+	}
+	return row.ID != "", nil
+}
+
+func sameOptionalValue[T comparable](a, b *T) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // RemoveMessage 在调用方事务内移除公开时间线上的一条消息，同时保留原执行及收据。
@@ -119,11 +200,9 @@ func (c *MainConversationController) ConfirmUserAdmission(ctx context.Context, c
 		}
 		db := controllerDB(tx, c.db)
 		// 更晚的公开消息可能已进入历史页。延迟接纳的交办从最新一页进入时间线。
-		visible := db.Model(&models.MainConversationMessage{}).Select("1").
-			Where("conversation_id = ? AND sequence > ? AND removed_at = 0 AND admission_pending = ?", conversationID, row.Sequence, false)
-		var later bool
-		if err := db.Raw("SELECT EXISTS (?)", visible).Scan(&later).Error; err != nil {
-			return databaseError("check_later_main_messages", conversationID, err)
+		later, err := c.HasVisibleMessageAfter(tx, conversationID, row.Sequence)
+		if err != nil {
+			return err
 		}
 		if later {
 			var last models.MainConversationMessage
@@ -175,6 +254,24 @@ func (c *MainConversationController) Messages(ctx context.Context, id string, be
 	}
 	slices.Reverse(rows)
 	return rows, more, nil
+}
+
+// WorkInputTriggers 按原消息身份批量定位本来源的主会话用户输入。
+func (c *MainConversationController) WorkInputTriggers(ctx context.Context, work models.MainConversationWork, inputIDs []string) ([]models.MainConversationMessage, error) {
+	if len(inputIDs) == 0 {
+		return nil, nil
+	}
+	var rows []models.MainConversationMessage
+	err := controllerDB(ctx, c.db).
+		Table("main_conversation_messages INDEXED BY sqlite_autoindex_main_conversation_messages_1").
+		Select("id", "content", "source_message_id", "admission_submission_id", "admission_pending", "removed_at").
+		Where("id IN ? AND conversation_id = ? AND source_chat_id = ? AND role = ?", inputIDs, work.ConversationID, work.WorkChatID, constants.MessageRoleUser).
+		Where("(source_execution_id = id OR source_execution_id = '')").
+		Find(&rows).Error
+	if err != nil {
+		return nil, databaseError("find_work_input_triggers", work.WorkChatID, err)
+	}
+	return rows, nil
 }
 
 // WorkPublications 按来源和当前页执行身份读取已发布的真实发言。

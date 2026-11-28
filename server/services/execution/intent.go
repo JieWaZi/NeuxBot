@@ -28,6 +28,8 @@ type ToolCapability struct {
 	validateWork func(models.Chat, string) error
 	// publishFinal 在执行终态提交前交付本次已保存、可辨认的用户答复。
 	publishFinal func(context.Context, func(context.Context) (string, error)) error
+	// finishTurn 让工单记录已持久化的本轮终态，生命周期仍由执行宿主管理。
+	finishTurn func(context.Context, constants.ExecutionStatus) error
 }
 
 // WorkflowTurnBinding 保存为当前接纳回合准备的工作流选择与受限能力。
@@ -67,6 +69,8 @@ type WorkIntent struct {
 	Chat ChatTarget
 	// Input 描述本次用户或系统输入及文件引用。
 	Input WorkInput
+	// Ticket 描述显式开单或已经核对过的公开引用。
+	Ticket WorkTicketInput `json:"-"`
 	// TeamReplyThreadID 是团队域为主会话回复冻结的归属，普通续发为空。
 	TeamReplyThreadID string `json:"-"`
 	// MessagePlugins 是上层为公开消息冻结的其他成员插件引用，不授予当前执行插件能力。
@@ -77,6 +81,8 @@ type WorkIntent struct {
 	Admission constants.ExecutionAdmission
 	// AdmissionBoundary 可选地保护派发前的耐久接纳，不随原生执行传递。
 	AdmissionBoundary AdmissionBoundary `json:"-"`
+	// BeforeQueuedNativeCommit 在队列输入完成授权后、原生输入批次落盘前登记交接边界。
+	BeforeQueuedNativeCommit func(context.Context) error `json:"-"`
 	// ClaimAttachments 在幂等检查后将原附件引用转换为本地路径，回调由宿主提供。
 	// 返回的释放函数以权威接纳结果结算附件租约。
 	ClaimAttachments func([]AttachmentInput) (func(bool), error) `json:"-"`
@@ -182,6 +188,8 @@ type WorkOptions struct {
 	WorkspaceReadOnly bool
 	// SessionPolicy 表示续接、强制新建或未来禁用 Session 的行为策略。
 	SessionPolicy constants.RuntimeSessionPolicy
+	// HistorySourceChatID 将主会话的显式接力选择限制在用户选定的来源。
+	HistorySourceChatID string `json:",omitempty"`
 	// HistoryTurns 是新建原生会话时携带的最近完整对话轮数，零值使用默认值。
 	HistoryTurns int
 	// HistoryMode 决定新会话使用近期对话还是旧会话生成的隐藏交接内容。
@@ -214,6 +222,8 @@ type AcceptedExecution struct {
 	Execution models.Execution `json:"execution"`
 	// Replayed 表示本次返回的是同一输入请求已经提交的确定结果。
 	Replayed bool `json:"replayed,omitempty"`
+	// Published 表示原聊天输入投递已接纳，实际执行位于其他工作来源。
+	Published bool `json:"published,omitempty"`
 }
 
 // Start 校验并执行一个入口无关的工作意图。
@@ -278,11 +288,20 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 	if intent.Options.SessionPolicy == "" {
 		intent.Options.SessionPolicy = constants.RuntimeSessionPolicyContinue
 	}
+	queuedGate := intent.Admission == constants.ExecutionAdmissionCommitAtQueuedNativeGate
 	if intent.Admission != constants.ExecutionAdmissionCommitOnRuntimeAccept &&
-		intent.Admission != constants.ExecutionAdmissionCommitBeforeDispatch {
+		intent.Admission != constants.ExecutionAdmissionCommitBeforeDispatch && !queuedGate {
 		return AcceptedExecution{}, status_error.BadRequest
 	}
-	if intent.AdmissionBoundary != nil && intent.Admission != constants.ExecutionAdmissionCommitBeforeDispatch {
+	if intent.AdmissionBoundary != nil && intent.Admission != constants.ExecutionAdmissionCommitBeforeDispatch && !queuedGate {
+		return AcceptedExecution{}, status_error.BadRequest
+	}
+	if queuedGate != (intent.BeforeQueuedNativeCommit != nil) {
+		return AcceptedExecution{}, status_error.BadRequest
+	}
+	if queuedGate && (intent.AdmissionBoundary == nil || intent.Chat.ChatID == "" || intent.Chat.Create != nil ||
+		intent.Input.SubmissionID == "" || intent.Input.SteerExecutionID != "" ||
+		(intent.Options.EntryPoint != MainConversationEntryPoint && intent.Options.EntryPoint != MainConversationSourceEntryPoint)) {
 		return AcceptedExecution{}, status_error.BadRequest
 	}
 	request := pendingMessage{automaticRunID: intent.AutomaticRunID, imReplyLinkID: intent.Input.IMReplyLinkID,
@@ -293,6 +312,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		clientRequestID:   intent.ClientRequestID,
 		chatID:            intent.Chat.ChatID,
 		replyToMessageID:  intent.Input.ReplyToMessageID,
+		ticket:            intent.Ticket,
 		teamReplyThreadID: intent.TeamReplyThreadID,
 		message: userMessage{
 			Actor:             intent.Input.Actor,
@@ -319,6 +339,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 			PermissionLevel:       intent.Options.PermissionLevel,
 			WorkspaceReadOnly:     intent.Options.WorkspaceReadOnly,
 			SessionPolicy:         intent.Options.SessionPolicy,
+			HistorySourceChatID:   intent.Options.HistorySourceChatID,
 			HistoryTurns:          intent.Options.HistoryTurns,
 			HistoryMode:           intent.Options.HistoryMode,
 			SummaryModel:          intent.Options.SummaryModel,
@@ -327,6 +348,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		parentExecutionID:         intent.Options.ParentExecutionID,
 		admission:                 intent.Admission,
 		admissionBoundary:         intent.AdmissionBoundary,
+		beforeQueuedNativeCommit:  intent.BeforeQueuedNativeCommit,
 		toolCapabilities:          cloneToolCapabilities(intent.Options.ToolCapabilities),
 		workflowCreationSessionID: intent.Options.WorkflowCreationSessionID,
 		allowedConnectorIDs:       cloneConnectorAllowlist(intent.Options.AllowedConnectorIDs),

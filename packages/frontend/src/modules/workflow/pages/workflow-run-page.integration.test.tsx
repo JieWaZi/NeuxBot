@@ -273,6 +273,35 @@ function renderRun(search?: string) {
   );
 }
 
+it("从运行详情补交原结论，并刷新同一次运行的收据", async () => {
+  const user = userEvent.setup();
+  snapshot = {
+    ...snapshot,
+    humanRequests: [],
+    operationRequests: [],
+    run: {
+      ...snapshot.run,
+      status: "succeeded",
+      conclusion: { settledAt: 123, errorCode: "WakerNotFound" },
+    },
+  };
+  server.use(
+    http.post(`${api}/runs/run-1/conclusion/retry`, () => {
+      snapshot = {
+        ...snapshot,
+        run: { ...snapshot.run, conclusion: { settledAt: 456 } },
+      };
+      return HttpResponse.json({ success: true });
+    }),
+  );
+  renderRun();
+  expect(await screen.findByText("结论未能送达原会话")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "补交结论" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "补交结论" })).toBeNull(),
+  );
+});
+
 it("运行详情读取失败只在画布区域显示，并可重试", async () => {
   configurePlatform({
     ...platform(),

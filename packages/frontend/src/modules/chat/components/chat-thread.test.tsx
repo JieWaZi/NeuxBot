@@ -9,6 +9,7 @@ import type {
 } from "@assistant-ui/react";
 
 import "@/shared/i18n";
+import { getWakerOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import {
   AssistantMessage as PureAssistantMessage,
@@ -230,6 +231,42 @@ function toolPart(
 }
 
 describe("chat work process", () => {
+  it("在原工作记录区分巡检停止请求与实际确认", () => {
+    const pending = {
+      id: "watchdog-message",
+      role: "assistant",
+      executionId: "watchdog-execution",
+      status: "running",
+      errorCode: "RuntimeWatchdogStall",
+      errorMessageSource: "localized",
+      createdAt: 1,
+    } satisfies BotChatMessage;
+    const projection = new ChatMessageProjection();
+    const renderMessage = (message: BotChatMessage) => {
+      const view = projection.update([message])[0];
+      if (!view) throw new Error("missing test message");
+      return <PureAssistantMessage name="NeuxBot" view={view} last={false} />;
+    };
+    const { rerender } = render(renderMessage(pending));
+    expect(
+      screen.getByText("执行长时间没有进展，宿主已请求停止。等待智能体确认。"),
+    ).toHaveAttribute("role", "status");
+    rerender(
+      renderMessage({
+        ...pending,
+        status: "failed",
+        errorParams: { Confirmed: true, Settled: true },
+      }),
+    );
+    expect(screen.queryByText(/等待智能体确认/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开失败详情" }));
+    expect(
+      screen.getByText(
+        "执行长时间没有进展，宿主已请求停止。智能体已确认停止。",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("失败回复成为历史后自动收起，原失败详情和正文阅读标记只在展开时出现", () => {
     messageState.current = {
       role: "assistant",
@@ -1633,6 +1670,43 @@ describe("steer 连续工作展示", () => {
     expect(screen.getByText("执行已取消")).toBeVisible();
     expect(screen.getByRole("button", { name: "复制" })).toBeVisible();
   });
+});
+
+it("普通聊天中的移交回件在成为历史消息后仍显示接手伙伴", () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { staleTime: Infinity } },
+  });
+  client.setQueryData(
+    getWakerOptions({ path: { wakerId: "receiver" } }).queryKey,
+    { id: "receiver", name: "接手伙伴" },
+  );
+  const views = new ChatMessageProjection().update([
+    {
+      id: "handoff-report",
+      role: "assistant",
+      actor: "work_ticket_report",
+      sourceWakerId: "receiver",
+      sourceChatId: "receiver-work",
+      displayParts: [{ id: "result", type: "text", text: "已完成接手工作" }],
+    },
+    {
+      id: "following-turn",
+      role: "assistant",
+      status: "completed",
+      displayParts: [{ id: "body", type: "text", text: "原伙伴的独立答复" }],
+    },
+  ]);
+  render(
+    <QueryClientProvider client={client}>
+      <ChatMessageList views={views} name="原伙伴" wakerId="original" />
+    </QueryClientProvider>,
+  );
+
+  const reportRow = screen
+    .getByText("已完成接手工作")
+    .closest("[data-message-id]");
+  expect(reportRow).toContainElement(screen.getByText("接手伙伴"));
+  expect(screen.getByText("原伙伴的独立答复")).toBeVisible();
 });
 
 describe("团队成员消息折叠", () => {

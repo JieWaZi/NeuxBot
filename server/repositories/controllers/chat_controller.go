@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -516,6 +517,7 @@ func (c *chatController) Delete(ctx context.Context, id string) error {
 	db := controllerDB(ctx, c.db)
 	var bindings []models.IMBinding
 	var affectedEntities []events.Resource
+	var mainOwner models.MainConversation
 	value, registered := c.db.Get(eventPublisherSetting)
 	publisher, publishesEvents := value.(events.Publisher)
 	if registered && publishesEvents && publisher != nil {
@@ -527,12 +529,22 @@ func (c *chatController) Delete(ctx context.Context, id string) error {
 		if chat.ID != "" && chat.WakerID != "" && !chat.HiddenFromWakerHistory {
 			affectedEntities = append(affectedEntities, eventsResource("waker", chat.WakerID))
 		}
+		if chat.HiddenFromWakerHistory {
+			var err error
+			mainOwner, err = mainWorkSubject(db, id, chat.WakerID)
+			if err != nil {
+				return databaseError("capture_deleted_main_input_owner", id, err)
+			}
+		}
 		// 团队成员关系在聚合删除末尾才清理，在此前捕获受影响的 IM 会话范围。
 		threads := db.Model(&models.ChannelThreadMember{}).Select("thread_id").Where("chat_id = ?", id)
 		links := db.Model(&models.IMConversationLink{}).Select("binding_id").Where("chat_id = ? OR thread_id IN (?)", id, threads)
 		if err := db.Select("id", "connection_id").Where("id IN (?)", links).Find(&bindings).Error; err != nil {
 			return databaseError("capture_deleted_chat_im_bindings", "chat_id="+id, err)
 		}
+	}
+	if err := deleteChatWorkTickets(db, id); err != nil {
+		return err
 	}
 	if err := releaseMainWorkChat(db, id); err != nil {
 		return err
@@ -541,6 +553,9 @@ func (c *chatController) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	publishCommittedChange(ctx, c.db, "work-board", eventsResource("chat", id), affectedEntities...)
+	if mainOwner.ID != "" {
+		publishCommittedChange(ctx, c.db, constants.MainConversationEventTopic, eventsResource(mainOwner.SubjectType, mainOwner.SubjectID))
+	}
 	connections := make(map[string]bool, len(bindings))
 	for _, binding := range bindings {
 		publishCommittedChange(ctx, c.db, "im", eventsResource("binding", binding.ID))

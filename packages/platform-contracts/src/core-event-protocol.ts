@@ -3,6 +3,7 @@ import { z } from "zod";
 export const globalEventTopics = [
   "work-board",
   "main-conversations",
+  "work-tickets",
   "reading",
   "entities",
   "automatic-tasks",
@@ -107,6 +108,7 @@ function validGlobalEventResource(
       !resource.parentId &&
       ![
         "main-conversations",
+        "work-tickets",
         "chat",
         "team",
         "workflow",
@@ -120,6 +122,12 @@ function validGlobalEventResource(
     case "main-conversations":
       return (
         (resource.kind === "waker" || resource.kind === "team") &&
+        !resource.parentId
+      );
+    case "work-tickets":
+      return (
+        (resource.kind === "chat" || resource.kind === "main") &&
+        resource.id.length <= 32 &&
         !resource.parentId
       );
     case "workspace":

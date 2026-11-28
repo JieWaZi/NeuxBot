@@ -61,6 +61,8 @@ type streamCoverage struct {
 	Binding int64
 	// QuestionsIndexed 表示该 Chat 的原问答事件已纳入定位覆盖。
 	QuestionsIndexed bool
+	// NativeConsumptionIndexed 表示该原生分片已定位单输入的终态。
+	NativeConsumptionIndexed bool
 }
 
 func (streamCoverage) TableName() string { return "conversation_streams" }
@@ -145,6 +147,10 @@ func migrateIndex(db *gorm.DB) error {
 	}
 	if err := db.Exec("CREATE INDEX IF NOT EXISTS conversation_skill_changes ON conversation_positions (stream, cursor) WHERE kind = " +
 		strconv.Itoa(int(indexManagedResourceChange))).Error; err != nil {
+		return err
+	}
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS conversation_source_model_changes ON conversation_positions (stream, cursor) WHERE kind = " +
+		strconv.Itoa(int(indexSourceModelChanged))).Error; err != nil {
 		return err
 	}
 	return db.Exec("CREATE INDEX IF NOT EXISTS conversation_review_completed ON conversation_positions (stream, cursor) WHERE kind = " +
@@ -663,6 +669,7 @@ func (i *streamIndex) publish(info os.FileInfo, rows []rowIndex, header batchHea
 			coverage := i.coverage
 			if coverage.Stream == 0 {
 				coverage.QuestionsIndexed = public
+				coverage.NativeConsumptionIndexed = !public
 				var stale streamCoverage
 				if err := tx.Where("path = ?", coverage.Path).Limit(1).Find(&stale).Error; err != nil {
 					return err

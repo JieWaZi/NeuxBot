@@ -8,6 +8,7 @@ import {
   Clock3,
   Folder,
   FolderKanban,
+  GitPullRequest,
   LoaderCircle,
   Waypoints,
   UserRound,
@@ -65,6 +66,15 @@ import {
   withScheduleTimezone,
 } from "../model/schedule-defaults";
 import { ScheduleFields } from "./schedule-fields";
+import {
+  EventFields,
+  defaultEventConfiguration,
+  type EventConfiguration,
+} from "./event-fields";
+import {
+  WorkflowReportFields,
+  workflowReportOptions,
+} from "./workflow-report-fields";
 import { useWorkExecutors } from "@/shared/hooks/use-work-executors";
 import { TeamExecutionControls } from "./team-execution-controls";
 
@@ -142,11 +152,15 @@ export function TaskForm({
           workflowRevisionId: task.workflowRevisionId,
           workflowInputRevisionId: task.workflowInputRevisionId,
           workflowInputBindings: task.workflowInputBindings,
+          workflowReportRecipient: task.workflowReportRecipient,
           workspaceReadOnly: task.workspaceReadOnly,
           knowledge: task.knowledge,
           instruction: task.instruction,
+          reportDestination: task.reportDestination,
+          reportPolicy: task.reportPolicy,
           runtimeId: task.runtimeId,
           trigger: task.trigger,
+          event: task.event,
           schedule:
             task.trigger === "schedule"
               ? withScheduleTimezone(task.schedule ?? {})
@@ -172,6 +186,8 @@ export function TaskForm({
           executorWakerId: wakerId,
           channelId: "",
           trigger: "schedule",
+          reportDestination: "main_conversation",
+          reportPolicy: "always",
           enabled: true,
           permissionLevel: "default",
           schedule: {
@@ -195,7 +211,23 @@ export function TaskForm({
   const [executorKind, setExecutorKind] = useState(
     task?.workflowId ? "workflow" : task?.channelId ? "team" : "waker",
   );
+  const showReportDelivery =
+    !maintenance && executorKind !== "workflow" && config.trigger !== "api";
   const executors = useWorkExecutors();
+  const [workflowReportEnabled, setWorkflowReportEnabled] = useState(
+    Boolean(config.workflowReportRecipient),
+  );
+  const showWorkflowReport =
+    !wakerId && executorKind === "workflow" && config.trigger === "schedule";
+  const workflowRecipients = showWorkflowReport
+    ? workflowReportOptions(executors.data)
+    : [];
+  const workflowRecipientRequired = showWorkflowReport && workflowReportEnabled;
+  const workflowRecipientValid = workflowRecipients.some(
+    ({ subjectId, subjectType }) =>
+      subjectId === config.workflowReportRecipient?.subjectId &&
+      subjectType === config.workflowReportRecipient.subjectType,
+  );
   const team = executors.data?.teams.find(
     (item) => item.channel?.id === config.channelId,
   );
@@ -258,10 +290,15 @@ export function TaskForm({
     update.isPending ||
     createWorkflow.isPending ||
     updateWorkflow.isPending;
+  const canTrackDiscussion =
+    executorKind === "waker" &&
+    (!config.reportDestination ||
+      config.reportDestination === "main_conversation");
   const save = async (event: FormEvent) => {
     event.preventDefault();
+    if (workflowRecipientRequired && !workflowRecipientValid) return;
     if (executorKind === "workflow" && !inputValidity.valid) return;
-    const body: TaskConfiguration =
+    const draft: TaskConfiguration =
       executorKind === "workflow"
         ? {
             ...config,
@@ -274,6 +311,9 @@ export function TaskForm({
               schema,
               config.workflowInputBindings ?? {},
             ),
+            workflowReportRecipient: workflowRecipientRequired
+              ? config.workflowReportRecipient
+              : undefined,
             instruction: "",
             executorWakerId: "",
             channelId: "",
@@ -298,6 +338,7 @@ export function TaskForm({
             workflowRevisionPolicy: "",
             workflowInputRevisionId: "",
             workflowInputBindings: {},
+            workflowReportRecipient: undefined,
             executorWakerId: executorKind === "waker" ? selectedWakerId : "",
             channelId: executorKind === "team" ? config.channelId : "",
             memberConfigs:
@@ -309,6 +350,23 @@ export function TaskForm({
               ? { projectId: "", workingDirectory: "", workspaceReadOnly: true }
               : {}),
           };
+    const configuredEvent: EventConfiguration | undefined = draft.event;
+    const eventConfiguration =
+      configuredEvent && !canTrackDiscussion
+        ? { ...configuredEvent, trackDiscussion: undefined }
+        : configuredEvent;
+    const body: TaskConfiguration = {
+      ...draft,
+      event: draft.trigger === "event" ? eventConfiguration : undefined,
+      ...(!showReportDelivery
+        ? {
+            reportDestination: undefined,
+            reportPolicy: workflowRecipientRequired
+              ? config.reportPolicy || "always"
+              : undefined,
+          }
+        : {}),
+    };
     try {
       const saved =
         executorKind === "workflow"
@@ -411,7 +469,7 @@ export function TaskForm({
               <SegmentedControl
                 appearance="cards"
                 ariaLabel={t("filterTrigger")}
-                value={config.trigger === "api" ? "api" : "schedule"}
+                value={config.trigger || "schedule"}
                 options={[
                   {
                     value: "schedule",
@@ -425,8 +483,32 @@ export function TaskForm({
                     icon: <Waypoints />,
                     description: t("apiDescription"),
                   },
+                  ...(!maintenance &&
+                  executorKind !== "workflow" &&
+                  task?.trigger === "event"
+                    ? [
+                        {
+                          value: "event" as const,
+                          label: t("event"),
+                          icon: <GitPullRequest />,
+                          description: t("eventDescription"),
+                        },
+                      ]
+                    : []),
                 ]}
-                onValueChange={(trigger) => set({ trigger })}
+                onValueChange={(trigger) =>
+                  set({
+                    trigger,
+                    ...(trigger === "event"
+                      ? {
+                          event: config.event ?? defaultEventConfiguration,
+                          reportDestination:
+                            config.reportDestination || "main_conversation",
+                          reportPolicy: config.reportPolicy || "always",
+                        }
+                      : {}),
+                  })
+                }
               />
             </Field>
           </div>
@@ -439,6 +521,12 @@ export function TaskForm({
                 rule={config.schedule || {}}
                 onChange={(schedule) => set({ schedule })}
               />
+            ) : config.trigger === "event" ? (
+              <EventFields
+                value={config.event ?? defaultEventConfiguration}
+                onChange={(event) => set({ event })}
+                canTrackDiscussion={canTrackDiscussion}
+              />
             ) : (
               <p className="text-content-secondary type-caption">
                 {t(task?.trigger === "api" ? "apiEditHint" : "apiHint")}
@@ -449,6 +537,67 @@ export function TaskForm({
             ) : null}
           </div>
         </Card>
+        {showWorkflowReport && (
+          <WorkflowReportFields
+            enabled={workflowReportEnabled}
+            recipient={config.workflowReportRecipient}
+            options={workflowRecipients}
+            directory={executors}
+            onToggle={() => setWorkflowReportEnabled((enabled) => !enabled)}
+            onSelect={(workflowReportRecipient) =>
+              set({ workflowReportRecipient })
+            }
+          />
+        )}
+        {showReportDelivery ? (
+          <div className="grid gap-3">
+            {select(
+              t("reportDestination"),
+              config.reportDestination || "history",
+              [
+                { id: "main_conversation", name: t("reportMainConversation") },
+                { id: "topic", name: t("reportTopic") },
+                ...(config.trigger === "event"
+                  ? []
+                  : [{ id: "history", name: t("reportHistoryOnly") }]),
+              ],
+              (value) =>
+                set({
+                  reportDestination:
+                    value === "history"
+                      ? ""
+                      : value === "topic"
+                        ? "topic"
+                        : "main_conversation",
+                  reportPolicy:
+                    value === "history" ? "" : config.reportPolicy || "always",
+                }),
+            )}
+          </div>
+        ) : null}
+        {workflowRecipientRequired ||
+        (showReportDelivery && config.reportDestination)
+          ? select(
+              t("reportPolicy"),
+              config.reportPolicy || "always",
+              [
+                {
+                  id: "always",
+                  name: t(
+                    config.reportDestination === "topic"
+                      ? "reportAlways"
+                      : "reportAvailableResults",
+                  ),
+                },
+                { id: "changes_only", name: t("reportOnlyChanges") },
+              ],
+              (value) =>
+                set({
+                  reportPolicy:
+                    value === "changes_only" ? "changes_only" : "always",
+                }),
+            )
+          : null}
         {!maintenance ? (
           <div className="grid gap-3">
             <Field label={t("executor")} required>
@@ -475,6 +624,9 @@ export function TaskForm({
                 onValueChange={(value) => {
                   setExecutorKind(value);
                   set({
+                    ...(value === "workflow" && config.trigger === "event"
+                      ? { trigger: "schedule" as const }
+                      : {}),
                     executorWakerId: "",
                     channelId: "",
                     projectId: "",
@@ -852,6 +1004,7 @@ export function TaskForm({
           type="submit"
           disabled={
             pending ||
+            (workflowRecipientRequired && !workflowRecipientValid) ||
             (executorKind === "workflow"
               ? !workflow.data?.revision ||
                 !inputValidity.valid ||
@@ -868,6 +1021,9 @@ export function TaskForm({
             (config.trigger === "schedule" &&
               config.schedule?.kind === "once" &&
               !config.schedule.onceAt) ||
+            (config.trigger === "event" &&
+              (!config.event?.repository?.trim() ||
+                !config.event.kinds?.length)) ||
             !config.name.trim()
           }
         >

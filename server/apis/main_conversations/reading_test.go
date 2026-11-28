@@ -139,7 +139,7 @@ func TestMainReadingOperatorsScopePublicBoundaries(t *testing.T) {
 		if kept, replay, err := service.PublishWithReceipt(ctx, work.WorkChatID, "execution", "call", "public result", input.ID); err != nil || !replay || kept.ID != publication.ID {
 			t.Fatalf("original publication receipt was lost: %+v, %t, %v", kept, replay, err)
 		}
-		if _, _, err := (&SendMainConversationMessage{SubjectType: "waker", SubjectID: "a"}).resolveReply(ctx, work.ConversationID, input.ID); !errors.Is(err, status_error.ChatReplyTargetUnavailable) {
+		if _, _, _, err := (&SendMainConversationMessage{SubjectType: "waker", SubjectID: "a"}).resolveReply(ctx, work.ConversationID, input.ID); !errors.Is(err, status_error.ChatReplyTargetUnavailable) {
 			t.Fatalf("removed message is still a public reply target: %v", err)
 		}
 		if _, _, err := service.PublishWithReceipt(ctx, work.WorkChatID, "execution", "late", "late result", input.ID); err != nil {

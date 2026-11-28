@@ -26,7 +26,7 @@ func TestAutomaticKnowledgeDoesNotSilentlyIgnoreTeamOrWorkflowAuthorization(t *t
 		t.Run(name, func(t *testing.T) {
 			config.Knowledge = &models.KnowledgeMaintenanceAuthorization{Backend: "local", ConnectionID: "local", KnowledgeBaseID: "library", Operation: "organize"}
 			service := New(Config{})
-			_, err := service.saveConfiguration(context.Background(), "waker", "", 0, config, false)
+			_, err := service.saveConfiguration(context.Background(), "waker", "", 0, config, false, false)
 			if !errors.Is(err, status_error.KnowledgeUnsupported) {
 				t.Fatalf("unsupported target=%v", err)
 			}
@@ -42,7 +42,7 @@ func TestAutomaticMaintenanceRejectsSourceSelectionsBeforeSaving(t *testing.T) {
 		"missing library":      {Backend: "local", ConnectionID: "local", Operation: "maintain"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := New(Config{}).saveConfiguration(context.Background(), "waker", "", 0, models.AutomaticTaskConfiguration{Knowledge: &auth}, false)
+			_, err := New(Config{}).saveConfiguration(context.Background(), "waker", "", 0, models.AutomaticTaskConfiguration{Knowledge: &auth}, false, false)
 			if !errors.Is(err, status_error.KnowledgeInvalid) {
 				t.Fatalf("invalid maintenance scope reached persistence: %v", err)
 			}

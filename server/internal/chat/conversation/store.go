@@ -15,7 +15,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
 const streamShards = 64
@@ -313,9 +315,22 @@ func validChatChange(change agent.ConversationChange) bool {
 			if !validID(f.ExecutionID) && !validID(f.MessageID) {
 				return false
 			}
-		case constants.ChatEventTypeExecutionDelivery:
-			if !validID(f.ExecutionID) || f.ExecutionID != f.MessageID {
+		case constants.ChatEventTypeExecutionWatchdogStopRequested:
+			var stop eventlog.WatchdogStopRequestedData
+			if !validID(f.ExecutionID) || f.MessageID != f.ExecutionID || json.Unmarshal(f.Data, &stop) != nil ||
+				stop.ExecutionID != f.ExecutionID || stop.ReasonCode == "" || stop.LastProgressAt <= 0 || stop.RequestedAt < stop.LastProgressAt {
 				return false
+			}
+		case constants.ChatEventTypeExecutionDelivery:
+			if !validID(f.ExecutionID) {
+				return false
+			}
+			if f.ExecutionID != f.MessageID {
+				var report eventlog.ExecutionDeliveryData
+				if !validID(f.MessageID) || json.Unmarshal(f.Data, &report) != nil ||
+					report.SourceID != f.MessageID || !report.IsTransferredWorkReport() {
+					return false
+				}
 			}
 		case constants.ChatEventTypeExecutionCompleted,
 			constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
@@ -403,7 +418,11 @@ func describe(row diskRow, where location, at int64) rowIndex {
 		r.Kind, r.Native = indexDetachedInput, detachedRowID(row.DetachedInput.Session, row.DetachedInput.HostInvocationID)
 		r.Adapter = adapterRowID(row.DetachedInput.Session, row.DetachedInput.AdapterInputID)
 	case row.Terminal != nil:
-		r.Kind, r.Native = indexNativeTerminal, nativeRowID(row.Terminal.Result.Key)
+		result := row.Terminal.Result
+		r.Kind, r.Native = indexNativeTerminal, nativeRowID(result.Key)
+		if len(result.Turn.ConsumedInputIDs) == 1 && !slices.Contains(result.Unavailable, acpmeta.ReceiptConsumedInputsUnavailable) {
+			r.ConsumedAdapter = adapterRowID(result.Key.Session, result.Turn.ConsumedInputIDs[0])
+		}
 		if row.Terminal.Body != nil {
 			r.Message = row.Terminal.Body.MessageID
 		}
@@ -431,12 +450,18 @@ func describe(row diskRow, where location, at int64) rowIndex {
 			if r.Message == "" {
 				r.Message = r.Execution
 			}
+		case constants.ChatEventTypeExecutionDelivery:
+			if f.MessageID != f.ExecutionID {
+				r.Kind = indexAssistantMessage
+			}
 		case constants.ChatEventTypeExecutionCompleted:
 			r.Kind = indexExecutionCompleted
 		case constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
 			r.Kind = indexExecutionEnded
 		case constants.ChatEventTypeManagedSkillChanged, constants.ChatEventTypeManagedConnectorChanged:
 			r.Kind = indexManagedResourceChange
+		case constants.ChatEventTypeSourceModelSelected:
+			r.Kind = indexSourceModelChanged
 		case constants.ChatEventTypeElicitationRequested, constants.ChatEventTypeElicitationResolved:
 			var question struct {
 				// ElicitationID 是请求和结果共用的权威身份。

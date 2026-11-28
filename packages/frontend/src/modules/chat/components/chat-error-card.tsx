@@ -294,7 +294,7 @@ function subscribeDismissedFailures(listener: () => void) {
     dismissedFailureListeners.delete(listener);
   };
 }
-function dismissExecutionFailure(id: string) {
+export function dismissExecutionFailure(id: string) {
   if (dismissedExecutionFailures.has(id)) return;
   dismissedExecutionFailures = new Set([...dismissedExecutionFailures, id]);
   try {

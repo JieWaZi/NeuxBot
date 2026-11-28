@@ -172,6 +172,8 @@ func catalog() []Operation {
 			}}),
 		operation("workflow.resources.list", "Discover one bounded page of authoring resources.", read, immediate, "workflow.authoring", choice("kind", workflowcatalog.ResourceKinds(), true), text("cursor", false), text("workflowId", false)),
 		operation("workflow.annotations.list", "Read authoring annotations for the target workflow.", read, immediate, "workflow.authoring", append([]Field{text("status", false), text("baseRevisionId", false), text("workflowId", false)}, page...)...),
+		operation("workflow.definitions.create", "Create an empty workflow draft in the current partner's scope. Then prepare and save its source. This does not run it.", mutation, immediate, "workflow.authoring",
+			Field{Name: "title", Required: true, Schema: map[string]any{"type": "string", "minLength": 1, "maxLength": 120, "pattern": `\S`}}),
 		operation("workflow.definitions.list", "Discover workflows authorized for this execution.", read, immediate, "workflow.execution", append([]Field{text("search", false)}, page...)...),
 		operation("workflow.definitions.describe", "Read the authorized immutable workflow's input and output contract.", read, immediate, "workflow.execution", text("definitionId", true), text("revisionId", false)),
 		operation("workflow.runs.start", "Accept an authorized workflow run with frozen inputs.", external, accepted, "workflow.execution", text("definitionId", true), text("revisionId", true), Field{Name: "args", Schema: map[string]any{}, Required: true}),
@@ -204,6 +206,9 @@ func catalog() []Operation {
 		operation("interaction.questions.get", "Read the actual answer state of the current execution's question.", read, immediate, "interaction.questions", text("questionId", true)),
 	}
 	result = append(mainConversationOperations(), result...)
+	result = append(result, automaticRuleOperations()...)
+	result = append(result, workTicketReportOperation())
+	result = append(result, workTicketCollaborationOperations()...)
 	result = append(result, resourceManagementOperations()...)
 	result = append(result, knowledgeMaintenanceOperations()...)
 	for _, resource := range []struct {
@@ -462,6 +467,8 @@ func outputSchema(id string) map[string]any {
 		return object("sdk", "topic", "content", "source", "guidance")
 	case "workflow.resources.list":
 		return object("kind", "items", "nextCursor", "toolPolicyCapabilities")
+	case "workflow.definitions.create":
+		return object("definitionId")
 	case "workflow.definitions.describe":
 		return object("id", "name", "description", "whenToUse", "revisionId", "runnable", "inputSchema", "outputSchema")
 	case "workflow.runs.start", "workflow.runs.repeat":
@@ -528,8 +535,16 @@ func (o Operation) DisplayLabel() string {
 		return label
 	}
 	labels := map[string]string{
-		"knowledge.pages.purge":   "删除已归并的重复页面",
-		"knowledge.libraries.get": "读取知识库设置", "knowledge.sources.list": "查看知识来源", "knowledge.sources.read": "核查原文证据", "knowledge.pages.list": "查看知识页面", "knowledge.themes.list": "查看知识目录", "knowledge.index.get": "读取知识索引", "knowledge.revisions.list": "查看知识历史", "knowledge.revisions.get": "读取历史版本", "knowledge.jobs.list": "查看整理任务", "knowledge.jobs.get": "查看整理结果", "knowledge.audit.get": "核查知识质量", "knowledge.activity.list": "查看知识活动", "knowledge.export.get": "导出知识正文",
+		RuleList: "查看自动规则", RuleGet: "读取自动规则",
+		RuleCreate: "保存自动规则", RuleUpdate: "修改自动规则", RuleDelete: "删除自动规则",
+		constants.WorkTicketReportOperation:         "提交工单报告",
+		constants.WorkTicketDelegateOperation:       "委派子工单",
+		constants.WorkTicketResultsOperation:        "读取子工单回报",
+		constants.WorkTicketReplyOperation:          "答复子工单问题",
+		constants.WorkTicketEventWaitOperation:      "登记 CI 成功等待",
+		constants.WorkTicketEventSubscribeOperation: "订阅工单事件上下文",
+		"knowledge.pages.purge":                     "删除已归并的重复页面",
+		"knowledge.libraries.get":                   "读取知识库设置", "knowledge.sources.list": "查看知识来源", "knowledge.sources.read": "核查原文证据", "knowledge.pages.list": "查看知识页面", "knowledge.themes.list": "查看知识目录", "knowledge.index.get": "读取知识索引", "knowledge.revisions.list": "查看知识历史", "knowledge.revisions.get": "读取历史版本", "knowledge.jobs.list": "查看整理任务", "knowledge.jobs.get": "查看整理结果", "knowledge.audit.get": "核查知识质量", "knowledge.activity.list": "查看知识活动", "knowledge.export.get": "导出知识正文",
 		"knowledge.pages.write": "修订知识页面", "knowledge.pages.replace": "精确修订知识", "knowledge.pages.rename": "重命名知识页面", "knowledge.pages.delete": "归档知识页面", "knowledge.revisions.restore": "恢复知识版本", "knowledge.themes.write": "调整知识目录", "knowledge.sources.import": "导入知识来源", "knowledge.jobs.retry": "重试知识整理",
 		"knowledge.jobs.start":     "接纳授权知识整理",
 		"knowledge.wiki.maintain":  "提交 Wiki 维护",
@@ -537,7 +552,8 @@ func (o Operation) DisplayLabel() string {
 		"knowledge.libraries.list": "查看可用知识库", "knowledge.pages.search": "搜索知识", "knowledge.pages.get": "读取知识页面", "knowledge.sources.get": "查看原件版本", "workflow.authoring.prepare": "准备工作流创作",
 		"im.targets.list": "查看可发送聊天", "im.deliveries.create": "提交消息交付", "im.deliveries.get": "查看交付状态", "im.deliveries.wait": "等待消息交付",
 		"workflow.source.get": "读取工作流", "workflow.source.validate": "检查工作流", "workflow.source.save": "保存工作流", "workflow.sdk.get": "了解工作流能力", "workflow.resources.list": "查看可用伙伴与资源", "workflow.annotations.list": "查看修改要求", "workflow.evidence.list": "查看执行记录",
-		"workflow.definitions.list": "查看可用工作流", "workflow.definitions.describe": "查看工作流参数", "workflow.runs.start": "提交工作流运行", "workflow.runs.list": "查看对话中的运行", "workflow.runs.repeat": "再次执行原运行", "workflow.runs.get": "查看执行进度", "workflow.runs.cancel": "请求停止工作流", "workflow.runs.wait": "等待工作流运行", "workflow.results.schema": "查看步骤结果格式", "workflow.results.submit": "提交步骤候选结果",
+		"workflow.definitions.create": "创建工作流草稿",
+		"workflow.definitions.list":   "查看可用工作流", "workflow.definitions.describe": "查看工作流参数", "workflow.runs.start": "提交工作流运行", "workflow.runs.list": "查看对话中的运行", "workflow.runs.repeat": "再次执行原运行", "workflow.runs.get": "查看执行进度", "workflow.runs.cancel": "请求停止工作流", "workflow.runs.wait": "等待工作流运行", "workflow.results.schema": "查看步骤结果格式", "workflow.results.submit": "提交步骤候选结果",
 		"team.members.list": "查看团队成员", "team.tasks.list": "查看团队任务", "team.tasks.get": "查看任务详情", "team.tasks.create": "分配团队任务", "team.tasks.update": "更新团队任务", "team.tasks.follow-up": "补充团队任务", "team.tasks.retry": "请求重试任务", "team.tasks.cancel": "请求停止任务", "team.reports.submit": "提交工作报告",
 		"memory.entries.search": "搜索记忆", "memory.entries.get": "查看记忆", "memory.entries.create": "保存记忆", "memory.entries.update": "更新记忆", "memory.entries.forget": "遗忘记忆",
 		"skills.packages.list": "查看技能列表", "skills.packages.get": "读取技能", "skills.packages.create": "新建技能", "skills.packages.revise": "更新技能", "skills.packages.uninstall": "卸载技能", "skills.packages.delete": "删除技能",

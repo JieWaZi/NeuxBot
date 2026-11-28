@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -34,6 +35,8 @@ export function useChatViewportScroll({
   followInitially = true,
   isHistoryAnchoring,
   onProgrammaticScroll,
+  onFollowRevision,
+  onUserScroll,
 }: {
   viewport: RefObject<HTMLDivElement | null>;
   scope: string;
@@ -42,8 +45,16 @@ export function useChatViewportScroll({
   followInitially?: boolean;
   isHistoryAnchoring?: () => boolean;
   onProgrammaticScroll?: (top: number) => void;
+  onFollowRevision?: (distance: number) => void;
+  onUserScroll?: () => void;
 }) {
-  const refresh = useRef<(() => void) | undefined>(undefined);
+  const refresh = useRef<(() => number | undefined) | undefined>(undefined);
+  const notifyFollowRevision = useEffectEvent((distance: number) => {
+    onFollowRevision?.(distance);
+  });
+  const notifyUserScroll = useEffectEvent(() => {
+    onUserScroll?.();
+  });
   const [localPositions] = useState<ChatViewportPositions>(() => new Map());
   const positions = useContext(ChatViewportPositionContext) ?? localPositions;
   useLayoutEffect(() => {
@@ -147,17 +158,18 @@ export function useChatViewportScroll({
       if (Math.abs(top - before) > 0.5)
         element.scrollTo({ top, behavior: "instant" });
       latestTop = element.scrollTop;
-      if (latestTop !== before) {
+      const distance = latestTop - before;
+      if (distance !== 0) {
         programmaticTop = latestTop;
         onProgrammaticScroll?.(latestTop);
       }
+      return distance;
     };
     const update = () => {
       if (document.hidden || element.clientHeight <= 0) return;
       if (following) {
         restore = undefined;
-        scroll(Math.max(0, element.scrollHeight - element.clientHeight));
-        return;
+        return scroll(Math.max(0, element.scrollHeight - element.clientHeight));
       }
       // 翻页请求由既有历史锚点负责一次补偿，避免两个滚动所有者重复移动。
       if (isHistoryAnchoring?.()) return;
@@ -215,6 +227,7 @@ export function useChatViewportScroll({
       }
       programmaticTop = undefined;
       restore = undefined;
+      if (element.scrollTop !== latestTop) notifyUserScroll();
       latestTop = element.scrollTop;
       following =
         element.scrollHeight - element.scrollTop - element.clientHeight <= 24;
@@ -266,6 +279,6 @@ export function useChatViewportScroll({
     positions,
   ]);
   useLayoutEffect(() => {
-    refresh.current?.();
+    notifyFollowRevision(refresh.current?.() ?? 0);
   }, [revision]);
 }

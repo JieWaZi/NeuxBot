@@ -37,7 +37,7 @@ func TestCoreFileUploadBindingPreservesRuntimeInput(t *testing.T) {
 	transactions := controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))
 	state := workflowstate.New(store, runs, transactions)
 	s := workflow.New(workflow.Config{Store: store, Runs: runs, Transactions: transactions, State: state, DataDirectory: directory})
-	api := &workflowDependencies{Store: store, Runs: runs, Transactions: transactions, State: state}
+	api := &workflowDependencies{Store: store, Runs: runs, Transactions: transactions, State: state, CreateDefinition: s.CreateDefinition}
 	previousService, previousState, previousRuns := global.WorkflowService, global.WorkflowState, global.WorkflowRunControllerManager
 	global.WorkflowService, global.WorkflowState, global.WorkflowRunControllerManager = s, state, runs
 	t.Cleanup(func() {

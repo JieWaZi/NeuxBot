@@ -7,7 +7,8 @@ import { applicationErrorMessage } from "@/shared/api/error-presentation";
 import { useInstalledPluginReferences } from "@/modules/plugin";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
 import type { ExecutionSelection } from "@/shared/hooks/use-execution-selection";
-import { useChatFork } from "../components/chat-fork";
+import { ChatConversation } from "../components/chat-conversation";
+import type { ComposerWorkTicketTransfer } from "../components/use-composer-work-ticket-transfer";
 import { useChatAccountSelection } from "../model/use-chat-account-selection";
 import { useDraftWorkspaceSelections } from "./use-draft-workspace-selections";
 import {
@@ -36,6 +37,7 @@ import type {
   ChatSendSelection,
 } from "../runtime/chat-queue-store";
 import type {
+  BotChatMessage,
   ChatReplyDraftEditor,
   ChatReplyReference,
 } from "../runtime/chat-projection";
@@ -73,7 +75,8 @@ import {
   ChatWorkspaceSurface,
   type ChatWorkspaceAdapter,
 } from "../components/chat-workspace-surface";
-import { ChatThread } from "../components/chat-thread";
+import { WorkTicketLoadError } from "../components/work-ticket-load-error";
+import { useWorkTickets, type WorkTicketOrigin } from "../api/work-tickets";
 import type { ChatComposerContextReference } from "../components/chat-composer-input";
 import {
   useChatWorkflowPicker,
@@ -166,7 +169,13 @@ export type ChatWorkspaceEntry = {
       additionalWorkingDirectories?: string[];
       projectName?: string;
     };
+    sessionSource?: {
+      id?: string;
+      lastRuntimeId?: string;
+      lastAccountId?: string;
+    };
     requests?: ChatRequestSource;
+    executionFailure?: BotChatMessage;
     view: "main" | "source";
     fixedMember: boolean;
   };
@@ -185,6 +194,10 @@ export type ChatWorkspaceEntry = {
       }) => ReactNode);
   isHistoryLoading?: boolean;
   isSendDisabled?: boolean;
+  workTicketTransfer?: Pick<
+    ComposerWorkTicketTransfer,
+    "origin" | "replyHasTicket" | "refresh"
+  >;
   prepareSubmission: (
     message: ChatMessageRequest,
     targetChatId?: string,
@@ -192,6 +205,8 @@ export type ChatWorkspaceEntry = {
   onAccepted: (result: AcceptedExecution) => void;
   onRefresh?: () => void;
   onConfigurationChange?: (selection: ChatSendSelection | undefined) => void;
+  /** 已有工作来源记录同一运行时和账号的模型选择。 */
+  onSourceModelChange?: (model: string) => void;
   onRunningChange?: (running: boolean) => void;
   onNewChat?: () => void;
 };
@@ -508,6 +523,25 @@ function ChatView({
         selectedWaker.onboardingChatId === activeChatId
       ),
     );
+  const ticketOrigin: WorkTicketOrigin | undefined =
+    activeChatId && ordinaryChatDestination && replyEnabled
+      ? { originKind: "chat", originId: activeChatId }
+      : undefined;
+  const {
+    byMessage: workTickets,
+    checkedMessages,
+    loadError: workTicketLoadError,
+  } = useWorkTickets(
+    ticketOrigin,
+    messagesQuery.data?.pages.map((page) =>
+      (page.resources ?? []).flatMap((message) =>
+        message.id && !message.inherited && !message.question
+          ? [message.id]
+          : [],
+      ),
+    ) ?? [],
+    sceneActive,
+  );
   const ordinaryDraft =
     !activeChatId &&
     (Boolean(conversation && !conversation.fixedMember) ||
@@ -847,6 +881,37 @@ function ChatView({
   const selectedReasoning =
     boardExecution?.reasoning ?? executionSelection.selection.reasoning;
   const selectedFast = executionSelection.selection.fast;
+  const conversationSource = conversation?.fixedMember
+    ? undefined
+    : conversation?.sessionSource;
+  const conversationSourceId = conversationSource?.id;
+  const sessionTargetId = conversationSourceId ?? activeChatId;
+  const needsSourceHandoff = (runtimeId: string, accountId: string) =>
+    Boolean(
+      conversationSource?.id &&
+      conversationSource.lastRuntimeId &&
+      (runtimeId !== conversationSource.lastRuntimeId ||
+        accountId !== (conversationSource.lastAccountId || "system")),
+    );
+  const hasSessionChoice = (
+    target: string | undefined,
+    runtimeId: string,
+    accountId: string,
+  ) =>
+    Boolean(
+      freshSession &&
+      freshSession.chatId === target &&
+      freshSession.runtimeId === runtimeId &&
+      freshSession.accountId === accountId,
+    );
+  if (
+    conversationSourceId &&
+    conversationSource?.lastRuntimeId &&
+    freshSession?.chatId === conversationSourceId &&
+    !needsSourceHandoff(freshSession.runtimeId, freshSession.accountId)
+  ) {
+    setFreshSession(null);
+  }
   const summaryRuntime = historicalRuntime ?? selectedRuntime;
   const summaryAccountId = detailQuery.data?.chat?.lastAccountId || "system";
   const summaryAccount = (accountsQuery.data?.resources ?? []).find(
@@ -881,25 +946,42 @@ function ChatView({
       runtimeId: string;
     }>,
   ) => {
+    const nextRuntime = patch.runtimeId ?? effectiveRuntimeID;
+    const nextAccount = patch.accountId ?? selectedAccountId;
+    const changesRuntimeOrAccount =
+      nextRuntime !== effectiveRuntimeID || nextAccount !== selectedAccountId;
     if (
-      activeChatId &&
-      runtimeMessages.length > 0 &&
-      ((patch.runtimeId !== undefined &&
-        patch.runtimeId !== effectiveRuntimeID) ||
-        (patch.accountId !== undefined &&
-          patch.accountId !== selectedAccountId))
+      sessionTargetId &&
+      changesRuntimeOrAccount &&
+      (conversationSource
+        ? needsSourceHandoff(nextRuntime, nextAccount)
+        : Boolean(activeChatId && runtimeMessages.length > 0))
     ) {
       setSessionSwitch({
-        chatId: activeChatId,
+        chatId: sessionTargetId,
         patch,
-        runtimeId: patch.runtimeId ?? effectiveRuntimeID,
-        accountId: patch.accountId ?? selectedAccountId,
+        runtimeId: nextRuntime,
+        accountId: nextAccount,
         reason: "switch",
       });
       return;
     }
     const { accountId: selectedAccount, ...viewPatch } = patch;
     if (selectedAccount !== undefined) selectAccount(selectedAccount);
+    const saveSourceModel = entry?.onSourceModelChange;
+    const sourceDefaults = entry?.defaults;
+    if (
+      saveSourceModel &&
+      viewPatch.model &&
+      (viewPatch.runtimeId ?? effectiveRuntimeID) ===
+        sourceDefaults?.runtimeId &&
+      (selectedAccount ?? selectedAccountId) ===
+        (sourceDefaults?.accountId || "system")
+    ) {
+      if (viewPatch.model !== selectedModel) saveSourceModel(viewPatch.model);
+      updateChatViewState({ ...viewPatch, model: "" });
+      return;
+    }
     updateChatViewState(viewPatch);
   };
   const explicitDraftSelection =
@@ -1039,6 +1121,17 @@ function ChatView({
     latestSequence: latestMessageSequence,
     ready: !activeChatId || Boolean(messagesQuery.data),
   });
+  const composerWorkTicketTransfer =
+    entry?.workTicketTransfer ??
+    (ticketOrigin && sceneActive
+      ? {
+          origin: ticketOrigin,
+          replyHasTicket: Boolean(
+            replyTo?.messageId && workTickets.has(replyTo.messageId),
+          ),
+          refresh: () => messageSource.reconcile(),
+        }
+      : undefined);
   const chatRuntime = useChatRuntime({
     conversationKey: currentChatKey,
     queueKey: runtimeQueueKey,
@@ -1095,6 +1188,12 @@ function ChatView({
       codeReferences: selectedCodeReferences,
       codeReferenceOnly,
       replyTo: replyEnabled ? replyTo : undefined,
+      deferReplySteering: Boolean(
+        ticketOrigin &&
+        replyTo &&
+        (workTickets.has(replyTo.messageId) ||
+          !checkedMessages.has(replyTo.messageId)),
+      ),
       workflow,
       workflowOnly,
     },
@@ -1195,10 +1294,13 @@ function ChatView({
         ),
       };
       const sessionTransition =
-        targetChatId &&
-        freshSession?.chatId === targetChatId &&
-        freshSession.runtimeId === message.runtimeId &&
-        freshSession.accountId === message.accountId
+        (!conversationSourceId ||
+          needsSourceHandoff(message.runtimeId, message.accountId)) &&
+        hasSessionChoice(
+          conversationSourceId ?? targetChatId,
+          message.runtimeId,
+          message.accountId,
+        )
           ? freshSession
           : null;
       const body: ChatMessageRequest = {
@@ -1244,11 +1346,13 @@ function ChatView({
             retire();
             return true;
           },
-          accept: () =>
-            send.mutateAsync({
+          accept: async () => {
+            const result = await send.mutateAsync({
               path: { chatId: targetChatId },
               body: { ...sendBody, submissionId },
-            }),
+            });
+            return result.published ? { published: true } : result;
+          },
         };
       }
       const createInput = {
@@ -1392,17 +1496,6 @@ function ChatView({
     selectedAccountId,
     sessionSwitch,
   ]);
-  const fork = useChatFork({
-    messages,
-    latestExecutionId: messagesQuery.data?.pages[0]?.forkLatestExecutionId,
-    chatId: activeMemberTab || entry ? undefined : activeChatId,
-    wakerId: selectedWakerID,
-    enabled: sceneActive && detailQuery.isSuccess && messagesQuery.isSuccess,
-    busy:
-      chatRuntime.isRunning ||
-      chatRuntime.pendingApprovals.length > 0 ||
-      chatRuntime.pendingElicitations.length > 0,
-  });
   const requests: ChatRequestSource = conversation?.requests ?? {
     chatId: activeChatId,
     pendingApprovals: chatRuntime.pendingApprovals,
@@ -1536,7 +1629,7 @@ function ChatView({
     enableContextWindow: true,
     sessionSwitchPending: Boolean(
       sessionSwitch?.reason === "switch" &&
-      sessionSwitch.chatId === activeChatId,
+      sessionSwitch.chatId === sessionTargetId,
     ),
     thinkingPending: executionSelection.catalogPending,
     historicalRuntime,
@@ -1648,7 +1741,18 @@ function ChatView({
         (entry || detailQuery.data?.chat?.id === activeChatId)
           ? activeChatId
           : undefined,
-      fork: activeMemberTab || entry ? undefined : fork,
+      forkSession:
+        activeMemberTab || entry
+          ? undefined
+          : {
+              chatId: activeChatId,
+              wakerId: selectedWakerID,
+              messages,
+              latestExecutionId:
+                messagesQuery.data?.pages[0]?.forkLatestExecutionId,
+              enabled:
+                sceneActive && detailQuery.isSuccess && messagesQuery.isSuccess,
+            },
       forkSourceChatId: detailQuery.data?.chat?.forkSourceChatId,
       onOpenForkSource: async (sourceChatId: string) => {
         try {
@@ -1667,7 +1771,18 @@ function ChatView({
         : undefined,
       runtime: chatRuntime.runtime,
       messages: chatRuntime.messages,
-      afterMessages: skillTimeline.loadError,
+      workTickets,
+      deferredSteeringIds: chatRuntime.deferredSteeringIds,
+      afterMessages: workTicketLoadError ? (
+        <>
+          {skillTimeline.loadError}
+          <div className="px-6">
+            <WorkTicketLoadError {...workTicketLoadError} />
+          </div>
+        </>
+      ) : (
+        skillTimeline.loadError
+      ),
       timelineEvents: [...workflowTimeline.events, ...skillTimeline.events],
       workflowInvocation: workflowTimeline.workflowInvocation,
       composerRecovery:
@@ -1792,6 +1907,13 @@ function ChatView({
       composerPlugins: enabledPlugins,
       composerPluginsError: pluginsQuery.isError,
       composerWorkflowPicker: workflowPicker,
+      composerWorkTicketTransfer: composerWorkTicketTransfer && {
+        ...composerWorkTicketTransfer,
+        onAccepted: () => {
+          changeReplyTo(undefined);
+          clearComposer();
+        },
+      },
       selectedPluginIds: selectedPluginIDs,
       onPluginSelectionChange: setSelectedPluginIDs,
       composerConnectors: enabledConnectors,
@@ -1853,7 +1975,7 @@ function ChatView({
   if (embedded) {
     return (
       <div className="bg-surface-scene h-full min-h-0 min-w-0">
-        <ChatThread
+        <ChatConversation
           {...chatAdapter.thread}
           isRunning={chatAdapter.snapshot.isRunning}
         />
@@ -1864,9 +1986,10 @@ function ChatView({
   return (
     <>
       {presentation === "composer" ? (
-        <ChatThread
+        <ChatConversation
           {...chatAdapter.thread}
           presentation="composer"
+          composerExecutionFailure={conversation?.executionFailure}
           fileScopeChatId={
             conversation?.view === "source"
               ? conversation.source?.id
@@ -1875,6 +1998,32 @@ function ChatView({
           composerAutoFocus={!boardDraft}
           composerLayout={boardDraft ? "tall" : conversation && "compact"}
           composerSingleSubmission={Boolean(boardDraft || conversation)}
+          composerBeforeSend={
+            conversationSourceId
+              ? () => {
+                  if (
+                    !needsSourceHandoff(
+                      effectiveRuntimeID,
+                      selectedAccountId,
+                    ) ||
+                    hasSessionChoice(
+                      sessionTargetId,
+                      effectiveRuntimeID,
+                      selectedAccountId,
+                    )
+                  )
+                    return true;
+                  setSessionSwitch({
+                    chatId: conversationSourceId,
+                    patch: {},
+                    runtimeId: effectiveRuntimeID,
+                    accountId: selectedAccountId,
+                    reason: "switch",
+                  });
+                  return false;
+                }
+              : undefined
+          }
           composerDisabled={Boolean(
             (conversation && retryFirstSubmission) ||
             boardInputLocked ||
@@ -1915,8 +2064,16 @@ function ChatView({
         />
       )}
       <ChatSessionTransitionDialog
-        open={Boolean(sessionSwitch && sessionSwitch.chatId === activeChatId)}
-        reason={sessionSwitch?.reason ?? "switch"}
+        open={Boolean(
+          sceneActive &&
+          sessionSwitch &&
+          sessionSwitch.chatId === sessionTargetId,
+        )}
+        reason={
+          conversationSource
+            ? "source-switch"
+            : (sessionSwitch?.reason ?? "switch")
+        }
         models={summaryModels.flatMap((item) =>
           item.id
             ? [
@@ -1943,7 +2100,8 @@ function ChatView({
         defaultReasoning={summaryDefaultReasoning}
         onCancel={() => setSessionSwitch(null)}
         onConfirm={(choice) => {
-          if (!sessionSwitch || sessionSwitch.chatId !== activeChatId) return;
+          if (!sessionSwitch || sessionSwitch.chatId !== sessionTargetId)
+            return;
           const { accountId: nextAccount, ...viewPatch } = sessionSwitch.patch;
           if (nextAccount !== undefined) selectAccount(nextAccount);
           updateChatViewState(viewPatch);

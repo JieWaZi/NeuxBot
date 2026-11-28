@@ -3,6 +3,8 @@ import type { ChatSceneOwner } from "@/shared/workspace/app-scene-model";
 export type ConversationDestination = ChatSceneOwner & {
   workChatId?: string;
   messageId?: string;
+  publicationId?: string;
+  recordMessageId?: string;
   request?: MainConversationRequestTarget;
 };
 
@@ -17,11 +19,19 @@ export function mainConversationHref({
   id,
   workChatId,
   messageId,
+  publicationId,
+  recordMessageId,
   request,
 }: ConversationDestination) {
   const main = `/chat/main/${kind}/${encodeURIComponent(id)}`;
-  if (workChatId)
-    return `${main}?${new URLSearchParams({ source: workChatId })}`;
+  if (workChatId) {
+    const params = new URLSearchParams({ source: workChatId });
+    if (publicationId) params.set("publication", publicationId);
+    else if (messageId) params.set("message", messageId);
+    return `${main}?${params}`;
+  }
+  if (recordMessageId)
+    return `${main}?${new URLSearchParams({ record: recordMessageId })}`;
   if (request)
     return `${main}?${new URLSearchParams({ request: request.requestId, requestChat: request.workChatId })}`;
   if (messageId)
@@ -31,6 +41,10 @@ export function mainConversationHref({
 
 export function mainConversationSourceId(params: URLSearchParams) {
   return params.get("source") || undefined;
+}
+
+export function mainConversationRecordId(params: URLSearchParams) {
+  return params.get("record") || undefined;
 }
 
 export function mainConversationRequestTarget(params: URLSearchParams) {

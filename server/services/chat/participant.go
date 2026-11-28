@@ -14,6 +14,8 @@ import (
 type ParticipantMessageInput struct {
 	// ID 是调用方提供并用于重试去重的稳定消息标识。
 	ID string
+	// Role 允许可信领域以伙伴身份发布固定报告，空值沿用用户侧参与者消息。
+	Role constants.MessageRole
 	// Actor 是消息参与者的入口无关语义类型。
 	Actor string
 	// Content 是进入 Chat 上下文和界面的消息正文。
@@ -66,6 +68,12 @@ func (m *service) AppendParticipantMessages(
 			message.SourceWakerID == "" || message.SourceChatID == "" {
 			return status_error.BadRequest
 		}
+		if message.Role == "" {
+			message.Role = constants.MessageRoleUser
+		}
+		if message.Role != constants.MessageRoleUser && message.Role != constants.MessageRoleAssistant {
+			return status_error.BadRequest
+		}
 		if _, duplicated := seen[message.ID]; duplicated {
 			return status_error.BadRequest
 		}
@@ -77,7 +85,7 @@ func (m *service) AppendParticipantMessages(
 			Type:      constants.ChatEventTypeUserMessageCreated,
 			MessageID: message.ID,
 			Data: marshalData(eventlog.MessageCreatedData{
-				Role:          constants.MessageRoleUser,
+				Role:          message.Role,
 				Actor:         message.Actor,
 				SourceWakerID: message.SourceWakerID,
 				SourceChatID:  message.SourceChatID,

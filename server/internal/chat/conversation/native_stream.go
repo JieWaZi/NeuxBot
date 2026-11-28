@@ -732,8 +732,10 @@ func (s *Store) visitNativeRange(ctx context.Context, r agent.NativeFragmentRang
 
 // CommitNativeResult makes canonical terminal evidence independent of any Chat.
 func (s *Store) CommitNativeResult(ctx context.Context, result agent.NativeResult) error {
-	// Attribution is resolved by the Store from a committed admission. It is
-	// not an adapter input and must not change an existing idempotency hash.
+	// Host evidence is unavailable to a repeated adapter receipt and must not
+	// change the native idempotency hash. Only the original write stores it.
+	streamAnswerEligible := result.StreamAnswerEligible
+	result.StreamAnswerEligible = false
 	result.Attribution = nil
 	terminal := nativeTerminal{Result: result}
 	if !validNativeTerminal(terminal) {
@@ -744,6 +746,7 @@ func (s *Store) CommitNativeResult(ctx context.Context, result agent.NativeResul
 	if err != nil {
 		return err
 	}
+	terminal.Result.StreamAnswerEligible = streamAnswerEligible
 	terminal.Result.Attribution = s.nativeUsageAttribution(ctx, result)
 	id := nativeID(result.Key)
 	key := id + ":terminal"
@@ -850,6 +853,62 @@ func (s *Store) readNativeTerminal(ctx context.Context, key agent.NativeResultKe
 func (s *Store) ReadNativeResult(ctx context.Context, key agent.NativeResultKey) (agent.NativeResult, error) {
 	t, err := s.readTerminal(ctx, key, true)
 	return t.Result, err
+}
+
+// ReadNativeResultForInput locates a single-input terminal that may have persisted before its public link.
+func (s *Store) ReadNativeResultForInput(ctx context.Context, input agent.HostInput) (*agent.NativeResult, error) {
+	if !validHostInput(input) {
+		return nil, status_error.ChatLogRecordInvalid
+	}
+	key, err := s.nativeResultKeyForInput(ctx, input)
+	if err != nil || key.InvocationID == "" {
+		return nil, err
+	}
+	result, err := s.ReadNativeResult(ctx, key)
+	return &result, err
+}
+
+func (s *Store) nativeResultKeyForInput(ctx context.Context, input agent.HostInput) (agent.NativeResultKey, error) {
+	var key agent.NativeResultKey
+	slot, path := s.nativeStream(agent.NativeResultKey{Session: input.Session})
+	slot.mu.Lock()
+	defer slot.mu.Unlock()
+	idx, err := slot.load(ctx, path, false)
+	if err != nil || idx.coverage.Stream == 0 {
+		return key, err
+	}
+	if !idx.coverage.NativeConsumptionIndexed {
+		if err := idx.rebuild(path, false); err != nil {
+			return key, err
+		}
+	}
+	var rows []rowIndex
+	err = idx.query(func(db *gorm.DB) error {
+		return db.Table("conversation_positions INDEXED BY conversation_row_consumed_adapter").
+			Where("stream = ? AND consumed_adapter IS NOT NULL AND consumed_adapter = ?", idx.coverage.Stream,
+				adapterRowID(input.Session, input.AdapterInputID)).Limit(2).Find(&rows).Error
+	})
+	if err != nil || len(rows) == 0 {
+		return key, err
+	}
+	if len(rows) != 1 || rows[0].Kind != indexNativeTerminal {
+		return key, status_error.ChatLogCorrupted
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return key, status_error.ChatLogError
+	}
+	defer file.Close()
+	row, err := readDiskRow(file, rows[0].Where)
+	if err != nil || row.Terminal == nil {
+		return key, status_error.ChatLogCorrupted
+	}
+	result := row.Terminal.Result
+	if result.Key.Session != input.Session || len(result.Turn.ConsumedInputIDs) != 1 ||
+		result.Turn.ConsumedInputIDs[0] != input.AdapterInputID || slices.Contains(result.Unavailable, acpmeta.ReceiptConsumedInputsUnavailable) {
+		return key, status_error.ChatLogCorrupted
+	}
+	return result.Key, nil
 }
 
 func (s *Store) readTerminal(ctx context.Context, key agent.NativeResultKey, body bool) (nativeTerminal, error) {

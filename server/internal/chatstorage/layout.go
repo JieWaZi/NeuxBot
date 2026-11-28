@@ -243,7 +243,10 @@ func (l *Layout) TeamRoot(threadID string) (string, error) {
 
 // TeamsWithQueuedAttachments 返回存在负责人队列附件目录的团队对话标识。
 func (l *Layout) TeamsWithQueuedAttachments() ([]string, error) {
-	directory := filepath.Join(l.root, teamDirectoryName)
+	return queuedAttachmentOwners(filepath.Join(l.root, teamDirectoryName))
+}
+
+func queuedAttachmentOwners(directory string) ([]string, error) {
 	info, err := os.Lstat(directory)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -265,6 +268,11 @@ func (l *Layout) TeamsWithQueuedAttachments() ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// ChatsWithQueuedAttachments returns Chat aggregates holding private queued copies.
+func (l *Layout) ChatsWithQueuedAttachments() ([]string, error) {
+	return queuedAttachmentOwners(filepath.Join(l.root, chatDirectoryName))
 }
 
 // TeamWorkspace 返回团队对话拥有的共享范围，独立于全部成员的 Conversation。

@@ -412,6 +412,41 @@ func TestThreadEphemeralTextUsesNonClaudeWithoutPersistingBody(t *testing.T) {
 	}
 }
 
+func TestThreadContinuedTextRestoresClaudeWithTheSameToolRestrictions(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "claude")
+	configureThreadFixture(&req, trace)
+	request := agent.TextRequest{
+		Connection: req.Connection, ScratchRoot: t.TempDir(), ConversationKey: "fixture-private-context",
+		Messages: []agent.TextMessage{{Role: "system", Content: "stable text rules"}, {Role: "user", Content: "first private turn"}},
+	}
+	first, err := lifecycle.GenerateText(t.Context(), request)
+	if err != nil || first.Text != "private answer" || !first.ToolsDisabled {
+		t.Fatalf("first private Claude turn = %q, tools disabled %t, error %v", first.Text, first.ToolsDisabled, err)
+	}
+	if err := lifecycle.RestartProvider(t.Context(), "claude"); err != nil {
+		t.Fatal(err)
+	}
+	request.Messages[1].Content = "second private turn"
+	second, err := lifecycle.GenerateText(t.Context(), request)
+	if err != nil || second.Text != "private answer" || !second.ToolsDisabled || second.Turn.Binding.Session != first.Turn.Binding.Session {
+		t.Fatalf("retained Claude turn = %q, tools disabled %t, error %v", second.Text, second.ToolsDisabled, err)
+	}
+	wire, err := os.ReadFile(trace)
+	if err != nil || strings.Count(string(wire), "--tools=") != 2 || strings.Count(string(wire), "--strict-mcp-config") != 2 ||
+		!strings.Contains(string(wire), "--resume="+first.Turn.Binding.Session.SessionID) {
+		t.Fatalf("private Claude tool boundary did not survive resume: %s (%v)", wire, err)
+	}
+	key := agent.NativeResultKey{Session: second.Turn.Binding.Session, InvocationID: second.Turn.Outcome.Turn.InvocationID}
+	result, err := store.ReadNativeResult(t.Context(), key)
+	if err != nil || result.FinalMessage != nil || result.Turn.Usage == nil {
+		t.Fatalf("private Claude usage lost its privacy boundary: %+v %v", result, err)
+	}
+	request.Connection.Account.Provider = "cursor"
+	if _, err := lifecycle.GenerateText(t.Context(), request); !errors.Is(err, status_error.RuntimePolicyUnsupported) {
+		t.Fatalf("provider without verified private retention accepted %v", err)
+	}
+}
+
 func TestThreadEphemeralTextStartsCodexInReadOnlyModeWithoutHistory(t *testing.T) {
 	lifecycle, store, req, trace := newTurnFixture(t, "codex")
 	configureThreadFixture(&req, trace)
@@ -525,9 +560,14 @@ func TestThreadNativeChild(t *testing.T) {
 		}
 		switch provider {
 		case "codex":
-			if uniqueCodexSession && frame["method"] == "thread/resume" {
-				params := frame["params"].(map[string]any)
-				session = params["threadId"].(string)
+			if uniqueCodexSession {
+				switch frame["method"] {
+				case "thread/start":
+					session = fmt.Sprintf("fixture-thread-%d", os.Getpid())
+				case "thread/resume":
+					params := frame["params"].(map[string]any)
+					session = params["threadId"].(string)
+				}
 			}
 			count++
 			fixtureCodexFrame(out, frame, raw, session, &nativeTurn, count)
@@ -598,11 +638,21 @@ func fixtureCodexFrame(out *json.Encoder, frame map[string]any, raw, session str
 		}})
 	case "thread/start", "thread/resume":
 		params, _ := frame["params"].(map[string]any)
-		if method == "thread/resume" && os.Getenv("THREAD_FIXTURE_REFUSE_CODEX_RESUME") == "1" {
-			_ = out.Encode(map[string]any{"id": frame["id"], "error": map[string]any{
-				"code": -32603, "message": fmt.Sprintf("thread %s did not include persisted history", params["threadId"]),
-			}})
-			return
+		if method == "thread/resume" {
+			switch os.Getenv("THREAD_FIXTURE_REFUSE_CODEX_RESUME") {
+			case "1":
+				_ = out.Encode(map[string]any{"id": frame["id"], "error": map[string]any{
+					"code": -32603, "message": fmt.Sprintf("thread %s did not include persisted history", params["threadId"]),
+				}})
+				return
+			case "unverified":
+				_ = out.Encode(map[string]any{"id": frame["id"], "error": map[string]any{
+					"code": -32600, "message": fmt.Sprintf("no rollout found for thread id %s", params["threadId"]),
+				}})
+				return
+			case "transport":
+				os.Exit(0)
+			}
 		}
 		ack(map[string]any{"thread": map[string]any{"id": session, "ephemeral": params["ephemeral"] == true}, "model": "default-model"})
 	case "turn/start":
@@ -2558,6 +2608,83 @@ func TestThreadTurnColdExplicitEnvironmentChangeResumesNativeSession(t *testing.
 	}
 	if line := fixturePromptLine(t, trace, next.Text); strings.Contains(line, first.Text) {
 		t.Fatalf("process refresh replayed the previous input: %s", line)
+	}
+}
+
+func TestThreadTurnReplacesConfirmedMissingHistoryWithOneHandoff(t *testing.T) {
+	lifecycle, store, request, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&request, trace)
+	request.Connection.Launch.Environment["THREAD_FIXTURE_UNIQUE_CODEX_SESSION"] = "1"
+	request.Connection.Launch.Environment["THREAD_FIXTURE_REFUSE_CODEX_RESUME"] = "1"
+	request.ReplaceRejectedSession = true
+	first := chatTurn(0, "original retained user input")
+	original := completeThreadFixtureTurn(t, lifecycle, store, request, first, true)
+	if err := lifecycle.CloseThread(t.Context(), request.ChatID); err != nil {
+		t.Fatal(err)
+	}
+
+	next := chatTurn(1, "next work input with handoff")
+	replacement := completeThreadFixtureTurn(t, lifecycle, store, request, next, false)
+	if replacement.Binding.Session == original.Binding.Session {
+		t.Fatal("the confirmed missing thread was reused")
+	}
+	line := fixturePromptLine(t, trace, next.Text)
+	if strings.Count(line, "Recent conversation history") != 1 || strings.Count(line, first.Text) != 1 ||
+		strings.Count(line, "native answer") != 1 || strings.Count(line, next.Text) != 1 {
+		t.Fatalf("replacement did not deliver exactly one bounded handoff and current input: %s", line)
+	}
+
+	after := chatTurn(2, "work input after handoff")
+	continued := completeThreadFixtureTurn(t, lifecycle, store, request, after, false)
+	if continued.Binding.Session != replacement.Binding.Session ||
+		strings.Contains(fixturePromptLine(t, trace, after.Text), "Recent conversation history") {
+		t.Fatal("the next turn did not reuse the replacement without replaying the handoff")
+	}
+	wire, err := os.ReadFile(trace)
+	if err != nil || strings.Count(string(wire), `"method":"thread/start"`) != 2 ||
+		strings.Count(string(wire), `"method":"thread/resume"`) != 1 ||
+		strings.Count(string(wire), `"method":"initialize"`) != 2 {
+		t.Fatalf("one cold restore should attempt a single replacement on its existing process: %s, %v", wire, err)
+	}
+}
+
+func TestThreadTurnAmbiguousRestorePreservesOriginalBinding(t *testing.T) {
+	for _, failure := range []string{"unverified", "transport"} {
+		t.Run(failure, func(t *testing.T) {
+			lifecycle, store, request, trace := newTurnFixture(t, "codex")
+			configureThreadFixture(&request, trace)
+			request.Connection.Launch.Environment["THREAD_FIXTURE_UNIQUE_CODEX_SESSION"] = "1"
+			request.Connection.Launch.Environment["THREAD_FIXTURE_REFUSE_CODEX_RESUME"] = failure
+			request.ReplaceRejectedSession = true
+			ctx := t.Context()
+			first := chatTurn(0, "prior successful input")
+			original := completeThreadFixtureTurn(t, lifecycle, store, request, first, true)
+			if err := lifecycle.CloseThread(ctx, request.ChatID); err != nil {
+				t.Fatal(err)
+			}
+
+			next := chatTurn(1, "original input after temporary restore failure")
+			turn, err := lifecycle.Prepare(ctx, request, next, chatPorts(request.ChatID, next, false))
+			if turn != nil || !errors.Is(err, status_error.RuntimeSessionRestoreFailed) {
+				t.Fatalf("ambiguous restore = %v, %v", turn, err)
+			}
+			saved, err := store.ReadBinding(ctx, request.ChatID)
+			if err != nil || saved == nil || saved.Session != original.Binding.Session || saved.Handoff != nil {
+				t.Fatalf("ambiguous restore changed the saved binding: %+v, %v", saved, err)
+			}
+			wire, err := os.ReadFile(trace)
+			if err != nil || strings.Count(string(wire), `"method":"thread/start"`) != 1 ||
+				strings.Count(string(wire), `"method":"thread/resume"`) != 1 ||
+				strings.Count(string(wire), `"method":"initialize"`) != 2 || strings.Contains(string(wire), next.Text) {
+				t.Fatalf("ambiguous restore started a replacement process, session, or prompt: %s, %v", wire, err)
+			}
+
+			delete(request.Connection.Launch.Environment, "THREAD_FIXTURE_REFUSE_CODEX_RESUME")
+			resumed := completeThreadFixtureTurn(t, lifecycle, store, request, next, false)
+			if resumed.Binding.Session != original.Binding.Session || strings.Contains(fixturePromptLine(t, trace, next.Text), first.Text) {
+				t.Fatal("retry did not resume the same native thread with the current input only")
+			}
+		})
 	}
 }
 

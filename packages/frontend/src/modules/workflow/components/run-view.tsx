@@ -1,6 +1,6 @@
 import { RetryRunDialog } from "./retry-run-dialog";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
-import { ListChecks, Square, WandSparkles } from "lucide-react";
+import { ListChecks, RefreshCw, Square, WandSparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -21,6 +21,7 @@ import {
   getWorkflowInstanceOptions,
   getWorkflowRunQueryKey,
   listWorkflowRunsQueryKey,
+  retryWorkflowConclusionMutation,
   workflowRunDetailsOptions,
 } from "../api/workflow-queries";
 import { useResolveWorkflowRunDecisionDrafts } from "../model/human-answer-draft";
@@ -79,6 +80,9 @@ export function WorkflowRunView({
   const [stopRunId, setStopRunId] = useState<string>();
   const [inputRunId, setInputRunId] = useState<string>();
   const stop = useMutation(withLocalErrorMutation(cancelWorkflowRunMutation()));
+  const retryConclusion = useMutation(
+    withLocalErrorMutation(retryWorkflowConclusionMutation()),
+  );
   useQueryEvents({
     topic: "workflow",
     resource: { kind: "workflow", id, parentId: runId },
@@ -144,6 +148,12 @@ export function WorkflowRunView({
   const terminal = ["succeeded", "failed", "cancelled"].includes(
     run?.status ?? "",
   );
+  const conclusion = run?.conclusion;
+  const canRetryConclusion =
+    terminal && conclusion && (!conclusion.settledAt || conclusion.errorCode);
+  const isRetryingCurrentConclusion =
+    retryConclusion.variables?.path.id === id &&
+    retryConclusion.variables.path.runId === runId;
   const closeDetails = (
     expectedInstanceId?: string,
     answeredRequestId?: string,
@@ -239,6 +249,37 @@ export function WorkflowRunView({
     });
   const actions = (
     <div className="flex flex-wrap justify-end gap-2">
+      {canRetryConclusion ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-content-secondary type-caption" role="status">
+            {conclusion.errorCode
+              ? t("conclusionDeliveryFailed")
+              : t("conclusionDeliveryPending")}
+          </span>
+          <Button
+            size="sm"
+            variant="surface"
+            disabled={isRetryingCurrentConclusion && retryConclusion.isPending}
+            onClick={() =>
+              retryConclusion.mutate(
+                { path: { id, runId } },
+                { onSuccess: () => void query.refetch() },
+              )
+            }
+          >
+            <RefreshCw />
+            {t("retryConclusionDelivery")}
+          </Button>
+          {isRetryingCurrentConclusion && retryConclusion.error && (
+            <span className="text-destructive type-caption" role="alert">
+              {localApiErrorMessage(
+                retryConclusion.error,
+                t("conclusionDeliveryFailed"),
+              )}
+            </span>
+          )}
+        </div>
+      ) : null}
       {embedded && terminal ? (
         <Button size="sm" variant="surface" onClick={() => changeResult(true)}>
           <ListChecks />

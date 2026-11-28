@@ -3,6 +3,7 @@ import {
   localizedNumberFormat,
 } from "@/shared/i18n/format";
 import { messageCompanionActivity } from "../runtime/companion-activity";
+import { runtimeFailurePresentation } from "../model/runtime-failure-presentation";
 import { chatContinuations, type ChatContinuation } from "./chat-continuation";
 import {
   groupTeamReports,
@@ -18,6 +19,13 @@ import {
 import { useChatHistoryScroll } from "./use-chat-history-scroll";
 import { ChatHistoryLoadingState } from "./chat-history-loading-state";
 import { useChatMessageLocator } from "./chat-message-locator";
+import { AutomaticTaskReceiptCard } from "./automatic-task-receipt-card";
+import type { WorkTicket } from "../api/work-tickets";
+import {
+  isWorkTicketTransfer,
+  useComposerWorkTicketTransfer,
+  type ComposerWorkTicketTransfer,
+} from "./use-composer-work-ticket-transfer";
 import {
   ChatMessageReplyActions,
   ComposerReplyContext,
@@ -104,6 +112,8 @@ import {
   type ComponentProps,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
+import { getWakerOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { motion, useReducedMotion } from "motion/react";
 
 import type { ResolvedFileReference } from "@/shared/workspace/file-reference";
@@ -198,6 +208,7 @@ import {
   viewCompanionActivity,
   isTerminalMessage,
   type ChatMessageView,
+  type ChatMessageSegment,
   type ChatPartNode,
   type ChatToolGroup,
   type ChatProcessGroup,
@@ -222,8 +233,11 @@ type ChatThreadProps = {
   onOpenForkSource?: (chatId: string) => Promise<boolean>;
   active?: boolean;
   presentationScopeKey?: string;
+  targetMessageId?: string;
   runtime: AssistantRuntime;
   messages: readonly BotChatMessage[];
+  workTickets?: ReadonlyMap<string, WorkTicket>;
+  deferredSteeringIds?: readonly string[];
   wakerName: string;
   wakerId?: string;
   wakerAvatar?: string;
@@ -232,9 +246,16 @@ type ChatThreadProps = {
   /** 团队成员名称索引，用于原消息尚未加载时展示引用作者。 */
   teamReplyAuthorNames?: Readonly<Record<string, string>>;
   timelineEvents?: readonly ChatTimelineEvent[];
+  /** 在用户气泡上方显示由所属会话提供的来源。 */
+  renderUserMessageOrigin?: (messageId: string) => ReactNode;
+  /** 工作记录以原生结尾或该轮已发布回件作为结果。 */
+  sourceWork?: boolean;
   workflowInvocation?: WorkflowInvocationStop;
   activityStatus?: ReactNode;
   composerRecovery?: ReactNode;
+  /** 单独挂载输入区时，由展示消息的工作记录提供最新失败。 */
+  composerExecutionFailure?: BotChatMessage;
+  showHistoricalExecutionFailures?: boolean;
   afterMessages?: ReactNode;
   isRunning?: boolean;
   isWorkRunning?: boolean;
@@ -253,7 +274,6 @@ type ChatThreadProps = {
   historyError?: { message: string; onRetry: () => void; error?: unknown };
   renderComposerSettings?: (simplified: boolean) => ReactNode;
   composerLayout?: "compact" | "tall";
-  composerActions?: ReactNode;
   composerEffects?: ReactNode;
   composerReferences?: ChatComposerContextReference[];
   onComposerReferencesChange?: (ids: string[]) => void;
@@ -264,6 +284,8 @@ type ChatThreadProps = {
   composerPluginsError?: boolean;
   composerWorkflowPicker?: ChatWorkflowPicker;
   composerSendBlocked?: boolean;
+  composerBeforeSend?: () => boolean;
+  composerWorkTicketTransfer?: ComposerWorkTicketTransfer;
   selectedPluginIds?: string[];
   onPluginSelectionChange?: (ids: string[]) => void;
   composerConnectors?: ChatConnectorOption[];
@@ -934,17 +956,17 @@ const ChatPart = memo(function ChatPart({
 });
 function ChatMessageParts({
   view,
+  segments = view.segments,
   metrics = view.message.runMetrics,
   showUsageMetrics,
 }: {
   view: ChatMessageView;
+  segments?: readonly ChatMessageSegment[];
   metrics?: ChatRunMetrics;
   showUsageMetrics: boolean;
 }) {
   const terminal = isTerminalMessage(view.message);
   const focusedProcessElementRef = useRef<Element | null>(null);
-  const published = Boolean(view.message.publishedResultParts?.length);
-  const segments = segmentsWithPublishedResult(view);
   const finalSegment = segments.at(-1);
   const finalNode =
     finalSegment && "kind" in finalSegment
@@ -962,9 +984,7 @@ function ChatMessageParts({
             key={segment.key}
             group={segment}
             currentKey={currentKey}
-            completed={
-              published ? terminal : view.message.status === "completed"
-            }
+            completed={view.message.status === "completed"}
             terminal={terminal}
             metrics={metrics}
             showUsageMetrics={showUsageMetrics}
@@ -1157,11 +1177,16 @@ export function MessageRunStatus({
 const messageFooterLayoutClassName =
   "mt-1 flex min-h-control-sm items-center gap-1";
 
+const userMessageActionVisibilityClassName =
+  "duration-quick pointer-events-none opacity-0 transition-opacity group-focus-within/user-message:pointer-events-auto group-focus-within/user-message:opacity-100 group-hover/user-message:pointer-events-auto group-hover/user-message:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100";
+
 const messageLocationClassName =
   "duration-standard outline-none transition-[background-color] focus-visible:inset-ring-2 focus-visible:inset-ring-ring motion-reduce:transition-none";
 
 export function UserMessage({
   message,
+  origin,
+  workTicketAnchor,
   replyQuote,
   sideAction,
   availableSkillIds,
@@ -1173,6 +1198,8 @@ export function UserMessage({
   onSelectReply,
 }: {
   message: BotChatMessage;
+  origin?: ReactNode;
+  workTicketAnchor?: boolean;
   replyQuote?: ReactNode;
   sideAction?: ReactNode;
   availableSkillIds?: ReadonlySet<string>;
@@ -1183,7 +1210,9 @@ export function UserMessage({
   onOpenFile?: (file: ChatFileOpenRequest) => void;
   onSelectReply?: () => void;
 }) {
-  const selectMessageReply = useSelectMessageReply(message);
+  const selectMessageReply = useSelectMessageReply(message, undefined, {
+    workTicketAnchor,
+  });
   const selectReply = onSelectReply ?? selectMessageReply;
   const skills = (message.skills ?? []).flatMap((skill) =>
     skill.id && skill.name
@@ -1202,80 +1231,101 @@ export function UserMessage({
       data-role="user"
       className="group/user-message mt-1 px-6"
     >
-      <div className="flex min-w-0 items-start justify-end gap-1">
-        <div
-          data-chat-message-bubble
-          tabIndex={-1}
-          className={cn(
-            "bg-user-message-background text-user-message-content type-chat data-[chat-message-located]:bg-user-message-background/85 max-w-[78%] min-w-0 overflow-hidden rounded-xl px-4 py-1.5",
-            messageLocationClassName,
-          )}
-        >
-          {replyQuote}
-          <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
-            <ChatMessagePluginReferences
-              plugins={message.plugins}
-              pluginIcons={pluginIcons}
-            />
-            <ChatMessageSkillReferences
-              skills={skills}
-              wakerId={wakerId}
-              availableSkillIds={availableSkillIds}
-            />
-            <ChatMessageConnectorReferences
-              connectors={connectors}
-              wakerId={wakerId}
-              availableConnectorIds={availableConnectorIds}
-            />
-            {message.workflow?.name ? (
-              <ChatMessageReferenceChip
-                tone="workflow"
-                label={message.workflow.name}
+      <div
+        className={cn(
+          "flex min-w-0 items-start justify-end",
+          sideAction && "gap-1",
+        )}
+      >
+        <div className="grid w-fit max-w-[78%] min-w-0 justify-items-end">
+          {origin}
+          <div
+            data-chat-message-bubble
+            tabIndex={-1}
+            className={cn(
+              "bg-user-message-background text-user-message-content type-chat data-[chat-message-located]:bg-user-message-background/85 max-w-full min-w-0 overflow-hidden rounded-xl px-4 py-1.5",
+              messageLocationClassName,
+            )}
+          >
+            {replyQuote}
+            <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
+              <ChatMessagePluginReferences
+                plugins={message.plugins}
+                pluginIcons={pluginIcons}
               />
-            ) : null}
-            <ChatMessageAttachments
-              attachments={message.attachments}
-              onOpenFile={onOpenFile}
-            />
-            {codeReferences.map((reference) => {
-              const wholeFile =
-                !reference.startLine &&
-                !reference.endLine &&
-                !reference.content;
-              const path = reference.path ?? "";
-              return (
-                <button
-                  key={`${path}:${reference.startLine}:${reference.endLine}:${reference.content}`}
-                  type="button"
-                  disabled={!onOpenCodeReference}
-                  className={`${chatMessageReferenceChipClass} focus-visible:ring-ring outline-none hover:bg-current/20 focus-visible:ring-2`}
-                  onClick={() => onOpenCodeReference?.(reference)}
-                >
-                  <span className="max-w-64 truncate">
-                    <FileReferenceText path={path} />
-                    {!wholeFile
-                      ? ` (${reference.startLine}-${reference.endLine})`
-                      : null}
-                  </span>
-                </button>
-              );
-            })}
-            <div className="max-w-full min-w-0">
-              <UserMarkdown text={message.content ?? ""} />
+              <ChatMessageSkillReferences
+                skills={skills}
+                wakerId={wakerId}
+                availableSkillIds={availableSkillIds}
+              />
+              <ChatMessageConnectorReferences
+                connectors={connectors}
+                wakerId={wakerId}
+                availableConnectorIds={availableConnectorIds}
+              />
+              {message.workflow?.name ? (
+                <ChatMessageReferenceChip
+                  tone="workflow"
+                  label={message.workflow.name}
+                />
+              ) : null}
+              <ChatMessageAttachments
+                attachments={message.attachments}
+                onOpenFile={onOpenFile}
+              />
+              {codeReferences.map((reference) => {
+                const wholeFile =
+                  !reference.startLine &&
+                  !reference.endLine &&
+                  !reference.content;
+                const path = reference.path ?? "";
+                return (
+                  <button
+                    key={`${path}:${reference.startLine}:${reference.endLine}:${reference.content}`}
+                    type="button"
+                    disabled={!onOpenCodeReference}
+                    className={`${chatMessageReferenceChipClass} focus-visible:ring-ring outline-none hover:bg-current/20 focus-visible:ring-2`}
+                    onClick={() => onOpenCodeReference?.(reference)}
+                  >
+                    <span className="max-w-64 truncate">
+                      <FileReferenceText path={path} />
+                      {!wholeFile
+                        ? ` (${reference.startLine}-${reference.endLine})`
+                        : null}
+                    </span>
+                  </button>
+                );
+              })}
+              <div className="max-w-full min-w-0">
+                <UserMarkdown text={message.content ?? ""} />
+              </div>
             </div>
           </div>
-        </div>
-        <div className="duration-quick pointer-events-none order-first flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-focus-within/user-message:pointer-events-auto group-focus-within/user-message:opacity-100 group-hover/user-message:pointer-events-auto group-hover/user-message:opacity-100 has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
-          {sideAction ?? (
-            <>
+          {!sideAction && (
+            <footer
+              className={cn(
+                messageFooterLayoutClassName,
+                userMessageActionVisibilityClassName,
+              )}
+            >
               <MessageCopyAction message={message} />
               {selectReply ? (
                 <MessageReplyAction onSelect={selectReply} />
               ) : null}
               <MessageReadActions message={message} />
-            </>
+            </footer>
           )}
         </div>
+        {sideAction && (
+          <div
+            className={cn(
+              "order-first flex shrink-0 items-center gap-1 has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100",
+              userMessageActionVisibilityClassName,
+            )}
+          >
+            {sideAction}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1297,7 +1347,9 @@ function ParticipantMessage({
   const author = messageAuthors?.[messageID];
   const displayName = author?.name ?? name;
   const displayAvatar = author?.avatar ?? avatar;
-  const selectReply = useSelectMessageReply(message, undefined, true);
+  const selectReply = useSelectMessageReply(message, undefined, {
+    allowMemberReport: true,
+  });
 
   return (
     <ChatReplyMessage
@@ -1331,9 +1383,11 @@ function ParticipantMessage({
 function MessageCopyAction({
   message,
   hideWhenRunning = false,
+  text,
 }: {
   message: BotChatMessage;
   hideWhenRunning?: boolean;
+  text?: string;
 }) {
   const { t } = useTranslation("chat");
   const [copied, setCopied] = useState(false);
@@ -1342,7 +1396,8 @@ function MessageCopyAction({
     const timer = setTimeout(() => setCopied(false), 1500);
     return () => clearTimeout(timer);
   }, [copied]);
-  if (hideWhenRunning && !isTerminalMessage(message)) return null;
+  if (text === "" || (hideWhenRunning && !isTerminalMessage(message)))
+    return null;
   return (
     <Button
       type="button"
@@ -1353,12 +1408,13 @@ function MessageCopyAction({
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(
-            message.role === "assistant"
-              ? (message.publishedResultParts ?? message.displayParts ?? [])
-                  .filter((part) => part.type === "text")
-                  .map((part) => part.text ?? "")
-                  .join(message.publishedResultParts ? "\n\n" : "\n")
-              : (message.content ?? ""),
+            text ??
+              (message.role === "assistant"
+                ? (message.displayParts ?? [])
+                    .filter((part) => part.type === "text")
+                    .map((part) => part.text ?? "")
+                    .join("\n")
+                : (message.content ?? "")),
           );
           setCopied(true);
         } catch {
@@ -1450,6 +1506,25 @@ export function ChatReplyMessage({
       {children}
     </div>
   ) : null;
+  const cardReceipts = message.automaticTaskReceipts ?? [];
+  const answer = cardReceipts.length ? (
+    <div className="min-w-0 space-y-2">
+      {bubble}
+      {cardReceipts.map((task) => (
+        <AutomaticTaskReceiptCard
+          key={task.receiptId}
+          task={task}
+          className={messageLocationClassName}
+          readingMessageId={message.id}
+          readingSequence={
+            message.readable ? message.createdSequence : undefined
+          }
+        />
+      ))}
+    </div>
+  ) : (
+    bubble
+  );
   return (
     <div
       data-message-id={message.id}
@@ -1461,8 +1536,9 @@ export function ChatReplyMessage({
       data-role={message.role}
       className={cn(
         "group group/reply-row",
-        continued ? "-mt-1" : "mt-1",
-        children && !footer && !sideAction && "pb-4",
+        !continued && "mt-1",
+        continued && variant !== "post" && "-mt-1",
+        answer && !footer && !sideAction && "pb-4",
         assistantMessageRowClassName,
       )}
     >
@@ -1472,13 +1548,13 @@ export function ChatReplyMessage({
         {status}
         {sideAction ? (
           <div className="flex min-w-0 items-start gap-1">
-            {bubble}
+            {answer}
             <div className="duration-quick pointer-events-none flex shrink-0 opacity-0 transition-opacity group-focus-within/reply-row:pointer-events-auto group-focus-within/reply-row:opacity-100 group-hover/reply-row:pointer-events-auto group-hover/reply-row:opacity-100 has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
               {sideAction}
             </div>
           </div>
         ) : (
-          bubble
+          answer
         )}
         {footer ? (
           <footer
@@ -1562,6 +1638,7 @@ export function AssistantMessage({
   onOpenFileChange,
   showUsageMetrics = true,
   showFileChanges = true,
+  showHistoricalExecutionFailures = true,
 }: {
   view: ChatMessageView;
   continuation?: ChatContinuation;
@@ -1574,24 +1651,54 @@ export function AssistantMessage({
   onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
   showUsageMetrics?: boolean;
   showFileChanges?: boolean;
+  showHistoricalExecutionFailures?: boolean;
 }) {
   const { t } = useTranslation("chat");
   const message = view.message;
-  const selectReply = useSelectMessageReply(message, view.segments);
+  const segments = segmentsWithPublishedResult(view);
+  const selectReply = useSelectMessageReply(
+    message,
+    segments === view.segments ? segments : undefined,
+  );
+  const sourceResult = view.sourceWork
+    ? segments
+        .flatMap((segment) =>
+          !("kind" in segment) && segment.part.type === "text"
+            ? [segment.part.text ?? ""]
+            : [],
+        )
+        .join("\n\n")
+    : undefined;
+  const hasTaskReceipts = Boolean(message.automaticTaskReceipts?.length);
+  const emptySourceResult =
+    sourceResult === "" &&
+    message.status === "completed" &&
+    !hasTaskReceipts &&
+    !message.attachments?.length;
   const messageID = message.id ?? "";
+  const stopRequested =
+    message.status === "running" &&
+    message.errorCode?.startsWith("RuntimeWatchdog")
+      ? runtimeFailurePresentation(
+          message.errorCode,
+          message.errorMessage,
+          message.errorParams,
+          message.errorMessageSource,
+        ).message
+      : "";
   const hasFileChanges =
     showFileChanges &&
     isTerminalMessage(message) &&
     message.fileChangeRecord?.state !== "pending" &&
     (message.fileChangeRecord?.totalFiles ?? 0) > 0;
   const hasContent =
-    view.segments.length > 0 ||
-    Boolean(message.publishedResultParts?.length) ||
+    segments.length > 0 ||
     Boolean(message.attachments?.length) ||
     (message.status === "canceled" && !continuation?.continued) ||
-    (message.status === "failed" && !last);
+    (showHistoricalExecutionFailures && message.status === "failed" && !last);
   const showFooterActions =
-    (hasContent || isTerminalMessage(message)) && !continuation?.continued;
+    (hasContent || hasTaskReceipts || isTerminalMessage(message)) &&
+    !continuation?.continued;
   const isLatestAssistant = latest;
   const interaction = useContext(CompanionInteraction);
   const activityMessage = continuation?.activityMessage ?? message;
@@ -1605,6 +1712,7 @@ export function AssistantMessage({
     isLatestAssistant &&
     !interaction &&
     !hasContent &&
+    !hasTaskReceipts &&
     (activityMessage.status === "pending" ||
       activityMessage.status === "running");
   const avatarActivity =
@@ -1621,16 +1729,31 @@ export function AssistantMessage({
         onOpenFileChange?.({ ...file, sourceChatId: author.sourceChatId })
     : onOpenFileChange;
 
+  if (
+    !showHistoricalExecutionFailures &&
+    message.status === "failed" &&
+    !hasContent &&
+    !hasFileChanges &&
+    !hasTaskReceipts
+  )
+    return null;
+
   return (
     <ChatReplyMessage
       message={message}
       name={showIdentity ? displayName : undefined}
       status={
-        waitingForReply && (
+        stopRequested ? (
+          <p role="status" className="type-body text-muted-foreground">
+            {stopRequested}
+          </p>
+        ) : waitingForReply ? (
           <AssistantReplyWaitStatus
             establishingSession={activityMessage.preparingSession}
           />
-        )
+        ) : emptySourceResult ? (
+          <p className="type-body text-content-muted">{t("sourceNoReply")}</p>
+        ) : null
       }
       identity={
         isLatestAssistant || showIdentity ? (
@@ -1675,6 +1798,7 @@ export function AssistantMessage({
               <MessageCopyAction
                 message={continuation?.footerMessage ?? message}
                 hideWhenRunning
+                text={sourceResult}
               />
             ) : null}
             {selectReply ? <MessageReplyAction onSelect={selectReply} /> : null}
@@ -1700,6 +1824,7 @@ export function AssistantMessage({
           <div className="min-w-0">
             <ChatMessageParts
               view={view}
+              segments={segments}
               metrics={continuation?.footerMessage.runMetrics}
               showUsageMetrics={showUsageMetrics}
             />
@@ -1725,15 +1850,42 @@ export function AssistantMessage({
               {t("canceled")}
             </p>
           ) : null}
-          <MessageFailure message={message} last={last} />
+          {showHistoricalExecutionFailures && (
+            <MessageFailure message={message} last={last} />
+          )}
         </>
       ) : null}
     </ChatReplyMessage>
   );
 }
 
+function WorkTicketReportMessage(
+  props: ComponentProps<typeof AssistantMessage>,
+) {
+  const { t } = useTranslation("chat");
+  const active = useVisibleScene();
+  const { id, sourceWakerId, sourceChatId } = props.view.message;
+  const { data: author } = useQuery({
+    ...getWakerOptions({ path: { wakerId: sourceWakerId ?? "" } }),
+    enabled: active && Boolean(sourceWakerId),
+  });
+  return (
+    <AssistantMessage
+      {...props}
+      messageAuthors={{
+        [id ?? ""]: {
+          name: author?.name ?? t("wakerFallback"),
+          avatar: author?.avatar,
+          sourceChatId,
+        },
+      }}
+    />
+  );
+}
+
 const ChatMessage = memo(function ChatMessage({
   view,
+  workTicketAnchor,
   continuation,
   latest,
   last,
@@ -1748,10 +1900,13 @@ const ChatMessage = memo(function ChatMessage({
   onOpenFileChange,
   messageAuthors,
   teamReplyAuthorNames,
+  renderUserMessageOrigin,
   showUsageMetrics,
   showFileChanges,
+  showHistoricalExecutionFailures,
 }: {
   view: ChatMessageView;
+  workTicketAnchor?: boolean;
   continuation?: ChatContinuation;
   latest: boolean;
   last: boolean;
@@ -1766,8 +1921,10 @@ const ChatMessage = memo(function ChatMessage({
   onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
   teamReplyAuthorNames?: Readonly<Record<string, string>>;
+  renderUserMessageOrigin?: ChatThreadProps["renderUserMessageOrigin"];
   showUsageMetrics?: boolean;
   showFileChanges?: boolean;
+  showHistoricalExecutionFailures?: boolean;
 }) {
   const message = view.message;
   if (message.question)
@@ -1794,6 +1951,8 @@ const ChatMessage = memo(function ChatMessage({
     ) : (
       <UserMessage
         message={message}
+        origin={message.id ? renderUserMessageOrigin?.(message.id) : undefined}
+        workTicketAnchor={workTicketAnchor}
         replyQuote={
           replyTo ? (
             <MessageReplyQuote replyTo={replyTo} authorName={quotedWakerName} />
@@ -1808,8 +1967,14 @@ const ChatMessage = memo(function ChatMessage({
       />
     );
   }
+  const Assistant =
+    message.actor === "work_ticket_report" &&
+    message.sourceWakerId &&
+    !messageAuthors?.[message.id ?? ""]
+      ? WorkTicketReportMessage
+      : AssistantMessage;
   return message.role === "assistant" ? (
-    <AssistantMessage
+    <Assistant
       view={view}
       continuation={continuation}
       latest={latest}
@@ -1821,6 +1986,7 @@ const ChatMessage = memo(function ChatMessage({
       onOpenFileChange={onOpenFileChange}
       showUsageMetrics={showUsageMetrics}
       showFileChanges={showFileChanges}
+      showHistoricalExecutionFailures={showHistoricalExecutionFailures}
     />
   ) : null;
 });
@@ -1965,6 +2131,7 @@ function orderChatQuestionViews(views: readonly ChatMessageView[]) {
 
 export const ChatMessageList = memo(function ChatMessageList({
   views,
+  workTickets,
   timelineEvents = [],
   requestedMessageId,
   requestedMessageKey,
@@ -1975,9 +2142,10 @@ export const ChatMessageList = memo(function ChatMessageList({
   ...props
 }: Omit<
   ComponentProps<typeof ChatMessage>,
-  "view" | "latest" | "last" | "continuation"
+  "view" | "latest" | "last" | "continuation" | "workTicketAnchor"
 > & {
   views: readonly ChatMessageView[];
+  workTickets?: ReadonlyMap<string, WorkTicket>;
   requestedMessageId?: string;
   requestedMessageKey?: string;
   timelineEvents?: readonly ChatTimelineEvent[];
@@ -2113,12 +2281,16 @@ export const ChatMessageList = memo(function ChatMessageList({
         if ("content" in row)
           return <Fragment key={`event:${row.id}`}>{row.content}</Fragment>;
         const view = row;
+        const messageId = view.message.id;
         return (
           <Fragment key={view.key}>
             <ChatMessage
               {...props}
               wakerId={wakerId}
               view={view}
+              workTicketAnchor={Boolean(
+                messageId && workTickets?.get(messageId)?.id === messageId,
+              )}
               continuation={continuations.get(view.message.id ?? "")}
               latest={view.key === latest?.key}
               last={view.key === latest?.key}
@@ -2189,6 +2361,33 @@ function ChatMessageColumn({ children }: { children: ReactNode }) {
   );
 }
 
+function QueuedMessageSteer({
+  deferredIds,
+  disabled,
+}: {
+  deferredIds?: readonly string[];
+  disabled: boolean;
+}) {
+  const { t } = useTranslation("chat");
+  const id = useAuiState((state) => state.queueItem.id);
+  if (deferredIds?.includes(id)) return null;
+  return (
+    <QueueItemPrimitive.Steer asChild>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        title={t("sendNow")}
+        aria-label={t("sendNow")}
+        disabled={disabled}
+      >
+        <CornerDownRight />
+        {t("steerQueued")}
+      </Button>
+    </QueueItemPrimitive.Steer>
+  );
+}
+
 const Composer = memo(function Composer({
   autoFocus,
   disabled = false,
@@ -2197,7 +2396,6 @@ const Composer = memo(function Composer({
   activityStatus,
   composerRecovery,
   settings,
-  actions,
   effects,
   contextReferences,
   onContextReferencesChange,
@@ -2208,6 +2406,8 @@ const Composer = memo(function Composer({
   pluginsError,
   workflowPicker,
   sendBlocked = false,
+  beforeSend,
+  workTicketTransfer,
   selectedPluginIds,
   onPluginSelectionChange,
   connectors,
@@ -2233,6 +2433,7 @@ const Composer = memo(function Composer({
   replyTo,
   onDismissReply,
   registerReplyDraftEditor,
+  deferredSteeringIds,
   focusInputRef,
   clearRevision,
   restoreRevision,
@@ -2256,7 +2457,6 @@ const Composer = memo(function Composer({
   activityStatus?: ReactNode;
   composerRecovery?: ReactNode;
   settings?: ReactNode;
-  actions?: ReactNode;
   effects?: ReactNode;
   contextReferences?: ChatComposerContextReference[];
   onContextReferencesChange?: (ids: string[]) => void;
@@ -2267,6 +2467,8 @@ const Composer = memo(function Composer({
   pluginsError: boolean;
   workflowPicker?: ChatWorkflowPicker;
   sendBlocked?: boolean;
+  beforeSend?: () => boolean;
+  workTicketTransfer?: ComposerWorkTicketTransfer;
   selectedPluginIds: string[];
   onPluginSelectionChange: (ids: string[]) => void;
   connectors: ChatConnectorOption[];
@@ -2295,6 +2497,7 @@ const Composer = memo(function Composer({
   replyTo?: ChatReplyReference;
   onDismissReply?: () => void;
   registerReplyDraftEditor?: (editor: ChatReplyDraftEditor) => () => void;
+  deferredSteeringIds?: readonly string[];
   focusInputRef: RefObject<(() => void) | null>;
   clearRevision?: number;
   restoreRevision?: number;
@@ -2315,6 +2518,23 @@ const Composer = memo(function Composer({
   const aui = useAui();
   const composerIsEmpty = useAuiState((state) => state.composer.isEmpty);
   const composerCanSend = useAuiState((state) => state.composer.canSend);
+  const isTransfer = useAuiState((state) =>
+    Boolean(workTicketTransfer && isWorkTicketTransfer(state.composer.text)),
+  );
+  const transfer = useComposerWorkTicketTransfer(
+    workTicketTransfer,
+    replyTo,
+    errorScopes[0] ?? "global",
+  );
+  const submitTransfer = () => {
+    const { text, attachments } = aui.composer.getState();
+    if (disabled || isWorkStopping) return;
+    void transfer.submit(
+      text,
+      attachments.length > 0,
+      () => aui.composer.getState().text === text,
+    );
+  };
   const queuedMessageCount = useAuiState(
     (state) => state.composer.queue.length,
   );
@@ -2344,6 +2564,7 @@ const Composer = memo(function Composer({
   const prepareComposerSend = () => {
     if (waitingForAnswer || sendDisabled || !aui.composer.getState().canSend)
       return false;
+    if (beforeSend?.() === false) return false;
     setSubmissionState((current) => ({ ...current, pending: true }));
     return true;
   };
@@ -2402,23 +2623,14 @@ const Composer = memo(function Composer({
                         className="text-muted-foreground size-icon-sm shrink-0"
                       />
                       <QueueItemPrimitive.Text className="min-w-0 flex-1 truncate" />
-                      <QueueItemPrimitive.Steer asChild>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          title={t("sendNow")}
-                          aria-label={t("sendNow")}
-                          disabled={
-                            isWorkStopping ||
-                            pendingApprovals.length > 0 ||
-                            waitingForAnswer
-                          }
-                        >
-                          <CornerDownRight />
-                          {t("steerQueued")}
-                        </Button>
-                      </QueueItemPrimitive.Steer>
+                      <QueuedMessageSteer
+                        deferredIds={deferredSteeringIds}
+                        disabled={
+                          isWorkStopping ||
+                          pendingApprovals.length > 0 ||
+                          waitingForAnswer
+                        }
+                      />
                       <QueueItemPrimitive.Remove asChild>
                         <Button
                           type="button"
@@ -2454,7 +2666,11 @@ const Composer = memo(function Composer({
                   isWorkStopping || disabled || Boolean(currentApproval)
                 }
                 placeholder={t(
-                  workflowPicker ? "placeholderWithWorkflows" : "placeholder",
+                  workTicketTransfer?.replyHasTicket
+                    ? "workTicket.transferReplyPlaceholder"
+                    : workflowPicker
+                      ? "placeholderWithWorkflows"
+                      : "placeholder",
                 )}
                 ariaLabel={t("messageInput")}
                 skills={skills}
@@ -2500,9 +2716,14 @@ const Composer = memo(function Composer({
                   }
                 }}
                 onSend={() => {
+                  if (isTransfer) {
+                    submitTransfer();
+                    return;
+                  }
                   if (!prepareComposerSend()) return;
                   aui.composer.send();
                 }}
+                sendBeforeSuggestions={isTransfer}
                 codeReferenceRequest={codeReferenceRequest}
                 onCodeReferencesChange={onCodeReferencesChange}
                 draft={draft}
@@ -2521,7 +2742,6 @@ const Composer = memo(function Composer({
                   disabled={isWorkStopping || disabled}
                   onAttachmentsChange={refreshComposer}
                 />
-                {actions}
                 <ComposerContextUsage
                   metrics={contextMetrics}
                   visible={showUsageMetrics}
@@ -2554,7 +2774,17 @@ const Composer = memo(function Composer({
                     onClick={onStopWork}
                   />
                 ) : null}
-                {primaryAction === "send" ? (
+                {isTransfer ? (
+                  <ComposerSendButton
+                    type="button"
+                    aria-label={t("send")}
+                    title={t("send")}
+                    disabled={disabled || isWorkStopping || transfer.pending}
+                    data-chat-primary-action="send"
+                    onClick={submitTransfer}
+                  />
+                ) : null}
+                {!isTransfer && primaryAction === "send" ? (
                   <ComposerPrimitive.Send asChild>
                     <ComposerSendButton
                       aria-label={t("send")}
@@ -2563,11 +2793,16 @@ const Composer = memo(function Composer({
                         waitingForAnswer || sendDisabled || !composerCanSend
                       }
                       data-chat-primary-action="send"
-                      onClickCapture={prepareComposerSend}
+                      onClickCapture={(event) => {
+                        if (!prepareComposerSend() && beforeSend) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }
+                      }}
                     />
                   </ComposerPrimitive.Send>
                 ) : null}
-                {primaryAction === "queue" ? (
+                {!isTransfer && primaryAction === "queue" ? (
                   <ComposerPrimitive.Send asChild>
                     <ComposerSendButton
                       aria-label={t("addToQueue")}
@@ -2608,9 +2843,11 @@ function RoutedChatThread(props: ChatThreadProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const pluginHrefPrefix = useHref(pluginDetailHref(""));
-  const messageId = props.readingChatId
-    ? (new URLSearchParams(location.search).get("message") ?? undefined)
-    : undefined;
+  const messageId =
+    props.targetMessageId ??
+    (props.readingChatId
+      ? (new URLSearchParams(location.search).get("message") ?? undefined)
+      : undefined);
   return (
     <ChatThreadContent
       {...props}
@@ -2635,15 +2872,21 @@ function ChatThreadContent({
   messages,
   active = true,
   presentationScopeKey,
+  workTickets,
+  deferredSteeringIds,
   wakerName,
   wakerId,
   wakerAvatar,
   messageAuthors,
   teamReplyAuthorNames,
   timelineEvents = [],
+  renderUserMessageOrigin,
+  sourceWork,
   workflowInvocation,
   activityStatus,
   composerRecovery,
+  composerExecutionFailure,
+  showHistoricalExecutionFailures,
   afterMessages,
   isRunning = false,
   isWorkRunning = false,
@@ -2658,7 +2901,6 @@ function ChatThreadContent({
   historyError,
   renderComposerSettings,
   composerLayout,
-  composerActions,
   composerEffects,
   composerReferences,
   onComposerReferencesChange,
@@ -2669,6 +2911,8 @@ function ChatThreadContent({
   composerPluginsError = false,
   composerWorkflowPicker,
   composerSendBlocked,
+  composerBeforeSend,
+  composerWorkTicketTransfer,
   selectedPluginIds = emptyList,
   onPluginSelectionChange = ignoreChange,
   composerConnectors = emptyList,
@@ -2850,8 +3094,8 @@ function ChatThreadContent({
     [locateReply, onReplyToChange, showComposer],
   );
   const projection = useMemo(
-    () => new ChatMessageProjection(undefined, presentationScope),
-    [presentationScope],
+    () => new ChatMessageProjection(undefined, presentationScope, sourceWork),
+    [presentationScope, sourceWork],
   );
   const readingState = useMemo(
     () => ({ scope: presentationScope, groups: new Map<string, boolean>() }),
@@ -2971,6 +3215,7 @@ function ChatThreadContent({
     followInitially: !messageId && !currentReplyLocation,
   });
   const latestMessage = messages.findLast((message) => !message.question);
+  const latestComposerMessage = composerExecutionFailure ?? latestMessage;
   const compactComposer =
     composerLayout !== undefined
       ? composerLayout === "compact"
@@ -3118,11 +3363,15 @@ function ChatThreadContent({
                                     >
                                       <ChatMessageList
                                         views={views}
+                                        workTickets={workTickets}
                                         requestedMessageId={
                                           active ? targetMessageId : undefined
                                         }
                                         requestedMessageKey={targetKey}
                                         timelineEvents={visibleTimelineEvents}
+                                        renderUserMessageOrigin={
+                                          renderUserMessageOrigin
+                                        }
                                         forkBoundaryMessageId={
                                           forkBoundaryMessageId
                                         }
@@ -3142,6 +3391,9 @@ function ChatThreadContent({
                                         }
                                         showUsageMetrics={showUsageMetrics}
                                         showFileChanges={showFileChanges}
+                                        showHistoricalExecutionFailures={
+                                          showHistoricalExecutionFailures
+                                        }
                                         onOpenCodeReference={
                                           onOpenCodeReference
                                         }
@@ -3221,7 +3473,6 @@ function ChatThreadContent({
                     activityStatus={activityStatus}
                     composerRecovery={composerRecovery}
                     settings={renderComposerSettings?.(compactComposer)}
-                    actions={composerActions}
                     effects={composerEffects}
                     contextReferences={composerReferences}
                     onContextReferencesChange={onComposerReferencesChange}
@@ -3234,6 +3485,8 @@ function ChatThreadContent({
                     pluginsError={composerPluginsError}
                     workflowPicker={composerWorkflowPicker}
                     sendBlocked={composerSendBlocked}
+                    beforeSend={composerBeforeSend}
+                    workTicketTransfer={composerWorkTicketTransfer}
                     selectedPluginIds={selectedPluginIds}
                     onPluginSelectionChange={onPluginSelectionChange}
                     connectors={composerConnectors}
@@ -3252,8 +3505,8 @@ function ChatThreadContent({
                     sendFailure={sendFailure}
                     errorScopes={errorScopes}
                     failure={
-                      latestMessage?.status === "failed"
-                        ? latestMessage
+                      showComposer && latestComposerMessage?.status === "failed"
+                        ? latestComposerMessage
                         : undefined
                     }
                     codeReferenceRequest={codeReferenceRequest}
@@ -3270,6 +3523,7 @@ function ChatThreadContent({
                         : undefined
                     }
                     registerReplyDraftEditor={registerReplyDraftEditor}
+                    deferredSteeringIds={deferredSteeringIds}
                     focusInputRef={focusInputRef}
                     clearRevision={composerClearRevision}
                     restoreRevision={composerRestoreRevision}

@@ -6,6 +6,7 @@ import {
   authorizedSourceChat,
   sourceHistoryOptions,
   type ConversationSubject,
+  type SourceInputTrigger,
 } from "../api/main-conversation";
 import { createChatEventBatcher } from "../runtime/chat-event-batcher";
 import { applyChatLiveFrame, ChatLiveTracker } from "../runtime/chat-live";
@@ -21,11 +22,17 @@ export function useMainConversationSourceHistory(
   { subjectType, subjectId }: ConversationSubject,
   workChatId: string,
   active: boolean,
+  publicationId?: string,
 ) {
   const client = useQueryClient();
   const options = useMemo(
-    () => sourceHistoryOptions({ subjectType, subjectId }, workChatId),
-    [subjectType, subjectId, workChatId],
+    () =>
+      sourceHistoryOptions(
+        { subjectType, subjectId },
+        workChatId,
+        publicationId,
+      ),
+    [subjectType, subjectId, workChatId, publicationId],
   );
   const history = useInfiniteQuery({
     ...options,
@@ -37,10 +44,11 @@ export function useMainConversationSourceHistory(
     history.data?.pages[0]?.chat,
     history.error,
   );
+  const sourcePage = history.data?.pages[0];
   const authorized = Boolean(chat);
   const [live, setLive] = useState<BotChatMessage[]>([]);
   useEffect(() => {
-    if (!active || !authorized) return;
+    if (!active || !authorized || publicationId) return;
     const head = () => client.getQueryData(options.queryKey)?.pages[0];
     let tracker = new ChatLiveTracker();
     let closed = false;
@@ -115,7 +123,7 @@ export function useMainConversationSourceHistory(
       stop();
       batch.close();
     };
-  }, [active, authorized, client, options, workChatId]);
+  }, [active, authorized, client, options, publicationId, workChatId]);
 
   const publications = useMemo(() => {
     const byExecution = new Map<string, Map<string, DisplayPart>>();
@@ -134,6 +142,17 @@ export function useMainConversationSourceHistory(
       Array.from(byExecution, ([id, group]) => [id, [...group.values()]]),
     );
   }, [history.data]);
+  const inputTriggers = useMemo(() => {
+    const bySource = new Map<string, SourceInputTrigger>();
+    if (!authorized) return bySource;
+    for (const page of history.data?.pages.toReversed() ?? []) {
+      for (const trigger of page.inputTriggers ?? []) {
+        if (trigger.sourceMessageId)
+          bySource.set(trigger.sourceMessageId, trigger);
+      }
+    }
+    return bySource;
+  }, [authorized, history.data]);
   const messages = useMemo(() => {
     if (!authorized || !history.data) return [];
     const native = mergeAuthoritativeMessages(
@@ -141,21 +160,29 @@ export function useMainConversationSourceHistory(
       history.data.pages.toReversed().flatMap((page) => page.resources ?? []),
     );
     return native.map((message) => {
-      const publishedResultParts =
-        message.role === "assistant" &&
-        !message.question &&
-        !message.inherited &&
-        message.executionId
-          ? publications.get(message.executionId)
-          : undefined;
+      if (message.role === "user" && message.id && !message.content?.trim()) {
+        const preview = inputTriggers.get(message.id)?.preview;
+        if (preview) return { ...message, content: preview };
+      }
+      if (
+        message.role !== "assistant" ||
+        message.question ||
+        message.inherited ||
+        !message.executionId
+      )
+        return message;
+      const publishedResultParts = publications.get(message.executionId);
       return publishedResultParts
         ? { ...message, publishedResultParts }
         : message;
     });
-  }, [authorized, history.data, live, publications]);
+  }, [authorized, history.data, inputTriggers, live, publications]);
   return {
     history,
     messages,
     chat,
+    inputTriggers,
+    privateContinuation: sourcePage?.privateContinuation === true,
+    privatePendingInputs: sourcePage?.pendingInputs,
   };
 }

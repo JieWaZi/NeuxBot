@@ -31,6 +31,8 @@ function Harness({
   rowVersion = 0,
   withRows = true,
   isHistoryAnchoring,
+  onFollowRevision,
+  onUserScroll,
 }: {
   revision?: number;
   scope?: string;
@@ -38,6 +40,8 @@ function Harness({
   rowVersion?: number;
   withRows?: boolean;
   isHistoryAnchoring?: () => boolean;
+  onFollowRevision?: (distance: number) => void;
+  onUserScroll?: () => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -65,6 +69,8 @@ function Harness({
     scope,
     enabled,
     isHistoryAnchoring,
+    onFollowRevision,
+    onUserScroll,
   });
   return (
     <div ref={viewport} data-testid="viewport">
@@ -127,6 +133,67 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("canonical 消息阅读滚动", () => {
+  it("正文提交只报告此次跟随产生的实际滚动距离", () => {
+    const onFollowRevision = vi.fn();
+    const view = render(<Harness onFollowRevision={onFollowRevision} />);
+    expect(layout.top).toBe(200);
+    expect(onFollowRevision.mock.calls).toEqual([[0]]);
+
+    layout.height = 380;
+    view.rerender(<Harness revision={1} onFollowRevision={onFollowRevision} />);
+    expect(layout.top).toBe(280);
+    expect(onFollowRevision.mock.calls).toEqual([[0], [80]]);
+
+    layout.height = 420;
+    resize();
+    expect(layout.top).toBe(320);
+    layout.height = 440;
+    fireEvent(document, new Event("visibilitychange"));
+    expect(layout.top).toBe(340);
+    expect(onFollowRevision.mock.calls).toEqual([[0], [80]]);
+
+    layout.height = 440.25;
+    view.rerender(<Harness revision={2} onFollowRevision={onFollowRevision} />);
+    expect(layout.top).toBe(340);
+    expect(onFollowRevision.mock.calls).toEqual([[0], [80], [0]]);
+  });
+  it("程序滚动不触发用户回调，用户滚动先清理位移再测量阅读锚点", () => {
+    const onFollowRevision = vi.fn();
+    const onUserScroll = vi.fn(() => {
+      layout.second = 150;
+    });
+    const scene = (revision = 0, enabled = true) => (
+      <Harness
+        revision={revision}
+        enabled={enabled}
+        onFollowRevision={onFollowRevision}
+        onUserScroll={onUserScroll}
+      />
+    );
+    const view = render(scene());
+    const element = screen.getByTestId("viewport");
+    fireEvent.scroll(element);
+    layout.height = 360;
+    resize();
+    fireEvent.scroll(element);
+    expect(onUserScroll).not.toHaveBeenCalled();
+
+    Object.assign(layout, { top: 150, second: 170 });
+    fireEvent.scroll(element);
+    expect(onUserScroll).toHaveBeenCalledTimes(1);
+
+    Object.assign(layout, { height: 440, second: 190 });
+    view.rerender(scene(1));
+    expect(layout.top).toBe(190);
+    fireEvent.scroll(element);
+    expect(onUserScroll).toHaveBeenCalledTimes(1);
+
+    view.rerender(scene(2, false));
+    layout.second = 210;
+    view.rerender(scene(3));
+    expect(layout.top).toBe(210);
+    expect(onFollowRevision.mock.calls).toEqual([[0], [0], [0], [0]]);
+  });
   it("初始在底部，正文追加与异步增高继续跟随", () => {
     const view = render(<Harness />);
     expect(layout.top).toBe(200);

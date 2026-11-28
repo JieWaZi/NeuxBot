@@ -39,7 +39,7 @@ import {
   ChatRightPanelHost,
   type ChatRightPanel,
 } from "./chat-right-panel-host";
-import { ChatThread } from "./chat-thread";
+import { ChatConversation } from "./chat-conversation";
 import { ChatSummary } from "./chat-summary";
 import { ChatHistoryContentContext } from "./chat-history-navigation";
 import { FloatingChat } from "./floating-chat";
@@ -71,7 +71,7 @@ export type ChatWorkspaceAdapter = {
     pendingElicitationCount: number;
     streamState: StreamState;
   };
-  thread: ComponentProps<typeof ChatThread>;
+  thread: ComponentProps<typeof ChatConversation>;
   tabs?: WorkspaceTab[];
 };
 
@@ -114,6 +114,7 @@ type ChatWorkspaceSurfaceProps = {
   allowSideChat?: boolean;
   gitRoots?: readonly string[];
   renderTeamMembers?: (onMemberOpened: () => void) => ReactNode;
+  renderMainSummary?: (close: () => void) => ReactNode;
   showActivityIndicator?: boolean;
   taskBoard?: ReactNode;
   workspace: SceneWorkspace;
@@ -153,6 +154,7 @@ export function ChatWorkspaceSurface({
   allowSideChat,
   gitRoots = [],
   renderTeamMembers,
+  renderMainSummary,
   // showActivityIndicator = true,
   taskBoard,
   workspace,
@@ -404,6 +406,7 @@ export function ChatWorkspaceSurface({
         workspaceDirectory={identity.workspaceDirectory}
         directoryLabel={directoryLabel}
         renderTeamMembers={renderTeamMembers}
+        renderMainSummary={renderMainSummary}
         onOpenChanges={(root, repository) => {
           setChangesTarget({ scopeKey: gitScopeKey, root, repository });
           dispatch({
@@ -593,7 +596,7 @@ export function ChatWorkspaceSurface({
                   {"content" in adapter ? (
                     adapter.content
                   ) : (
-                    <ChatThread
+                    <ChatConversation
                       {...adapter.thread}
                       emptyStatePosition={
                         canvasInput

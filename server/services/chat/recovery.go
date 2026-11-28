@@ -214,7 +214,7 @@ func (c *recoveryCoordinator) reconcileChat(
 		}
 	}
 	if projection.chat.ActiveExecutionID != "" {
-		canceled, appendErr := c.appendInterruptedRecovery(chatID, projection.chat.ActiveExecutionID, projection.chat.PendingElicitations)
+		canceled, appendErr := c.appendInterruptedRecovery(ctx, chatID, projection.chat.ActiveExecutionID, projection.chat.PendingElicitations)
 		if appendErr != nil {
 			return diagnostic, appendErr
 		}
@@ -263,7 +263,7 @@ func (c *recoveryCoordinator) rebuildProjection(
 		return diagnostic, err
 	}
 	if interrupt && state.chat.ActiveExecutionID != "" {
-		canceled, appendErr := c.appendInterruptedRecovery(chatID, state.chat.ActiveExecutionID, state.chat.PendingElicitations)
+		canceled, appendErr := c.appendInterruptedRecovery(ctx, chatID, state.chat.ActiveExecutionID, state.chat.PendingElicitations)
 		if appendErr != nil {
 			return diagnostic, appendErr
 		}

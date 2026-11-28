@@ -121,7 +121,7 @@ it("只包含正式附件的助手消息可以打开受管成果", () => {
   });
 });
 
-it("用户操作紧邻气泡左侧，普通助手回复保留原底栏", () => {
+it("普通会话的用户和助手操作都在气泡下方", () => {
   const views = new ChatMessageProjection().update([
     { id: "input", role: "user", content: "你是谁" },
     {
@@ -139,13 +139,13 @@ it("用户操作紧邻气泡左侧，普通助手回复保留原底栏", () => {
     );
     if (!row) throw new Error("未找到用户消息");
     const bubble = row.querySelector("[data-chat-message-bubble]");
+    const messageColumn = bubble?.parentElement;
     const actions = bubble?.nextElementSibling;
-    expect(bubble?.parentElement).toHaveClass("flex", "justify-end");
-    expect(actions).toHaveClass("order-first");
+    expect(messageColumn).toHaveClass("max-w-[78%]");
+    expect(actions).toBe(row.querySelector("footer"));
     expect(actions).toContainElement(
       within(row).getByRole("button", { name: "复制" }),
     );
-    expect(row.querySelector("footer")).toBeNull();
   }
   const reply = container.querySelector('[data-message-id="reply"]');
   expect(reply).toHaveClass("mt-1");
@@ -543,6 +543,17 @@ it("公开助手回复与普通回复都从正文起排，用户主动引用的�
   expect(
     container.querySelector('[data-message-id="ordinary"] footer'),
   ).toBeInTheDocument();
+  const publicInput = container.querySelector<HTMLElement>(
+    '[data-message-id="follow-up"]',
+  );
+  if (!publicInput) throw new Error("未找到公开用户消息");
+  expect(publicInput.querySelector("footer")).toBeNull();
+  const inputBubble = publicInput.querySelector("[data-chat-message-bubble]");
+  const inputActions = inputBubble?.parentElement?.nextElementSibling;
+  expect(inputActions).toHaveClass("order-first");
+  expect(inputActions).toContainElement(
+    within(publicInput).getByRole("button", { name: "更多操作" }),
+  );
   expect(replyButton.tabIndex).toBe(0);
   replyButton.focus();
   await userEvent.keyboard("{Enter}");

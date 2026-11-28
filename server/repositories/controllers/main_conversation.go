@@ -18,10 +18,17 @@ type MainConversationStore interface {
 	Ensure(ctx context.Context, kind, id string) (models.MainConversation, error)
 	Get(ctx context.Context, id string) (models.MainConversation, error)
 	ReserveWork(ctx context.Context, convID, wakerID, scope string) (models.MainConversationWork, error)
+	ReserveExactWork(ctx context.Context, convID, wakerID, scope, chatID string) (models.MainConversationWork, error)
 	FindWork(ctx context.Context, id string) (models.MainConversationWork, bool, error)
 	Work(ctx context.Context, id string) (models.MainConversationWork, error)
 	Message(ctx context.Context, convID, msgID string) (models.MainConversationMessage, error)
 	FindMessage(ctx context.Context, convID, msgID string) (models.MainConversationMessage, bool, error)
+	FindWorkflowInput(ctx context.Context, conversationID, chatID, executionID string) (models.MainConversationMessage, error)
+	HasAutomaticTaskReceipt(ctx context.Context, conversationID, chatID, executionID string) (bool, error)
+	HasCommittedPrivateInput(ctx context.Context, work models.MainConversationWork, executionID string) (bool, error)
+	FindPublishedBody(ctx context.Context, convID, chatID, executionID, content string) (models.MainConversationMessage, error)
+	FindAppendReceipt(ctx context.Context, msg models.MainConversationMessage) (models.MainConversationMessage, bool, error)
+	HasVisibleMessageAfter(ctx context.Context, conversationID string, sequence int64) (bool, error)
 	Append(ctx context.Context, msg models.MainConversationMessage, kind, id string) (models.MainConversationMessage, bool, error)
 	Messages(ctx context.Context, id string, before int64, limit int) ([]models.MainConversationMessage, bool, error)
 	ConfirmUserAdmission(ctx context.Context, conversationID, messageID string) (models.MainConversationMessage, error)
@@ -30,6 +37,7 @@ type MainConversationStore interface {
 	ActiveWork(ctx context.Context, conversationID string) ([]models.MainConversationActivity, error)
 	UnansweredFailures(ctx context.Context, conversationID string, page []models.MainConversationMessage) (map[string]MainConversationFailureCandidate, error)
 	RemoveMessage(ctx context.Context, conversation models.MainConversation, messageID string) error
+	WorkInputTriggers(ctx context.Context, work models.MainConversationWork, inputIDs []string) ([]models.MainConversationMessage, error)
 	WorkPublications(ctx context.Context, work models.MainConversationWork, executionIDs []string) ([]models.MainConversationMessage, error)
 	InitializeReadingBaseline(ctx context.Context, reader string) error
 	ReadingCursor(ctx context.Context, reader, conversationID string) (models.MainConversationReadCursor, error)
@@ -115,6 +123,12 @@ func deleteMainConversation(db *gorm.DB, kind, id string) error {
 	convID, err := publicSubjectConversationID(db, kind, id)
 	if err != nil || convID == "" {
 		return err
+	}
+	if err = deleteWorkTickets(db, models.WorkTicket{OriginKind: constants.WorkTicketOriginMain, OriginID: convID}, convID); err != nil {
+		return err
+	}
+	if err = db.Where("conversation_id = ?", convID).Delete(&models.MainConversationInput{}).Error; err != nil {
+		return databaseError("delete_main_conversation_inputs", convID, err)
 	}
 	if err = db.Where("conversation_id = ?", convID).Delete(&models.MainConversationMessage{}).Error; err != nil {
 		return databaseError("delete_main_messages", convID, err)

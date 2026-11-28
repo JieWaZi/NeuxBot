@@ -1,15 +1,50 @@
 package execution
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/mainconversation"
 )
+
+// TestAutomaticAgentReportUsesThePublicationTransport 核验定时报告复用现有工具传输和本轮授权。
+func TestAutomaticAgentReportUsesThePublicationTransport(t *testing.T) {
+	manager := agentPreparationFixture(t)
+	source := manager.journal.(*agentTestJournal).chat
+	manager.automaticReportBinding = func(_ context.Context, chat models.Chat, executionID, runID string) (capability.Binding, error) {
+		if chat.ID != source.ID || executionID != "turn" || runID != "schedule" {
+			t.Fatalf("binding was not given the host-owned identities")
+		}
+		return capability.Binding{
+			Operation: constants.ConversationMessagePostOperation,
+			Call: func(context.Context, capability.Request) (capability.Result, error) {
+				return capability.Result{}, nil
+			},
+			Receipt: func(context.Context, string) (capability.Result, error) {
+				return capability.Result{}, status_error.AgentReceiptNotFound
+			},
+		}, nil
+	}
+	request := pendingMessage{runtime: runtimeSelection{RuntimeID: "codex"}, automaticRunID: "schedule", allowedAgentDomains: &[]string{"conversations"}}
+	work := recordedRun{Runtime: request.runtime}
+	conn, err := manager.prepareAgent(t.Context(), t.Context(), models.RuntimeEnvironment{}, work.Workspace, &work.Skills, &work.Instructions, &work.Connectors, &work.ContextInstructions, source, "turn", request, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.finish()
+	guide := agentapi.DeveloperInstructions(work.Instructions)
+	if len(work.Connectors) != 1 || !strings.Contains(guide, "Automatic task delivery") ||
+		strings.Contains(guide, "post each") || strings.Contains(guide, constants.AutomaticReportNoChanges) {
+		t.Fatalf("automatic report did not use the existing publication transport and its one-report scope: %s", guide)
+	}
+}
 
 // TestConversationWorkerReceivesItsPublicationTransportAndInstructions 核验发言授权、原生工具传输和模型提示同步生效。
 func TestConversationWorkerReceivesItsPublicationTransportAndInstructions(t *testing.T) {
@@ -90,7 +125,7 @@ func TestConversationPublicationGrantRejectsMovedSourceOrTurn(t *testing.T) {
 	}
 }
 
-func TestMainConversationAndSourceUseSamePublicDestination(t *testing.T) {
+func TestMainConversationAndSourceKeepStablePublicationGuidance(t *testing.T) {
 	manager := agentPreparationFixture(t)
 	chat := manager.journal.(*agentTestJournal).chat
 	chat.HiddenFromWakerHistory = true
@@ -99,6 +134,11 @@ func TestMainConversationAndSourceUseSamePublicDestination(t *testing.T) {
 		work := recordedRun{Runtime: runtimeSelection{RuntimeID: "codex"}}
 		grants := MainConversationTools(chat.ID, origin, "", &mainconversation.Service{})
 		request := pendingMessage{runtime: work.Runtime, toolCapabilities: grants, entryPoint: origin, allowedAgentDomains: &[]string{}}
+		if origin == MainConversationSourceEntryPoint {
+			destination := mainconversation.PrivateSourceInstruction()
+			request.contextInstructions = []agentapi.Instruction{{Name: destination.Name, Content: destination.Content}}
+		}
+		work.Instructions, work.ContextInstructions = nativeInstructionInputs(request, &preparedMessageFiles{})
 		conn, err := manager.prepareAgent(t.Context(), t.Context(), models.RuntimeEnvironment{}, work.Workspace, &work.Skills, &work.Instructions, &work.Connectors, &work.ContextInstructions, chat, origin, request, nil, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -109,11 +149,29 @@ func TestMainConversationAndSourceUseSamePublicDestination(t *testing.T) {
 			t.Fatal("switching between the main conversation and its work history reset session instructions")
 		}
 		stable = current
-		if !strings.Contains(current, "conversations.messages.post") || strings.Contains(current, "answer in the private work transcript") {
-			t.Fatal("both inputs must direct answers to the same public conversation")
+		if !strings.Contains(current, "conversations.messages.post") || !strings.Contains(current, "results, findings or blockers") ||
+			!strings.Contains(current, "authorized scope") {
+			t.Fatal("both inputs need the bound tool and authority for work outcomes")
 		}
-		if !strings.Contains(current, "as soon as you have it, then continue") || !strings.Contains(current, "Use a structured question") {
+		if !strings.Contains(current, "as soon as it is ready") || !strings.Contains(current, "Use a structured question") {
 			t.Fatal("both inputs must prompt timely findings and structured questions")
+		}
+		turn, err := work.turnRequest(origin, work.Detection)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if origin == MainConversationEntryPoint && len(turn.Context) != 0 {
+			t.Fatalf("public input got a private destination override: %+v", turn.Context)
+		}
+		if origin == MainConversationSourceEntryPoint {
+			if len(turn.Context) != 1 || turn.Context[0].Name != "Input origin" {
+				t.Fatalf("source input did not carry exactly one origin note: %+v", turn.Context)
+			}
+			note, ok := turn.Context[0].Value.(string)
+			if !ok || !strings.Contains(note, "send the user-facing reply or outcome there") ||
+				!strings.Contains(note, "even for brief chat") || !strings.Contains(note, "Respect requests to reply only here") {
+				t.Fatalf("source input did not guide allowed replies back to main: %+v", turn.Context)
+			}
 		}
 	}
 }

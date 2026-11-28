@@ -13,6 +13,7 @@ import (
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/mainconversation"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -27,6 +28,8 @@ type workflowFixture struct {
 	workflow.Config
 	// db 保存测试可控制的临时持久状态。
 	db *gorm.DB
+	// main 允许真实交办使用公开会话的回址。
+	main *mainconversation.Service
 }
 
 func workflowTestService(t *testing.T) (*workflowFixture, controllers.WorkflowController) {
@@ -64,6 +67,7 @@ func workflowAPIDependencies(s *workflowFixture) *workflowDependencies {
 	deps := &workflowDependencies{
 		Store: s.Store, Transactions: s.Transactions, Runs: s.Runs, CreationSessions: s.CreationSessions, State: s.State,
 		Executions: s.Executions, Chats: s.Chats, Wakers: s.Wakers, Projects: s.Projects, DataDirectory: s.DataDirectory,
+		CreateDefinition: s.CreateDefinition,
 		SaveSource: func(ctx context.Context, definitionID, requestID, expectedID, source, restoredFrom string) (workflowdsl.SaveReceipt, []workflowdsl.Diagnostic, error) {
 			return s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definitionID, RequestID: requestID, ExpectedRevisionID: expectedID, Source: source, SDK: constants.WorkflowSDKIdentifier, RestoredFromRevisionID: restoredFrom})
 		},

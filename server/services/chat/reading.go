@@ -11,6 +11,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
 // readingChanges holds the narrow projection changes prepared against a frozen log tail.
@@ -176,7 +177,7 @@ func (m *service) PublicReadingMessage(ctx context.Context, chatID, messageID st
 }
 
 // appendInterruptedRecovery 先关闭未答问题，再记录 Core 重启中断的执行结果。
-func (c *recoveryCoordinator) appendInterruptedRecovery(chatID, executionID string, pending []models.PendingElicitation) ([]eventlog.Record, error) {
+func (c *recoveryCoordinator) appendInterruptedRecovery(ctx context.Context, chatID, executionID string, pending []models.PendingElicitation) ([]eventlog.Record, error) {
 	status := constants.ExecutionStatusCanceled
 	kind := constants.ChatEventTypeExecutionCanceled
 	data := eventlog.ExecutionFinishedData{Status: status, ExitCode: -1}
@@ -184,6 +185,29 @@ func (c *recoveryCoordinator) appendInterruptedRecovery(chatID, executionID stri
 		kind = constants.ChatEventTypeExecutionFailed
 		data.Status = constants.ExecutionStatusFailed
 		data.ErrorCode = status_error.ReadingExecutionInterrupted.Key()
+	}
+	records, err := c.logStore.ReadMessage(chatID, executionID)
+	if err != nil {
+		return nil, err
+	}
+	for _, record := range records {
+		if record.Type != constants.ChatEventTypeExecutionWatchdogStopRequested || record.ExecutionID != executionID {
+			continue
+		}
+		var stop eventlog.WatchdogStopRequestedData
+		if json.Unmarshal(record.Data, &stop) != nil {
+			return nil, status_error.ChatLogCorrupted
+		}
+		result, err := c.logStore.nativeOutcome(ctx, chatID, executionID)
+		if err != nil {
+			return nil, err
+		}
+		kind = constants.ChatEventTypeExecutionFailed
+		data.Status = constants.ExecutionStatusFailed
+		data.ErrorCode = stop.ReasonCode
+		data.ErrorMessageSource = constants.ErrorMessageSourceLocalized
+		data.ErrorParams = map[string]interface{}{"Confirmed": result != nil && result.Turn.Status == acpmeta.NativeTurnCancelled, "Settled": true}
+		break
 	}
 	facts := make([]eventlog.AppendInput, 0, len(pending)+1)
 	for _, question := range pending {
@@ -198,7 +222,7 @@ func (c *recoveryCoordinator) appendInterruptedRecovery(chatID, executionID stri
 	facts = append(facts, eventlog.AppendInput{Type: kind, ExecutionID: executionID, Data: marshalData(data)})
 	// 大量并发 Runtime 请求可能超过单个日志批次的容量。中途失败时，重放会去除已关闭的请求。
 	const recoveryBatchSize = 64
-	var records []eventlog.Record
+	records = nil
 	for batch := range slices.Chunk(facts, recoveryBatchSize) {
 		committed, err := c.logStore.Append(chatID, batch)
 		if err != nil {

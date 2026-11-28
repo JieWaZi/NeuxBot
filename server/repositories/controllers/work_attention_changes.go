@@ -101,7 +101,8 @@ func (c *chatController) chatAttentionChanges(ctx context.Context, id string, fi
 	requestsChanged := current.WaitingApproval != old.WaitingApproval || current.WaitingElicitation != old.WaitingElicitation ||
 		(current.WaitingApproval && !reflect.DeepEqual(current.PendingApprovals, old.PendingApprovals)) ||
 		(current.WaitingElicitation && !reflect.DeepEqual(current.PendingElicitations, old.PendingElicitations))
-	if old.HiddenFromWakerHistory && (current.ActiveExecutionID != old.ActiveExecutionID || requestsChanged) {
+	activeTitleChanged := current.ActiveExecutionID != "" && current.Title != old.Title
+	if old.HiddenFromWakerHistory && (current.ActiveExecutionID != old.ActiveExecutionID || requestsChanged || activeTitleChanged) {
 		owner, err := mainWorkSubject(controllerDB(ctx, c.db), id, old.WakerID)
 		if err != nil {
 			return nil, databaseError("main_work_activity_subject", id, err)

@@ -20,8 +20,63 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/mainconversation"
+	"github.com/JieWaZi/NeuxBot/server/services/workticket"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
+
+func TestMainConversationNativeStartInvalidatesOnlyOriginalComposerWork(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	hub := events.New()
+	t.Cleanup(hub.Close)
+	fixture := newMessageTestService(t, t.TempDir(), messageTestOptions{events: hub})
+	owner := events.Resource{Kind: "waker", ID: "waker-1"}
+	changes := hub.Subscribe(constants.MainConversationEventTopic, owner)
+	defer changes.Close()
+	chats := fixture.chats.(chatservice.Module)
+
+	start := func(entry string) AcceptedExecution {
+		t.Helper()
+		id, publicID := util.New(), util.New()
+		if entry == MainConversationEntryPoint {
+			publicID = id
+		}
+		work, err := fixture.execution.Start(ctx, WorkIntent{
+			Chat:        ChatTarget{ChatID: util.New(), MainConversationSource: &CreateChatSpec{WakerID: owner.ID, WorkingDirectory: t.TempDir()}},
+			Input:       WorkInput{Actor: "user", Content: "hold-for-stream", SubmissionID: id},
+			Options:     WorkOptions{EntryPoint: entry, RuntimeID: "codex", PermissionLevel: constants.PermissionLevelDefault},
+			ExecutionID: id, Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
+			Ticket: WorkTicketInput{Address: workticket.Address{Kind: constants.WorkTicketOriginMain, ID: "main"}, OwnerKind: owner.Kind, OwnerID: owner.ID, PublicMessageID: publicID},
+		})
+		if err != nil || work.Execution.Status != constants.ExecutionStatusPending {
+			t.Fatalf("precommit = %+v, %v", work, err)
+		}
+		return work
+	}
+	work := start(MainConversationEntryPoint)
+	select {
+	case event := <-changes.Events:
+		if event.Type != constants.MainConversationEventTopic+".changed" || event.Resource != owner {
+			t.Fatalf("incorrect main invalidation: %+v", event)
+		}
+		state, err := chats.ReadExecution(ctx, work.Chat.ID, work.Execution.ID)
+		if err != nil || state.Status != constants.ExecutionStatusRunning {
+			t.Fatalf("main invalidation preceded durable start: %+v, %v", state, err)
+		}
+	case <-ctx.Done():
+		t.Fatal("native start did not invalidate the main conversation")
+	}
+	if err := fixture.execution.CancelExecutionAndWait(ctx, work.Chat.ID, work.Execution.ID); err != nil {
+		t.Fatal(err)
+	}
+	source := start(MainConversationSourceEntryPoint)
+	waitNativeProductLive(t, ctx, chats, source, "fixture partial")
+	select {
+	case event := <-changes.Events:
+		t.Fatalf("source-composer start unexpectedly invalidated the main task summary: %+v", event)
+	default:
+	}
+}
 
 func TestMainConversationQuestionSurvivesWaitTimeoutAndColdRead(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)

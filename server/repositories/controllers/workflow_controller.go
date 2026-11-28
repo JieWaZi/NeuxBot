@@ -19,8 +19,8 @@ type WorkflowController interface {
 	DeleteDefinition(context.Context, string, string) error
 	// GetDefinition 按稳定身份读取定义。
 	GetDefinition(context.Context, string) (models.WorkflowDefinition, error)
-	// ListDefinitions 先按字面搜索与分类过滤，再按更新时间游标读取有界列表。
-	ListDefinitions(ctx context.Context, query string, before int64, beforeID string, limit, offset int, category *string) ([]models.WorkflowDefinition, error)
+	// ListDefinitions 先按字面搜索、分类和创作伙伴过滤，再按更新时间游标读取有界列表。
+	ListDefinitions(ctx context.Context, query string, before int64, beforeID string, limit, offset int, category *string, creationWakerID string) ([]models.WorkflowDefinition, error)
 	// UpdateCategories 只更新目录标签，保留源码版本和执行关系。
 	UpdateCategories(context.Context, string, []string) error
 	// UpdateHead 在当前版本仍匹配时提交新版本指针及摘要。
@@ -88,11 +88,14 @@ func (c *workflowController) GetDefinition(ctx context.Context, id string) (mode
 	}
 	return value, nil
 }
-func (c *workflowController) ListDefinitions(ctx context.Context, query string, before int64, beforeID string, limit, offset int, category *string) ([]models.WorkflowDefinition, error) {
+func (c *workflowController) ListDefinitions(ctx context.Context, query string, before int64, beforeID string, limit, offset int, category *string, creationWakerID string) ([]models.WorkflowDefinition, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
 	db := controllerDB(ctx, c.db).Model(&models.WorkflowDefinition{})
+	if creationWakerID != "" {
+		db = db.Where("creation_waker_id = ?", creationWakerID)
+	}
 	if category != nil {
 		if *category == "" {
 			db = db.Where("json_array_length(categories) = 0")

@@ -23,6 +23,8 @@ type AutomaticTaskFilter struct {
 	ChannelID string
 	// ExecutorKind 按伙伴、团队或工作流筛选，空值表示全部。
 	ExecutorKind string
+	// WorkflowReportRecipient 匹配定时工作流冻结的主会话收件主体。
+	WorkflowReportRecipient *models.MainConversationRecipient
 	// Query 是任务名称或指令中的字面搜索词。
 	Query string
 	// Trigger 是需要匹配的触发类型，空值表示全部。
@@ -45,6 +47,8 @@ type AutomaticTaskCounts struct {
 	Scheduled int64 `json:"scheduled"`
 	// API 是采用本机 API 触发的任务数。
 	API int64 `json:"api"`
+	// Event 是采用来源观察触发的任务数。
+	Event int64 `json:"event"`
 }
 
 // AutomaticTaskController 定义自动配置、唯一机会和运行槽的持久化操作。
@@ -83,8 +87,20 @@ type AutomaticTaskController interface {
 	GetRun(context.Context, string) (models.AutomaticRun, error)
 	// FindRun 查找同一任务的已登记机会。
 	FindRun(context.Context, string, string) (models.AutomaticRun, bool, error)
+	// FindEventRun 查询已关联该事件观察的唯一自动运行。
+	FindEventRun(context.Context, string) (models.AutomaticRun, bool, error)
 	// ListRuns 枚举任务的运行记录并返回完整数量。
 	ListRuns(context.Context, string, int, int) ([]models.AutomaticRun, int64, error)
+	// PendingReports 按稳定身份枚举尚待确认结果的报告约定。
+	PendingReports(context.Context, string, int) ([]models.AutomaticRun, error)
+	// ReserveAgentReport 只允许原运行登记一份待投正文。
+	ReserveAgentReport(context.Context, string, string, string) (bool, error)
+	// FinishReport 按原运行登记实际交付或静默的收据。
+	FinishReport(context.Context, string, constants.AutomaticReportState, string) error
+	// QueuedReportRuns 读取尚待占用规则运行槽的已登记机会。
+	QueuedReportRuns(context.Context, int64, string, int) ([]models.AutomaticRun, error)
+	// ClearReportRunQueue 在同一机会占用运行槽时结束排队阶段。
+	ClearReportRunQueue(context.Context, string) error
 	// CountAcceptedRuns 返回任务已进入 Chat 的运行数量。
 	CountAcceptedRuns(context.Context, string) (int64, error)
 	// UpdateRunAdmission 只更新接纳阶段、关联身份和安全错误码。
@@ -150,6 +166,9 @@ func automaticTaskQuery(db *gorm.DB, filter AutomaticTaskFilter) *gorm.DB {
 	if filter.ExecutorKind == "workflow" {
 		db = db.Where("workflow_id <> ''")
 	}
+	if recipient := filter.WorkflowReportRecipient; recipient != nil {
+		db = db.Where("json_extract(workflow_report_recipient, '$.subjectType') = ? AND json_extract(workflow_report_recipient, '$.subjectId') = ?", recipient.SubjectType, recipient.SubjectID)
+	}
 	if query := strings.ToLower(strings.TrimSpace(filter.Query)); query != "" {
 		db = db.Where("instr(lower(name), ?) > 0 OR instr(lower(instruction), ?) > 0", query, query)
 	}
@@ -183,7 +202,7 @@ func (c *automaticTaskController) List(ctx context.Context, filter AutomaticTask
 func (c *automaticTaskController) Counts(ctx context.Context, wakerID string) (AutomaticTaskCounts, error) {
 	var counts AutomaticTaskCounts
 	err := automaticTaskQuery(controllerDB(ctx, c.db), AutomaticTaskFilter{WakerID: wakerID}).
-		Select("COUNT(*) AS total, COALESCE(SUM(CASE WHEN enabled THEN 1 ELSE 0 END), 0) AS enabled, COALESCE(SUM(CASE WHEN trigger = ? THEN 1 ELSE 0 END), 0) AS scheduled, COALESCE(SUM(CASE WHEN trigger = ? THEN 1 ELSE 0 END), 0) AS api", constants.AutomaticTaskTriggerSchedule, constants.AutomaticTaskTriggerAPI).
+		Select("COUNT(*) AS total, COALESCE(SUM(CASE WHEN enabled THEN 1 ELSE 0 END), 0) AS enabled, COALESCE(SUM(CASE WHEN trigger = ? THEN 1 ELSE 0 END), 0) AS scheduled, COALESCE(SUM(CASE WHEN trigger = ? THEN 1 ELSE 0 END), 0) AS api, COALESCE(SUM(CASE WHEN trigger = ? THEN 1 ELSE 0 END), 0) AS event", constants.AutomaticTaskTriggerSchedule, constants.AutomaticTaskTriggerAPI, constants.AutomaticTaskTriggerEvent).
 		Find(&counts).Error
 	if err != nil {
 		return counts, databaseError("summarize_automatic_tasks", "waker_id="+wakerID, err)
@@ -209,8 +228,20 @@ func (c *automaticTaskController) UpdateConfiguration(ctx context.Context, task 
 	if err != nil {
 		return status_error.BadRequest
 	}
+	event, err := json.Marshal(task.Event)
+	if err != nil {
+		return status_error.BadRequest
+	}
+	recipient, err := json.Marshal(task.WorkflowReportRecipient)
+	if err != nil {
+		return status_error.BadRequest
+	}
 	// 显式编码可空 JSON，避免 ORM 对 nil interface 执行字段赋值时 panic。
 	updates := map[string]any{"knowledge": string(knowledge), "workflow_trigger_detached": task.WorkflowTriggerDetached, "target_kind": task.TargetKind, "workflow_id": task.WorkflowID, "workflow_revision_policy": task.WorkflowRevisionPolicy, "workflow_revision_id": task.WorkflowRevisionID, "workflow_input_bindings": string(args), "workflow_input_revision_id": task.WorkflowInputRevisionID, "workspace_read_only": task.WorkspaceReadOnly, "member_configs": string(members), "waker_id": task.WakerID, "channel_id": task.ChannelID, "executor_waker_id": task.ExecutorWakerID, "name": task.Name, "instruction": task.Instruction, "trigger": task.Trigger, "schedule": string(schedule), "project_id": task.ProjectID, "working_directory": task.WorkingDirectory, "runtime_id": task.RuntimeID, "account_id": task.AccountID, "model": task.Model, "reasoning": task.Reasoning, "fast": task.Fast, "permission_level": task.PermissionLevel, "enabled": task.Enabled, "revision": task.Revision, "configuration_version": task.ConfigurationVersion, "trigger_version": task.TriggerVersion, "token_hash": task.TokenHash, "next_run_at": task.NextRunAt, "updated_at": task.UpdatedAt}
+	updates["report_destination"] = task.ReportDestination
+	updates["report_policy"] = task.ReportPolicy
+	updates["event"] = string(event)
+	updates["workflow_report_recipient"] = string(recipient)
 	result := controllerDB(ctx, c.db).Model(&models.AutomaticTask{}).Where("id = ? AND revision = ? AND deleting = ?", task.ID, revision, false).
 		Updates(updates)
 	if result.Error != nil {
@@ -385,6 +416,16 @@ func (c *automaticTaskController) FindRun(ctx context.Context, taskID, key strin
 		return run, false, databaseError("find_automatic_run", "task_id="+taskID, err)
 	}
 	return run, true, nil
+}
+
+func (c *automaticTaskController) FindEventRun(ctx context.Context, observationID string) (models.AutomaticRun, bool, error) {
+	var run models.AutomaticRun
+	result := controllerDB(ctx, c.db).Where("event_observation_id = ? AND event_observation_id <> ''", observationID).
+		Limit(1).Find(&run)
+	if result.Error != nil {
+		return run, false, databaseError("find_automatic_event_run", "observation_id="+observationID, result.Error)
+	}
+	return run, result.RowsAffected == 1, nil
 }
 
 // ListRuns 枚举任务的运行记录并返回完整数量。

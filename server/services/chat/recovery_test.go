@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -16,6 +17,45 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
 )
+
+func TestStartSettlesInterruptedWatchdogStopWithoutInventingConfirmation(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	journal := newTestConversationJournal(t, t.TempDir())
+	const chatID = "watchdog-chat"
+	const executionID = "watchdog-execution"
+	reason := status_error.RuntimeWatchdogStall.Key()
+	_, err := journal.Create(chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeCreated, Data: recoveryTestData(t, eventlog.ChatCreatedData{
+			WakerID: "watchdog-waker", WorkspaceDirectory: t.TempDir(), Title: "Watchdog recovery",
+		})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: recoveryTestData(t, eventlog.ExecutionCreatedData{
+			RuntimeID: "codex", Model: "fixture",
+		})},
+		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: executionID},
+		{Type: constants.ChatEventTypeExecutionWatchdogStopRequested, ExecutionID: executionID, MessageID: executionID,
+			Data: recoveryTestData(t, eventlog.WatchdogStopRequestedData{ExecutionID: executionID, ReasonCode: reason, LastProgressAt: 1000, RequestedAt: 2000})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manager := newRecoveryTestService(t, journal.Root())
+	for range 2 {
+		if err := manager.Start(ctx); err != nil {
+			t.Fatal(err)
+		}
+		rows, err := journal.ReadAll(chatID)
+		if err != nil || len(rows) != 5 || rows[4].Type != constants.ChatEventTypeExecutionFailed {
+			t.Fatalf("recovery did not retain one request and one terminal: %+v %v", rows, err)
+		}
+		var terminal eventlog.ExecutionFinishedData
+		if err := json.Unmarshal(rows[4].Data, &terminal); err != nil || terminal.ErrorCode != reason ||
+			terminal.ErrorParams["Confirmed"] != false || terminal.ErrorParams["Settled"] != true {
+			t.Fatalf("lost original cause or invented native confirmation: %+v %v", terminal, err)
+		}
+		manager.Close()
+	}
+}
 
 func TestStartIsolatesCorruptChatLog(t *testing.T) {
 	t.Parallel()

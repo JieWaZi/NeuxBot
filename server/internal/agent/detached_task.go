@@ -25,6 +25,12 @@ type TextMessage struct {
 // DetachedAccountResolver freezes the selected account's actual credential identity in an isolated working directory.
 type DetachedAccountResolver func(context.Context, AccountRequest, string) (AccountRequest, error)
 
+// textBindingStore owns retained Router bindings outside the public Chat catalog.
+type textBindingStore interface {
+	ReadTextBinding(context.Context, string) (*NativeBinding, error)
+	WriteTextBinding(context.Context, string, NativeBinding) error
+}
+
 // TextRequest specifies a detached text invocation without application resources.
 type TextRequest struct {
 	// BeforeSubmit authorizes the detached input again after acquiring the process and account.
@@ -33,6 +39,14 @@ type TextRequest struct {
 	Ephemeral bool
 	// ScratchRoot is the Core-owned directory for recoverable ephemeral scratch.
 	ScratchRoot string
+	// ConversationKey selects a retained binding for one private text conversation.
+	ConversationKey string
+	// FreshInput supplies bounded context when a private native session starts anew.
+	FreshInput string
+	// ForceNew replaces retained history following an interrupted host operation.
+	ForceNew bool
+	// ObserveTimings receives one report covering local preparation, native work and settlement.
+	ObserveTimings func(TextTimings)
 	// UsageWakerID attributes this detached invocation to a partner.
 	UsageWakerID string
 	// Connection specifies the native account, executable, and model.
@@ -51,6 +65,22 @@ type TextRequest struct {
 	MaxTokens int
 	// Temperature is reported as an unsupported generation limit when nonzero.
 	Temperature float64
+}
+
+// TextTimings measures phases of a detached generation using the host's monotonic clock.
+type TextTimings struct {
+	// LocalPreparation covers input, isolated directory, and local account resolution.
+	LocalPreparation time.Duration
+	// SessionPreparation covers acquiring the native process and readying its session.
+	SessionPreparation time.Duration
+	// BeforeSubmit covers prompt reservation and the local authorization gate.
+	BeforeSubmit time.Duration
+	// NativeTurn covers the period after the gate permits submission until the adapter returns.
+	NativeTurn time.Duration
+	// Settlement covers terminal storage, acknowledgment, and connection cleanup when needed.
+	Settlement time.Duration
+	// Submitted reports whether the host opened the gate for native submission.
+	Submitted bool
 }
 
 // TextResult returns natively confirmed text, terminal state, and usage evidence.
@@ -82,9 +112,19 @@ func SupportsDetachedPolicy(provider string) bool {
 	return provider == constants.RuntimeIDClaude
 }
 
-// GenerateText runs a fresh, detached generation through the regular Turn lifecycle.
+// SupportsContinuedText reports whether detached restrictions can be preserved across native resume.
+func SupportsContinuedText(provider string) bool {
+	return provider == constants.RuntimeIDCodex || SupportsDetachedPolicy(provider)
+}
+
+// GenerateText runs detached generation through the regular Turn lifecycle.
 func (l *ThreadLifecycle) GenerateText(ctx context.Context, request TextRequest) (TextResult, error) {
 	var result TextResult
+	var timing TextTimings
+	start := time.Now()
+	if request.ObserveTimings != nil {
+		defer func() { request.ObserveTimings(timing) }()
+	}
 	if request.MaxTokens != 0 {
 		result.Limitations = append(result.Limitations, "max_tokens_unsupported")
 	}
@@ -97,8 +137,10 @@ func (l *ThreadLifecycle) GenerateText(ctx context.Context, request TextRequest)
 	}
 	provider := request.Connection.Account.Provider
 	resources := request.Connection.Resources
+	continuedText := request.ConversationKey != ""
 	if resources.Skills != nil || len(resources.Plugins) != 0 || len(resources.ConnectorIDs) != 0 ||
-		!SupportsProvider(provider) || (!request.Ephemeral && !SupportsDetachedPolicy(provider)) {
+		!SupportsProvider(provider) || (!request.Ephemeral && !continuedText && !SupportsDetachedPolicy(provider)) ||
+		continuedText && (request.Ephemeral || !SupportsContinuedText(provider)) {
 		return result, status_error.RuntimePolicyUnsupported
 	}
 	source := request.UsageSource
@@ -112,16 +154,17 @@ func (l *ThreadLifecycle) GenerateText(ctx context.Context, request TextRequest)
 	var mode string
 	lifecycle := l
 	var privateStore *ephemeralTextStore
-	if request.Ephemeral {
+	if request.Ephemeral || continuedText {
 		if !filepath.IsAbs(request.ScratchRoot) {
 			return result, status_error.RuntimePolicyUnsupported
 		}
-		launch.EphemeralText = true
+		launch.EphemeralText = request.Ephemeral
+		launch.ContinuedText = continuedText
 		launch.CursorPermissionMode, launch.ProcessPermissionMode = "default", "default"
 		if provider == constants.RuntimeIDCodex {
 			mode = "read-only"
 		}
-		if provider != constants.RuntimeIDCodex && !launch.usesEphemeralClaude(provider) {
+		if request.Ephemeral && provider != constants.RuntimeIDCodex && !launch.usesEphemeralClaude(provider) {
 			result.Limitations = append(result.Limitations, "native_history_not_disabled")
 		}
 		if !launch.RequireNoTools {
@@ -133,28 +176,81 @@ func (l *ThreadLifecycle) GenerateText(ctx context.Context, request TextRequest)
 			instructions = &rule
 		}
 		privateStore = &ephemeralTextStore{ConversationStore: l.store, results: make(map[NativeResultKey]NativeResult)}
-		lifecycle = NewThreadLifecycle(l.provider, privateStore)
-		defer func() {
-			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			defer cancel()
-			_ = lifecycle.Close(cleanup)
-		}()
+		if request.Ephemeral {
+			lifecycle = NewThreadLifecycle(l.provider, privateStore)
+			defer func() {
+				started := time.Now()
+				cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				defer cancel()
+				_ = lifecycle.Close(cleanup)
+				timing.Settlement += time.Since(started)
+			}()
+		}
 	}
 	ports := TurnPorts{}
-	if request.BeforeSubmit != nil {
+	if request.BeforeSubmit != nil && !continuedText {
 		ports.Authorize = func(ctx context.Context, _ TurnAdmission, _ CommitReceipt) (func(), error) {
 			return nil, request.BeforeSubmit(ctx)
 		}
 	}
-	turn, err := lifecycle.prepareDetached(ctx, ThreadRequest{
+	thread := ThreadRequest{
 		Connection: request.Connection, Settings: request.Settings, Selection: request.Selection,
 		Session: AgentSessionOptions{DeveloperInstructions: instructions}, Mode: mode,
-	}, input, ports, request.ResolveAccount, request.ScratchRoot)
+	}
+	var turn *Turn
+	if continuedText {
+		if _, ok := l.store.(textBindingStore); !ok {
+			return result, status_error.RuntimePolicyUnsupported
+		}
+		thread.textSession = configurationDigest(request.ConversationKey)
+		thread.ReplaceRejectedSession = true
+		thread.ForceNew = request.ForceNew
+		input.HostInvocationID = newTurnID()
+		input.freshText = request.FreshInput
+		input.privateText = privateStore
+		input.authorizeText = request.BeforeSubmit
+		if err := os.MkdirAll(request.ScratchRoot, 0700); err != nil {
+			return result, status_error.RuntimeConfigurationInvalid
+		}
+		root, resolveErr := resolveAgentDirectory(request.ScratchRoot)
+		if resolveErr != nil {
+			return result, resolveErr
+		}
+		cwd := filepath.Join(root, thread.textSession)
+		if err := os.MkdirAll(cwd, 0700); err != nil {
+			return result, status_error.RuntimeConfigurationInvalid
+		}
+		if canonical, err := resolveAgentDirectory(cwd); err != nil || canonical != cwd {
+			return result, status_error.RuntimeConfigurationInvalid
+		}
+		if err := resolveDetachedAccount(ctx, &thread.Connection, request.ResolveAccount, cwd); err != nil {
+			return result, err
+		}
+		timing.LocalPreparation = time.Since(start)
+		prepared := time.Now()
+		turn, err = l.Prepare(ctx, thread, input, ports)
+		timing.SessionPreparation = time.Since(prepared)
+	} else {
+		var preparingSession time.Time
+		turn, err = lifecycle.prepareDetached(ctx, thread, input, ports, request.ResolveAccount, request.ScratchRoot, func() {
+			preparingSession = time.Now()
+		})
+		if preparingSession.IsZero() {
+			timing.LocalPreparation = time.Since(start)
+		} else {
+			timing.LocalPreparation = preparingSession.Sub(start)
+			timing.SessionPreparation = time.Since(preparingSession)
+		}
+	}
 	if err != nil {
 		return result, err
 	}
 	result.ToolsDisabled = launch.RequireNoTools
 	result.Turn = turn.Run(ctx)
+	timing.BeforeSubmit = result.Turn.timing.BeforeSubmit
+	timing.NativeTurn = result.Turn.timing.NativeTurn
+	timing.Settlement = result.Turn.timing.Settlement
+	timing.Submitted = result.Turn.timing.Submitted
 	outcome := result.Turn.Outcome
 	if outcome != nil && outcome.FinalMessage != nil &&
 		outcome.Turn.Status == acpmeta.NativeTurnCompleted && outcome.NativeFailure == nil {
@@ -197,7 +293,7 @@ func (l *ThreadLifecycle) ExecuteTask(ctx context.Context, request TaskRequest) 
 	if request.Input.UsageSource == "" {
 		request.Input.UsageSource = "background"
 	}
-	turn, err := l.prepareDetached(ctx, request.Thread, request.Input, request.Ports, request.ResolveAccount, "")
+	turn, err := l.prepareDetached(ctx, request.Thread, request.Input, request.Ports, request.ResolveAccount, "", nil)
 	if err != nil {
 		return TurnResult{}, err
 	}
@@ -205,7 +301,7 @@ func (l *ThreadLifecycle) ExecuteTask(ctx context.Context, request TaskRequest) 
 	return result, turnExecutionError(result)
 }
 
-func (l *ThreadLifecycle) prepareDetached(ctx context.Context, thread ThreadRequest, input TurnRequest, ports TurnPorts, resolve DetachedAccountResolver, scratchRoot string) (*Turn, error) {
+func (l *ThreadLifecycle) prepareDetached(ctx context.Context, thread ThreadRequest, input TurnRequest, ports TurnPorts, resolve DetachedAccountResolver, scratchRoot string, preparingSession func()) (*Turn, error) {
 	if scratchRoot != "" {
 		if err := os.MkdirAll(scratchRoot, 0700); err != nil {
 			return nil, status_error.RuntimeConfigurationInvalid
@@ -219,21 +315,33 @@ func (l *ThreadLifecycle) prepareDetached(ctx context.Context, thread ThreadRequ
 	if scratchRoot != "" {
 		closeFiles = func(context.Context) error { return l.provider.closeEphemeralScratch(cwd) }
 	}
-	account := &thread.Connection.Account
-	account.CWD = cwd
-	if resolve != nil {
-		account.CWD, err = resolveAgentDirectory(cwd)
-		if err == nil {
-			*account, err = resolve(ctx, *account, thread.Connection.Launch.ConfigHome)
-		}
-		if err != nil {
-			return nil, errors.Join(err, closeFiles(context.WithoutCancel(ctx)))
-		}
-		if account.ConfigHome != "" {
-			thread.Connection.Launch.ConfigHome = account.ConfigHome
-		}
+	if err := resolveDetachedAccount(ctx, &thread.Connection, resolve, cwd); err != nil {
+		return nil, errors.Join(err, closeFiles(context.WithoutCancel(ctx)))
+	}
+	if preparingSession != nil {
+		preparingSession()
 	}
 	return l.prepare(ctx, thread, input, ports, closeFiles)
+}
+
+func resolveDetachedAccount(ctx context.Context, connection *ProviderConnectionRequest, resolve DetachedAccountResolver, cwd string) error {
+	account := &connection.Account
+	canonical, err := resolveAgentDirectory(cwd)
+	if err != nil {
+		return err
+	}
+	account.CWD = canonical
+	if resolve == nil {
+		return nil
+	}
+	*account, err = resolve(ctx, *account, connection.Launch.ConfigHome)
+	if err != nil {
+		return err
+	}
+	if account.ConfigHome != "" {
+		connection.Launch.ConfigHome = account.ConfigHome
+	}
+	return nil
 }
 
 func turnExecutionError(r TurnResult) error {

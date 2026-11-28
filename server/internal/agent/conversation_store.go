@@ -365,6 +365,8 @@ type NativeResult struct {
 	Context *ContextUsageData `json:"context,omitempty"`
 	// FinalMessage is the optional native-proven final body.
 	FinalMessage *NativeFinalMessage `json:"finalMessage,omitempty"`
+	// StreamAnswerEligible records a fully observed WorkBuddy turn with no native interaction.
+	StreamAnswerEligible bool `json:"streamAnswerEligible,omitempty"`
 	// StopReason is the native terminal classification when known.
 	StopReason string `json:"stopReason,omitempty"`
 	// ForkMode is the precision negotiated by the actual native connection.

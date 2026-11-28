@@ -16,10 +16,14 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/google/uuid"
 )
 
 const turnSettlementTimeout = 15 * time.Second
+
+const textSessionIdleTimeout = 2 * time.Minute
 
 // ErrTurnAdmissionBusy identifies a temporary prepare conflict with the original public error code.
 var ErrTurnAdmissionBusy = fmt.Errorf("native turn admission is busy: %w", status_error.RuntimeUnavailable)
@@ -28,6 +32,8 @@ var ErrTurnAdmissionBusy = fmt.Errorf("native turn admission is busy: %w", statu
 type ThreadRequest struct {
 	// ChatID identifies a public conversation. Empty creates private detached work.
 	ChatID string
+	// textSession identifies a retained private text thread without a public Chat.
+	textSession string
 	// CoreMemoryOwner scopes native history that can have received one partner's core memories.
 	CoreMemoryOwner string
 	// Connection describes the actual executable, account and resource selection.
@@ -83,6 +89,12 @@ type threadState struct {
 	id string
 	// chatID is the durable public Chat identity, empty for detached work.
 	chatID string
+	// textSession identifies a private, durable text binding. One-shot work leaves it empty.
+	textSession string
+	// textIdle releases a private connection after its bounded reuse window.
+	textIdle *time.Timer
+	// textIdleGeneration fences a deadline captured before a newer turn became idle.
+	textIdleGeneration uint64
 	// admittedAccount identifies the selection whose preparation currently owns the seat.
 	admittedAccount providerAccount
 	// admittedPlugins identifies resources reserved by the active preparation.
@@ -302,7 +314,9 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 		}
 	}
 	id := request.ChatID
-	if id == "" {
+	if request.textSession != "" {
+		id = "text:" + request.textSession
+	} else if id == "" {
 		id = "private:" + input.HostInvocationID
 	}
 	// A prior release failure retains this exact owner. Retry it before
@@ -350,9 +364,10 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 		return nil, admissionErr
 	}
 	if state == nil {
-		state = &threadState{id: id, chatID: request.ChatID}
+		state = &threadState{id: id, chatID: request.ChatID, textSession: request.textSession}
 		l.threads[id] = state
 	}
+	state.stopTextIdle()
 	t := newTurn(context.WithoutCancel(ctx), l, state, input, ports)
 	state.active = t
 	state.admittedAccount = providerAccount{provider: request.Connection.Account.Provider, id: request.Connection.Account.AccountID}
@@ -391,7 +406,13 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		}
 	}()
 	var stored *NativeBinding
-	if state.chatID != "" {
+	if state.textSession != "" {
+		var err error
+		stored, err = l.store.(textBindingStore).ReadTextBinding(ctx, state.textSession)
+		if err != nil {
+			return err
+		}
+	} else if state.chatID != "" {
 		var err error
 		stored, err = l.store.ReadBinding(ctx, state.chatID)
 		if err != nil {
@@ -429,7 +450,7 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	processConfiguration := threadProcessConfiguration(request)
 	sharesHistoryScope := stored != nil && (stored.coreMemoryOwner() == "" || stored.coreMemoryOwner() == request.CoreMemoryOwner)
 	var replacementHandoff *NativeHandoff
-	if sharesHistoryScope && request.Fork == nil && request.Connection.Account.Provider != stored.Session.Provider {
+	if state.chatID != "" && sharesHistoryScope && request.Fork == nil && request.Connection.Account.Provider != stored.Session.Provider {
 		replacementHandoff, err = l.failedHandoffForReplacement(ctx, state.chatID, *stored)
 		if err != nil {
 			return err
@@ -630,6 +651,9 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	t.binding = binding
 	if err := t.applySettings(client, request); err != nil {
 		return err
+	}
+	if fresh && state.textSession != "" && t.input.freshText != "" {
+		t.input.Text = t.input.freshText
 	}
 	if !fresh || state.chatID == "" {
 		return t.applyHandoff(t.binding.Handoff)
@@ -990,6 +1014,7 @@ func (l *ThreadLifecycle) closeIdleConsumers(ctx context.Context, busy error, us
 	}
 	for _, state := range selected {
 		state.closing = true
+		state.stopTextIdle()
 	}
 	l.mu.Unlock()
 	var result error
@@ -1032,6 +1057,7 @@ func (l *ThreadLifecycle) closeCapturedThread(ctx context.Context, state *thread
 		return nil
 	}
 	state.closing = true
+	state.stopTextIdle()
 	active, fork := state.active, state.fork
 	l.mu.Unlock()
 	if fork != nil {
@@ -1056,6 +1082,29 @@ func (l *ThreadLifecycle) closeCapturedThread(ctx context.Context, state *thread
 	}
 	l.mu.Unlock()
 	return nil
+}
+
+func (state *threadState) stopTextIdle() {
+	if state.textIdle != nil {
+		state.textIdle.Stop()
+		state.textIdle = nil
+	}
+}
+
+func (l *ThreadLifecycle) expireTextThread(state *threadState, generation uint64) {
+	l.mu.Lock()
+	if l.threads[state.id] != state || state.textIdle == nil || state.textIdleGeneration != generation || state.active != nil || state.closing {
+		l.mu.Unlock()
+		return
+	}
+	state.closing = true
+	state.textIdle = nil
+	l.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), turnSettlementTimeout)
+	defer cancel()
+	if err := l.closeCapturedThread(ctx, state); err != nil {
+		logx.Warnf("release idle private text session: session_ref=%s error_code=%s", state.textSession[:16], util.ErrorCode(err, "unknown"))
+	}
 }
 
 func (l *ThreadLifecycle) closeConnection(ctx context.Context, state *threadState) error {
@@ -1093,6 +1142,7 @@ func (l *ThreadLifecycle) closeConnection(ctx context.Context, state *threadStat
 func (l *ThreadLifecycle) markClosing(state *threadState) {
 	l.mu.Lock()
 	state.closing = true
+	state.stopTextIdle()
 	l.mu.Unlock()
 }
 

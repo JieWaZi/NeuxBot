@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/schedulecalc"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 )
 
@@ -197,6 +199,8 @@ type MessageReply struct {
 
 // MessageCreatedData 保存一条用户输入消息的完整内容。
 type MessageCreatedData struct {
+	// MainConversationTriggerID 是主会话入口转交本轮工作时的原公开输入标识。
+	MainConversationTriggerID string `json:"mainConversationTriggerId,omitempty"`
 	// SubmissionID 关联调用方为这次输入提供的既有幂等身份；无标识的程序性输入为空。
 	SubmissionID string `json:"submissionId,omitempty"`
 	// Role 是消息发送方。
@@ -231,16 +235,76 @@ type MessageCreatedData struct {
 	Workflow *workinput.WorkflowReference `json:"workflow,omitempty"`
 }
 
+// AutomaticTaskReceipt 是聊天中已保存定时任务的快照。
+type AutomaticTaskReceipt struct {
+	// ReceiptID 标识原命令。
+	ReceiptID string `json:"receiptId"`
+	// TaskID 定位任务详情。
+	TaskID string `json:"taskId"`
+	// Name 是提交时的任务名称。
+	Name string `json:"name"`
+	// WakerName 是提交时的执行伙伴名称。
+	WakerName string `json:"wakerName"`
+	// WorkflowName 是工作流任务保存时的执行目标名称。
+	WorkflowName string `json:"workflowName,omitempty"`
+	// InstructionPreview 是有长度上限的任务指令。
+	InstructionPreview string `json:"instructionPreview"`
+	// Schedule 是提交时使用的计划。
+	Schedule schedulecalc.AutomaticTaskSchedule `json:"schedule"`
+	// NextRunAt 是提交时的下次运行时间，单位为 Unix 毫秒。
+	NextRunAt int64 `json:"nextRunAt,omitempty"`
+	// Updated 表示修改了现有任务。
+	Updated bool `json:"updated,omitempty"`
+	// Enabled 表示提交时已启用。
+	Enabled bool `json:"enabled"`
+}
+
 // ExecutionDeliveryData 对同一答复追加已确认的领域交付。
 type ExecutionDeliveryData struct {
 	// SourceID 是已交付的原领域运行身份。
 	SourceID string `json:"sourceId"`
+	// AutomaticTaskReceipt 是在当前回合提交的定时任务快照。
+	AutomaticTaskReceipt *AutomaticTaskReceipt `json:"automaticTaskReceipt,omitempty"`
 	// Attachments 只引用已经提交的会话文件。
 	Attachments []AttachmentReference `json:"attachments,omitempty"`
 	// Summary 是根据同一次运行结果补写的正文。
 	Summary string `json:"summary,omitempty"`
+	// WorkTicketReport 表示正文是工单的已发布报告，SourceID 是原报告收据。
+	WorkTicketReport bool `json:"workTicketReport,omitempty"`
+	// WorkTicketExecutionID 记录转交后撰写此报告的工作执行，与原会话中的收件消息分离。
+	WorkTicketExecutionID string `json:"workTicketExecutionId,omitempty"`
+	// SourceChatID 定位实际撰写转交报告的来源。
+	SourceChatID string `json:"sourceChatId,omitempty"`
+	// SourceWakerID 是实际撰写转交报告的伙伴。
+	SourceWakerID string `json:"sourceWakerId,omitempty"`
 	// SummaryFallback 表示正文是已确认结果的直接呈现，仍允许补写用户语言的总结。
 	SummaryFallback bool `json:"summaryFallback,omitempty"`
+}
+
+// DecodeAutomaticTaskReceipt 使用原命令标识恢复同一份冻结快照。
+func DecodeAutomaticTaskReceipt(id string, data map[string]any) (*AutomaticTaskReceipt, error) {
+	value, present := data[constants.AutomaticTaskReceiptDataKey]
+	if !present {
+		return nil, nil
+	}
+	card, ok := value.(AutomaticTaskReceipt)
+	if !ok {
+		raw, err := json.Marshal(value)
+		if err != nil || json.Unmarshal(raw, &card) != nil {
+			return nil, status_error.ChatLogRecordInvalid
+		}
+	}
+	if id == "" || card.TaskID == "" || card.Name == "" || card.Schedule.Timezone == "" {
+		return nil, status_error.ChatLogRecordInvalid
+	}
+	card.ReceiptID = id
+	return &card, nil
+}
+
+// IsTransferredWorkReport 标识在收件会话中拥有独立消息的转交回件。
+func (d ExecutionDeliveryData) IsTransferredWorkReport() bool {
+	return d.WorkTicketReport && d.WorkTicketExecutionID != "" &&
+		d.SourceChatID != "" && d.SourceWakerID != ""
 }
 
 // ExecutionCreatedData 保存一次执行创建时冻结的选择。
@@ -420,6 +484,18 @@ type ExecutionFinishedData struct {
 	Signal string `json:"signal,omitempty"`
 	// MessageRevision 是终态前实时消息快照已经到达的最后修订号。
 	MessageRevision int64 `json:"messageRevision,omitempty"`
+}
+
+// WatchdogStopRequestedData 保存该执行的巡检证据，由宿主结算记录确认实际结果。
+type WatchdogStopRequestedData struct {
+	// ExecutionID 固定发出停止请求时持有占位的执行。
+	ExecutionID string `json:"executionId"`
+	// ReasonCode 是安全、可本地化的巡检触发原因。
+	ReasonCode string `json:"reasonCode"`
+	// RequestedAt 是宿主校验原尝试并请求停止时的 Unix 毫秒。
+	RequestedAt int64 `json:"requestedAt"`
+	// LastProgressAt 是最近一次有效进展的 Unix 毫秒。
+	LastProgressAt int64 `json:"lastProgressAt"`
 }
 
 // MarshalData 将类型安全载荷编码为日志 Data。

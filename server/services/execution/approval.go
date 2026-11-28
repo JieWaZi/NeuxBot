@@ -95,6 +95,11 @@ func (m *service) resourceApproval(chatID, executionID string) func(context.Cont
 		if m.approvals == nil || !m.IsExecutionActive(chatID, executionID) {
 			return status_error.AgentContextUnauthorized
 		}
+		resume, allowed := m.executions.pauseWatchdog(chatID, executionID)
+		if !allowed {
+			return status_error.OperationCanceled
+		}
+		defer resume()
 		decision, err := m.approvals.handler(chatID, executionID).Request(ctx, agentapi.ApprovalRequest{
 			InvocationID: executionID,
 			ToolCallID:   util.New(),

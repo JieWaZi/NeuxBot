@@ -227,6 +227,8 @@ type MainConversationSubjectActivity struct {
 	SubjectType string
 	// RunningCount 是正在运行且没有待答请求的工作来源数。
 	RunningCount int64
+	// HasPendingInput 表示已接纳的主会话输入仍在等待交接。
+	HasPendingInput bool
 }
 
 // MainConversationSubjectUnread 是同次读取获得的主会话未读数和阅读代次。

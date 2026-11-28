@@ -43,6 +43,9 @@ export const workflowZh = {
   executionDetail: "运行详情 · {{title}}",
   executionDetailHelp: "查看本次运行输入、阶段记录和最终输出。",
   copyRunRecord: "复制完整记录",
+  conclusionDeliveryFailed: "结论未能送达原会话",
+  conclusionDeliveryPending: "结论待送达",
+  retryConclusionDelivery: "补交结论",
   runInputs: "运行输入",
   inputNodeTitle: "输入参数",
   fillRunInputs: "填写参数并运行",
@@ -523,6 +526,10 @@ export const workflowEn = {
   executionDetailHelp:
     "View the inputs, stage records and final output of this run.",
   copyRunRecord: "Copy complete record",
+  conclusionDeliveryFailed:
+    "The original conversation could not receive the result",
+  conclusionDeliveryPending: "Result delivery pending",
+  retryConclusionDelivery: "Retry result delivery",
   runInputs: "Run inputs",
   inputNodeTitle: "Input parameters",
   fillRunInputs: "Enter parameters and run",

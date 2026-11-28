@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"slices"
 	"strings"
 	"sync"
 
@@ -18,6 +19,9 @@ import (
 
 // BindLocalWorkflowTurn 为本地交互回合准备共同工具和默认目标。实际调用前不创建运行记录。
 func (s *Service) BindLocalWorkflowTurn(ctx context.Context, chat models.Chat, executionID string, selected *workinput.WorkflowReference, creationSessionID string) (execution.WorkflowTurnBinding, error) {
+	if chat.HiddenFromWakerHistory && creationSessionID == "" {
+		return s.bindMainWorkflowAuthoring(ctx, chat, executionID, selected)
+	}
 	var bound execution.WorkflowTurnBinding
 	scope := workflowtool.Scope{Key: creationSessionID, ExecutionID: executionID, LocalChatID: chat.ID, SavedRevisions: &sync.Map{}}
 	if creationSessionID != "" {
@@ -41,7 +45,34 @@ func (s *Service) BindLocalWorkflowTurn(ctx context.Context, chat models.Chat, e
 	}
 	ids := append(append([]string{}, workflowAuthoringOperations...), workflowRunOperations...)
 	ids = append(ids, "workflow.runs.list", "workflow.runs.repeat")
+	if scope.DefaultWorkflowID == "" {
+		ids = append(ids, "workflow.definitions.create")
+	}
 	bound.Capability = &execution.ToolCapability{ID: "workflow.local", Name: "工作流", Bindings: s.agentBindings(scope, ids)}
+	return bound, nil
+}
+
+func (s *Service) bindMainWorkflowAuthoring(ctx context.Context, chat models.Chat, executionID string, selected *workinput.WorkflowReference) (execution.WorkflowTurnBinding, error) {
+	bound, err := s.BindWorkflowTurn(ctx, chat, executionID, selected)
+	if err != nil {
+		return bound, err
+	}
+	scope := workflowtool.Scope{
+		ExecutionID: executionID, LocalChatID: chat.ID, MainWakerID: chat.WakerID,
+		SavedRevisions: &sync.Map{}, Selection: bound.Reference,
+	}
+	ids := slices.DeleteFunc(slices.Clone(workflowAuthoringOperations), func(id string) bool {
+		return id == "workflow.evidence.list"
+	})
+	if scope.Selection != nil {
+		scope.DefaultWorkflowID = scope.Selection.ID
+	} else {
+		ids = append(ids, "workflow.definitions.create", "workflow.definitions.list", "workflow.definitions.describe")
+	}
+	if bound.Capability == nil {
+		bound.Capability = &execution.ToolCapability{ID: "workflow.local", Name: "工作流"}
+	}
+	bound.Capability.Bindings = append(bound.Capability.Bindings, s.agentBindings(scope, ids)...)
 	return bound, nil
 }
 
@@ -72,6 +103,14 @@ func (s *Service) authorizeLocalWorkflowTool(ctx context.Context, scope workflow
 	actual, chat, err := s.readWorkflowExecution(ctx, scope.LocalChatID, scope.ExecutionID)
 	if err != nil {
 		return workflowToolAccess{}, err
+	}
+	if scope.MainWakerID != "" {
+		if !chat.HiddenFromWakerHistory || chat.WakerID != scope.MainWakerID {
+			return workflowToolAccess{}, status_error.AgentOperationForbidden
+		}
+		if err := s.checkMainWork(ctx, chat); err != nil {
+			return workflowToolAccess{}, err
+		}
 	}
 	return workflowToolAccess{
 		owner: "workflow.local:" + chat.ID + ":" + actual.ID,
@@ -139,6 +178,11 @@ func (s *Service) handleLocalWorkflowTool(ctx context.Context, scope workflowtoo
 		}
 	}
 
+	if scope.MainWakerID != "" && targetID != "" {
+		if err := s.requireOwnedWorkflow(ctx, scope.MainWakerID, targetID); err != nil {
+			return nil, err
+		}
+	}
 	session := models.WorkflowCreationSession{DefinitionID: targetID, ChatID: chat.ID, ActiveExecutionID: actual.ID, Defaults: workflowExecutionDefaults(actual)}
 	if scope.Key != "" && targetID == scope.DefaultWorkflowID {
 		stored, err := s.creationSessions.GetCreationSession(ctx, scope.Key)
@@ -156,10 +200,26 @@ func (s *Service) handleLocalWorkflowTool(ctx context.Context, scope workflowtoo
 	return s.handleCreationTool(ctx, session, input)
 }
 
+func (s *Service) requireOwnedWorkflow(ctx context.Context, wakerID, definitionID string) error {
+	definition, err := s.store.GetDefinition(ctx, definitionID)
+	if err != nil {
+		return err
+	}
+	if definition.CreationWakerID != wakerID {
+		return status_error.AgentOperationForbidden
+	}
+	return nil
+}
+
 func (s *Service) readLocalWorkflowDefinitions(ctx context.Context, scope workflowtool.Scope, request agentcap.Request) (agentcap.Result, error) {
 	if request.Operation == "workflow.definitions.describe" {
 		id, _ := request.Params["definitionId"].(string)
 		revisionID, _ := request.Params["revisionId"].(string)
+		if scope.MainWakerID != "" {
+			if err := s.requireOwnedWorkflow(ctx, scope.MainWakerID, id); err != nil {
+				return agentcap.Result{}, err
+			}
+		}
 		revisionID, err := s.localWorkflowRevision(scope, id, revisionID)
 		if err != nil {
 			return agentcap.Result{}, err
@@ -208,7 +268,7 @@ func (s *Service) readLocalWorkflowDefinitions(ctx context.Context, scope workfl
 	if size < 1 || size > 100 || page > 1_000_000 {
 		return agentcap.Result{}, status_error.AgentInputInvalid
 	}
-	values, err := s.store.ListDefinitions(ctx, query.Search, position.UpdatedAt, position.ID, size, (page-1)*size, nil)
+	values, err := s.store.ListDefinitions(ctx, query.Search, position.UpdatedAt, position.ID, size, (page-1)*size, nil, scope.MainWakerID)
 	if err != nil {
 		return agentcap.Result{}, err
 	}

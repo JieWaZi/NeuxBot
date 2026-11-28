@@ -13,6 +13,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -35,11 +36,41 @@ func (m *service) BindManagedResourceChanges(chat models.Chat, executionID strin
 		if binding.Receipt == nil {
 			continue
 		}
+		if binding.Operation == capability.RuleDelete {
+			continue
+		}
 		origin := capability.ReceiptOrigin{ChatID: chat.ID, ExecutionID: executionID, WakerID: chat.WakerID, Operation: binding.Operation}
+		timedRule := origin.Operation == capability.RuleCreate || origin.Operation == capability.RuleUpdate
+		project := func(ctx context.Context, receipt capability.Receipt) {
+			m.projectManagedResourceChange(context.WithoutCancel(ctx), receipt)
+		}
+		presentRuleResult := func(ctx context.Context, result capability.Result, err error) (capability.Result, error) {
+			data, _ := result.Data.(map[string]any)
+			if err != nil || data[constants.AutomaticTaskReceiptDataKey] == nil {
+				return result, err
+			}
+			if result.Replayed {
+				project(ctx, capability.Receipt{ID: result.CommandID, Origin: origin, Data: data})
+			}
+			result.Data = map[string]any{"taskId": data["taskId"], "confirmation": "automatic"}
+			return result, nil
+		}
 		bindings[i].Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
-			return binding.Call(capability.WithReceiptOrigin(ctx, origin, func(receipt capability.Receipt) {
-				m.projectManagedResourceChange(context.WithoutCancel(ctx), receipt)
-			}), request)
+			originCtx := capability.WithReceiptOrigin(ctx, origin, func(receipt capability.Receipt) { project(ctx, receipt) })
+			if !timedRule {
+				return binding.Call(originCtx, request)
+			}
+			// 定时规则释放计划锁后再投影会话回执。
+			held, publish := events.HoldCommitEvents(originCtx)
+			defer publish()
+			result, err := binding.Call(held, request)
+			return presentRuleResult(ctx, result, err)
+		}
+		if timedRule {
+			bindings[i].Receipt = func(ctx context.Context, requestID string) (capability.Result, error) {
+				result, err := binding.Receipt(ctx, requestID)
+				return presentRuleResult(ctx, result, err)
+			}
 		}
 	}
 	return bindings
@@ -48,15 +79,57 @@ func (m *service) BindManagedResourceChanges(chat models.Chat, executionID strin
 func (m *service) projectManagedResourceChange(ctx context.Context, receipt capability.Receipt) {
 	ctx, cancel := context.WithTimeout(ctx, constants.ChatInteractionProjectionTimeoutMillis*time.Millisecond)
 	defer cancel()
-	kind, data, err := managedResourceChangeOf(receipt)
-	if err == nil {
-		err = m.recordManagedResourceChange(ctx, receipt.Origin.ChatID, receipt.Origin.ExecutionID, kind, "managed-resource-command:"+receipt.ID, data)
+	var err error
+	if receipt.Origin.Operation == capability.RuleCreate || receipt.Origin.Operation == capability.RuleUpdate {
+		err = m.recordAutomaticTaskReceipt(ctx, receipt)
+	} else {
+		kind, data, parseErr := managedResourceChangeOf(receipt)
+		err = parseErr
+		if err == nil {
+			err = m.recordManagedResourceChange(ctx, receipt.Origin.ChatID, receipt.Origin.ExecutionID, kind, "managed-resource-command:"+receipt.ID, data)
+		}
 	}
 	if err == nil || hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
 		err = m.managedCommands.MarkManagedChangeProjected(ctx, receipt.ID)
 	}
 	if err != nil && ctx.Err() == nil {
 		logx.Warnf("project managed resource command: chat_id=%s command_id=%s error=%v", receipt.Origin.ChatID, receipt.ID, err)
+	}
+}
+
+func (m *service) recordAutomaticTaskReceipt(ctx context.Context, receipt capability.Receipt) error {
+	task, err := eventlog.DecodeAutomaticTaskReceipt(receipt.ID, receipt.Data)
+	if err != nil || task == nil {
+		return err
+	}
+	origin := receipt.Origin
+	if m.publishAutomaticTaskReceipt != nil {
+		published, err := m.publishAutomaticTaskReceipt(ctx, origin.ChatID, origin.ExecutionID, origin.WakerID, *task)
+		if published || err != nil {
+			return err
+		}
+	}
+	return m.recordCommandProjection(ctx, origin.ChatID, "managed-resource-command:"+receipt.ID, eventlog.AppendInput{
+		Type: constants.ChatEventTypeExecutionDelivery, ExecutionID: origin.ExecutionID, MessageID: origin.ExecutionID,
+		Data: marshalData(eventlog.ExecutionDeliveryData{SourceID: receipt.ID, AutomaticTaskReceipt: task}),
+	})
+}
+
+func (m *service) restoreAutomaticTaskReceipts(ctx context.Context, chatID string) {
+	if m.managedCommands == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer cancel()
+	receipts, err := m.managedCommands.ListPendingManagedChanges(ctx, chatID, capability.Receipt{}, 4, capability.RuleCreate, capability.RuleUpdate)
+	if err != nil && ctx.Err() == nil {
+		logx.Warnf("read pending automatic task receipts: chat_id=%s error=%v", chatID, err)
+	}
+	for _, receipt := range receipts {
+		if ctx.Err() != nil {
+			return
+		}
+		m.projectManagedResourceChange(ctx, receipt)
 	}
 }
 
@@ -110,13 +183,15 @@ func (m *service) recoverManagedResourceChanges(ctx context.Context, chatID stri
 }
 
 func (m *service) recordManagedResourceChange(ctx context.Context, chatID, executionID string, kind constants.ChatEventType, key string, data eventlog.ManagedResourceChangeData) error {
+	return m.recordCommandProjection(ctx, chatID, key, eventlog.AppendInput{Type: kind, ExecutionID: executionID, Data: marshalData(data)})
+}
+
+func (m *service) recordCommandProjection(ctx context.Context, chatID, key string, fact eventlog.AppendInput) error {
 	journal, ok := m.logStore.(*conversationJournal)
 	if !ok {
 		return status_error.ChatLogRecordInvalid
 	}
-	facts := factsToChanges([]eventlog.AppendInput{{
-		Type: kind, ExecutionID: executionID, Data: marshalData(data),
-	}})
+	facts := factsToChanges([]eventlog.AppendInput{fact})
 	batch := agent.ConversationBatch{ChatID: chatID, Key: key, Changes: facts}
 	for {
 		version, err := journal.ReadVersion(ctx, chatID)

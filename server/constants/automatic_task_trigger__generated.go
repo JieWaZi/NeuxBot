@@ -18,6 +18,8 @@ func (v AutomaticTaskTrigger) String() string {
 		return ""
 	case AutomaticTaskTriggerAPI:
 		return "api"
+	case AutomaticTaskTriggerEvent:
+		return "event"
 	case AutomaticTaskTriggerSchedule:
 		return "schedule"
 	}
@@ -30,6 +32,8 @@ func (v AutomaticTaskTrigger) Label() string {
 		return "AutomaticTaskTriggerUnspecified 表示尚未选择触发类型。"
 	case AutomaticTaskTriggerAPI:
 		return "AutomaticTaskTriggerAPI 表示由持有任务密钥的本机脚本触发。"
+	case AutomaticTaskTriggerEvent:
+		return "AutomaticTaskTriggerEvent 由规则授权的外部变化触发。"
 	case AutomaticTaskTriggerSchedule:
 		return "AutomaticTaskTriggerSchedule 表示根据任务时区的时间规则触发。"
 	}
@@ -37,7 +41,7 @@ func (v AutomaticTaskTrigger) Label() string {
 }
 
 func (v AutomaticTaskTrigger) Values() []enum.Enum {
-	return []enum.Enum{AutomaticTaskTriggerUnspecified, AutomaticTaskTriggerAPI, AutomaticTaskTriggerSchedule}
+	return []enum.Enum{AutomaticTaskTriggerUnspecified, AutomaticTaskTriggerAPI, AutomaticTaskTriggerEvent, AutomaticTaskTriggerSchedule}
 }
 
 func (v AutomaticTaskTrigger) Type() string {
@@ -46,7 +50,7 @@ func (v AutomaticTaskTrigger) Type() string {
 
 func (v AutomaticTaskTrigger) MarshalText() ([]byte, error) {
 	switch v {
-	case AutomaticTaskTriggerUnspecified, AutomaticTaskTriggerAPI, AutomaticTaskTriggerSchedule:
+	case AutomaticTaskTriggerUnspecified, AutomaticTaskTriggerAPI, AutomaticTaskTriggerEvent, AutomaticTaskTriggerSchedule:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -59,6 +63,8 @@ func (v *AutomaticTaskTrigger) UnmarshalText(text []byte) error {
 		*v = AutomaticTaskTriggerUnspecified
 	case AutomaticTaskTriggerAPI.String():
 		*v = AutomaticTaskTriggerAPI
+	case AutomaticTaskTriggerEvent.String():
+		*v = AutomaticTaskTriggerEvent
 	case AutomaticTaskTriggerSchedule.String():
 		*v = AutomaticTaskTriggerSchedule
 	default:

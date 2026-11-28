@@ -34,6 +34,8 @@ import (
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinwaker"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/eventsource"
 	integrationapi "github.com/JieWaZi/NeuxBot/server/internal/integration"
 	knowledgebridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
@@ -367,6 +369,7 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	ChannelControllerManager = controllers.NewChannelController(DB)
 	MainConversationControllerManager = controllers.NewMainConversationController(DB)
 	MainConversationService = mainconversation.New(MainConversationControllerManager, TransactionControllerManager, WakerControllerManager, ChannelControllerManager)
+	loadWorkTickets()
 	if err := MainConversationControllerManager.InitializeReadingBaseline(ctx, constants.LocalReaderID); err != nil {
 		return mapCoreError("initialize_main_conversation_reading", status_error.CoreDatabaseInitializationFailed, err)
 	}
@@ -626,7 +629,8 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	}
 	commands := controllers.NewAgentCommandController(DB)
 	chatModule, err := chat.New(chat.Config{
-		ManagedCommands: commands,
+		ManagedCommands:             commands,
+		PublishAutomaticTaskReceipt: MainConversationService.PublishAutomaticTaskReceipt,
 		FreezeReview: func(ctx context.Context, item models.Chat) *reviewstate.Admission {
 			if ReviewWorker == nil {
 				return nil
@@ -660,7 +664,10 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 			}
 			return nil
 		},
-		PreserveIMAdmissions:  IMControllerManager.PreserveInboxAdmissions,
+		PreserveIMAdmissions: IMControllerManager.PreserveInboxAdmissions,
+		PreserveOrdinaryOriginReports: func(ctx context.Context, origins []models.Chat, read func(string, string) ([]eventlog.Record, error)) (func(context.Context) error, error) {
+			return WorkTicketService.PrepareOrdinaryOriginDeletion(ctx, origins, read)
+		},
 		CloseIdleNativeThread: threads.CloseIdleChat,
 		ResetUsageProjection: func(ctx context.Context) error {
 			if err := usageProjection.ResetProjection(ctx); err != nil {
@@ -670,7 +677,13 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 			return nil
 		},
 		BeforeRecovery: func(ctx context.Context, chatModule chat.Module) error {
-			return workspaceattention.InitializeBaseline(ctx, controllers.NewReadingInitializationController(DB), chatModule.InitializeReadingBaseline)
+			if err := workspaceattention.InitializeBaseline(ctx, controllers.NewReadingInitializationController(DB), chatModule.InitializeReadingBaseline); err != nil {
+				return err
+			}
+			if err := execution.RecoverWorkTicketDeliveries(ctx, configuration.ManagedFilesDirectory, chatModule, threads, WorkTicketService, MainConversationService); err != nil {
+				return err
+			}
+			return execution.RecoverDefaultMainWork(ctx, chatModule, threads, MainConversationControllerManager, MainConversationService, mainconversation.DefaultWorkScope)
 		},
 		QueryIndexes: chat.QueryIndexDependencies{
 			Chats:           ChatControllerManager,
@@ -692,6 +705,9 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	if err := ChatService.Start(ctx); err != nil {
 		return mapCoreError("start_chat_service", status_error.CoreChatInitializationFailed, err)
 	}
+	if err := execution.FinishRecoveredWorkTickets(ctx, ChatService, WorkTicketService); err != nil {
+		return mapCoreError("reconcile_work_ticket_turns", status_error.CoreChatInitializationFailed, err)
+	}
 	if err := MainConversationService.RecoverUserAdmissions(ctx, "", ChatService.ReadSubmission); err != nil {
 		logx.Warn("recover_main_conversation_admissions: ", err)
 	}
@@ -712,7 +728,17 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Wakers: WakerControllerManager, Plugins: PluginControllerManager, Transactions: TransactionControllerManager, Commands: commands, Events: EventHub})
 	connectors := mcpconnector.New(mcpconnector.Config{Connectors: MCPConnectorControllerManager, Wakers: WakerControllerManager,
 		Categories: ResourceCategoryControllerManager, Transactions: TransactionControllerManager, Commands: commands, Events: EventHub})
+	delegationWake := make(chan struct{}, 1)
+	wakeCollaboration := func() {
+		select {
+		case delegationWake <- struct{}{}:
+		default:
+		}
+	}
 	executionCore, err := execution.New(execution.Config{
+		ResolveDelegationTarget: ResolveWorkTicketDelegationTarget,
+		ResolveEventRule:        resolveWorkTicketEventRule,
+		WakeDelegations:         wakeCollaboration,
 		CoreMemory: func(ctx context.Context, partner string) (memory.CoreSnapshot, error) {
 			if MemoryService == nil {
 				return memory.CoreSnapshot{}, nil
@@ -752,6 +778,13 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 			bindings = append(bindings, connectors.ManagementBindings(chat.WakerID, executionID, approve)...)
 			return chatModule.BindManagedResourceChanges(chat, executionID, bindings)
 		},
+		ConversationRuleBindings: automaticTaskRuleBindings,
+		AutomaticReportBinding: func(ctx context.Context, chat models.Chat, executionID, runID string) (capability.Binding, error) {
+			if ScheduleService == nil {
+				return capability.Binding{}, nil
+			}
+			return ScheduleService.AgentReportBinding(ctx, chat, executionID, runID)
+		},
 		AgentBindings: func(chat models.Chat, executionID string, roots []string, automaticRunID, imReplyLinkID string) []capability.Binding {
 			var bindings []capability.Binding
 			if MemoryService != nil {
@@ -776,6 +809,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		ResolveAccount:         AIAccountService.ResolveAccount,
 		RuntimeSummaries:       RuntimeCatalog.Runtimes(),
 		Journal:                chatModule,
+		WorkTickets:            WorkTicketService,
 		DormantChats:           chatModule,
 		Wakers:                 WakerControllerManager,
 		Profiles:               ProfileDocumentControllerManager,
@@ -798,6 +832,9 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	ExecutionService = executionCore
 	if err := agent.RecoverEphemeralScratch(workspaceGitScratchRoot(configuration)); err != nil {
 		logx.Warnf("recover workspace git scratch: error=%v", err)
+	}
+	if err := agent.RecoverEphemeralScratch(mainConversationRouterScratchRoot(configuration)); err != nil {
+		logx.Warnf("recover main conversation router scratch: error=%v", err)
 	}
 	if err := loadPartnerReview(ctx, configuration, skills); err != nil {
 		logx.Warnf("partner review unavailable: error=%v", err)
@@ -865,10 +902,12 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	IMService = imModule
 	WorkflowState = workflowstate.New(WorkflowControllerManager, WorkflowRunControllerManager, TransactionControllerManager)
 	WorkflowService = workflow.New(workflow.Config{
-		AuthorizeMainWork: MainConversationService.AuthorizeWorkActor,
-		RepairOutput:      repairWorkflowOutput,
-		SummarizeOutput:   summarizeWorkflowOutput,
-		Commands:          controllers.NewAgentCommandController(DB), Events: EventHub,
+		AuthorizeMainWork:     MainConversationService.AuthorizeWorkActor,
+		ResolveMainOrigin:     MainConversationService.ResolveWorkflowOrigin,
+		PublishMainConclusion: MainConversationService.PublishWorkflowConclusion,
+		RepairOutput:          repairWorkflowOutput,
+		SummarizeOutput:       summarizeWorkflowOutput,
+		Commands:              controllers.NewAgentCommandController(DB), Events: EventHub,
 		State:            WorkflowState,
 		Resources:        workflowResources,
 		IMCall:           IMService.WorkflowCall,
@@ -895,6 +934,16 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		return mapCoreError("start_channel_service", status_error.CoreChannelInitializationFailed, err)
 	}
 	scheduleConfig := schedule.Config{AuthorizationWrite: IntegrationService.WithAuthorizationWrite,
+		Events:        controllers.NewAutomaticEventController(DB),
+		EventAdapter:  eventsource.GitHubSource{},
+		EvaluateEvent: matchAutomaticEvent,
+		EventFollowUp: followAutomaticEvent,
+		BindEventWork: bindAutomaticEventWork,
+		ReportReady: func(run models.AutomaticRun) bool {
+			return !ExecutionService.IsExecutionActive(run.ChatID, run.ExecutionID)
+		},
+		ReadReport:    readAutomaticTaskReport,
+		PublishReport: publishAutomaticTaskReport,
 		BindKnowledge: KnowledgeService.BindIntent,
 		Workflows:     WorkflowService,
 		WorkflowRuns:  WorkflowRunControllerManager,
@@ -917,6 +966,14 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		return WorkflowService.Start(ctx)
 	}); err != nil {
 		return mapCoreError("start_schedule_service", status_error.AutomaticTaskServiceInvalid, err)
+	}
+	inputLayout, err := chatstorage.NewLayout(configuration.ManagedFilesDirectory)
+	if err != nil {
+		return mapCoreError("initialize_main_conversation_input_queue", status_error.CoreChatInitializationFailed, err)
+	}
+	MainConversationInputQueue = NewMainConversationInputQueue(controllers.NewMainConversationInputController(DB), inputLayout)
+	if err := MainConversationInputQueue.Open(ctx); err != nil {
+		return mapCoreError("open_main_conversation_input_queue", status_error.CoreChatInitializationFailed, err)
 	}
 	if err := IMService.Start(ctx); err != nil {
 		return err
@@ -967,6 +1024,8 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		},
 	})
 	StorageService.Start()
+	wakeWorkTicketTransfers = wakeCollaboration
+	startWorkTicketCollaboration(ctx, delegationWake, executionCore)
 	return nil
 }
 
@@ -975,6 +1034,14 @@ var StorageService *storageservice.Service
 
 // Close 按依赖逆序停止后台流程并关闭数据库连接。
 func Close() error {
+	if stopWorkTicketCollaboration != nil {
+		stopWorkTicketCollaboration()
+		stopWorkTicketCollaboration = nil
+	}
+	if MainConversationInputQueue != nil {
+		MainConversationInputQueue.Close()
+		MainConversationInputQueue = nil
+	}
 	if StorageService != nil {
 		StorageService.Close()
 		StorageService = nil
@@ -1021,6 +1088,7 @@ func Close() error {
 		ExecutionService.Close()
 		ExecutionService = nil
 	}
+	WorkTicketService = nil
 	if ReviewWorker != nil {
 		ReviewWorker.Close()
 		ReviewWorker = nil

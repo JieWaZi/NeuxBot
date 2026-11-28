@@ -8,12 +8,16 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	eventhub "github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/services/workticket"
 )
 
 func validateResource(ctx context.Context, command control) error {
 	resource := command.Resource
 	if command.Topic == constants.MainConversationEventTopic {
 		return validateMainConversationSubject(ctx, resource)
+	}
+	if command.Topic == constants.WorkTicketEventTopic {
+		return global.ValidateWorkTicketOrigin(ctx, workticket.Address{Kind: constants.WorkTicketOrigin(resource.Kind), ID: resource.ID})
 	}
 	if resource.Kind == "global" {
 		return nil

@@ -4,6 +4,21 @@ package status_error
 import "net/http"
 
 const (
+	// @errZH 执行已达到最长用时，宿主已请求停止。{{if .Confirmed}}智能体已确认停止。{{else}}{{if .Settled}}未收到智能体停止确认。{{else}}等待智能体确认。{{end}}{{end}}
+	// @errEN The execution reached its time limit. The host requested a stop. {{if .Confirmed}}The agent confirmed the stop.{{else}}{{if .Settled}}No stop confirmation was received from the agent.{{else}}Waiting for the agent to confirm.{{end}}{{end}}
+	RuntimeWatchdogElapsed StatusError = http.StatusRequestTimeout*1e8 + 9401
+	// @errZH 执行长时间没有进展，宿主已请求停止。{{if .Confirmed}}智能体已确认停止。{{else}}{{if .Settled}}未收到智能体停止确认。{{else}}等待智能体确认。{{end}}{{end}}
+	// @errEN The execution stopped making progress. The host requested a stop. {{if .Confirmed}}The agent confirmed the stop.{{else}}{{if .Settled}}No stop confirmation was received from the agent.{{else}}Waiting for the agent to confirm.{{end}}{{end}}
+	RuntimeWatchdogStall StatusError = http.StatusRequestTimeout*1e8 + 9402
+	// @errZH 执行连续重复同一工具调用，宿主已请求停止。{{if .Confirmed}}智能体已确认停止。{{else}}{{if .Settled}}未收到智能体停止确认。{{else}}等待智能体确认。{{end}}{{end}}
+	// @errEN The execution repeatedly called the same tool with the same input. The host requested a stop. {{if .Confirmed}}The agent confirmed the stop.{{else}}{{if .Settled}}No stop confirmation was received from the agent.{{else}}Waiting for the agent to confirm.{{end}}{{end}}
+	RuntimeWatchdogToolLoop StatusError = http.StatusRequestTimeout*1e8 + 9403
+	// @errZH 执行已达到本轮 Token 预算，宿主已请求停止。{{if .Confirmed}}智能体已确认停止。{{else}}{{if .Settled}}未收到智能体停止确认。{{else}}等待智能体确认。{{end}}{{end}}
+	// @errEN The execution reached its token budget. The host requested a stop. {{if .Confirmed}}The agent confirmed the stop.{{else}}{{if .Settled}}No stop confirmation was received from the agent.{{else}}Waiting for the agent to confirm.{{end}}{{end}}
+	RuntimeWatchdogTokenBudget StatusError = http.StatusRequestTimeout*1e8 + 9404
+)
+
+const (
 	// @errZH 当前平台暂不支持安装此智能体
 	// @errEN installing this agent is unsupported on this platform
 	RuntimeInstallationUnsupported StatusError = http.StatusUnprocessableEntity*1e8 + 7301
@@ -876,6 +891,24 @@ const (
 	// @errZH 当前对话中没有可引用的这条消息
 	// @errEN this message is unavailable for reply in the current conversation
 	ChatReplyTargetUnavailable StatusError = http.StatusNotFound*1e8 + 7202
+)
+
+const (
+	// @errZH 请指定一个可用的项目或绝对工作目录，然后重新发送
+	// @errEN specify an available project or an absolute working directory, then resend
+	MainConversationProjectRequired StatusError = http.StatusBadRequest*1e8 + 7201
+
+	// @errZH 当前会话没有这张工单
+	// @errEN the work ticket does not exist in this conversation
+	WorkTicketNotFound StatusError = http.StatusNotFound*1e8 + 7211
+
+	// @errZH 工单当前无法继续或停止
+	// @errEN the work ticket cannot continue or be stopped in its current state
+	WorkTicketCannotContinue StatusError = http.StatusConflict*1e8 + 7211
+
+	// @errZH 这轮执行已无权更新工单
+	// @errEN this execution can no longer update the work ticket
+	WorkTicketAttemptUnavailable StatusError = http.StatusConflict*1e8 + 7212
 )
 
 const (

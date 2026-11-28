@@ -4,6 +4,11 @@
     var(--spacing-scene-tab) + 3 * var(--spacing)
   );
 }
+.shell-header-tab-track:has(.shell-header-tab[data-fixed][data-icon-only]) {
+  scroll-padding-inline-start: calc(
+    var(--spacing-control-md) + 3 * var(--spacing)
+  );
+}
 .shell-header-tab-track:has(.shell-header-tab[data-fixed]) > [role="tablist"] {
   display: grid;
   flex-shrink: 1;
@@ -20,16 +25,9 @@
   width: auto;
 }
 .shell-header-tab-track:has(.shell-header-tab[data-fixed])
-  .shell-header-tab
+  .shell-header-tab:not([data-icon-only])
   .shell-header-tab-select {
   padding-inline-start: calc(var(--spacing) * 1.5);
-}
-/* 可见底色与点击区使用各自的高度。 */
-.shell-header-tab-track:has(.shell-header-tab[data-fixed])
-  .shell-header-tab::after {
-  inset-block: calc(
-    (var(--spacing-control-md) - var(--spacing-control-sm)) / 2
-  );
 }
 .shell-header-tab[data-fixed] {
   flex: none;
@@ -37,11 +35,22 @@
   min-width: var(--spacing-control-md);
   position: sticky;
   inset-inline-start: 0;
-  z-index: 1;
+  z-index: 2;
+}
+.shell-header-tab[data-fixed][data-icon-only] {
+  width: var(--spacing-control-md);
+}
+.shell-header-tab-track[data-tab-track-scrolled] .shell-header-tab[data-fixed] {
   background: var(
     --window-solid-shell-surface-frame,
     var(--shell-surface-frame)
   );
+}
+/* 横向滚动时，固定页签覆盖从下方经过的内容与滑动底色。 */
+[data-tab-highlight-ready][data-tab-track-scrolled]
+  > .shell-header-tab-list
+  > .shell-header-tab[data-fixed][data-selected]:not([data-invalid]) {
+  --shell-header-tab-background: var(--scene-tab-fill);
 }
 .shell-header-tab[data-fixed]:has(+ .shell-header-tab) {
   margin-inline-end: var(--spacing);

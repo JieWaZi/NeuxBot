@@ -144,6 +144,7 @@ type ChatRuntimeResult = {
   retryFirstSubmission?: () => void;
   editFirstSubmission?: () => void;
   contextMetrics?: ChatRunMetrics;
+  deferredSteeringIds: readonly string[];
   pendingApprovals: PendingApproval[];
   pendingElicitations: ChatPendingElicitation[];
 };
@@ -1660,6 +1661,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         )
           return;
         const snapshot = clearOutgoingDraft(message);
+        const steerNow = steer && !snapshot.selection.deferReplySteering;
         if (options.serverManagedQueue) {
           void submit(message, snapshot);
           return;
@@ -1676,7 +1678,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           chatId: snapshot.chatId,
           selection: {
             ...snapshot.selection,
-            ...(steer ? steerTarget : {}),
+            ...(steerNow ? steerTarget : {}),
           },
           prepareSubmission: snapshot.prepareSubmission,
           settleDraft: snapshot.settleDraft,
@@ -1692,15 +1694,15 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           void submit(message, snapshot);
           return;
         }
-        queueStore.enqueue(queueKey, entry, steer);
+        queueStore.enqueue(queueKey, entry, steerNow);
         if (!queueIsRunning) advanceQueue(queueKey);
-        else if (steer) void cancelCurrent();
+        else if (steerNow) void cancelCurrent();
       },
       steer: (queueItemID) => {
         if (interactionPendingRef.current) return;
         const current = queueStore.getEntries(queueKey);
         const target = current.find((item) => item.id === queueItemID);
-        if (!target) return;
+        if (!target || target.selection.deferReplySteering) return;
         queueStore.promote(queueKey, queueItemID, steerTarget);
         if (isRunning) void cancelCurrent();
         else advanceQueue(queueKey);
@@ -1828,6 +1830,9 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           }
         : undefined,
     contextMetrics: latestContextMetrics(messages),
+    deferredSteeringIds: queuedEntries.flatMap(({ id, selection }) =>
+      selection.deferReplySteering ? [id] : [],
+    ),
     pendingApprovals,
     pendingElicitations,
   };

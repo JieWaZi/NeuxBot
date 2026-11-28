@@ -584,6 +584,7 @@
 }
 /* 主区和右工作台共享同一轨道、表面与关闭操作，差别只在内容及所属 pane。 */
 .shell-header-tab-track {
+  position: relative;
   display: flex;
   flex: 0 1 auto;
   align-items: center;
@@ -609,11 +610,72 @@
 .workbench-pane-content {
   --surface-chrome: var(--surface-scene);
 }
+.shell-header-tab-list {
+  --scene-tab-top-inset: calc(var(--spacing) * 1.5);
+  --scene-tab-hit-inset: calc(
+    (var(--shell-titlebar-height) - var(--spacing-control-md)) / 2
+  );
+  --scene-tab-fill: var(--surface-scene);
+  --scene-tab-top-radius: var(--radius-control-inner);
+  position: relative;
+  align-self: stretch;
+  isolation: isolate;
+}
+.shell-header-tab-highlight {
+  position: absolute;
+  top: var(--scene-tab-top-inset);
+  bottom: 0;
+  left: 0;
+  width: 0;
+  border-radius: var(--scene-tab-top-radius) var(--scene-tab-top-radius) 0 0;
+  background: var(--scene-tab-fill);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    translate var(--duration-standard) var(--ease-ui),
+    width var(--duration-standard) var(--ease-ui),
+    opacity var(--duration-quick) var(--ease-ui);
+}
+.shell-header-tab-highlight::before,
+.shell-header-tab-highlight::after {
+  position: absolute;
+  bottom: 0;
+  width: var(--radius-xs);
+  height: var(--radius-xs);
+  content: "";
+}
+.shell-header-tab-highlight::before {
+  right: 100%;
+  background: radial-gradient(
+    circle var(--radius-xs) at top left,
+    transparent calc(var(--radius-xs) - 1px),
+    var(--scene-tab-fill) var(--radius-xs)
+  );
+}
+.shell-header-tab-highlight::after {
+  left: 100%;
+  background: radial-gradient(
+    circle var(--radius-xs) at top right,
+    transparent calc(var(--radius-xs) - 1px),
+    var(--scene-tab-fill) var(--radius-xs)
+  );
+}
+[data-tab-highlight-ready]
+  > .shell-header-tab-list
+  > .shell-header-tab-highlight {
+  opacity: 1;
+}
+[data-tab-motion-paused]
+  > .shell-header-tab-list
+  > .shell-header-tab-highlight {
+  transition: none;
+}
 .shell-header-tab {
   --shell-header-tab-background: transparent;
   /* 整项参与鼠标交互，避免标题栏拖拽区域吞掉悬停与关闭槽的事件。 */
   -webkit-app-region: no-drag;
   position: relative;
+  z-index: 1;
   isolation: isolate;
   display: flex;
   flex: 0 0 var(--spacing-scene-tab);
@@ -632,7 +694,9 @@
 .shell-header-tab::after {
   position: absolute;
   z-index: -1;
-  inset-block: calc(var(--spacing) / 2);
+  inset-block: calc(
+    (var(--spacing-control-md) - var(--spacing-control-sm)) / 2
+  );
   inset-inline: 0;
   border-radius: inherit;
   background: var(--shell-header-tab-background);
@@ -641,11 +705,16 @@
   transition: background-color var(--duration-quick) var(--ease-ui);
 }
 .shell-header-tab[data-selected] {
-  --shell-header-tab-background: var(--shell-control-hover);
+  --shell-header-tab-background: var(--scene-tab-fill);
   color: var(--content-primary);
   font-weight: 500;
 }
-.shell-header-tab:not([data-invalid]):hover {
+.shell-header-tab[data-selected]:not([data-invalid])::after {
+  inset-block: calc(var(--scene-tab-top-inset) - var(--scene-tab-hit-inset))
+    calc(-1 * var(--scene-tab-hit-inset));
+  border-radius: var(--scene-tab-top-radius) var(--scene-tab-top-radius) 0 0;
+}
+.shell-header-tab:not([data-invalid], [data-selected]):hover {
   --shell-header-tab-background: var(--shell-control-hover);
   color: var(--content-primary);
 }
@@ -664,20 +733,10 @@
     transparent
   );
 }
-.shell-header-tab + .shell-header-tab::before {
-  position: absolute;
-  top: 50%;
-  left: calc(var(--spacing) / -2 - 0.5px);
-  width: 1px;
-  height: var(--spacing-icon-md);
-  translate: 0 -50%;
-  background: var(--shell-separator);
-  content: "";
-  pointer-events: none;
-}
-.shell-header-tab:is([data-selected], :hover)::before,
-.shell-header-tab:is([data-selected], :hover) + .shell-header-tab::before {
-  opacity: 0;
+[data-tab-highlight-ready]
+  > .shell-header-tab-list
+  > .shell-header-tab[data-selected]:not([data-invalid]) {
+  --shell-header-tab-background: transparent;
 }
 .shell-header-tab-select {
   @apply type-ui;
@@ -695,6 +754,10 @@
   color: inherit;
   text-align: left;
   outline: none;
+}
+.shell-header-tab[data-icon-only] .shell-header-tab-select {
+  justify-content: center;
+  padding-inline: 0;
 }
 .shell-header-tab-close {
   display: grid;

@@ -17,6 +17,7 @@ import {
 } from "react-router-dom";
 import {
   getChannelOptions,
+  checkAutomaticEventRuleMutation,
   getProjectOptions,
   getWorkflowOptions,
   listAiAccountsOptions,
@@ -68,6 +69,7 @@ import {
 import { schemaRecord } from "../model/workflow-inputs";
 
 import { WorkflowInputSummary } from "../components/workflow-input-summary";
+import { EventRuleDetails } from "../components/event-rule-details";
 import { TaskFormDialog } from "../components/task-dialogs";
 import { CopyValue, apiExamples } from "../components/task-api-examples";
 import {
@@ -160,6 +162,7 @@ export function AutomaticTaskDetailPage() {
     undefined,
   );
   const [manualOpen, setManualOpen] = useState(false);
+  const [eventTestOpen, setEventTestOpen] = useState(false);
   const [manualArgs, setManualArgs] = useState<unknown>({});
   const manualValidity = useSchemaFormValidity();
   const remove = useMutation(
@@ -172,6 +175,10 @@ export function AutomaticTaskDetailPage() {
   const run = useMutation(
     withLocalErrorMutation(triggerAutomaticTaskMutation()),
   );
+  const checkEvent = useMutation({
+    ...withLocalErrorMutation(checkAutomaticEventRuleMutation()),
+    onSuccess: () => refreshAutomaticTasks(client, wakerId, taskId),
+  });
   const task = query.data;
   const confirmAction = async () => {
     if (!task) return;
@@ -226,6 +233,7 @@ export function AutomaticTaskDetailPage() {
       });
       request.current = undefined;
       setManualOpen(false);
+      setEventTestOpen(false);
       await refreshAutomaticTasks(client, wakerId, taskId);
       if (receipt.chatId || receipt.workflowRunId)
         navigate(automaticRunHref(receipt));
@@ -292,7 +300,7 @@ export function AutomaticTaskDetailPage() {
   const model = runtime?.models?.find((item) => item.id === task.model);
   const disabledReason = !task.enabled
     ? t("disabledHint")
-    : task.activeRunId
+    : task.activeRunId && !task.reportDestination
       ? t("busyHint")
       : task.configurationError
         ? t("configurationInvalid")
@@ -418,13 +426,29 @@ export function AutomaticTaskDetailPage() {
             >
               <Trash2 />
             </PageAction>
+            {task.trigger === "event" ? (
+              <PageAction
+                intent="secondary"
+                label={t("eventCheck")}
+                disabled={
+                  !task.enabled || checkEvent.isPending || run.isPending
+                }
+                onClick={() => checkEvent.mutate({ path })}
+              />
+            ) : null}
             <span title={disabledReason}>
               <PageAction
                 intent="primary"
-                label={t("run")}
-                disabled={Boolean(disabledReason) || run.isPending}
+                label={t(task.trigger === "event" ? "eventTest" : "run")}
+                disabled={
+                  Boolean(disabledReason) ||
+                  run.isPending ||
+                  checkEvent.isPending
+                }
                 onClick={() => {
-                  if (
+                  if (task.trigger === "event") {
+                    setEventTestOpen(true);
+                  } else if (
                     task.workflowInputContract?.fields?.some(
                       (field) => field.source === "api",
                     )
@@ -440,6 +464,28 @@ export function AutomaticTaskDetailPage() {
           </>
         }
       />
+      <Dialog open={eventTestOpen} onOpenChange={setEventTestOpen}>
+        <DialogContent title={t("eventTest")}>
+          <p className="type-body">{t("eventTestExplanation")}</p>
+          {run.error ? (
+            <p role="alert" className="type-ui text-destructive">
+              {localApiErrorMessage(run.error, t("actionFailed"))}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              disabled={run.isPending}
+              onClick={() => setEventTestOpen(false)}
+            >
+              {t("cancel")}
+            </Button>
+            <Button disabled={run.isPending} onClick={() => void start()}>
+              {t("eventTest")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <main className="mt-6 grid min-w-0 gap-8">
         {query.isError ? (
           <QueryState
@@ -455,9 +501,12 @@ export function AutomaticTaskDetailPage() {
             {t("configurationInvalid")}
           </p>
         ) : null}
-        {toggle.error || run.error ? (
+        {toggle.error || run.error || checkEvent.error ? (
           <p role="alert" className="text-destructive type-body">
-            {localApiErrorMessage(toggle.error || run.error, t("actionFailed"))}
+            {localApiErrorMessage(
+              toggle.error || run.error || checkEvent.error,
+              t("actionFailed"),
+            )}
           </p>
         ) : null}
         <DetailSection title={t("overview")} surface="wash">
@@ -534,6 +583,8 @@ export function AutomaticTaskDetailPage() {
                       {t("scheduleHint")}
                     </p>
                   </div>
+                ) : task.trigger === "event" ? (
+                  <EventRuleDetails task={task} />
                 ) : (
                   <div className="grid gap-4">
                     <p
@@ -835,14 +886,36 @@ export function AutomaticTaskDetailPage() {
                           ? "schedule"
                           : entry.source === "api"
                             ? "api"
-                            : "manual",
+                            : entry.source === "event"
+                              ? "event"
+                              : entry.source === "event_test"
+                                ? "eventTest"
+                                : "manual",
                       )}
                     </TableCell>
                     <TableCell>
                       <RunState state={entry.state} />
+                      {entry.reportState === "quiet" ||
+                      entry.reportState === "pending" ||
+                      entry.reportState === "unavailable" ? (
+                        <div className="type-caption text-content-secondary mt-1">
+                          {t(
+                            entry.reportState === "quiet"
+                              ? "reportQuiet"
+                              : entry.reportState === "pending"
+                                ? "reportPending"
+                                : "reportUnavailable",
+                          )}
+                        </div>
+                      ) : null}
                     </TableCell>
                     <TableCell>{errorLabel(entry)}</TableCell>
                     <TableCell>
+                      {entry.reportHref ? (
+                        <Button asChild variant="ghost" size="sm">
+                          <Link to={entry.reportHref}>{t("reportOpen")}</Link>
+                        </Button>
+                      ) : null}
                       {(entry.workflowRunId &&
                         entry.configuration?.workflowId &&
                         entry.errorCode !== "WorkflowNotFound") ||
@@ -896,7 +969,7 @@ export function AutomaticTaskDetailPage() {
         onOpenChange={(open) => {
           if (!open) setEditing(undefined);
         }}
-        wakerId={wakerId}
+        wakerId={editing?.workflowId ? undefined : wakerId}
         onSaved={() => setEditing(undefined)}
       />
       <Dialog

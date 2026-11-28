@@ -303,6 +303,12 @@ function entityLabel(item: NavigationEntity, fallback: string) {
 function entityMark(item: NavigationEntity) {
   const state = entityActivityState(item);
   const attention = item.attention;
+  // 摘要为每个计入总数的独立会话提供明细，主会话入口只显示自己的未读。
+  const chatUnread =
+    attention?.chats?.reduce(
+      (total, chat) => total + (chat.unreadMessageCount ?? 0),
+      0,
+    ) ?? 0;
   return conversationAttentionMark({
     requestKinds:
       attention?.requestKinds ??
@@ -311,10 +317,10 @@ function entityMark(item: NavigationEntity) {
       ? Boolean(attention.waitingWorkCount)
       : state === "waiting",
     running: attention
-      ? Boolean(attention.runningChatCount)
+      ? Boolean(attention.runningChatCount || attention.mainConversationPending)
       : state === "running",
     failed: attention?.lastStatus === "failed",
-    unread: attention?.unreadMessageCount,
+    unread: (attention?.unreadMessageCount ?? 0) - chatUnread,
   });
 }
 

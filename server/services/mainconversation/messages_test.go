@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
+
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -91,6 +93,136 @@ func TestScopedPublishingAndReplay(t *testing.T) {
 	}
 	if _, _, err = service.PublishWithReceipt(ctx, a.WorkChatID, "exec", "late", "late", u.ID); err == nil {
 		t.Fatal("deleted subject accepted late publication")
+	}
+}
+
+func TestQuotedPublicationUsesVisibleTimelineAtFirstCommit(t *testing.T) {
+	ctx := t.Context()
+	service, wakers, _, _, hub := newTestService(t)
+	if err := wakers.Create(ctx, models.Waker{ID: "p", Name: "P"}); err != nil {
+		t.Fatal(err)
+	}
+	work, err := service.ReserveWork(ctx, "waker", "p", "p", "project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admit := func(key, replyID string) models.MainConversationMessage {
+		t.Helper()
+		row, err := service.AdmitUser(ctx, "waker", "p", key, key, replyID, work.WorkChatID, key, "", "", "", func(context.Context) error { return nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return row
+	}
+	assignment := admit("assignment", "")
+	removed := admit("removed", "")
+	if err := service.RemoveMessage(ctx, "waker", "p", removed.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.AdmitUser(ctx, "waker", "p", "pending", "pending", "", work.WorkChatID, "pending", "", "", "", func(context.Context) error {
+		return status_error.ChatLogError
+	}); !errors.Is(err, status_error.ChatLogError) {
+		t.Fatal(err)
+	}
+	post := func(key, content string) (models.MainConversationMessage, bool) {
+		t.Helper()
+		row, replay, err := service.PublishQuotedWithReceipt(ctx, work.WorkChatID, "assignment", key, content, assignment.ID)
+		if err != nil || row.ReplyToMessageID != assignment.ID {
+			t.Fatalf("publication lost its assigned input: %+v, %t, %v", row, replay, err)
+		}
+		return row, replay
+	}
+	first, replay := post("first", "Adjacent answer")
+	if replay || first.QuoteReply {
+		t.Fatalf("removed and pending messages do not make a quote useful: %+v", first)
+	}
+	second, replay := post("second", "Later finding")
+	if replay || !second.QuoteReply {
+		t.Fatalf("an intervening visible reply should make the requested quote visible: %+v", second)
+	}
+	userReply := admit("follow-up", second.ID)
+	if userReply.ReplyToMessageID != second.ID {
+		t.Fatalf("the adjacent user reply lost its explicit target: %+v", userReply)
+	}
+	for _, row := range []models.MainConversationMessage{first, second, userReply} {
+		if err := service.RemoveMessage(ctx, "waker", "p", row.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sub := hub.Subscribe("main-conversations", events.Resource{Kind: "waker", ID: "p"})
+	defer sub.Close()
+	if row, replay := post("second", "Later finding"); !replay || row.ID != second.ID || !row.QuoteReply {
+		t.Fatalf("replay recomputed a previously visible quote: %+v", row)
+	}
+	assertNoReplayEvent := func() {
+		t.Helper()
+		select {
+		case event := <-sub.Events:
+			t.Fatalf("retry emitted a second public event: %+v", event)
+		default:
+		}
+	}
+	assertNoReplayEvent()
+	admit("intervening", "")
+	select {
+	case <-sub.Events:
+	default:
+		t.Fatal("new input did not emit a public event")
+	}
+	if row, replay := post("first", "Adjacent answer"); !replay || row.ID != first.ID || row.QuoteReply {
+		t.Fatalf("replay recomputed a previously suppressed quote: %+v", row)
+	}
+	if _, _, err := service.PublishWithReceipt(ctx, work.WorkChatID, "assignment", "first", first.Content, assignment.ID); !errors.Is(err, status_error.CreateRequestConflict) {
+		t.Fatalf("changing the original quote request should conflict: %v", err)
+	}
+	assertNoReplayEvent()
+}
+
+func TestDeletedOriginReportReplayChecksOriginalWorkIdentity(t *testing.T) {
+	ctx := t.Context()
+	service, wakers, _, _, _ := newTestService(t)
+	if err := wakers.Create(ctx, models.Waker{ID: "partner", Name: "Partner"}); err != nil {
+		t.Fatal(err)
+	}
+	origin := models.MainConversationOriginalWork{ChatID: "original", TicketID: "ticket", Title: "Original chat"}
+	ticket := models.WorkTicket{ID: origin.TicketID, OriginKind: constants.WorkTicketOriginChat, OriginID: origin.ChatID, OwnerWakerID: "partner"}
+	report := models.WorkTicketReport{ID: "stable-report", TicketID: ticket.ID, Content: "Result"}
+	first, err := service.PublishDeletedOriginReport(ctx, "partner", ticket, report, origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := service.PublishDeletedOriginReport(ctx, "partner", ticket, report, origin)
+	if err != nil || replayed.ID != first.ID || replayed.Sequence != first.Sequence {
+		t.Fatalf("same original work changed the report: %+v %v", replayed, err)
+	}
+	origin.ChatID = "different-chat"
+	ticket.OriginID = origin.ChatID
+	if _, err := service.PublishDeletedOriginReport(ctx, "partner", ticket, report, origin); !errors.Is(err, status_error.CreateRequestConflict) {
+		t.Fatalf("same report key accepted a different origin: %v", err)
+	}
+}
+
+func TestMainReportReusesOnlyPublicationFromTheSameExecution(t *testing.T) {
+	ctx := t.Context()
+	service, wakers, _, _, _ := newTestService(t)
+	if err := wakers.Create(ctx, models.Waker{ID: "partner", Name: "Partner"}); err != nil {
+		t.Fatal(err)
+	}
+	work, err := service.ReserveWork(ctx, "waker", "partner", "partner", "source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	posted, _, err := service.PublishWithReceipt(ctx, work.WorkChatID, "first-execution", "post", "Verified result.", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _, err := service.PublishReportWithReceipt(ctx, work.WorkChatID, "first-execution", "report", posted.Content, "")
+	if err != nil || first.ID != posted.ID {
+		t.Fatalf("did not retain the published message: was=%+v report=%+v err=%v", posted, first, err)
+	}
+	second, _, err := service.PublishReportWithReceipt(ctx, work.WorkChatID, "second-execution", "report", posted.Content, "")
+	if err != nil || second.ID == posted.ID || second.SourceExecutionID != "second-execution" {
+		t.Fatalf("report reused another execution's message: %+v, %v", second, err)
 	}
 }
 

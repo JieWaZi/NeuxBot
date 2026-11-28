@@ -262,6 +262,73 @@ func TestNativeOutcomeReconcilesEitherArrivalOrder(t *testing.T) {
 	}
 }
 
+func TestNativeTerminalRecoveryRebuildsLegacyAdapterLocator(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	session := agent.NativeSessionKey{Provider: "codex", Subject: "account", SessionID: "native"}
+	key := agent.NativeResultKey{Session: session, InvocationID: "P"}
+	input := agent.HostInput{HostInvocationID: "host", AdapterInputID: "adapter", Session: session, ExecutionID: "execution"}
+	result := agent.NativeResult{Key: key,
+		Turn: acpmeta.NativeTurn{InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost,
+			Status: acpmeta.NativeTurnCompleted, ConsumedInputIDs: []string{input.AdapterInputID}},
+		FinalMessage: &agent.NativeFinalMessage{ID: "final", Text: "original result"}}
+	writeBatch(t, s, "admit", 0, fact(constants.ChatEventTypeCreated, "", ""),
+		agent.ConversationChange{Binding: &agent.NativeBinding{Session: session}}, agent.ConversationChange{Input: &input})
+	if err := s.CommitNativeResult(ctx, result); err != nil {
+		t.Fatal(err)
+	}
+	// Earlier derived indexes did not record terminal-to-adapter lookups. Keep authority unchanged.
+	if err := s.indexes.with(ctx, func(db *gorm.DB) error {
+		if err := db.Exec("UPDATE conversation_positions SET consumed_adapter = NULL WHERE kind = ?", indexNativeTerminal).Error; err != nil {
+			return err
+		}
+		return db.Exec("UPDATE conversation_streams SET native_consumption_indexed = false").Error
+	}); err != nil {
+		t.Fatal(err)
+	}
+	otherAccount := input
+	otherAccount.Session.Subject = "another-account"
+	if got, err := s.ReadNativeResultForInput(ctx, otherAccount); err != nil || got != nil {
+		t.Fatalf("foreign account matched terminal: %+v, %v", got, err)
+	}
+	got, err := s.ReadNativeResultForInput(ctx, input)
+	if err != nil || got == nil || got.Key != key || got.FinalMessage == nil || got.FinalMessage.Text != result.FinalMessage.Text {
+		t.Fatalf("canonical terminal could not be found before its consumption link: %+v, %v", got, err)
+	}
+	result.Key.InvocationID, result.Turn.InvocationID = "conflicting-P", "conflicting-P"
+	if err := s.CommitNativeResult(ctx, result); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReadNativeResultForInput(ctx, input); !errors.Is(err, status_error.ChatLogCorrupted) {
+		t.Fatalf("accepted ambiguous native consumption: %v", err)
+	}
+}
+
+func TestNativeResultRetainsStreamAnswerEvidenceThroughReceiptReplay(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	store := openTestStore(t, root)
+	key := agent.NativeResultKey{
+		Session:      agent.NativeSessionKey{Provider: constants.RuntimeIDWorkBuddy, Subject: "account", SessionID: "stream"},
+		InvocationID: "invocation",
+	}
+	result := agent.NativeResult{Key: key, StopReason: "end_turn", StreamAnswerEligible: true,
+		Turn: acpmeta.NativeTurn{InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost,
+			Status: acpmeta.NativeTurnCompleted, ConsumedInputIDs: []string{"input"}}}
+	if err := store.CommitNativeResult(ctx, result); err != nil {
+		t.Fatal(err)
+	}
+	store = openTestStore(t, root)
+	result.StreamAnswerEligible = false
+	if err := store.CommitNativeResult(ctx, result); err != nil {
+		t.Fatalf("provider replay without host evidence: %v", err)
+	}
+	terminal, err := store.ReadNativeResult(ctx, key)
+	if err != nil || !terminal.StreamAnswerEligible {
+		t.Fatalf("retained native terminal evidence = %+v, %v", terminal, err)
+	}
+}
+
 func TestNativeDeletionPreservesOtherSessionCursorsInSharedShard(t *testing.T) {
 	ctx := t.Context()
 	root := t.TempDir()
@@ -689,6 +756,7 @@ func TestLocatorQueriesSeekByMessageCursorAndAdapter(t *testing.T) {
 		{"SELECT * FROM conversation_positions INDEXED BY conversation_row_message WHERE stream=1 AND message_ref<>0 AND NOT display_link AND message_ref=2 ORDER BY cursor", "conversation_row_message"},
 		{"SELECT * FROM conversation_positions INDEXED BY conversation_row_execution WHERE stream=1 AND execution_ref<>0 AND execution_ref=5 ORDER BY cursor", "conversation_row_execution"},
 		{"SELECT * FROM conversation_positions WHERE adapter IS NOT NULL AND adapter IN (x'01',x'02')", "conversation_row_adapter"},
+		{"SELECT * FROM conversation_positions INDEXED BY conversation_row_consumed_adapter WHERE stream=1 AND consumed_adapter IS NOT NULL AND consumed_adapter=x'01'", "conversation_row_consumed_adapter"},
 		{"SELECT * FROM conversation_positions INDEXED BY conversation_row_native WHERE stream=1 AND native_ref<>0 AND native_ref=1 AND kind=9 AND lane_ref=2", "conversation_row_native"},
 	}
 	err := s.indexes.with(ctx, func(db *gorm.DB) error {

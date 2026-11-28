@@ -9,6 +9,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/eventsource"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
 	"github.com/JieWaZi/NeuxBot/server/internal/schedulecalc"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -30,10 +33,10 @@ type SavedTask struct {
 func (s *Service) SaveConfiguration(ctx context.Context, wakerID, id string, revision int64, config models.AutomaticTaskConfiguration, validateDependencies bool) (SavedTask, error) {
 	ctx, release := s.AcquireMutation(ctx)
 	defer release()
-	return s.saveConfiguration(ctx, wakerID, id, revision, config, validateDependencies)
+	return s.saveConfiguration(ctx, wakerID, id, revision, config, validateDependencies, false)
 }
 
-func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, revision int64, config models.AutomaticTaskConfiguration, validate bool) (SavedTask, error) {
+func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, revision int64, config models.AutomaticTaskConfiguration, validate, limitWorkflowPermissions bool) (SavedTask, error) {
 	scopeWakerID := wakerID
 	config.ChannelID = strings.TrimSpace(config.ChannelID)
 	config.ExecutorWakerID = strings.TrimSpace(config.ExecutorWakerID)
@@ -59,6 +62,24 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 		return SavedTask{}, status_error.KnowledgeInvalid
 	}
 	config.TargetKind = kind
+	if config.Trigger == constants.AutomaticTaskTriggerEvent {
+		if config.Event == nil || config.WorkflowID != "" || config.Knowledge != nil {
+			return SavedTask{}, status_error.BadRequest
+		}
+		event, err := eventsource.Normalize(*config.Event)
+		if err != nil {
+			return SavedTask{}, err
+		}
+		config.Event = &event
+		if config.ReportDestination == "" {
+			config.ReportDestination = constants.AutomaticReportDestinationMainConversation
+		}
+		if event.TrackDiscussion && (kind != constants.AutomaticTaskTargetKindWaker || config.ReportDestination != constants.AutomaticReportDestinationMainConversation) {
+			return SavedTask{}, status_error.BadRequest
+		}
+	} else if config.Event != nil {
+		return SavedTask{}, status_error.BadRequest
+	}
 	if kind != constants.AutomaticTaskTargetKindWorkflow && (config.WorkflowRevisionPolicy != "" || config.WorkflowRevisionID != "" || len(config.WorkflowInputBindings) != 0 || config.WorkflowInputRevisionID != "") {
 		return SavedTask{}, status_error.BadRequest
 	}
@@ -129,7 +150,23 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 			return SavedTask{}, status_error.AutomaticTaskRevisionConflict
 		}
 	} else {
-		task = models.AutomaticTask{ID: util.New(), WakerID: wakerID}
+		task = models.AutomaticTask{ID: util.New(), WakerID: wakerID, WorkflowPermissionsLimited: limitWorkflowPermissions}
+	}
+	if config.Trigger == constants.AutomaticTaskTriggerEvent && task.Trigger != constants.AutomaticTaskTriggerEvent {
+		return SavedTask{}, status_error.BadRequest.WithField("field", "trigger")
+	}
+	if scopeWakerID != "" && config.WorkflowReportRecipient == nil && kind == constants.AutomaticTaskTargetKindWorkflow && config.Trigger == constants.AutomaticTaskTriggerSchedule {
+		// 按伙伴维护任务时继续沿用全局表单选定的地址。
+		config.WorkflowReportRecipient = task.WorkflowReportRecipient
+		if config.ReportPolicy == "" {
+			config.ReportPolicy = task.ReportPolicy
+		}
+	}
+	if err := s.validateWorkflowReportRecipient(ctx, scopeWakerID, task, config, validate); err != nil {
+		return SavedTask{}, err
+	}
+	if err := validateReportConfiguration(&config); err != nil {
+		return SavedTask{}, err
 	}
 	if config.WorkingDirectory != "" && (id == "" || config.WorkingDirectory != task.WorkingDirectory) {
 		source, err := projectsource.Resolve(config.WorkingDirectory)
@@ -157,7 +194,7 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 		if config.Enabled {
 			next = timePointer(future)
 		}
-	} else if config.Trigger == constants.AutomaticTaskTriggerAPI {
+	} else if config.Trigger == constants.AutomaticTaskTriggerAPI || config.Trigger == constants.AutomaticTaskTriggerEvent {
 		config.Schedule = models.AutomaticTaskSchedule{}
 	} else {
 		return SavedTask{}, status_error.BadRequest
@@ -182,14 +219,68 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 	task.UpdatedAt = now.UnixMilli()
 	if id == "" {
 		task.CreatedAt = task.UpdatedAt
-		err = s.config.Tasks.Create(ctx, task)
+		err = s.persistConfiguration(ctx, task, false, func(tx context.Context) error { return s.config.Tasks.Create(tx, task) })
 	} else {
-		err = s.WithAuthorizationWrite(ctx, func(ctx context.Context) error { return s.config.Tasks.UpdateConfiguration(ctx, task, storedRevision) })
+		err = s.WithAuthorizationWrite(ctx, func(ctx context.Context) error {
+			return s.persistConfiguration(ctx, task, true, func(tx context.Context) error {
+				return s.config.Tasks.UpdateConfiguration(tx, task, storedRevision)
+			})
+		})
 	}
 	if err != nil {
 		return SavedTask{}, err
 	}
 	return SavedTask{TaskID: task.ID, Token: token}, nil
+}
+
+func (s *Service) persistConfiguration(ctx context.Context, task models.AutomaticTask, updated bool, write func(context.Context) error) error {
+	if !capability.Active(ctx) {
+		return write(ctx)
+	}
+	return s.config.Transactions.Transaction(ctx, func(tx context.Context) error {
+		if err := write(tx); err != nil {
+			return err
+		}
+		data := map[string]any{"taskId": task.ID, "href": ruleReceipt(task.ID).Href, "name": task.Name}
+		if task.Trigger == constants.AutomaticTaskTriggerSchedule {
+			card := eventlog.AutomaticTaskReceipt{
+				TaskID: task.ID, Name: task.Name, Schedule: task.Schedule,
+				InstructionPreview: automaticInstructionPreview(task.Instruction),
+				Updated:            updated, Enabled: task.Enabled,
+			}
+			if task.WorkflowID != "" {
+				definition, _, err := s.config.Workflows.ReadTarget(tx, task.WorkflowID, task.WorkflowRevisionID)
+				if err != nil && (task.Enabled || !util.HasStatusCode(err, status_error.WorkflowNotFound)) {
+					return err
+				}
+				card.WorkflowName = definition.Title
+			} else {
+				waker, err := s.config.Wakers.Get(tx, task.WakerID)
+				if err != nil {
+					return err
+				}
+				card.WakerName = waker.Name
+			}
+			if task.NextRunAt != nil {
+				card.NextRunAt = *task.NextRunAt
+			}
+			data[constants.AutomaticTaskReceiptDataKey] = card
+		}
+		return capability.Commit(tx, data)
+	})
+}
+
+// automaticInstructionPreview 为原对话保留有界预览，任务详情持有完整指令。
+func automaticInstructionPreview(instruction string) string {
+	const maximumRunes = 300
+	count := 0
+	for position := range instruction {
+		if count == maximumRunes {
+			return strings.TrimSpace(instruction[:position]) + "…"
+		}
+		count++
+	}
+	return instruction
 }
 
 func (s *Service) validateConfiguration(ctx context.Context, wakerID string, config *models.AutomaticTaskConfiguration, resolved bool) error {

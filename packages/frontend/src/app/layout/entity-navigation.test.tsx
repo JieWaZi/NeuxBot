@@ -161,6 +161,7 @@ describe("EntityNavigation", () => {
         requestKinds: string[],
         runningChatCount: number,
         unreadMessageCount = 12,
+        mainConversationPending = false,
       ) => (
         <EntityNavigation
           collapsed={collapsed}
@@ -178,6 +179,7 @@ describe("EntityNavigation", () => {
                 executorId: "waker-1",
                 waitingWorkCount: requestKinds.length,
                 runningChatCount,
+                mainConversationPending,
                 unreadMessageCount,
                 ...(source === "主会话"
                   ? { requestKinds, chats: [] }
@@ -225,6 +227,15 @@ describe("EntityNavigation", () => {
       expect(
         view.container.querySelector("[data-avatar-attention]"),
       ).toBeNull();
+
+      if (source === "主会话") {
+        view.rerender(renderEntity([], 0, 0, true));
+        advanceAvatar();
+        expect(nativeMark("working")?.children).toHaveLength(3);
+        expect(
+          screen.getByRole("button", { name: "伙伴一，工作中" }),
+        ).toBeInTheDocument();
+      }
 
       view.rerender(renderEntity([], 0));
       advanceAvatar();

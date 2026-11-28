@@ -127,6 +127,18 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
     },
   }),
   listProjects: async () => ({ data: { resources: [] } }),
+  listAutomaticEventSources: async () => ({
+    data: {
+      resources: [
+        {
+          id: "github_pull_requests",
+          mode: "poll",
+          fields: ["repository", "kinds", "excludeDrafts"],
+          kinds: ["pull_opened", "pull_reviewed"],
+        },
+      ],
+    },
+  }),
   previewAutomaticSchedule: async () => ({
     data: { nextRuns: [Date.now() + 60000], runsIn24Hours: 1 },
   }),
@@ -154,6 +166,27 @@ beforeEach(() => {
 });
 
 afterEach(() => vi.unstubAllGlobals());
+
+it("新建监控复用定时任务入口", async () => {
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <TaskFormDialog
+        open
+        wakerId="waker-1"
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  await vi.dynamicImportSettled();
+  await screen.findByLabelText("任务名称");
+  expect(screen.queryByRole("radio", { name: "事件" })).not.toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "定时" })).toBeInTheDocument();
+});
 
 it("知识库周期入口预填每周维护计划且保存前不创建任务", async () => {
   const user = userEvent.setup();

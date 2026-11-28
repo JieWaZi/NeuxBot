@@ -116,7 +116,10 @@ func prepareChatAttachments(
 		inside := err == nil && relative != ".." &&
 			!strings.HasPrefix(relative, ".."+string(filepath.Separator)) &&
 			!filepath.IsAbs(relative)
-		if inside && !staged {
+		// A durable queued copy may already be inside the Chat, but its staging directory
+		// is released after handoff. Materialize an independent original for the accepted input.
+		queuedCopy := strings.HasPrefix(relative, constants.ChannelLeadInputAttachmentsDirectory+string(filepath.Separator))
+		if inside && !staged && !queuedCopy {
 			resolvedAttachments = append(resolvedAttachments, resolvedAttachment{
 				sourcePath:   resolved,
 				relativePath: relative,

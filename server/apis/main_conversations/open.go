@@ -2,6 +2,7 @@ package main_conversations
 
 import (
 	"context"
+	"sort"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -39,10 +40,24 @@ type MainConversationResponse struct {
 	Messages []MainConversationTimelineMessage `json:"messages"`
 	// 活跃工作
 	ActiveWork []models.MainConversationActivity `json:"activeWork"`
+	// 默认来源
+	DefaultSource *MainConversationSessionSource `json:"defaultSource,omitempty"`
+	// 已接纳但未进入工作记录的交办
+	PendingInputs []MainConversationQueuedInput `json:"pendingInputs,omitempty"`
 	// 更早记录
 	HasMore bool `json:"hasMore"`
 	// 上页游标
 	NextBeforeSequence int64 `json:"nextBeforeSequence,omitempty"`
+}
+
+// 工作来源续接配置
+type MainConversationSessionSource struct {
+	// 来源标识
+	ID string `json:"id"`
+	// 上次智能体
+	LastRuntimeID string `json:"lastRuntimeId"`
+	// 上次账号
+	LastAccountID string `json:"lastAccountId"`
 }
 
 // 主会话发言
@@ -105,6 +120,15 @@ func (g *GetMainConversation) Output(ctx *gin.Context) (interface{}, error) {
 			return err
 		}
 		messages, page.HasMore, page.ActiveWork = rows, more, active
+		if err := attachMainWorkflowRuns(tx, conversation.ID, messages); err != nil {
+			return err
+		}
+		if g.BeforeSequence == 0 && global.MainConversationInputQueue != nil {
+			page.PendingInputs, err = readPendingMainInputs(tx, conversation.ID, "", rows)
+			if err != nil {
+				return err
+			}
+		}
 		if more {
 			page.NextBeforeSequence = messages[0].Sequence
 		}
@@ -112,6 +136,11 @@ func (g *GetMainConversation) Output(ctx *gin.Context) (interface{}, error) {
 	})
 	if err != nil {
 		return nil, ginx.WithStack(err)
+	}
+	if g.BeforeSequence == 0 && global.ChatService != nil {
+		if err := markRunningMainWork(request, page.ActiveWork, global.ChatService.ReadExecution); err != nil {
+			return nil, ginx.WithStack(err)
+		}
 	}
 	questions, err := resolvedMainQuestions(request, conversation.ID, messages)
 	if err != nil {
@@ -132,6 +161,82 @@ func (g *GetMainConversation) Output(ctx *gin.Context) (interface{}, error) {
 		page.Messages = append(page.Messages, message)
 	}
 	return page, nil
+}
+
+func attachMainWorkflowRuns(ctx context.Context, conversationID string, rows []models.MainConversationMessage) error {
+	if global.WorkflowRunControllerManager == nil {
+		return nil
+	}
+	positions := make(map[string]int, len(rows))
+	var ids []string
+	for i, row := range rows {
+		if row.Role == string(constants.MessageRoleUser) && row.SourceChatID != "" {
+			positions[row.ID] = i
+			ids = append(ids, row.ID)
+		}
+	}
+	runs, err := global.WorkflowRunControllerManager.ListMainWorkflowRuns(ctx, conversationID, ids)
+	if err != nil {
+		return err
+	}
+	for _, run := range runs {
+		rows[positions[run.ConclusionReplyID]].WorkflowRun = &models.MainConversationWorkflowRun{DefinitionID: run.DefinitionID, RunID: run.ID}
+	}
+	return nil
+}
+
+func readPendingMainInputs(ctx context.Context, conversationID, source string, messages []models.MainConversationMessage) ([]MainConversationQueuedInput, error) {
+	const batchSize = 100
+	queue := global.MainConversationInputQueue
+	receipts, err := queue.ListFailed(ctx, conversationID, source, 0, 20)
+	if err != nil {
+		return nil, err
+	}
+	for after := int64(0); ; {
+		batch, err := queue.List(ctx, conversationID, source, after, batchSize)
+		if err != nil {
+			return nil, err
+		}
+		receipts = append(receipts, batch...)
+		if len(batch) < batchSize {
+			break
+		}
+		after = batch[len(batch)-1].Sequence
+	}
+	seen := make(map[string]struct{}, len(messages))
+	for _, row := range messages {
+		seen[row.ID] = struct{}{}
+	}
+	sort.Slice(receipts, func(i, j int) bool { return receipts[i].Sequence < receipts[j].Sequence })
+	inputs := make([]MainConversationQueuedInput, 0, len(receipts))
+	for _, receipt := range receipts {
+		if receipt.PrivateSource != (source != "") {
+			continue
+		}
+		if _, exists := seen[receipt.PublicMessageID]; !exists {
+			inputs = append(inputs, publicQueuedInput(receipt))
+		}
+	}
+	return inputs, nil
+}
+
+// markRunningMainWork 从来源日志核对主会话当前真正开始的交办。
+func markRunningMainWork(ctx context.Context, active []models.MainConversationActivity, read func(context.Context, string, string) (models.Execution, error)) error {
+	for i := range active {
+		work := &active[i]
+		if !work.FromMain || work.WaitingApproval || work.WaitingElicitation {
+			continue
+		}
+		state, err := read(ctx, work.WorkChatID, work.ExecutionID)
+		if isUnavailableSourceHistory(err) || util.HasStatusCode(err, status_error.ChatLogNativeOutcomePending) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		work.Running = state.ChatID == work.WorkChatID && state.ID == work.ExecutionID && state.Status == constants.ExecutionStatusRunning
+	}
+	return nil
 }
 
 func publicInputExecution(row models.MainConversationMessage) string {
@@ -214,7 +319,7 @@ func (m *MainConversationTimelineMessage) addUnansweredFailure(ctx context.Conte
 // timelineMessage 只读取接纳时在同一主会话内登记的原用户输入，内容缺失时仍提供公开摘要。
 func timelineMessage(ctx context.Context, row models.MainConversationMessage) (MainConversationTimelineMessage, error) {
 	result := MainConversationTimelineMessage{MainConversationMessage: row, Readable: row.IsReadablePublication()}
-	if result.Readable {
+	if result.Readable && !row.SourceReadOnly {
 		result.ForkExecutionID = row.SourceExecutionID
 	}
 	if row.Role != string(constants.MessageRoleUser) || row.SourceChatID == "" || row.SourceMessageID == "" {

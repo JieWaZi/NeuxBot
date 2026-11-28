@@ -13,6 +13,8 @@ import (
 
 // TaskView 展示配置和运行概览，不暴露密钥摘要。
 type TaskView struct {
+	// EventState 汇总事件规则最近的实际检查与已登记观察。
+	EventState *EventRuleView `json:"eventState,omitempty"`
 	// WorkflowInputContract 是任务参数来源派生的只读调用说明。
 	WorkflowInputContract *workflowinput.Contract `json:"workflowInputContract,omitempty"`
 	// ExecutorName 是当前伙伴或团队的产品展示名称。
@@ -65,7 +67,20 @@ func (s *Service) Get(ctx context.Context, wakerID, id string) (TaskView, error)
 	if err != nil {
 		return TaskView{}, err
 	}
-	return s.taskView(ctx, task)
+	return s.taskDetail(ctx, task)
+}
+
+func (s *Service) taskDetail(ctx context.Context, task models.AutomaticTask) (TaskView, error) {
+	view, err := s.taskView(ctx, task)
+	if err != nil || view.Event == nil || s.config.Events == nil {
+		return view, err
+	}
+	event, err := s.eventRuleView(ctx, view.AutomaticTask)
+	if err != nil {
+		return view, err
+	}
+	view.EventState = &event
+	return view, nil
 }
 
 func (s *Service) taskView(ctx context.Context, task models.AutomaticTask) (TaskView, error) {

@@ -5,19 +5,21 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/eventsource"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowinput "github.com/JieWaZi/NeuxBot/server/internal/workflow/input"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -27,6 +29,10 @@ import (
 
 // AdmissionCommand 提供所有入口共用的冻结机会接纳事实。
 type AdmissionCommand struct {
+	// EventObservationID 是已匹配的持久观察，使用测试样本时为空。
+	EventObservationID string
+	// SourceEvent 保存本次冻结的有界来源信息。
+	SourceEvent *eventsource.Event
 	// IntegrationInvocation 固定最初集成调用；不能通过任务正文自报。
 	IntegrationInvocation *models.IntegrationInvocation
 	// AcquireAuthorization 仅在原子领取机会时取得短授权锁，网络与 Runtime 调用前释放。
@@ -124,8 +130,14 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 	if err != nil {
 		return RunView{}, err
 	}
-	if task.ActiveRunID != "" && task.ActiveRunID != run.ID {
+	busy := task.ActiveRunID != "" && task.ActiveRunID != run.ID
+	queueWhenBusy := task.ReportDestination != "" && task.WorkflowID == "" &&
+		(source == constants.AutomaticRunSourceSchedule || source == constants.AutomaticRunSourceManual || source == constants.AutomaticRunSourceEventTest)
+	if busy && !queueWhenBusy {
 		return RunView{}, status_error.AutomaticTaskBusy
+	}
+	if busy && exists {
+		return s.ReadRun(ctx, run)
 	}
 	now := s.config.Now()
 	if source == constants.AutomaticRunSourceAPI && !exists && !s.rateAllowed(task.ID, now) {
@@ -136,6 +148,15 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 		run = models.AutomaticRun{ID: util.New(), TaskID: task.ID, WakerID: task.WakerID, OccurrenceKey: occurrence, RequestHash: hash, Input: input,
 			IntegrationInvocation: command.IntegrationInvocation, Source: source, Configuration: task.AutomaticTaskConfiguration, ConfigurationRevision: task.ConfigurationVersion,
 			ExecutionID: util.New(), Admission: constants.AutomaticRunAdmissionPending, ScheduledAt: scheduledAt, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
+		run.WorkflowPermissionsLimited = task.WorkflowPermissionsLimited
+		run.EventObservationID, run.SourceEvent = command.EventObservationID, command.SourceEvent
+		if source == constants.AutomaticRunSourceEventTest {
+			run.Configuration.ReportPolicy = constants.AutomaticReportPolicyAlways
+		}
+		if run.Configuration.ReportDestination != "" && run.Configuration.WorkflowID == "" {
+			run.ReportState = constants.AutomaticReportStatePending
+			run.ReportByAgent = true
+		}
 		if run.Configuration.WorkflowID != "" {
 			if s.config.Workflows == nil {
 				return RunView{}, status_error.WorkflowCapabilityUnsupported
@@ -181,6 +202,13 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 			}
 		}
 	}
+	if busy {
+		if configurationError != nil {
+			run.Admission = constants.AutomaticRunAdmissionFailed
+			run.ErrorCode = util.ErrorCode(configurationError, status_error.AutomaticTaskServiceInvalid.Key())
+		}
+		return s.queueReportRun(ctx, task, run, next)
+	}
 	if task.ActiveRunID == "" {
 		authorizationRelease := func() {}
 		if command.IntegrationInvocation != nil {
@@ -205,6 +233,9 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 			}
 			if !exists {
 				return s.config.Tasks.CreateRun(tx, run)
+			}
+			if run.AwaitingDispatch {
+				return s.config.Tasks.ClearReportRunQueue(tx, run.ID)
 			}
 			return nil
 		})
@@ -242,6 +273,20 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 	if input != "" {
 		content += "\n\nAdditional requirements for this invocation:\n" + input
 	}
+	work := execution.WorkInput{Actor: constants.AutomaticTaskActor, Content: content}
+	if run.ReportState == constants.AutomaticReportStatePending {
+		guidance := reportInstruction
+		if run.ReportByAgent {
+			guidance = "Check the task using its source data. Use conversations.messages.post (conversations_messages_post over MCP) once to send the report to the configured destination. " +
+				"Report a failed or inconclusive check. If the task conditions say not to notify, leave the result in the work record. The final chat answer is kept in the work record."
+			if run.Configuration.ReportPolicy == constants.AutomaticReportPolicyAlways {
+				guidance += " Send a report even when there is no change unless the task explicitly requires silence."
+			} else {
+				guidance += " After confirming that nothing meets the task's reporting condition, do not call the publishing tool."
+			}
+		}
+		work.ContextInstructions = []workinput.Instruction{{Name: "Automatic report", Content: guidance}}
+	}
 	var accepted execution.AcceptedExecution
 	var startErr error
 	if run.Configuration.ChannelID != "" {
@@ -251,7 +296,7 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 		}
 		ctx = locked
 		defer release()
-		accepted, run.ThreadID, startErr = s.startTeam(ctx, run, content)
+		accepted, run.ThreadID, startErr = s.startTeam(ctx, run, work)
 		if run.ThreadID != "" || util.HasStatusCode(startErr, status_error.CreateRequestInProgress) {
 			s.pendingTeamRuns[run.ID] = struct{}{}
 		}
@@ -259,8 +304,11 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 		intent := execution.WorkIntent{
 			AutomaticRunID: run.ID, ClientRequestID: run.ID, ExecutionID: run.ExecutionID, Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
 			Chat:    execution.ChatTarget{Create: &execution.CreateChatSpec{WakerID: run.WakerID, ProjectID: run.Configuration.ProjectID, WorkingDirectory: run.Configuration.WorkingDirectory, HiddenFromWakerHistory: true}},
-			Input:   execution.WorkInput{Actor: constants.AutomaticTaskActor, Content: content},
+			Input:   work,
 			Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: run.Configuration.RuntimeID, AccountID: run.Configuration.AccountID, Model: run.Configuration.Model, Reasoning: run.Configuration.Reasoning, Fast: run.Configuration.Fast, PermissionLevel: run.Configuration.PermissionLevel},
+		}
+		if run.Source == constants.AutomaticRunSourceEvent && s.config.BindEventWork != nil {
+			intent, startErr = s.config.BindEventWork(ctx, run, intent)
 		}
 		if run.Configuration.Knowledge != nil {
 			if s.config.BindKnowledge == nil {
@@ -329,6 +377,11 @@ func candidateChatID(run models.AutomaticRun) string {
 	return (requestidempotency.Identity{ID: run.ID}).ResourceID("chat", run.WakerID)
 }
 
+// EventRunChatID 返回真实事件首次执行的稳定候选会话。
+func EventRunChatID(run models.AutomaticRun) string {
+	return candidateChatID(run)
+}
+
 // ReconcileRun 按稳定派发身份补齐已提交收据，调用方不会重复创建执行。
 func (s *Service) ReconcileRun(ctx context.Context, run *models.AutomaticRun) error {
 	if run.Admission != constants.AutomaticRunAdmissionPending {
@@ -340,17 +393,42 @@ func (s *Service) ReconcileRun(ctx context.Context, run *models.AutomaticRun) er
 	if run.Configuration.ChannelID != "" {
 		return s.reconcileTeam(ctx, run)
 	}
-	state, err := s.config.Chats.ReadInitialExecution(ctx, candidateChatID(*run))
+	chatID := candidateChatID(*run)
+	if run.Source == constants.AutomaticRunSourceEvent && s.config.BindEventWork != nil {
+		if reader, ok := s.config.Chats.(interface {
+			ReadSubmission(context.Context, string, string) (*models.Execution, error)
+		}); ok {
+			execution, err := reader.ReadSubmission(ctx, chatID, run.ID)
+			if err != nil && !util.HasStatusCode(err, status_error.ChatNotFound) && !util.HasStatusCode(err, status_error.ExecutionNotFound) {
+				return err
+			}
+			if execution != nil {
+				if execution.ID != run.ExecutionID {
+					return status_error.AutomaticTaskServiceInvalid
+				}
+				return s.acceptReconciledChatRun(ctx, run, chatID)
+			}
+		}
+	}
+	state, err := s.config.Chats.ReadInitialExecution(ctx, chatID)
 	if util.HasStatusCode(err, status_error.ChatNotFound) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
+	if run.Source == constants.AutomaticRunSourceEvent && s.config.BindEventWork != nil && state.InitialExecution == nil {
+		// A tracked event can reserve its source before the first input commits.
+		return nil
+	}
 	if state.CreateRequestID != run.ID || state.InitialExecution == nil || state.InitialExecution.ID != run.ExecutionID {
 		return status_error.AutomaticTaskServiceInvalid
 	}
-	run.ChatID = state.Chat.ID
+	return s.acceptReconciledChatRun(ctx, run, state.Chat.ID)
+}
+
+func (s *Service) acceptReconciledChatRun(ctx context.Context, run *models.AutomaticRun, chatID string) error {
+	run.ChatID = chatID
 	run.Admission = constants.AutomaticRunAdmissionAccepted
 	run.UpdatedAt = s.config.Now().UnixMilli()
 	release, err := chatstorage.AcquireReferences(s.config.ManagedFilesDirectory, run.ChatID)
@@ -399,8 +477,8 @@ func (s *Service) rateAllowed(taskID string, now time.Time) bool {
 }
 
 // startTeam 复用团队首发的幂等、成员快照和负责人编排，不额外建立独立伙伴会话。
-func (s *Service) startTeam(ctx context.Context, run models.AutomaticRun, content string) (execution.AcceptedExecution, string, error) {
-	result, err := s.config.Teams.SubmitMessage(ctx, channelservice.SubmitMessageInput{Create: &channelservice.CreateThreadInput{ConfigurationResolved: true, AutomaticRunID: run.ID, ChannelID: run.Configuration.ChannelID, ClientRequestID: run.ID, ExecutionID: run.ExecutionID, ProjectID: run.Configuration.ProjectID, WorkingDirectory: run.Configuration.WorkingDirectory, MemberConfigs: teamMemberOverrides(run.Configuration), Input: execution.WorkInput{Actor: constants.AutomaticTaskActor, Content: content}}})
+func (s *Service) startTeam(ctx context.Context, run models.AutomaticRun, input execution.WorkInput) (execution.AcceptedExecution, string, error) {
+	result, err := s.config.Teams.SubmitMessage(ctx, channelservice.SubmitMessageInput{Create: &channelservice.CreateThreadInput{ConfigurationResolved: true, AutomaticRunID: run.ID, ChannelID: run.Configuration.ChannelID, ClientRequestID: run.ID, ExecutionID: run.ExecutionID, ProjectID: run.Configuration.ProjectID, WorkingDirectory: run.Configuration.WorkingDirectory, MemberConfigs: teamMemberOverrides(run.Configuration), Input: input}})
 	if err != nil {
 		return execution.AcceptedExecution{}, "", err
 	}
@@ -594,7 +672,17 @@ func candidateWorkflowRunID(run models.AutomaticRun) string {
 }
 
 func (s *Service) startWorkflow(ctx context.Context, run *models.AutomaticRun) error {
-	accepted, err := s.config.Workflows.StartRun(ctx, workflow.StartRunCommand{AutomaticRunID: run.ID, DefinitionID: run.Configuration.WorkflowID, RequestID: run.ID, RevisionID: run.Configuration.WorkflowRevisionID, Args: run.WorkflowResolvedArgs, Defaults: workflowDefaults(run.Configuration), TriggerSource: string(run.Source), InputFileOwnerKeyID: invocationOwner(run.IntegrationInvocation), InputFileTaskID: run.TaskID})
+	command := workflow.StartRunCommand{
+		AutomaticRunID: run.ID, DefinitionID: run.Configuration.WorkflowID, RequestID: run.ID,
+		RevisionID: run.Configuration.WorkflowRevisionID, Args: run.WorkflowResolvedArgs,
+		Defaults: workflowDefaults(run.Configuration), TriggerSource: string(run.Source),
+		InputFileOwnerKeyID: invocationOwner(run.IntegrationInvocation), InputFileTaskID: run.TaskID,
+		ConclusionRecipient: scheduledWorkflowReportRecipient(*run), LimitWorkerPermissions: run.WorkflowPermissionsLimited,
+	}
+	if command.ConclusionRecipient != nil {
+		command.ConclusionPolicy = run.Configuration.ReportPolicy
+	}
+	accepted, err := s.config.Workflows.StartRun(ctx, command)
 	if err != nil {
 		return err
 	}

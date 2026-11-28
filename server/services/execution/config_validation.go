@@ -112,3 +112,50 @@ func validateRuntimeAvailability(
 	}
 	return nil
 }
+
+// FreezeContinuationOptions resolves the existing Chat's local continuation defaults at durable enqueue.
+func FreezeContinuationOptions(ctx context.Context, service Service, chat models.Chat, hasPrevious bool, options WorkOptions) (WorkOptions, error) {
+	config := ExecutionConfiguration{Resolved: options.ConfigurationResolved, RuntimeID: options.RuntimeID,
+		AccountID: options.AccountID, Model: options.Model, Reasoning: options.Reasoning,
+		Fast: options.Fast, PermissionLevel: options.PermissionLevel}
+	if hasPrevious {
+		config, options.ContextWindow = inheritContinuationOptions(config, options.ContextWindow, chat)
+	}
+	config, err := service.ResolveConfiguration(ctx, config)
+	if err != nil {
+		return options, err
+	}
+	options.RuntimeID, options.AccountID, options.Model, options.Reasoning = config.RuntimeID, config.AccountID, config.Model, config.Reasoning
+	options.Fast, options.ConfigurationResolved = config.Fast, config.Resolved
+	return options, nil
+}
+
+func inheritContinuationOptions(config ExecutionConfiguration, contextWindow string, chat models.Chat) (ExecutionConfiguration, string) {
+	if config.Resolved || chat.LastRuntimeID != config.RuntimeID {
+		return config, contextWindow
+	}
+	lastAccountID := chat.LastAccountID
+	if lastAccountID == "" {
+		lastAccountID = constants.AiAccountSystemID
+	}
+	if config.AccountID == "" {
+		config.AccountID = lastAccountID
+	}
+	if config.AccountID != lastAccountID {
+		return config, contextWindow
+	}
+	if config.Model == "" {
+		config.Model = chat.LastModel
+	}
+	if config.Reasoning == "" && config.Model == chat.LastModel {
+		config.Reasoning = chat.LastReasoning
+	}
+	if config.Fast == nil {
+		config.Fast = chat.LastFast
+	}
+	if contextWindow == "" {
+		contextWindow = chat.LastContextWindow
+	}
+	config.Resolved = true
+	return config, contextWindow
+}

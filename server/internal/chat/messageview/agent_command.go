@@ -11,12 +11,18 @@ import (
 
 func (p *MessageViewBuilder) applyAgentCommand(record eventlog.Record) error {
 	var command eventlog.AgentCommandData
-	if json.Unmarshal(record.Data, &command) != nil || command.CommandID == "" || record.ExecutionID == "" {
+	if json.Unmarshal(record.Data, &command) != nil || command.CommandID == "" || command.Operation == "" || record.ExecutionID == "" {
+		return status_error.ChatLogCorrupted
+	}
+	switch command.Completion {
+	case constants.AgentCLICompletionImmediate, constants.AgentCLICompletionAccepted, constants.AgentCLICompletionCandidate:
+	default:
 		return status_error.ChatLogCorrupted
 	}
 	operation, exists := capability.Find(command.Operation)
 	if !exists || command.Completion != operation.Completion {
-		return status_error.ChatLogCorrupted
+		// 当前目录只用于补充业务标签。旧回执无法匹配时，保留原生工具展示。
+		return nil
 	}
 	if p.agentCommands[record.ExecutionID] == nil {
 		p.agentCommands[record.ExecutionID] = map[string]eventlog.AgentCommandData{}

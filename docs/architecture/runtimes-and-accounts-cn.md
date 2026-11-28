@@ -2,6 +2,8 @@
 
 ## Runtime 边界
 
+原生会话的热复用、冷恢复与替换条件见[会话身份、续接与恢复](conversation-lifecycle-cn.md)。
+
 普通聊天及通过 Execution 发起的团队、自动任务和 IM 使用 `Execution → ThreadLifecycle/Turn → ProviderRuntime → acp-go 原生 Client`。应用装配一个 ProviderRuntime 和一个 ThreadLifecycle；执行实现位于 `server/internal/agent`，ConversationStore 位于 `server/internal/chat/conversation`，均属于 server 主 Go 模块。
 
 Execution 拥有业务接纳、执行状态、工具授权与交付；ThreadLifecycle 拥有公开聊天的原生绑定、配置兼容与历史接力；Turn 拥有一次输入的准备、耐久接纳、提交和结算。ProviderRuntime 独占原生连接、账号及物化资源租约。失败关闭保留原所有者供重试，不能先释放仍被原生进程使用的凭据和文件。

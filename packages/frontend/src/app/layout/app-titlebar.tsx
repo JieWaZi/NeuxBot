@@ -40,6 +40,7 @@ export function useAppNavigationHistory({
     available(destination) &&
     (includeWorkSources ||
       (!destination.workChatId &&
+        !destination.recordMessageId &&
         !sameChatOwner(recorded.entries[recorded.index], destination)));
   const back = nearestEntityHistory(recorded, -1, reachable);
   const forward = nearestEntityHistory(recorded, 1, reachable);

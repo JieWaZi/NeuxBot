@@ -26,12 +26,14 @@ import {
   SceneChromeLayout,
   useSceneChromeAccessoryFullscreen,
 } from "@/shared/ui/scene-chrome-portal";
+import { useSceneTabMotion } from "@/shared/ui/use-scene-tab-motion";
 
 export type SceneTab = {
   id: string;
   label: string;
   icon?: LucideIcon;
   indicator?: ReactNode;
+  iconOnly?: boolean;
   description?: string;
   autoFocus?: boolean;
   closeable?: boolean;
@@ -79,6 +81,7 @@ export function SceneTabStrip({
   const draggedTabId = useRef("");
   const tabButtons = useRef(new Map<string, HTMLButtonElement>());
   const accessoryFullscreen = useSceneChromeAccessoryFullscreen();
+  const trackRef = useSceneTabMotion(!accessoryFullscreen);
 
   const focusTab = (index: number) => {
     const tab = tabs[index];
@@ -126,7 +129,7 @@ export function SceneTabStrip({
     <div
       key="tabs"
       className={cn(
-        "flex shrink-0 items-center gap-1",
+        "shell-header-tab-list flex shrink-0 items-center gap-1",
         tabs.length === 0 && "hidden",
         accessoryFullscreen && "hidden",
       )}
@@ -134,9 +137,15 @@ export function SceneTabStrip({
       role="tablist"
       aria-label={ariaLabel}
     >
+      <span
+        className="shell-header-tab-highlight"
+        data-scene-tab-highlight
+        aria-hidden="true"
+      />
       {tabs.map((tab, visibleIndex) => {
         const active = tab.id === activeTabId;
         const Icon = tab.icon;
+        const iconOnly = tab.iconOnly && !tab.notFound;
         const content = (
           <div
             key={tab.id}
@@ -163,6 +172,7 @@ export function SceneTabStrip({
             data-selected={active || undefined}
             data-invalid={tab.notFound || undefined}
             data-fixed={tab.fixed || undefined}
+            data-icon-only={iconOnly || undefined}
             data-scene-tab-item
             role="presentation"
           >
@@ -173,6 +183,7 @@ export function SceneTabStrip({
               }}
               type="button"
               role="tab"
+              aria-label={iconOnly ? tab.label : undefined}
               aria-selected={active}
               aria-description={
                 tab.notFound ? t("sceneTabs.notFound") : tab.description
@@ -208,7 +219,7 @@ export function SceneTabStrip({
                   />
                 ) : null))
               )}
-              {tab.notFound ? (
+              {iconOnly ? null : tab.notFound ? (
                 <span className="min-w-0 flex-1 truncate">{tab.label}</span>
               ) : (
                 <OverflowText className="min-w-0 flex-1">
@@ -234,14 +245,17 @@ export function SceneTabStrip({
         ) : (
           content
         );
-        const tabContent = tab.notFound ? (
-          <Tooltip key={tab.id}>
-            <TooltipTrigger asChild>{triggerContent}</TooltipTrigger>
-            <TooltipContent>{t("sceneTabs.notFound")}</TooltipContent>
-          </Tooltip>
-        ) : (
-          triggerContent
-        );
+        const tabContent =
+          tab.notFound || iconOnly ? (
+            <Tooltip key={tab.id}>
+              <TooltipTrigger asChild>{triggerContent}</TooltipTrigger>
+              <TooltipContent>
+                {tab.notFound ? t("sceneTabs.notFound") : tab.label}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            triggerContent
+          );
         return hasMenu ? (
           <ContextMenu key={tab.id}>
             {tabContent}
@@ -281,6 +295,7 @@ export function SceneTabStrip({
     >
       {!accessoryFullscreen ? (
         <div
+          ref={trackRef}
           className="shell-header-tab-track scrollbar-hidden flex min-w-0 items-center overflow-x-auto"
           data-scene-tab-scroll
         >

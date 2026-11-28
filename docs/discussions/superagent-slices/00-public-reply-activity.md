@@ -13,6 +13,8 @@
 
 主会话沿用一次发布对应一条公开消息的行为。首条答复和实际回合结束分开呈现。Nuphos 的双发帖用例在回合结束前保留活动提示，OpenBot 的自然模式在已有可见输出后收起通用文案，同时保留工作头像。OpenSuperAgent 的 Router 根据 Worker 的运行结果结算任务。NeuxBot 用已提交的公开发言控制等待文字，执行的结束仍由原生回合结算。运行状态、来源导航和跨页查询见[聊天与执行](../../architecture/chat-and-execution-cn.md#主会话和来源工作记录)。[Nuphos 双发帖用例](https://github.com/nuphos/nuphos/blob/83dce8394b14fc348c4e91ed664b96ed04ee75b1/scripts/e2e/channel-scenarios.ts#L143-L163) · [OpenBot 活动行](https://github.com/nightly-labs/openbot/blob/100c60e893eda3ce4761b4d10001a8e490c43536/packages/ui/src/features/conversation/AgentActivity.tsx#L78-L121) · [OpenSuperAgent 任务结算](https://github.com/kadaliao/open-super-agent/blob/e9722c7462cbf220ece4e03f74257cfc7d19962a/server/crates/osa/src/router.rs#L972-L1033)
 
+Router 的第一步准备说明在工作输入真正接纳后发出，使用一个固定回执，不计作完成结果。采集五条独立内容时，核实一条通过公开发言发一条；最终结算复用已有结论，不批量重发。只发准备说明就结束不算交付成功。[Nuphos 发言工具](https://github.com/nuphos/nuphos/blob/83dce8394b14fc348c4e91ed664b96ed04ee75b1/apps/backend/src/lib/claude-code-preview/preview-tools/channels.ts#L231-L245)
+
 ## 自动化验收记录
 
 - 隔离 Core 使用真实 HTTP 发送入口和可暂停的测试 CLI。分别在发言前、第一段提交后、第二段提交后暂停。两条发言均在回合结束前可读，重复投递返回原收据。单独读取只有用户交办的历史页，也能看到该轮已有答复。CLI 返回原生完成信号后，活动工作清空。

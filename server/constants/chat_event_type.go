@@ -23,12 +23,16 @@ const (
 	ChatEventTypeRetentionProtectionUpdated ChatEventType = "chat.retention_protection_updated"
 	// ChatEventTypeTitleUpdated 表示 Chat 标题已经更新。
 	ChatEventTypeTitleUpdated ChatEventType = "chat.title_updated"
+	// ChatEventTypeSourceModelSelected 表示用户已保存来源 Chat 的下轮模型。
+	ChatEventTypeSourceModelSelected ChatEventType = "chat.source_model_selected"
 	// ChatEventTypeUserMessageCreated 表示一条用户消息已经持久化。
 	ChatEventTypeUserMessageCreated ChatEventType = "message.user_created"
 	// ChatEventTypeExecutionCreated 表示一次执行已经建立。
 	ChatEventTypeExecutionCreated ChatEventType = "execution.created"
 	// ChatEventTypeExecutionStarted 表示一次执行已经启动 Runtime。
 	ChatEventTypeExecutionStarted ChatEventType = "execution.started"
+	// ChatEventTypeExecutionWatchdogStopRequested 记录宿主请求停止指定运行回合的巡检证据。
+	ChatEventTypeExecutionWatchdogStopRequested ChatEventType = "execution.watchdog_stop_requested"
 	// ChatEventTypeRuntimeEvent 表示仅用于实时投影、不会进入权威日志的 Runtime 增量。
 	ChatEventTypeRuntimeEvent ChatEventType = "runtime.event"
 	// ChatEventTypeApprovalRequested 表示 Runtime 正在等待用户审批安全操作。

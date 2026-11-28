@@ -112,6 +112,8 @@ type ChatComposerInputProps = {
   onOpenPlugin?: (pluginId: string) => void;
   pluginHrefPrefix?: string;
   onSend?: () => void;
+  /** 显式聊天命令在资源建议弹层打开时仍可按回车提交。 */
+  sendBeforeSuggestions?: boolean;
   codeReferenceRequest?: ChatCodeReference;
   onCodeReferencesChange?: (
     references: ChatCodeReference[],
@@ -465,6 +467,9 @@ function replaceWorkflowReference(
  * 使用 TipTap Mention 节点承载文件、Skill、MCP 和业务上下文引用。
  * Mention 是原子节点，因此正文与引用共享同一条编辑器文档，不会因 React 列表重排。
  */
+// TipTap 在初始化时固定扩展选项，按编辑器更新占位文字可保留原草稿和选区。
+const editorPlaceholders = new WeakMap<Editor, string>();
+
 export function ChatComposerInput({
   autoFocus = false,
   placeholder,
@@ -496,6 +501,7 @@ export function ChatComposerInput({
   onOpenPlugin,
   pluginHrefPrefix,
   onSend,
+  sendBeforeSuggestions,
   codeReferenceRequest,
   onCodeReferencesChange,
   contextReferences = noContextReferences,
@@ -525,6 +531,7 @@ export function ChatComposerInput({
     onMemberMentionChange,
     onValueChange,
     onSend,
+    sendBeforeSuggestions,
     onCodeReferencesChange,
     onContextReferencesChange,
   });
@@ -580,6 +587,7 @@ export function ChatComposerInput({
       onMemberMentionChange,
       onValueChange,
       onSend,
+      sendBeforeSuggestions,
       onCodeReferencesChange,
       onContextReferencesChange,
     };
@@ -624,6 +632,7 @@ export function ChatComposerInput({
     onMemberMentionChange,
     onOpenFile,
     onSend,
+    sendBeforeSuggestions,
     onSkillSelectionChange,
     onValueChange,
     onCodeReferencesChange,
@@ -950,7 +959,10 @@ export function ChatComposerInput({
         horizontalRule: false,
         dropcursor: false,
       }),
-      Placeholder.configure({ placeholder }),
+      Placeholder.configure({
+        placeholder: ({ editor }) =>
+          editorPlaceholders.get(editor) ?? placeholder,
+      }),
       Mention.extend({
         addAttributes() {
           return {
@@ -1122,7 +1134,11 @@ export function ChatComposerInput({
           editor?.commands.splitBlock();
           return true;
         }
-        if (view.dom.querySelector("[data-decoration-id]")) return false;
+        if (
+          !callbacksRef.current.sendBeforeSuggestions &&
+          view.dom.querySelector("[data-decoration-id]")
+        )
+          return false;
         event.preventDefault();
         if (callbacksRef.current.onSend) {
           callbacksRef.current.onSend();
@@ -1169,6 +1185,13 @@ export function ChatComposerInput({
       );
     },
   });
+
+  useLayoutEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    if (editorPlaceholders.get(editor) === placeholder) return;
+    editorPlaceholders.set(editor, placeholder);
+    editor.view.dispatch(editor.state.tr);
+  }, [editor, placeholder]);
 
   function syncDraft(nextEditor: Editor, syncContext: boolean) {
     const text = extractText(nextEditor);

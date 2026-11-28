@@ -89,6 +89,8 @@ type TerminalCommit struct {
 type Journal interface {
 	// ReadSubmission 读取指定输入身份的已接纳回执，缺失返回 nil。
 	ReadSubmission(context.Context, string, string) (*models.Execution, error)
+	// ReadExecution 按原执行索引读取指定回合的权威生命周期。
+	ReadExecution(context.Context, string, string) (models.Execution, error)
 	// ReadInitialExecution 读取首发身份及精确首次执行。
 	ReadInitialExecution(context.Context, string) (InitialExecutionState, error)
 	// ReadHistoryCandidates 按原索引定位最近成功执行与继承消息，不读取执行正文。
@@ -99,6 +101,8 @@ type Journal interface {
 	ReadReplyTarget(context.Context, string, string) (ReplyTarget, error)
 	// ReadSourceReplyTarget 读取获得主会话授权的隐藏工作记录内可引用的原消息。
 	ReadSourceReplyTarget(context.Context, string, string) (ReplyTarget, error)
+	// ReadWorkTicketReplyTarget 可引用已核验工单关联的仅附件或代码引用输入。
+	ReadWorkTicketReplyTarget(context.Context, string, string, bool) (ReplyTarget, error)
 	// ReadTeamReplyTarget 为负责人队列定位该对话中可引用的公开正文。
 	ReadTeamReplyTarget(context.Context, string, string, string) (ReplyTarget, error)
 	// ForkChat 创建独立原生会话并发布可恢复的继承历史。

@@ -37,7 +37,7 @@ export function ChatSessionTransitionDialog({
   onConfirm,
 }: {
   open: boolean;
-  reason: "switch" | "recovery";
+  reason: "switch" | "recovery" | "source-switch";
   models: SummaryOption[];
   reasoningOptions: Array<{ id: string; name: string }>;
   defaultModel: string;
@@ -46,6 +46,7 @@ export function ChatSessionTransitionDialog({
   onConfirm: (choice: SessionTransitionChoice) => void;
 }) {
   const { t } = useTranslation("chat");
+  const useSourceModel = reason === "source-switch";
   const [turns, setTurns] = useState(5);
   const [mode, setMode] = useState<SessionTransitionChoice["mode"]>("recent");
   const [summaryModel, setSummaryModel] = useState("");
@@ -65,7 +66,7 @@ export function ChatSessionTransitionDialog({
     Number.isInteger(turns) &&
     turns >= 1 &&
     turns <= 20 &&
-    (mode === "recent" || Boolean(model));
+    (mode === "recent" || useSourceModel || Boolean(model));
 
   const cancel = () => {
     setTurns(5);
@@ -82,7 +83,9 @@ export function ChatSessionTransitionDialog({
         description={t(
           reason === "recovery"
             ? "sessionRecoveryDescription"
-            : "sessionTransitionDescription",
+            : reason === "source-switch"
+              ? "sourceSessionTransitionDescription"
+              : "sessionTransitionDescription",
         )}
         size="sm"
       >
@@ -102,10 +105,12 @@ export function ChatSessionTransitionDialog({
             onValueChange={setMode}
           />
           {mode === "summary" ? (
+            <p className="text-muted-foreground type-caption">
+              {t("sessionTransitionSummaryHint")}
+            </p>
+          ) : null}
+          {mode === "summary" && !useSourceModel ? (
             <>
-              <p className="text-muted-foreground type-caption">
-                {t("sessionTransitionSummaryHint")}
-              </p>
               <label
                 className="type-body font-medium"
                 htmlFor="chat-summary-model"
@@ -191,8 +196,12 @@ export function ChatSessionTransitionDialog({
               onConfirm({
                 turns,
                 mode,
-                summaryModel: mode === "summary" ? model : "",
-                summaryReasoning: mode === "summary" ? selectedReasoning : "",
+                summaryModel:
+                  mode === "summary" && !useSourceModel ? model : "",
+                summaryReasoning:
+                  mode === "summary" && !useSourceModel
+                    ? selectedReasoning
+                    : "",
               });
               setTurns(5);
               setMode("recent");

@@ -7,6 +7,7 @@ import { SceneChromeActionsProvider } from "./scene-chrome-actions";
 import { i18n } from "@/shared/i18n";
 import fixedTabStyles from "@/shared/styles/fixed-scene-tab.css?raw";
 import sharedStyles from "@/shared/styles/index.css?raw";
+import motionStyles from "@/shared/styles/motion.css?raw";
 import {
   SceneChromePortalProvider,
   useSceneChromeAccessoryWidthSetter,
@@ -24,6 +25,106 @@ function AccessoryWidth({ side = "right" }: { side?: "left" | "right" }) {
 }
 
 describe("SceneTabStrip", () => {
+  it("选中底色与正文上沿相接，标签下沿平齐", () => {
+    const { container } = render(
+      <>
+        <style>
+          {sharedStyles.match(/^\.shell-header-tab-list \{[^}]+\}/m)?.[0]}
+          {sharedStyles.match(/^\.shell-header-tab-highlight \{[^}]+\}/m)?.[0]}
+        </style>
+        <SceneTabStrip
+          activeTabId="one"
+          ariaLabel="聊天标签"
+          tabs={[{ id: "one", label: "对话" }]}
+          onSelect={() => {}}
+          onClose={() => {}}
+        />
+      </>,
+    );
+    const highlight = container.querySelector("[data-scene-tab-highlight]");
+    if (!highlight) throw new Error("缺少选中底色");
+    expect(getComputedStyle(screen.getByRole("tablist")).alignSelf).toBe(
+      "stretch",
+    );
+    expect(getComputedStyle(highlight).bottom).toBe("0px");
+    expect(getComputedStyle(highlight).borderRadius).toBe(
+      "var(--scene-tab-top-radius) var(--scene-tab-top-radius) 0 0",
+    );
+  });
+
+  it("切换时移动同一块选中底色，关闭后剩余标签和加号向左滑入空位", () => {
+    // 测试 DOM 没有浏览器布局，以每项当前在列表中的顺序提供坐标。
+    const left = vi.spyOn(HTMLElement.prototype, "offsetLeft", "get");
+    const width = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get");
+    left.mockImplementation(function (this: HTMLElement) {
+      return (
+        Array.from(
+          this.closest("[data-scene-tab-scroll]")?.querySelectorAll(
+            "[data-scene-tab-item], [data-scene-tab-trailing]",
+          ) ?? [],
+        ).indexOf(this) * 144
+      );
+    });
+    width.mockReturnValue(140);
+    const slides = new Map<HTMLElement, Keyframe[]>();
+    const animate = vi.fn(function (this: HTMLElement, frames: Keyframe[]) {
+      slides.set(this, frames);
+      return { cancel() {} };
+    });
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: animate,
+    });
+    const tabs = [
+      { id: "one", label: "对话一", closeable: true },
+      { id: "two", label: "对话二", closeable: true },
+    ];
+    const onClose = vi.fn();
+    const strip = (activeTabId: string, visibleTabs = tabs) => (
+      <>
+        <style>{motionStyles.match(/^:root \{[^}]+\}/m)?.[0]}</style>
+        <SceneTabStrip
+          activeTabId={activeTabId}
+          ariaLabel="聊天标签"
+          tabs={visibleTabs}
+          onSelect={() => {}}
+          onClose={onClose}
+          trailing={<button>新增</button>}
+        />
+      </>
+    );
+    try {
+      const { container, rerender } = render(strip("one"));
+      const highlight = container.querySelector<HTMLElement>(
+        "[data-scene-tab-highlight]",
+      );
+      expect(highlight?.style.translate).toBe("0px");
+      rerender(strip("two"));
+      expect(
+        screen.getByRole("tab", { name: "对话二", selected: true }),
+      ).toBeVisible();
+      expect(container.querySelector("[data-scene-tab-highlight]")).toBe(
+        highlight,
+      );
+      expect(highlight?.style.translate).toBe("144px");
+      fireEvent.click(screen.getByRole("button", { name: "关闭 对话一" }));
+      expect(onClose).toHaveBeenCalledWith("one");
+      rerender(strip("two", tabs.slice(1)));
+      expect(screen.queryByRole("tab", { name: "对话一" })).toBeNull();
+      expect(highlight?.style.translate).toBe("0px");
+      const remaining = screen
+        .getByRole("tab", { name: "对话二" })
+        .closest<HTMLElement>("[data-scene-tab-item]");
+      const add = screen.getByRole("button", { name: "新增" }).parentElement;
+      expect(remaining && slides.get(remaining)?.[0]?.translate).toBe("144px");
+      expect(add && slides.get(add)?.[0]?.translate).toBe("144px");
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, "animate");
+      left.mockRestore();
+      width.mockRestore();
+    }
+  });
+
   it("固定伙伴按身份取宽，普通对话保留标准宽度并在窄栏按下限收缩", () => {
     const { container } = render(
       <TooltipProvider>

@@ -37,6 +37,8 @@ type workflowDependencies struct {
 	Projects controllers.ProjectController
 	// DataDirectory 拥有工作流的受管默认目录。
 	DataDirectory string
+	// CreateDefinition 复用管理入口与本地聊天的草稿创建。
+	CreateDefinition func(context.Context, workflow.CreateDefinitionCommand) (models.WorkflowDefinition, error)
 	// SaveSource 复用 HTTP 与 scoped MCP 共同使用的完整源码保存规则。
 	SaveSource func(context.Context, string, string, string, string, string) (workflowdsl.SaveReceipt, []workflowdsl.Diagnostic, error)
 	// RetryStart 复用多入口运行接纳并冻结来源运行的版本、参数与范围。
@@ -57,6 +59,7 @@ func dependencies() *workflowDependencies {
 		Wakers:           global.WakerControllerManager,
 		Projects:         global.ProjectControllerManager,
 		DataDirectory:    global.Config.ManagedFilesDirectory,
+		CreateDefinition: global.WorkflowService.CreateDefinition,
 		SaveSource: func(ctx context.Context, definitionID, requestID, expectedID, source, restoredFrom string) (workflowdsl.SaveReceipt, []workflowdsl.Diagnostic, error) {
 			return global.WorkflowService.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definitionID, RequestID: requestID, ExpectedRevisionID: expectedID, Source: source, SDK: constants.WorkflowSDKIdentifier, RestoredFromRevisionID: restoredFrom})
 		},

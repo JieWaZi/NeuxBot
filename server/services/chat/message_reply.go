@@ -25,7 +25,7 @@ type ReplyTarget struct {
 
 // ReadReplyTarget 读取普通或成员 Chat 中已提交的同一会话正文。
 func (m *service) ReadReplyTarget(ctx context.Context, chatID, messageID string) (ReplyTarget, error) {
-	return m.readReplyTarget(ctx, "", chatID, messageID, false)
+	return m.readReplyTarget(ctx, "", chatID, messageID, false, false)
 }
 
 // ReadTeamReplyTarget 读取团队对话已公开到负责人 Chat 的同一条消息。
@@ -33,15 +33,20 @@ func (m *service) ReadTeamReplyTarget(ctx context.Context, threadID, leadChatID,
 	if threadID == "" {
 		return ReplyTarget{}, status_error.ChatReplyTargetUnavailable
 	}
-	return m.readReplyTarget(ctx, threadID, leadChatID, messageID, false)
+	return m.readReplyTarget(ctx, threadID, leadChatID, messageID, false, false)
 }
 
 // ReadSourceReplyTarget 为已获主会话授权的工作记录读取同一来源中的引用。
 func (m *service) ReadSourceReplyTarget(ctx context.Context, chatID, messageID string) (ReplyTarget, error) {
-	return m.readReplyTarget(ctx, "", chatID, messageID, true)
+	return m.readReplyTarget(ctx, "", chatID, messageID, true, false)
 }
 
-func (m *service) readReplyTarget(ctx context.Context, threadID, chatID, messageID string, source bool) (ReplyTarget, error) {
+// ReadWorkTicketReplyTarget 读取调用方已经核验与工单关联的同一会话消息。
+func (m *service) ReadWorkTicketReplyTarget(ctx context.Context, chatID, messageID string, source bool) (ReplyTarget, error) {
+	return m.readReplyTarget(ctx, "", chatID, messageID, source, true)
+}
+
+func (m *service) readReplyTarget(ctx context.Context, threadID, chatID, messageID string, source, workTicket bool) (ReplyTarget, error) {
 	journal, ok := m.logStore.(*conversationJournal)
 	if !ok {
 		return ReplyTarget{}, status_error.ChatLogError
@@ -63,7 +68,7 @@ func (m *service) readReplyTarget(ctx context.Context, threadID, chatID, message
 	if err != nil {
 		return ReplyTarget{}, err
 	}
-	body := replyMessageBody(message)
+	body := replyMessageBody(message, workTicket)
 	role := constants.MessageRoleUnspecified
 	author := ""
 	priorTruncation := false
@@ -71,6 +76,9 @@ func (m *service) readReplyTarget(ctx context.Context, threadID, chatID, message
 		role = message.Role
 		if data.ThreadWorkspaceID != "" && role == constants.MessageRoleAssistant {
 			author = data.WakerID
+		}
+		if role == constants.MessageRoleAssistant && message.Actor == constants.WorkTicketReportActor {
+			author = message.SourceWakerID
 		}
 		if teamMain && role == constants.MessageRoleUser {
 			switch message.Actor {
@@ -106,14 +114,19 @@ func (m *service) readReplyTarget(ctx context.Context, threadID, chatID, message
 	}, nil
 }
 
-func replyMessageBody(message *messageview.Message) string {
-	if message == nil || message.CreatedSequence <= 0 || message.Question != nil ||
-		(message.SourceChatID != "" && !message.Inherited) {
+func replyMessageBody(message *messageview.Message, workTicket bool) string {
+	if message == nil || message.CreatedSequence <= 0 || message.Question != nil {
+		return ""
+	}
+	if message.Role == constants.MessageRoleAssistant && message.Actor == constants.WorkTicketReportActor {
+		return message.Content
+	}
+	if message.SourceChatID != "" && !message.Inherited {
 		return ""
 	}
 	if message.Role == constants.MessageRoleUser &&
 		(message.Actor == "" || message.Actor == string(constants.ChannelMessageActorUser)) {
-		if message.AttachmentOnly || message.CodeReferenceOnly {
+		if !workTicket && (message.AttachmentOnly || message.CodeReferenceOnly) {
 			return ""
 		}
 		return message.Content

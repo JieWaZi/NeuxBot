@@ -30,6 +30,7 @@ flowchart LR
 - Chat 保存消息权威日志与原生会话关联；Execution 管理接纳、执行、取消和失败恢复。
 - 普通聊天、团队、工作流、自动任务和 IM 共用 Execution 的单一 Runtime 端口；领域能力通过既有授权与资源端口注入，Session 不接管业务编排。
 - 主会话按伙伴或团队保存固定公开地址和独立发言。消息引用指向实际工作 Chat，数据和调用关系见[聊天与执行](chat-and-execution-cn.md#主会话和来源工作记录)。
+- 主会话、普通 Chat 和 CLI 原生会话的身份、重启后的续接、自动新建及日志诊断见[会话身份、续接与恢复](conversation-lifecycle-cn.md)。
 - ThreadLifecycle 拥有工作 Chat 的原生绑定、配置兼容与历史接力；Turn 分开记录输入接纳、原生执行、交付和持久化结果。ProviderRuntime 独占进程与实际租约，关闭失败保留同一所有者供重试。
 - 冷准备取得账号和物化资源，原生会话确认后才允许输入提交。热续聊只发送新增输入；原生替换使用现有最近五轮或总结接力。模型 setter 可热更新，进程权限或账号身份改变重新判断兼容。
 - `agent.Catalog` 保留安装、Profile 与程序定位。模型及 Thinking 查询通过独立 ProviderRuntime 目录连接，不启动模型 Prompt。软件能力与 botcli 继续使用原有共享模块。

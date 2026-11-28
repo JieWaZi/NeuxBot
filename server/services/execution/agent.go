@@ -35,6 +35,8 @@ type preparedAgentConnection struct {
 	cliExecutable string
 	// mcpOperations 是内部 MCP 公布的有序工具身份，用于原生历史兼容判断。
 	mcpOperations []string
+	// singleExecution 表示本连接的凭据只属于当前执行，不登记可被下一轮重绑的别名。
+	singleExecution bool
 	// activate 在业务接纳后启用本轮工具范围。
 	activate func()
 	// finish 在执行结束或准备失败时结束本轮工具范围。
@@ -115,6 +117,29 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 		}
 		bindings = append(bindings, capability.Bindings...)
 	}
+	hasAutomaticReport := false
+	if m.automaticReportBinding != nil && automaticRunID != "" &&
+		(request.allowedAgentDomains == nil || slices.Contains(*request.allowedAgentDomains, "conversations")) {
+		binding, err := m.automaticReportBinding(ctx, chat, executionID, automaticRunID)
+		if err != nil {
+			return preparedAgentConnection{}, err
+		}
+		if binding.Operation != "" {
+			hasAutomaticReport = true
+			bindings = append(bindings, binding)
+		}
+	}
+	if m.conversationRuleBindings != nil && request.message.Actor == string(constants.ChannelMessageActorUser) && request.automaticRunID == "" &&
+		(request.allowedAgentDomains == nil || slices.Contains(*request.allowedAgentDomains, "routine")) &&
+		(request.entryPoint == WorkbenchEntryPoint || request.entryPoint == ConversationRuleTeamEntryPoint ||
+			request.entryPoint == MainConversationEntryPoint || request.entryPoint == MainConversationSourceEntryPoint) {
+		selected := WorkOptions{
+			RuntimeID: request.runtime.RuntimeID, AccountID: request.runtime.AccountID,
+			Model: request.runtime.Model, Reasoning: request.runtime.Reasoning,
+			PermissionLevel: request.runtime.PermissionLevel, WorkspaceReadOnly: request.runtime.WorkspaceReadOnly,
+		}
+		bindings = append(bindings, m.conversationRuleBindings(ctx, chat, executionID, selected, request.entryPoint)...)
+	}
 	if workflow := request.workflowBinding.Capability; workflow != nil {
 		bindings = append(bindings, workflow.Bindings...)
 		if guidance := request.workflowBinding.DeveloperInstruction; guidance != "" {
@@ -151,16 +176,22 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 			bindings = append(bindings, question)
 		}
 	}
-	var hasWorkflowCapabilities, hasSkillManagement, hasConnectorManagement bool
+	var hasWorkflowCapabilities, hasSkillManagement, hasConnectorManagement, hasTicketReport, hasTicketDelegation, hasRoutineRules bool
 	for _, binding := range bindings {
 		if strings.HasPrefix(binding.Operation, "workflow.") {
 			hasWorkflowCapabilities = true
 		}
 		switch binding.Operation {
+		case capability.RuleCreate:
+			hasRoutineRules = true
 		case "skills.packages.revise":
 			hasSkillManagement = true
 		case "mcp.connectors.update":
 			hasConnectorManagement = true
+		case constants.WorkTicketReportOperation:
+			hasTicketReport = true
+		case constants.WorkTicketDelegateOperation:
+			hasTicketDelegation = true
 		}
 		if binding.Operation == "workflow.runs.start" && len(uploadedFiles) != 0 {
 			// 仅授权本轮已接纳的附件路径，附件父目录继续隔离。
@@ -173,10 +204,28 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 	}
 	supportsStdio, _ := agentapi.ConnectorCompatibility(baseRuntimeID, agentapi.ConnectorTransportStdio)
 	publicGuidance, hasPublicPost := mainConversationInstruction(bindings)
-	useMCP := (hasWorkflowCapabilities || hasPublicPost) && supportsStdio
+	useMCP := (hasWorkflowCapabilities || hasPublicPost || hasTicketReport || hasRoutineRules) && supportsStdio
 	*instructions = append(*instructions, agentapi.CapabilitiesInstructions(useMCP, binary, skill))
-	if hasPublicPost {
+	if hasAutomaticReport {
+		*instructions = append(*instructions, agentapi.Instruction{
+			Name: "Automatic task delivery",
+			Content: "Use conversations.messages.post (conversations_messages_post over MCP) for the task's one report to its configured destination. " +
+				"Follow the task's reporting conditions. Do not quote the task input. Retry uncertain delivery with the same requestId and content.",
+		})
+	} else if hasPublicPost {
 		*instructions = append(*instructions, publicGuidance)
+	}
+	if hasRoutineRules {
+		*instructions = append(*instructions, agentapi.Instruction{Name: "Automatic task rules", Content: "Use routine.rules for requested schedules. Read the routine.rules guide for recurring checks. For a complex subscription, reuse or create and save a workflow, then schedule its confirmed revision. Set changes_only when the user wants alerts only for changes. When confirmation is automatic, the app shows the saved schedule. Otherwise include the confirmed task href. Saving a schedule must not start a run."})
+	}
+	if hasTicketReport {
+		*instructions = append(*instructions, workTicketReportInstruction(useMCP, hasPublicPost))
+	}
+	if hasTicketDelegation {
+		*instructions = append(*instructions, agentapi.Instruction{Name: "Delegated work", Content: "When a local partner or team is explicitly requested, delegate using work.tickets.delegate (work_tickets_delegate over MCP) with its known subject identity and the relevant text. " +
+			"Use work.tickets.results with a report identity to read the complete report from a direct child. When required results are pending, end this turn. The host will resume you for a child question or when required results are ready. " +
+			"For a waiting work report you can answer, call work.tickets.reply (work_tickets_reply over MCP) with the report identity and answer. " +
+			"Use the evidence from the direct results when completing your original ticket."})
 	}
 	if guidance, ok := agentapi.ResourceManagementInstructions(hasSkillManagement, hasConnectorManagement); ok {
 		*instructions = append(*instructions, guidance)
@@ -207,8 +256,11 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 		slices.Sort(mcpOperations)
 		identity = append(identity, mcpOperations...)
 	}
+	if hasTicketReport {
+		identity = append(identity, executionID)
+	}
 	key := agentIdentity(strings.Join(identity, "\x00"))
-	path, activate, finish, err := m.agent.PrepareConnection(filepath.Join(root, constants.AgentCLIContextDirectory), key, m.agentEndpoint, capability.GrantSpec{Lifecycle: executionContext, ExecutionID: executionID, SharedLocalToken: request.localWorkflowTools, Bindings: bindings, FileRoots: roots, FilePaths: requestReferencedFiles, ManagedSpace: workspace.Path, Record: func(ctx context.Context, op capability.Operation, result capability.Result) error {
+	path, activate, finish, err := m.agent.PrepareConnection(filepath.Join(root, constants.AgentCLIContextDirectory), key, m.agentEndpoint, capability.GrantSpec{Lifecycle: executionContext, ExecutionID: executionID, SharedLocalToken: request.localWorkflowTools, SingleExecution: hasTicketReport, Bindings: bindings, FileRoots: roots, FilePaths: requestReferencedFiles, ManagedSpace: workspace.Path, Record: func(ctx context.Context, op capability.Operation, result capability.Result) error {
 		fact := eventlog.AgentCommandData{CommandID: result.CommandID, Operation: op.ID, Completion: op.Completion}
 		_, err := m.journal.AppendExecutionFacts(ctx, chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeAgentCommandCommitted,
 			ExecutionID: executionID, InvocationID: executionID, Data: marshalData(fact)}})
@@ -235,8 +287,9 @@ func (m *service) prepareAgent(ctx, executionContext context.Context, environmen
 		*connectors = append(*connectors, agentapi.ConnectorDeclaration{ID: "neuxbot-internal-capabilities", Name: "NeuxBot", RuntimeKey: "bot_capabilities", Transport: agentapi.ConnectorTransportStdio, Command: binary, Arguments: []string{"mcp", "serve", "--context", path}})
 	}
 
-	prepared := preparedAgentConnection{mcpOperations: mcpOperations, activate: activate, finish: finish}
-	if !useMCP {
+	prepared := preparedAgentConnection{mcpOperations: mcpOperations, singleExecution: hasTicketReport, activate: activate, finish: finish}
+	// 工单的进程随本轮连接重新装配，原生会话的兼容字段仍由原工具集合决定。
+	if !useMCP || hasTicketReport {
 		prepared.cliContextFile = path
 		prepared.cliExecutable = binary
 	}

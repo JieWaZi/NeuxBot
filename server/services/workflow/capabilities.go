@@ -584,7 +584,7 @@ func (s *Service) resourceItemsPage(ctx context.Context, definitionID, kind, cur
 				return nil, status_error.BadRequest
 			}
 		}
-		values, err := s.store.ListDefinitions(ctx, "", position.UpdatedAt, position.ID, limit+1, 0, nil)
+		values, err := s.store.ListDefinitions(ctx, "", position.UpdatedAt, position.ID, limit+1, 0, nil, "")
 		if err != nil {
 			return nil, err
 		}

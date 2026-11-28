@@ -23,14 +23,15 @@ export type ChatMessageView = {
   readonly message: BotChatMessage;
   readonly segments: readonly ChatMessageSegment[];
   readonly activity: CompanionActivity;
+  readonly sourceWork?: boolean;
 };
 
-/** 来源结果使用公开存档的正文，原生文本和工具仍可在工作过程中展开查看。 */
+/** 来源工作优先原生结果，缺少结尾时才展示本轮确实发出的公开正文。 */
 export function segmentsWithPublishedResult(
   view: ChatMessageView,
 ): readonly ChatMessageSegment[] {
   const published = view.message.publishedResultParts;
-  if (!published?.length) return view.segments;
+  if (!published?.length || hasNativeWorkResult(view)) return view.segments;
   const publishedText = new Set(published.map((part) => part.text?.trim()));
   const process = view.segments
     .flatMap((segment) => ("kind" in segment ? segment.nodes : [segment]))
@@ -55,6 +56,15 @@ export function segmentsWithPublishedResult(
     },
     ...result,
   ];
+}
+
+function hasNativeWorkResult(view: ChatMessageView): boolean {
+  return (
+    view.message.status === "completed" &&
+    view.segments.some(
+      (segment) => !("kind" in segment) && segment.part.type === "text",
+    )
+  );
 }
 
 /** 领域事件随消息历史窗口呈现，避免把未加载的旧委派挤到最新一页。 */
@@ -141,6 +151,7 @@ export class ChatMessageProjection {
       inspect?: () => void;
     },
     private readonly scope = "",
+    private readonly source = false,
   ) {}
   update(messages: readonly BotChatMessage[]): readonly ChatMessageView[] {
     // 接纳回执已把临时 ID 换成权威 ID，后续快照未必继续携带 submissionId。
@@ -180,6 +191,13 @@ export class ChatMessageProjection {
     previous?: ChatMessageView,
   ): ChatMessageView {
     const completed = message.status === "completed";
+    const sourceWork = Boolean(
+      this.source &&
+      message.role === "assistant" &&
+      !message.question &&
+      !message.inherited &&
+      message.executionId,
+    );
     if (previous && completed === (previous.message.status === "completed")) {
       if (message.displayParts === previous.message.displayParts) {
         const view = {
@@ -234,9 +252,22 @@ export class ChatMessageProjection {
       return [{ key: nodeKey, part }];
     });
     // 部分 CLI 把进度当作正文发出。完成时仅把最后连续的一段正文留在过程外。
-    const finalTextEnd = completed
-      ? parts.findLastIndex((node) => node.part.type === "text") + 1
-      : 0;
+    let finalTextEnd = 0;
+    if (completed && sourceWork) {
+      const deliveryId = `${message.id}:delivery`;
+      const lastNativeIndex = parts.findLastIndex(
+        ({ part }) => part.id !== deliveryId,
+      );
+      if (parts[lastNativeIndex]?.part.type === "text") {
+        finalTextEnd = lastNativeIndex + 1;
+      } else if (!message.publishedResultParts?.length) {
+        finalTextEnd =
+          parts.findLastIndex(({ part }) => part.id === deliveryId) + 1;
+      }
+    } else if (completed) {
+      finalTextEnd =
+        parts.findLastIndex((node) => node.part.type === "text") + 1;
+    }
     let finalTextStart = finalTextEnd;
     while (parts[finalTextStart - 1]?.part.type === "text") finalTextStart--;
 
@@ -292,6 +323,7 @@ export class ChatMessageProjection {
     const view: ChatMessageView = {
       key,
       message,
+      sourceWork,
       activity: messageCompanionActivity({ ...message, isLast: true }),
       segments:
         previous && equalEntries(previous.segments, segments)

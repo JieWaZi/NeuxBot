@@ -26,6 +26,8 @@ type CreateChatRequest struct {
 	WorkingDirectory string `json:"workingDirectory" validate:"max=4096"`
 	// 档案优化首发
 	OptimizeProfile bool `json:"optimizeProfile,omitempty"`
+	// 创建工单
+	StartWork bool `json:"startWork,omitempty"`
 	// 首条消息
 	MessageRequest
 }
@@ -53,6 +55,8 @@ func (c *CreateChat) Validate(*gin.Context) error {
 
 // Output 调用 Chat 首发用例并返回启动后的对话和执行标识。
 // [MessageAttachmentInvalid][40000000017][消息附件不合法或不可读取]
+// @err[WorkTicketCannotContinue][40900007211][工单当前无法继续]
+// @err[WorkTicketAttemptUnavailable][40900007212][这轮执行已无权更新工单]
 func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
 	input, options := c.Body.MessageRequest.WorkInput()
 	if c.Body.OptimizeProfile {
@@ -70,6 +74,7 @@ func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
 			WorkingDirectory:    strings.TrimSpace(c.Body.WorkingDirectory),
 		}},
 		Input:     input,
+		Ticket:    execution.WorkTicketInput{Start: c.Body.StartWork},
 		Options:   options,
 		Admission: constants.ExecutionAdmissionCommitOnRuntimeAccept,
 		ClaimAttachments: func(attachments []execution.AttachmentInput) (func(bool), error) {

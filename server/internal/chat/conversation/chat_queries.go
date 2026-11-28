@@ -274,6 +274,27 @@ func readSelected(ctx context.Context, r chatReader, rows []rowIndex) ([]agent.C
 	return result, nil
 }
 
+// ReadSourceModelChanges locates picker facts independently of chat bodies.
+func (s *Store) ReadSourceModelChanges(ctx context.Context, chatID string, from, before int64, limit int) ([]agent.ConversationRecord, error) {
+	reader, err := s.openChat(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.close()
+	var positions []rowIndex
+	err = reader.index.query(func(db *gorm.DB) error {
+		query := db.Where("stream = ? AND kind = "+strconv.Itoa(int(indexSourceModelChanged))+" AND cursor >= ?", reader.index.coverage.Stream, from)
+		if before > 0 {
+			query = query.Where("cursor < ?", before)
+		}
+		return query.Order("cursor DESC").Limit(limit).Find(&positions).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return readSelected(ctx, reader, positions)
+}
+
 // ReadNativeResultMetadata reads canonical terminal evidence without loading its body.
 func (s *Store) ReadNativeResultMetadata(ctx context.Context, key agent.NativeResultKey) (agent.NativeResult, error) {
 	terminal, err := s.readNativeTerminal(ctx, key)

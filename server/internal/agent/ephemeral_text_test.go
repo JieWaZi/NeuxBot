@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestEphemeralClaudeLaunchAlwaysDisablesNativeHistory(t *testing.T) {
@@ -38,12 +39,35 @@ func TestEphemeralScratchCanBeCreatedAfterStartupRecovery(t *testing.T) {
 		return AccountRequest{}, stop
 	}
 	lifecycle := NewThreadLifecycle(NewProviderRuntime(ProviderRuntimeOptions{}), nil)
-	_, err := lifecycle.prepareDetached(t.Context(), ThreadRequest{}, TurnRequest{}, TurnPorts{}, expectResolution, root)
+	_, err := lifecycle.prepareDetached(t.Context(), ThreadRequest{}, TurnRequest{}, TurnPorts{}, expectResolution, root, nil)
 	if !errors.Is(err, stop) {
 		t.Fatalf("request could not prepare its scratch root: %v", err)
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("failed preparation left scratch entries: %v, %v", entries, err)
+	}
+}
+
+func TestContinuedTextIdleDeadlineOnlyRetiresTheCapturedIdleSeat(t *testing.T) {
+	lifecycle := NewThreadLifecycle(NewProviderRuntime(ProviderRuntimeOptions{}), nil)
+	owner := &threadState{id: "text:owner", textSession: "owner", textIdleGeneration: 2}
+	timer := time.NewTimer(time.Hour)
+	owner.textIdle = timer
+	t.Cleanup(func() { timer.Stop() })
+	lifecycle.threads[owner.id] = owner
+	lifecycle.expireTextThread(owner, 1)
+	if lifecycle.threads[owner.id] != owner || owner.closing {
+		t.Fatal("an older deadline retired the current owner")
+	}
+	owner.active = &Turn{}
+	lifecycle.expireTextThread(owner, 2)
+	if lifecycle.threads[owner.id] != owner || owner.closing {
+		t.Fatal("the idle deadline retired an active turn")
+	}
+	owner.active = nil
+	lifecycle.expireTextThread(owner, 2)
+	if lifecycle.threads[owner.id] != nil {
+		t.Fatal("the current idle owner remained indexed")
 	}
 }

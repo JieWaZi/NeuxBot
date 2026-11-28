@@ -32,7 +32,7 @@ type ListAutomaticTasks struct {
 	// 查询参数
 	Query string `in:"query" name:"query"`
 	// 查询参数
-	Trigger constants.AutomaticTaskTrigger `in:"query" name:"trigger" validate:"omitempty,oneof=schedule api"`
+	Trigger constants.AutomaticTaskTrigger `in:"query" name:"trigger" validate:"omitempty,oneof=schedule api event"`
 	// 启停状态
 	Enabled *bool `in:"query" name:"enabled"`
 	// 页码

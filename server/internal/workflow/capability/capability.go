@@ -75,6 +75,8 @@ type Scope struct {
 	ExecutionID string
 	// LocalChatID 标识使用共享工作流工具的本地交互对话。
 	LocalChatID string
+	// MainWakerID 限定主会话来源的创作工具只能访问本伙伴工作流。
+	MainWakerID string
 	// DefaultWorkflowID 是界面当前工作流或用户引用的默认目标。
 	DefaultWorkflowID string
 	// Selection 固定用户通过聊天引用选择的工作流版本。

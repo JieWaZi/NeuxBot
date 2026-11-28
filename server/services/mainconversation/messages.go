@@ -2,23 +2,18 @@ package mainconversation
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func publicMessageID(parts ...string) string {
-	// 字符串数组的 JSON 边界可区分任意调用键和用户输入中的分隔符。
-	data, _ := json.Marshal(parts)
-	digest := sha256.Sum256(data)
-	return hex.EncodeToString(digest[:16])
+	return models.MainConversationMessageID(parts...)
 }
 
 // RemoveMessage 只改变当前主体主会话中的消息可见性。
@@ -52,30 +47,28 @@ func (s *Service) Messages(ctx context.Context, conversationID string, before in
 
 // AdmitUser 预留提交键并在来源日志确认接纳后公开交办。
 func (s *Service) AdmitUser(ctx context.Context, kind, id, requestID, content, replyID, chatID, sourceExecutionID, sourceMessageID, requestedDirectory, inputDigest string, commit func(context.Context) error) (msg models.MainConversationMessage, err error) {
-	if strings.TrimSpace(requestID) == "" || strings.TrimSpace(content) == "" || commit == nil {
+	return s.admitUser(ctx, kind, id, models.MainConversationMessage{
+		AdmissionSubmissionID: requestID, Content: content, ReplyToMessageID: replyID, SourceChatID: chatID,
+		SourceExecutionID: sourceExecutionID, SourceMessageID: sourceMessageID, RequestedDirectory: requestedDirectory, InputDigest: inputDigest,
+	}, func(tx context.Context) (string, error) {
+		work, err := s.Source(tx, kind, id, chatID)
+		return work.ConversationID, err
+	}, commit)
+}
+
+func (s *Service) admitUser(ctx context.Context, kind, id string, msg models.MainConversationMessage, authorize func(context.Context) (string, error), commit func(context.Context) error) (models.MainConversationMessage, error) {
+	if strings.TrimSpace(msg.AdmissionSubmissionID) == "" || strings.TrimSpace(msg.Content) == "" || commit == nil {
 		return msg, status_error.BadRequest
 	}
-	err = s.tx.Transaction(ctx, func(tx context.Context) error {
-		w, e := s.Source(tx, kind, id, chatID)
-		if e != nil {
-			return e
+	err := s.tx.Transaction(ctx, func(tx context.Context) error {
+		conversationID, err := authorize(tx)
+		if err != nil {
+			return err
 		}
-		msg = models.MainConversationMessage{
-			ID:                    UserMessageID(w.ConversationID, requestID),
-			ConversationID:        w.ConversationID,
-			Role:                  string(constants.MessageRoleUser),
-			AdmissionPending:      true,
-			AdmissionSubmissionID: requestID,
-			Content:               content,
-			ReplyToMessageID:      replyID,
-			SourceChatID:          chatID,
-			SourceMessageID:       sourceMessageID,
-			SourceExecutionID:     sourceExecutionID,
-			RequestedDirectory:    requestedDirectory,
-			InputDigest:           inputDigest,
-		}
-		msg, _, e = s.append(tx, msg, kind, id)
-		return e
+		msg.ID = UserMessageID(conversationID, msg.AdmissionSubmissionID)
+		msg.ConversationID, msg.Role, msg.AdmissionPending = conversationID, string(constants.MessageRoleUser), true
+		msg, _, err = s.append(tx, msg, kind, id)
+		return err
 	})
 	if err != nil {
 		return msg, err
@@ -164,8 +157,36 @@ func (s *Service) Published(ctx context.Context, chatID, executionID, callKey st
 	return
 }
 
+// AcknowledgeDispatch 发布已接纳交办的 Router 准备说明，不代替执行回报。
+func (s *Service) AcknowledgeDispatch(ctx context.Context, chatID, executionID, publicInputID, text string) {
+	if text == "" {
+		return
+	}
+	// Reserve an internal receipt key so the model cannot collide with this post.
+	if _, _, err := s.PublishWithReceipt(context.WithoutCancel(ctx), chatID, executionID, models.MainConversationDispatchAcknowledgmentKey, text, publicInputID); err != nil {
+		logx.Warn("main_conversation_dispatch_ack: ", err)
+	}
+}
+
 // PublishWithReceipt 在同一次持久提交中区分首次发送和同键重投。
 func (s *Service) PublishWithReceipt(ctx context.Context, chatID, executionID, callKey, content, replyID string) (msg models.MainConversationMessage, replay bool, err error) {
+	return s.publish(ctx, chatID, executionID, callKey, content, replyID, false, false)
+}
+
+// PublishQuotedWithReceipt 发布显式引用宿主绑定输入的发言。
+func (s *Service) PublishQuotedWithReceipt(ctx context.Context, chatID, executionID, callKey, content, replyID string) (models.MainConversationMessage, bool, error) {
+	if replyID == "" {
+		return models.MainConversationMessage{}, false, status_error.ChatReplyTargetUnavailable
+	}
+	return s.publish(ctx, chatID, executionID, callKey, content, replyID, true, false)
+}
+
+// PublishReportWithReceipt 向已有交付正文关联工单报告，或提交一条新的公开消息。
+func (s *Service) PublishReportWithReceipt(ctx context.Context, chatID, executionID, callKey, content, replyID string) (models.MainConversationMessage, bool, error) {
+	return s.publish(ctx, chatID, executionID, callKey, content, replyID, false, true)
+}
+
+func (s *Service) publish(ctx context.Context, chatID, executionID, callKey, content, replyID string, quoteReply, reuseBody bool) (msg models.MainConversationMessage, replay bool, err error) {
 	if strings.TrimSpace(executionID) == "" || strings.TrimSpace(callKey) == "" || strings.TrimSpace(content) == "" {
 		return msg, false, status_error.BadRequest
 	}
@@ -174,15 +195,28 @@ func (s *Service) PublishWithReceipt(ctx context.Context, chatID, executionID, c
 		if e != nil {
 			return e
 		}
+		if reuseBody {
+			msg, e = s.store.FindPublishedBody(tx, conv.ID, chatID, executionID, content)
+			if e != nil || msg.ID != "" {
+				replay = msg.ID != ""
+				return e
+			}
+		}
 		msg = models.MainConversationMessage{
 			ID:                publicMessageID("assistant", conv.ID, chatID, executionID, callKey),
 			ConversationID:    conv.ID,
-			Role:              "assistant",
+			Role:              string(constants.MessageRoleAssistant),
 			Content:           content,
 			ReplyToMessageID:  replyID,
+			QuoteRequested:    quoteReply,
 			SourceChatID:      chatID,
 			SourceExecutionID: executionID,
 			SourceWakerID:     w.WakerID,
+		}
+		// 重投先返回原收据，避免重新确认交办或按变化后的时间线决定引用。
+		if saved, found, err := s.store.FindAppendReceipt(tx, msg); err != nil || found {
+			msg, replay = saved, found
+			return err
 		}
 		msg, replay, e = s.append(tx, msg, conv.SubjectType, conv.SubjectID)
 		return e
@@ -193,39 +227,47 @@ func (s *Service) PublishWithReceipt(ctx context.Context, chatID, executionID, c
 func (s *Service) append(ctx context.Context, msg models.MainConversationMessage, kind, id string) (models.MainConversationMessage, bool, error) {
 	if msg.IsReadablePublication() && msg.ReplyToMessageID != "" {
 		// 原执行发言前先补齐对应交办，同一事务内保持提问先于答复。
-		if err := s.validateReply(ctx, msg); err != nil {
+		origin, err := s.validateReply(ctx, msg)
+		if err != nil {
 			return models.MainConversationMessage{}, false, err
+		}
+		if msg.QuoteRequested && origin.RemovedAt == 0 {
+			msg.QuoteReply, err = s.store.HasVisibleMessageAfter(ctx, msg.ConversationID, origin.Sequence)
+			if err != nil {
+				return models.MainConversationMessage{}, false, err
+			}
 		}
 	}
 	saved, replay, err := s.store.Append(ctx, msg, kind, id)
 	if err != nil || replay || saved.IsReadablePublication() || saved.ReplyToMessageID == "" {
 		return saved, replay, err
 	}
-	if err := s.validateReply(ctx, saved); err != nil {
+	if _, err := s.validateReply(ctx, saved); err != nil {
 		return models.MainConversationMessage{}, false, err
 	}
 	return saved, false, nil
 }
 
-func (s *Service) validateReply(ctx context.Context, message models.MainConversationMessage) error {
+func (s *Service) validateReply(ctx context.Context, message models.MainConversationMessage) (models.MainConversationMessage, error) {
 	if message.ID == message.ReplyToMessageID {
-		return status_error.ChatReplyTargetUnavailable
+		return models.MainConversationMessage{}, status_error.ChatReplyTargetUnavailable
 	}
 	origin, err := s.store.Message(ctx, message.ConversationID, message.ReplyToMessageID)
 	if err != nil {
-		return err
+		return origin, err
 	}
-	// 回复沿用原工作来源，不能借引用跨项目派发或公开未接纳的交办。
-	if origin.SourceChatID != message.SourceChatID || (message.Role == string(constants.MessageRoleUser) && origin.RemovedAt != 0) {
-		return status_error.ChatReplyTargetUnavailable
+	// 有来源的回复沿用原范围，无来源的公开回复可作为新交办的上下文。
+	userReply := message.Role == string(constants.MessageRoleUser)
+	transferredReply := userReply && message.SourceReadOnly
+	if (!transferredReply && origin.SourceChatID != message.SourceChatID && (!userReply || origin.SourceChatID != "")) || (userReply && origin.RemovedAt != 0) {
+		return origin, status_error.ChatReplyTargetUnavailable
 	}
 	if !origin.AdmissionPending {
-		return nil
+		return origin, nil
 	}
 	if !message.IsReadablePublication() || origin.SourceExecutionID != message.SourceExecutionID {
-		return status_error.ChatReplyTargetUnavailable
+		return origin, status_error.ChatReplyTargetUnavailable
 	}
 	// 到达领域发布端口的同一执行已经过宿主回合授权。
-	_, err = s.store.ConfirmUserAdmission(ctx, origin.ConversationID, origin.ID)
-	return err
+	return s.store.ConfirmUserAdmission(ctx, origin.ConversationID, origin.ID)
 }

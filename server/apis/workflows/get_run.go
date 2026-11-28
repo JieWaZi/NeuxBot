@@ -70,11 +70,21 @@ type WorkflowRunResponse struct {
 	UpdatedAt int64 `json:"updatedAt"`
 	// 触发来源
 	TriggerSource string `json:"triggerSource"`
+	// 结论投递
+	Conclusion *WorkflowConclusionReceipt `json:"conclusion,omitempty"`
+}
+
+// 整图结论投递收据
+type WorkflowConclusionReceipt struct {
+	// 结算时间
+	SettledAt *int64 `json:"settledAt,omitempty"`
+	// 投递失败码
+	ErrorCode string `json:"errorCode,omitempty"`
 }
 
 func workflowRunResponse(run models.WorkflowRun) WorkflowRunResponse {
 	triggerSource, _ := run.Context["triggerSource"].(string)
-	return WorkflowRunResponse{
+	result := WorkflowRunResponse{
 		RootRunID:       run.RootRunID,
 		ID:              run.ID,
 		DefinitionID:    run.DefinitionID,
@@ -98,6 +108,10 @@ func workflowRunResponse(run models.WorkflowRun) WorkflowRunResponse {
 		UpdatedAt:       run.UpdatedAt,
 		TriggerSource:   triggerSource,
 	}
+	if run.ConclusionRequested {
+		result.Conclusion = &WorkflowConclusionReceipt{SettledAt: run.ConclusionFinishedAt, ErrorCode: run.ConclusionDeliveryError}
+	}
+	return result
 }
 
 // 运行详情

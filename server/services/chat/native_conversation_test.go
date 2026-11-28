@@ -203,6 +203,35 @@ func TestLateExecutionDeliverySurvivesPagingAndRepeatedPublication(t *testing.T)
 	}
 }
 
+func TestWorkTicketReportJournalBatchUsesOriginalReportIdentity(t *testing.T) {
+	store := newTestConversationJournal(t, t.TempDir())
+	const chatID = "aabc1234aabc1234aabc1234aabc1234"
+	const executionID = "original-execution"
+	if _, err := store.Create(chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: []byte(`{}`)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	appendReport := func(content string) ([]eventlog.Record, error) {
+		return store.Append(chatID, []eventlog.AppendInput{{
+			Type: constants.ChatEventTypeExecutionDelivery, ExecutionID: executionID, MessageID: executionID,
+			Data: marshalData(eventlog.ExecutionDeliveryData{SourceID: "stable-original-report", Summary: content, WorkTicketReport: true}),
+		}})
+	}
+	first, err := appendReport("Original conclusion")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := appendReport("Original conclusion")
+	if err != nil || len(second) != 1 || second[0].Sequence != first[0].Sequence {
+		t.Fatalf("retry did not read its committed destination receipt: %+v, %v", second, err)
+	}
+	if _, err := appendReport("Changed conclusion"); !errors.Is(err, status_error.ChatLogIdempotencyConflict) {
+		t.Fatalf("different content reused the original destination key: %v", err)
+	}
+}
+
 func TestExecutionDeliveryCopyAllowsChatAdmission(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()

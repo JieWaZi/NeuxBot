@@ -19,6 +19,7 @@ func init() {
 	GlobalRouter.Register(&CreateWorkflowAutomaticTask{})
 	GlobalRouter.Register(&UpdateWorkflowAutomaticTask{})
 	GlobalRouter.Register(&PreviewGlobalAutomaticSchedule{})
+	GlobalRouter.Register(&ListAutomaticEventSources{})
 }
 
 // CreateWorkflowAutomaticTask 由工作流接纳绑定内部执行伙伴，客户端无须知道其身份。
@@ -92,7 +93,7 @@ type ListGlobalAutomaticTasks struct {
 	// ExecutorKind 是伙伴、团队或工作流类型筛选，空值表示全部。
 	ExecutorKind string `in:"query" name:"executorKind" validate:"omitempty,oneof=waker team workflow"`
 	// Trigger 是定时或 API 筛选，空值表示全部。
-	Trigger constants.AutomaticTaskTrigger `in:"query" name:"trigger" validate:"omitempty,oneof=schedule api"`
+	Trigger constants.AutomaticTaskTrigger `in:"query" name:"trigger" validate:"omitempty,oneof=schedule api event"`
 	// Enabled 是可选启停状态筛选。
 	Enabled *bool `in:"query" name:"enabled"`
 	// PageNum 是从一开始的页码。

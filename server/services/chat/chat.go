@@ -283,6 +283,9 @@ func (m *service) readMessageHistory(
 		return MessageHistoryPage{}, chatContextStatus(err)
 	}
 	if journal, ok := m.logStore.(*conversationJournal); ok {
+		if beforeSequence == 0 && throughSequence == 0 {
+			m.restoreAutomaticTaskReceipts(ctx, chatID)
+		}
 		return journal.nativeHistory(ctx, chatID, beforeSequence, throughSequence, limit, includeQuestions)
 	}
 	if throughSequence != 0 {
@@ -728,6 +731,7 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 	}
 	targets := make([]chatDeletionTarget, 0, len(chatIDs))
 	var imAdmissions []models.Execution
+	var ordinaryWorkOrigins []models.Chat
 	seen := make(map[string]struct{}, len(chatIDs))
 	threadTargets := make(map[string]struct{})
 	for _, value := range chatIDs {
@@ -750,6 +754,10 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 			}
 		}
 		if hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
+			if prepare == nil {
+				// 已有待回件的普通会话仍需核对原日志，缺失时保留待回件证据。
+				ordinaryWorkOrigins = append(ordinaryWorkOrigins, models.Chat{ID: chatID})
+			}
 			// 私有文件由稳定 Chat 身份定位；日志缺失不留下附件和派生文件孤儿。
 			private, pathErr := m.storage.ChatRoot(chatID)
 			if pathErr != nil {
@@ -828,6 +836,9 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 			})
 			continue
 		}
+		if prepare == nil && !chat.HiddenFromWakerHistory {
+			ordinaryWorkOrigins = append(ordinaryWorkOrigins, chat)
+		}
 		expectedWorkspace, pathErr := m.storage.AgentWorkspace(chat.WakerID)
 		if pathErr != nil {
 			return pathErr
@@ -884,6 +895,14 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 			return err
 		}
 	}
+	var preserveWorkReports func(context.Context) error
+	if m.preserveOrdinaryOriginReports != nil && len(ordinaryWorkOrigins) > 0 {
+		var err error
+		preserveWorkReports, err = m.preserveOrdinaryOriginReports(ctx, ordinaryWorkOrigins, m.ReadExecutionRecords)
+		if err != nil {
+			return err
+		}
+	}
 	if len(targets) < len(canonicalChatIDs) {
 		if err := m.finishCommittedChatDeletions(ctx, seen); err != nil {
 			return err
@@ -895,7 +914,7 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 				return err
 			}
 		}
-		if err := m.queryIndexes.deleteChats(ctx, canonicalChatIDs, finalize); err != nil {
+		if err := m.queryIndexes.deleteChats(ctx, canonicalChatIDs, nil, finalize); err != nil {
 			return err
 		}
 		m.logStore.Forget(canonicalChatIDs)
@@ -947,7 +966,7 @@ func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, p
 		}
 		aggregates = append(aggregates, chatstorage.DeletionTarget{Kind: chatstorage.AggregateKindChatProjectEntries, AggregateID: target.chatID, WakerID: target.wakerID, WorkspaceDirectory: canonicalWorkspace})
 	}
-	if err := m.deleteAggregatesAtomically(ctx, aggregates, canonicalChatIDs, finalize, retention); err != nil {
+	if err := m.deleteAggregatesAtomically(ctx, aggregates, canonicalChatIDs, preserveWorkReports, finalize, retention); err != nil {
 		return err
 	}
 	if retention != nil {
@@ -1039,13 +1058,13 @@ func (m *service) DeleteProvisionalTeam(
 		return err
 	}
 	if len(targets) == 0 {
-		if err := m.queryIndexes.deleteChats(ctx, expected, nil); err != nil {
+		if err := m.queryIndexes.deleteChats(ctx, expected, nil, nil); err != nil {
 			return err
 		}
 		m.logStore.Forget(expected)
 		return nil
 	}
-	return m.deleteAggregatesAtomically(ctx, targets, expected, nil, nil)
+	return m.deleteAggregatesAtomically(ctx, targets, expected, nil, nil, nil)
 }
 
 // validateProvisionalTeamLogs 拒绝删除计划成员集合以外的任何 Team 日志文件。
@@ -1071,6 +1090,7 @@ func (m *service) deleteAggregatesAtomically(
 	ctx context.Context,
 	aggregates []chatstorage.DeletionTarget,
 	canonicalChatIDs []string,
+	preserve func(context.Context) error,
 	finalize func(context.Context) error,
 	retention *retentionDeletion,
 ) error {
@@ -1126,7 +1146,7 @@ func (m *service) deleteAggregatesAtomically(
 			time.Now().UnixMilli(),
 		)
 	}
-	if err := m.queryIndexes.deleteChats(ctx, canonicalChatIDs, commitFacts); err != nil {
+	if err := m.queryIndexes.deleteChats(ctx, canonicalChatIDs, preserve, commitFacts); err != nil {
 		if rollbackErr := staged.Rollback(); rollbackErr != nil {
 			logx.Errorf("rollback failed chat aggregate deletion failed: error=%v", rollbackErr)
 			return rollbackErr

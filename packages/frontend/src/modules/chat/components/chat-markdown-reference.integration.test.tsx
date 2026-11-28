@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as Platform from "@/shared/platform";
 import {
@@ -53,6 +54,31 @@ afterEach(() => {
 });
 
 describe("chat Markdown reference integration", () => {
+  it("opens a saved automatic task from its conversation receipt", () => {
+    renderMarkdown(
+      <MemoryRouter initialEntries={["/chat"]}>
+        <Routes>
+          <Route
+            path="/chat"
+            element={
+              <AssistantMarkdown
+                text="[Weekly report](/automatic-tasks/rule-42)"
+                allowFileReferences={false}
+              />
+            }
+          />
+          <Route
+            path="/automatic-tasks/rule-42"
+            element={<h1>Saved rule</h1>}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Weekly report" }));
+    expect(screen.getByRole("heading", { name: "Saved rule" })).toBeVisible();
+    expect(resolveFile).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])(
     "keeps implicit local inline code inert without resolving files (streaming=%s)",
     async (streaming) => {

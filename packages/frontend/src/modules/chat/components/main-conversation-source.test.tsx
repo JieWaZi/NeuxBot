@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import {
   act,
   fireEvent,
@@ -29,12 +28,10 @@ vi.mock("@/shared/api/events", async (original) => ({
 vi.mock("./chat-thread", () => ({
   ChatThread: ({
     messages,
-    afterMessages,
     historyError,
     onOpenFile,
   }: {
     messages: { id: string; content?: string }[];
-    afterMessages?: ReactNode;
     historyError?: { message: string };
     onOpenFile?: (file: ChatFileOpenRequest) => void;
   }) => (
@@ -42,7 +39,6 @@ vi.mock("./chat-thread", () => ({
       {messages.map((m) => (
         <p key={m.id}>{m.content}</p>
       ))}
-      {afterMessages}
       {historyError && <p role="alert">{historyError.message}</p>}
       {onOpenFile && (
         <button

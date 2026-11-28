@@ -12,4 +12,6 @@ const (
 	AutomaticTaskTriggerSchedule AutomaticTaskTrigger = "schedule"
 	// AutomaticTaskTriggerAPI 表示由持有任务密钥的本机脚本触发。
 	AutomaticTaskTriggerAPI AutomaticTaskTrigger = "api"
+	// AutomaticTaskTriggerEvent 由规则授权的外部变化触发。
+	AutomaticTaskTriggerEvent AutomaticTaskTrigger = "event"
 )

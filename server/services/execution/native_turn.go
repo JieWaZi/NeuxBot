@@ -22,6 +22,7 @@ import (
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
@@ -162,6 +163,15 @@ func trustedWorkbenchEntryPoint(input pendingMessage, state messageChat) string 
 	return WorkbenchEntryPoint
 }
 
+// ConversationRuleTeamEntryPoint 标识用户直接提交给团队负责人的回合。
+const ConversationRuleTeamEntryPoint = "team-rule-management"
+
+func allowsTeamRuleManagement(input pendingMessage, state messageChat) bool {
+	return state.threadWorkspaceID != "" && input.message.Actor == string(constants.ChannelMessageActorUser) &&
+		input.imReplyLinkID == "" && input.automaticRunID == "" && input.parentExecutionID == "" &&
+		input.message.Workflow == nil && input.entryPoint == ""
+}
+
 // nativeUsageSource classifies the host entry point from admission evidence.
 func nativeUsageSource(input pendingMessage, state messageChat) string {
 	switch input.message.Actor {
@@ -259,6 +269,15 @@ func (m *service) startNativeExecution(
 	message := nativeMessage(request, files)
 	agentRequest := request
 	agentRequest.entryPoint = trustedWorkbenchEntryPoint(request, state)
+	if allowsTeamRuleManagement(request, state) {
+		agentRequest.entryPoint = ConversationRuleTeamEntryPoint
+	}
+	if (request.entryPoint == MainConversationEntryPoint || request.entryPoint == MainConversationSourceEntryPoint) &&
+		request.message.Actor == string(constants.MessageRoleUser) && request.automaticRunID == "" &&
+		request.imReplyLinkID == "" && request.parentExecutionID == "" && request.message.Workflow == nil {
+		// 能力绑定仍需验证这是主体的固定普通工作 Chat。
+		agentRequest.entryPoint = request.entryPoint
+	}
 	// 接纳前没有执行日志，通过请求追踪和稳定错误码定位失败边界。
 	logPreparationFailure := func(stage string, err error) {
 		logx.Warnf("native execution preparation failed: stage=%s trace_id=%s chat_id=%s execution_id=%s runtime_id=%s error_code=%s",
@@ -306,7 +325,8 @@ func (m *service) startNativeExecution(
 	}
 	key := sessionResourceKey(frozen.key, string(metadata), enabledConnectors)
 	thread := nativeThreadRequest(state.chat.ID, workspace, instructions, request, environment, selection, key)
-	thread.ReplaceRejectedSession = request.admission == constants.ExecutionAdmissionCommitBeforeDispatch &&
+	thread.ReplaceRejectedSession = (request.admission == constants.ExecutionAdmissionCommitBeforeDispatch ||
+		request.admission == constants.ExecutionAdmissionCommitAtQueuedNativeGate) &&
 		state.chat.HiddenFromWakerHistory && request.message.Actor == "user" &&
 		(request.entryPoint == MainConversationEntryPoint || request.entryPoint == MainConversationSourceEntryPoint)
 	if agentRequest.entryPoint == WorkbenchEntryPoint {
@@ -328,6 +348,9 @@ func (m *service) startNativeExecution(
 		chat: state.chat, state: state, files: files, journal: journal,
 		input: request, execution: newExecutionIndex(state, request, executionID, userMessageID),
 		cliContextFile: grant.cliContextFile, activate: grant.activate, finishToolScope: grant.finish, started: make(chan executionStartResult, 1),
+	}
+	if grant.singleExecution {
+		work.cliContextFile = ""
 	}
 	ports := work.ports(m)
 	ports.AcquireResources = func(ctx context.Context, selection agent.ResourceSelection) (agent.ResourceLease, error) {
@@ -416,15 +439,24 @@ func (m *service) startNativeExecution(
 	}
 	if request.admission == constants.ExecutionAdmissionCommitBeforeDispatch {
 		var accepted chatservice.AcceptedTurn
-		if err := request.admissionBoundary.Commit(ctx, func(ctx context.Context) error {
+		err := request.admissionBoundary.Commit(ctx, func(ctx context.Context) error {
 			var err error
 			accepted, err = journal.CommitAcceptedTurn(ctx, work.admission(""))
 			return err
-		}); err != nil {
+		})
+		if err != nil && accepted.Execution.ID == "" {
 			return AcceptedExecution{}, err
 		}
 		files.commit()
 		work.chat, work.execution, work.precommitted = accepted.Chat, accepted.Execution, true
+		if err != nil {
+			// 输入已进入权威日志。保留附件，将未派发的执行写成失败终态，原键重试只恢复回执。
+			m.finishExecution(work.chat, work.execution, work.input.toolCapabilities, agent.TurnResult{}, eventlog.ExecutionFinishedData{
+				Status: constants.ExecutionStatusFailed, ErrorCode: util.ErrorCode(err, status_error.RuntimeExecutionFailed.Key()),
+				FailureCode: constants.RuntimeFailureCodeEventDelivery, ErrorMessageSource: constants.ErrorMessageSourceLocalized,
+			})
+			return AcceptedExecution{}, err
+		}
 		*releaseReservation = false
 		m.executions.launch(state.chat.ID, executionID, executionContext, func(ctx context.Context) { m.runNativeExecution(ctx, &work, turn) })
 		return AcceptedExecution{Chat: accepted.Chat, Execution: accepted.Execution}, nil
@@ -591,7 +623,7 @@ func (work *nativeExecutionWork) ports(m *service) agent.TurnPorts {
 			return work.journal.PrepareTurnAdmission(ctx, work.admissionFacts, "turn:"+admitted.Input.HostInvocationID)
 		},
 		Authorize: func(ctx context.Context, admitted agent.TurnAdmission, receipt agent.CommitReceipt) (func(), error) {
-			if err := work.projectAdmission(context.WithoutCancel(ctx), receipt); err != nil {
+			if err := work.projectAdmission(context.WithoutCancel(ctx), receipt, m.events); err != nil {
 				return nil, err
 			}
 			if err := ctx.Err(); err != nil {
@@ -654,6 +686,37 @@ func (work *nativeExecutionWork) ports(m *service) agent.TurnPorts {
 			return nativeInput(ctx, m.elicitations.handler(chatID, executionID), executionID, input)
 		},
 	}
+	if work.input.entryPoint == MainConversationEntryPoint || work.input.entryPoint == MainConversationSourceEntryPoint || work.input.watchdogTicket != nil {
+		authorize := ports.Authorize
+		ports.Authorize = func(ctx context.Context, admitted agent.TurnAdmission, receipt agent.CommitReceipt) (func(), error) {
+			revoke, err := authorize(ctx, admitted, receipt)
+			if err == nil {
+				var guard func(context.Context, func() error) error
+				if ticket := work.input.watchdogTicket; ticket != nil {
+					guard = func(ctx context.Context, stop func() error) error {
+						return ticket.tickets.WhileExecutionCurrent(ctx, ticket.binding, stop)
+					}
+				}
+				m.executions.startWatchdog(chatID, executionID, guard)
+			}
+			return revoke, err
+		}
+		ports.Observe = func(_ context.Context, _ agent.AgentScope, event agent.AgentEvent) error {
+			m.executions.observeWatchdog(chatID, executionID, event)
+			return nil
+		}
+		ports.PromptReturned = func() { m.executions.finishWatchdog(chatID, executionID) }
+	}
+	if work.input.admission == constants.ExecutionAdmissionCommitAtQueuedNativeGate {
+		ports.CommitAdmission = func(ctx context.Context, commit func(context.Context) error) error {
+			return work.input.admissionBoundary.Commit(ctx, func(ctx context.Context) error {
+				if err := work.input.beforeQueuedNativeCommit(ctx); err != nil {
+					return err
+				}
+				return commit(ctx)
+			})
+		}
+	}
 	if !work.input.runtime.WorkspaceReadOnly {
 		ports.Approve = func(ctx context.Context, _ agent.AgentScope, request agent.AgentApproval) (string, error) {
 			if err := ctx.Err(); err != nil {
@@ -671,13 +734,18 @@ func (work *nativeExecutionWork) ports(m *service) agent.TurnPorts {
 				}
 				return "", nil
 			}
+			resume, allowed := m.executions.pauseWatchdog(chatID, executionID)
+			if !allowed {
+				return "", status_error.OperationCanceled
+			}
+			defer resume()
 			return nativeApproval(ctx, m.approvals.handler(chatID, executionID), executionID, request)
 		}
 	}
 	return ports
 }
 
-func (work *nativeExecutionWork) projectAdmission(ctx context.Context, receipt agent.CommitReceipt) error {
+func (work *nativeExecutionWork) projectAdmission(ctx context.Context, receipt agent.CommitReceipt, hub *events.Hub) error {
 	// The original admission is authoritative even if cancellation interrupted projection.
 	if !work.precommitted {
 		work.files.commit()
@@ -688,6 +756,14 @@ func (work *nativeExecutionWork) projectAdmission(ctx context.Context, receipt a
 	}
 	work.chat, work.execution = accepted.Chat, accepted.Execution
 	work.projected.Store(true)
+	if ticket := work.input.ticket; hub != nil && work.precommitted && work.chat.HiddenFromWakerHistory &&
+		work.input.entryPoint == MainConversationEntryPoint && work.execution.Status == constants.ExecutionStatusRunning &&
+		ticket.Address.Kind == constants.WorkTicketOriginMain && ticket.PublicMessageID == work.execution.ID &&
+		(ticket.OwnerKind == "waker" || ticket.OwnerKind == "team") && ticket.OwnerID != "" {
+		// 接纳已设置 active_execution_id，开始事实需要单独通知原主会话复读。
+		resource := events.Resource{Kind: ticket.OwnerKind, ID: ticket.OwnerID}
+		_ = events.Emit(hub, constants.MainConversationEventTopic, constants.MainConversationEventTopic+".changed", resource, resource)
+	}
 	if work.recording != nil {
 		if err := work.recording.PublishPending(ctx); err != nil {
 			logx.Warnf("publish pending file result failed: chat_id=%s execution_id=%s error=%v", work.chat.ID, work.execution.ID, err)
@@ -784,6 +860,13 @@ func (m *service) runNativeExecution(ctx context.Context, work *nativeExecutionW
 }
 
 func (work *nativeExecutionWork) settle(ctx context.Context, m *service, result agent.TurnResult) {
+	stop := m.executions.finishWatchdog(work.chat.ID, work.execution.ID)
+	if ticket := work.input.watchdogTicket; ticket != nil && ticket.event != nil && result.StorageError == nil && result.Outcome != nil &&
+		slices.Contains(result.Outcome.Turn.ConsumedInputIDs, result.Input.InputID) && result.Input.InputID != "" {
+		if err := m.workTickets.MarkEventInputRead(context.WithoutCancel(ctx), work.execution.ID); err != nil {
+			logx.Warnf("confirm event input read: execution_id=%s error=%v", work.execution.ID, err)
+		}
+	}
 	if work.finishToolScope != nil {
 		work.finishToolScope()
 	}
@@ -795,11 +878,11 @@ func (work *nativeExecutionWork) settle(ctx context.Context, m *service, result 
 		receipt := work.admissionReceipt.Load()
 		if receipt == nil {
 			result.StorageError = errors.Join(result.StorageError, status_error.ChatLogError)
-		} else if err := work.projectAdmission(context.Background(), *receipt); err != nil {
+		} else if err := work.projectAdmission(context.Background(), *receipt, m.events); err != nil {
 			result.StorageError = errors.Join(result.StorageError, err)
 		}
 	}
-	outcome := nativeExecutionOutcome(result)
+	outcome := watchdogExecutionOutcome(nativeExecutionOutcome(result), result, stop)
 	if outcome.status == constants.ExecutionStatusCompleted && work.input.message.Actor == constants.WakerOnboardingActor &&
 		m.agent != nil && m.onboardingCommands != nil && m.onboardingTransactions != nil {
 		if err := m.checkWakerOnboardingProgress(context.Background(), work.chat, true); err != nil {

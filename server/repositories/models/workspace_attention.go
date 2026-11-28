@@ -96,6 +96,8 @@ type ExecutorAttentionChat struct {
 
 // ExecutorAttentionSummary 是指定伙伴或团队的独立阅读和待办指标。
 type ExecutorAttentionSummary struct {
+	// 主会话正等待交接的输入
+	MainConversationPending bool `json:"mainConversationPending,omitempty"`
 	// ExecutorID 是请求的原伙伴或团队。
 	ExecutorID string `json:"executorId"`
 	// Kind 是执行对象类型。

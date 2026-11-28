@@ -17,4 +17,5 @@ func init() {
 	Router.Register(&TriggerAutomaticTask{})
 	Router.Register(&ListAutomaticRuns{})
 	Router.Register(&PreviewAutomaticSchedule{})
+	Router.Register(&CheckAutomaticEventRule{})
 }

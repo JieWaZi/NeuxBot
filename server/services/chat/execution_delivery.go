@@ -172,8 +172,10 @@ func committedExecutionDelivery(records []eventlog.Record, delivery ExecutionDel
 		for _, attachment := range data.Attachments {
 			seen[attachment.Path] = true
 		}
-		if data.SourceID == delivery.SourceID && data.Summary == summary && data.SummaryFallback == delivery.SummaryFallback {
-			summary = ""
+		if data.SourceID == delivery.SourceID && data.Summary != "" {
+			if data.Summary == summary && data.SummaryFallback == delivery.SummaryFallback || delivery.SummaryFallback && !data.SummaryFallback {
+				summary = ""
+			}
 		}
 	}
 	return seen, summary, nil

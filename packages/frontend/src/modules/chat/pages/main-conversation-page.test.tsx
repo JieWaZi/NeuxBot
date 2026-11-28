@@ -74,6 +74,7 @@ const calls = vi.hoisted(() => ({
 }));
 vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
   ...(await original<typeof SDK>()),
+  listWorkTickets: async () => ({ data: [] }),
   getMainConversation: async (options: HistoryRequest) => {
     if (calls.history.getMockImplementation()) return calls.history(options);
     return {
@@ -234,6 +235,7 @@ function show(
   return {
     ...result,
     client,
+    router,
     back: () =>
       act(async () => {
         await router.navigate(-1);
@@ -379,19 +381,19 @@ describe("公开主会话", () => {
       within(menu).getByRole("menuitem", { name: "复制消息" }),
     ).toBeVisible();
     expect(
-      within(menu).queryByRole("menuitem", { name: "查看工作记录" }),
+      within(menu).queryByRole("menuitem", { name: "打开工作会话" }),
     ).toBeNull();
     fireEvent.keyDown(menu, { key: "Escape" });
     expect(
       within(timelineRow("公开结果")).getByRole("button", {
-        name: /查看伙伴.*的工作记录/,
+        name: "打开工作会话",
       }),
     ).toBeVisible();
     expect(
       within(openMessageMenu(timelineRow("另一个项目没有公开回复"))).getByRole(
         "menuitem",
         {
-          name: "查看工作记录",
+          name: "打开工作会话",
         },
       ),
     ).toBeVisible();
@@ -423,9 +425,11 @@ describe("公开主会话", () => {
     });
     expect(action).toHaveTextContent(/^$/);
     expect(action.querySelector("svg")).toBeInTheDocument();
-    const actions = row.querySelector(
+    const messageColumn = row.querySelector(
       "[data-chat-message-bubble]",
-    )?.nextElementSibling;
+    )?.parentElement;
+    const actions = messageColumn?.nextElementSibling;
+    expect(messageColumn).toHaveClass("min-w-0", "max-w-[78%]");
     expect(actions).toHaveClass(
       "order-first",
       "opacity-0",
@@ -443,7 +447,7 @@ describe("公开主会话", () => {
     action.focus();
     expect(action).toHaveFocus();
     await user.keyboard("{Enter}{Home}");
-    const openWork = screen.getByRole("menuitem", { name: "查看工作记录" });
+    const openWork = screen.getByRole("menuitem", { name: "打开工作会话" });
     expect(openWork).toHaveFocus();
     expect(screen.getByRole("menuitem", { name: "复制消息" })).toBeVisible();
     await user.keyboard("{Enter}");
@@ -452,7 +456,7 @@ describe("公开主会话", () => {
       path: { ...workPath, workChatId },
     });
   });
-  it("同一来源的旧回复和失败头像不遮住新交办的工作记录入口", async () => {
+  it("同一来源的未答复交办和失败交办均可从消息菜单打开工作记录", async () => {
     const earlier = turnInput("上次交办", 1);
     const replied = turnReply("上次公开答复", 2, earlier.id);
     const failed = {
@@ -467,25 +471,25 @@ describe("公开主会话", () => {
     show();
 
     await screen.findByText(latest.content);
-    const latestMenu = openMessageMenu(timelineRow(latest.id));
-    expect(
-      within(latestMenu).getByRole("menuitem", { name: "查看工作记录" }),
-    ).toBeVisible();
-    fireEvent.keyDown(latestMenu, { key: "Escape" });
-    for (const input of [earlier, failed]) {
+    for (const input of [latest, failed]) {
       const menu = openMessageMenu(timelineRow(input.id));
       expect(
-        within(menu).queryByRole("menuitem", {
-          name: "查看工作记录",
+        within(menu).getByRole("menuitem", {
+          name: "打开工作会话",
         }),
-      ).toBeNull();
+      ).toBeVisible();
       fireEvent.keyDown(menu, { key: "Escape" });
     }
+    const earlierMenu = openMessageMenu(timelineRow(earlier.id));
     expect(
-      screen.getAllByRole("button", { name: /查看伙伴.*的工作记录/ }),
-    ).toHaveLength(2);
+      within(earlierMenu).queryByRole("menuitem", { name: "打开工作会话" }),
+    ).toBeNull();
+    fireEvent.keyDown(earlierMenu, { key: "Escape" });
+    expect(
+      screen.getAllByRole("button", { name: "打开工作会话" }),
+    ).toHaveLength(1);
   });
-  it("首次公开发言前失败会替换等待行，刷新后可从伙伴头像进入原工作续聊", async () => {
+  it("首次公开发言前失败在输入框显示，刷新后可从原消息菜单进入原工作续聊", async () => {
     const user = userEvent.setup();
     const workChatId = "failed-work";
     const input = turnInput("检查执行环境", 1, workChatId);
@@ -500,13 +504,14 @@ describe("公开主会话", () => {
       },
     ]);
     const view = show();
-    expect(await screen.findByText("正在等待回复")).toBeVisible();
+    expect(await screen.findByText(input.content)).toBeVisible();
+    expect(screen.getByText("正在等待回复")).toBeVisible();
     const menu = openMessageMenu(timelineRow(input.id));
     expect(
-      within(menu).queryByRole("menuitem", {
-        name: "查看工作记录",
+      within(menu).getByRole("menuitem", {
+        name: "打开工作会话",
       }),
-    ).toBeNull();
+    ).toBeVisible();
     fireEvent.keyDown(menu, { key: "Escape" });
 
     calls.activity.mockReturnValue([]);
@@ -517,7 +522,9 @@ describe("公开主会话", () => {
     });
     mainConversationChanged(1);
     const reason = "当前额度已用尽，请切换模型或等待额度恢复后重试";
-    expect(await screen.findByRole("alert")).toHaveTextContent(reason);
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveTextContent(reason);
+    expect(error.closest("[data-chat-composer-frame]")).toBeInTheDocument();
     expect(screen.queryByText("正在等待回复")).toBeNull();
 
     view.unmount();
@@ -525,17 +532,16 @@ describe("公开主会话", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(reason);
     expect(screen.getAllByText(reason)).toHaveLength(1);
     expect(container.querySelectorAll("[data-message-id]")).toHaveLength(1);
-    const sourceAction = { name: "查看伙伴 A的工作记录" };
-    expect(
-      within(timelineRow(input.id)).queryByRole("button", { name: /工作记录/ }),
-    ).toBeNull();
     calls.source.mockResolvedValue({
       data: {
         chat: { ...work, id: workChatId, lastEndedExecutionStatus: "failed" },
         resources: [],
       },
     });
-    await user.click(await screen.findByRole("button", sourceAction));
+    const failedMenu = openMessageMenu(timelineRow(input.id));
+    await user.click(
+      within(failedMenu).getByRole("menuitem", { name: "打开工作会话" }),
+    );
     const editor = await screen.findByRole("textbox", { name: "输入消息" });
     await user.type(editor, "继续这次检查");
     calls.sendSource.mockResolvedValue({ data: { executionId: "next-run" } });
@@ -873,7 +879,10 @@ describe("公开主会话", () => {
     expect(request.body).not.toHaveProperty("projectId");
     expect(calls.send).not.toHaveBeenCalled();
     await back();
-    expect(await screen.findByText("正在等待回复")).toBeVisible();
+    expect(
+      await screen.findByText("只跟进这次工作", { selector: "p" }),
+    ).toBeVisible();
+    expect(screen.queryByText("正在等待回复")).toBeNull();
     const publicInputId = createHash("sha256")
       .update(JSON.stringify(["user", "main", request.body.submissionId]))
       .digest("hex")
@@ -949,7 +958,9 @@ describe("公开主会话", () => {
     await userEvent
       .setup()
       .type(screen.getByRole("textbox", { name: "输入消息" }), "继续查 B");
-    fireEvent.click(within(first).getByRole("button", { name: /工作记录/ }));
+    fireEvent.click(
+      within(first).getByRole("button", { name: "打开工作会话" }),
+    );
     expect(await screen.findByText("第一轮交办")).toBeVisible();
     expect(await screen.findByText("第二轮交办")).toBeVisible();
     expect(calls.source.mock.calls.at(-1)?.[0].path.workChatId).toBe("work-a");
@@ -1414,7 +1425,7 @@ it("公开时间线直接处理原工作的审批，处理后跟随执行直至�
   const card = await screen.findByRole("region", { name: "等待工具审批" });
   const reply = timelineRow("等待前的公开发言");
   const later = timelineRow("后来的交办");
-  const sourceAction = { name: /^查看.*的工作记录$/ };
+  const sourceAction = { name: "打开工作会话" };
   const avatar = within(reply).getByRole("button", sourceAction);
   expect(screen.getAllByRole("button", sourceAction)).toEqual([avatar]);
   expect(reply.compareDocumentPosition(card)).toBe(
@@ -1451,7 +1462,7 @@ it("公开时间线直接处理原工作的审批，处理后跟随执行直至�
     expect(screen.queryByText("等待审批")).toBeNull();
     expect(screen.queryByRole("region", { name: "等待工具审批" })).toBeNull();
     expect(screen.getByRole("button", sourceAction)).toBe(avatar);
-    expect(avatar).toHaveAccessibleDescription("工作中");
+    expect(avatar).not.toHaveAccessibleDescription("工作中");
     expect(reply.nextElementSibling).toBe(later);
   });
   calls.activity.mockReturnValue([]);
@@ -1462,6 +1473,67 @@ it("公开时间线直接处理原工作的审批，处理后跟随执行直至�
   expect(await screen.findByText("核验已经完成")).toBeVisible();
   expect(screen.queryByText("正在等待回复")).toBeNull();
   expect(calls.ordinaryApprove).not.toHaveBeenCalled();
+});
+
+it("续跑工单的进展和报告共用身份，待审批跟随当前执行的最后一条发言", async () => {
+  const root = turnInput("原工单交办", 1);
+  const input = turnInput("继续原工单", 2);
+  const executionId = "resumed-execution";
+  const progress = {
+    ...turnReply("续跑进展", 3, input.id),
+    forkExecutionId: executionId,
+  };
+  const report = {
+    ...turnReply("续跑报告", 4, root.id),
+    forkExecutionId: executionId,
+  };
+  const another = {
+    ...turnReply("原交办下另一轮的报告", 5, root.id),
+    forkExecutionId: "another-execution",
+  };
+  const legacy = turnReply("仅关联续跑交办的历史发言", 6, input.id);
+  calls.activity.mockReturnValue([
+    {
+      workChatId: input.sourceChatId,
+      sourceWakerId: "w",
+      executionId,
+      inputMessageId: input.id,
+      hasPublicReply: true,
+      waitingApproval: true,
+    },
+  ]);
+  calls.timeline.mockReturnValue({
+    messages: [root, input, progress, report, another, legacy],
+  });
+  calls.source.mockResolvedValue({
+    data: {
+      chat: {
+        ...work,
+        id: input.sourceChatId,
+        activeExecutionId: executionId,
+        pendingApprovals: [approval],
+      },
+      resources: [],
+    },
+  });
+  show();
+
+  const card = await screen.findByRole("region", { name: "等待工具审批" });
+  const reportRow = timelineRow(report.id);
+  const sourceAction = { name: "打开工作会话" };
+  expect(
+    within(timelineRow(progress.id)).getByRole("button", sourceAction),
+  ).toBeVisible();
+  expect(within(reportRow).queryByRole("button", sourceAction)).toBeNull();
+  expect(
+    within(timelineRow(another.id)).getByRole("button", sourceAction),
+  ).toBeVisible();
+  expect(reportRow.compareDocumentPosition(card)).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  expect(card.compareDocumentPosition(timelineRow(another.id))).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
 });
 
 it.each(["审批", "继续发送"])(
@@ -1815,7 +1887,8 @@ it("主会话只在工作快照成功核验后呈现可操作卡片，并可在�
   const failed = await screen.findByRole("alert");
   expect(screen.queryByRole("region", { name: "等待工具审批" })).toBeNull();
   await user.click(within(failed).getByRole("button", { name: "重试" }));
-  await screen.findByText("等待审批");
+  await waitFor(() => expect(failed).not.toBeInTheDocument());
+  expect(screen.queryByText("等待审批")).toBeNull();
   expect(screen.queryByRole("region", { name: "等待工具审批" })).toBeNull();
   const firstRead = calls.source.mock.calls[0]?.[0];
   expect(firstRead).toMatchObject({ path: workPath, query: { limit: 1 } });
@@ -1882,6 +1955,59 @@ function serveMainHistory(
   }));
 }
 
+it("主会话显示首条、跨天和超过十五分钟的时间分隔，早页接上后按实际相邻消息判断", async () => {
+  const previous = {
+    ...turnInput("昨天的交办", 1),
+    createdAt: new Date(2026, 10, 26, 23, 54).getTime(),
+  };
+  const first = {
+    ...turnReply("今天的第一条回复", 2, previous.id),
+    createdAt: new Date(2026, 10, 27, 0, 2).getTime(),
+  };
+  const withinGap = {
+    ...turnReply("刚好间隔十五分钟", 3, previous.id),
+    createdAt: new Date(2026, 10, 27, 0, 17).getTime(),
+  };
+  const afterGap = {
+    ...turnReply("超过十五分钟后回复", 4, previous.id),
+    createdAt: new Date(2026, 10, 27, 0, 33).getTime(),
+  };
+  serveMainHistory(({ query }) =>
+    query?.beforeSequence === first.sequence
+      ? { messages: [previous] }
+      : {
+          messages: [first, withinGap, afterGap],
+          hasMore: true,
+          nextBeforeSequence: first.sequence,
+        },
+  );
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 10, 27, 12));
+  try {
+    show();
+    const firstTime = await screen.findByText("今天 00:02", {
+      selector: "time",
+    });
+    expect(firstTime.nextElementSibling).toBe(timelineRow(first.id));
+    expect(screen.queryByText("今天 00:17")).toBeNull();
+    expect(timelineRow(withinGap.id).previousElementSibling).toBe(
+      timelineRow(first.id),
+    );
+    const laterTime = screen.getByText("今天 00:33", { selector: "time" });
+    expect(laterTime.nextElementSibling).toBe(timelineRow(afterGap.id));
+    expect(within(timelineRow(afterGap.id)).getByText("伙伴 A")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "加载更早消息" }));
+    const previousTime = await screen.findByText("昨天 23:54", {
+      selector: "time",
+    });
+    expect(previousTime.nextElementSibling).toBe(timelineRow(previous.id));
+    expect(firstTime.previousElementSibling).toBe(timelineRow(previous.id));
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 function earlierCursors() {
   return calls.history.mock.calls
     .map(([request]) => request.query?.beforeSequence)
@@ -1906,59 +2032,468 @@ function conversationViewport(message: string) {
   return viewport;
 }
 
-it("点击最新页的引用会按游标逐页定位公开原话", async () => {
-  const original = turnReply("更早的公开原话", 10);
-  const reply = {
-    ...turnInput("收到原话后的追问", 120),
+it("无工作来源的回复头像进入完整工作记录，自动查找旧页的实际交办", async () => {
+  const original = turnReply("上轮公开的交付问题", 1, undefined, "");
+  const request = {
+    ...turnInput("请对照上轮的问题", 2, ""),
     replyToMessageId: original.id,
   };
+  const reply = turnReply("请提供项目名称", 3, request.id, "");
+  serveMainHistory(({ query }) =>
+    query?.beforeSequence === reply.sequence
+      ? { messages: [original, request], hasMore: false }
+      : {
+          messages: [reply],
+          hasMore: true,
+          nextBeforeSequence: reply.sequence,
+        },
+  );
+  const user = userEvent.setup();
+  const { router, back } = show();
+  await screen.findByText(reply.content);
+  const avatar = within(timelineRow(reply.id)).getByRole("button", {
+    name: "打开默认会话",
+  });
+
+  const editor = screen.getByRole("textbox", { name: "输入消息" });
+  await user.type(editor, "沿用这份草稿");
+  avatar.focus();
+  await user.keyboard("{Enter}");
+  expect(new URLSearchParams(router.state.location.search).get("record")).toBe(
+    reply.id,
+  );
+  expect(screen.queryByRole("dialog")).toBeNull();
+  const record = within(
+    await screen.findByRole("region", { name: "默认会话" }),
+  );
+  expect(
+    await record.findByText(request.content, { selector: "p" }),
+  ).toBeVisible();
+  expect(record.getByText(reply.content)).toBeVisible();
+  expect(record.getByRole("textbox", { name: "输入消息" })).toBe(editor);
+  expect(editor).toHaveTextContent("沿用这份草稿");
+
+  await user.click(record.getByRole("button", { name: /定位原消息/ }));
+  expect(new URLSearchParams(router.state.location.search).get("message")).toBe(
+    original.id,
+  );
+  expect(timelineRow(original.id, "p")).toBeVisible();
+  await back();
+  expect(await screen.findByRole("region", { name: "默认会话" })).toBeVisible();
+  expect(editor).toHaveTextContent("沿用这份草稿");
+  expect(earlierCursors()).toEqual([reply.sequence]);
+  expect(calls.source).not.toHaveBeenCalled();
+});
+
+it("旧直答地址保留原定位，并展示同一伙伴的多轮公开问答", async () => {
+  const newerInput = turnInput("新问答的输入", 130, "");
+  const latest = turnReply("更新的一条回复", 150, newerInput.id, "");
+  const other = turnReply("另一项工作的结果", 140, undefined, "other-work");
+  const olderOwner = turnReply(
+    "旧负责人的一条回复",
+    145,
+    newerInput.id,
+    "",
+    "old",
+  );
+  const request = turnInput("旧交办实际文本", 40, "");
+  const reply = turnReply("该交办的直答", 80, request.id, "");
   const pages = new Map<number | undefined, HistoryPage>([
-    [undefined, { messages: [reply], hasMore: true, nextBeforeSequence: 120 }],
     [
-      120,
+      undefined,
       {
-        messages: [turnReply("中间页的公开消息", 60)],
+        messages: [newerInput, other, olderOwner, latest],
+        nextBeforeSequence: 130,
         hasMore: true,
-        nextBeforeSequence: 60,
       },
     ],
-    [60, { messages: [original], hasMore: true, nextBeforeSequence: 10 }],
+    [130, { messages: [reply], nextBeforeSequence: 80, hasMore: true }],
+    [80, { messages: [request], hasMore: false }],
   ]);
   serveMainHistory(({ query }) => {
     const page = pages.get(query?.beforeSequence);
-    if (!page) throw new Error("定位不应越过原话所在页");
+    if (!page) throw Error("读取了无关历史页");
     return page;
+  });
+  show(undefined, `?record=${encodeURIComponent(reply.id)}`);
+  const record = within(
+    await screen.findByRole("region", { name: "默认会话" }),
+  );
+  expect(await record.findByText(request.content)).toBeVisible();
+  expect(record.getByText(reply.content)).toBeVisible();
+  expect(record.getByText(latest.content)).toBeVisible();
+  expect(record.getByText(newerInput.content)).toBeVisible();
+  expect(record.queryByText(other.content)).toBeNull();
+  expect(record.queryByText(olderOwner.content)).toBeNull();
+  expect(earlierCursors()).toEqual([130, 80]);
+  expect(calls.source).not.toHaveBeenCalled();
+});
+
+it("已有来源的头像保留真实地址，并定位同一来源的旧执行", async () => {
+  const workChatId = "shared-old-work";
+  const executionId = "earlier-execution";
+  const publication = {
+    ...turnReply("较早执行发布的结果", 1, undefined, workChatId),
+    forkExecutionId: executionId,
+  };
+  calls.timeline.mockReturnValue({ messages: [publication] });
+  calls.source.mockImplementation(async ({ path, query }) => {
+    expect(path.workChatId).toBe(workChatId);
+    return {
+      data: {
+        chat: { id: workChatId, wakerId: "w" },
+        ...(query?.beforeSequence === 50
+          ? {
+              resources: [
+                {
+                  id: executionId,
+                  role: "assistant",
+                  status: "completed",
+                  executionId,
+                  fork: { available: true },
+                  readable: true,
+                  displayParts: [
+                    {
+                      id: "earlier-text",
+                      type: "text",
+                      text: "较早执行的原生答复",
+                    },
+                  ],
+                  createdSequence: 10,
+                },
+              ],
+              hasMore: false,
+            }
+          : {
+              forkLatestExecutionId: "newer-execution",
+              resources: [
+                {
+                  id: "newer-work-input",
+                  role: "user",
+                  content: "同来源的另外一次交办",
+                  createdSequence: 50,
+                },
+              ],
+              hasMore: true,
+              nextBeforeSequence: 50,
+            }),
+      },
+    };
   });
   const jump = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
   try {
-    const user = userEvent.setup();
-    const { container } = show();
-    await screen.findByText(reply.content);
-    expect(calls.history).toHaveBeenCalledOnce();
-    expect(screen.queryByText(original.content)).toBeNull();
-    await user.click(messageQuote(reply.id));
-    await screen.findByText(original.content, { selector: "p" });
-    await waitFor(() =>
-      expect(jump.mock.contexts).toContain(timelineRow(original.id, "p")),
+    const { router } = show();
+    await screen.findByText(publication.content);
+    await userEvent.click(
+      within(timelineRow(publication.id)).getByRole("button", {
+        name: "打开工作会话",
+      }),
     );
     expect(
-      calls.history.mock.calls.map(([request]) => [
-        request.path.subjectType,
-        request.path.subjectId,
-        request.query?.beforeSequence,
-      ]),
-    ).toEqual([
-      ["waker", "w", undefined],
-      ["waker", "w", 120],
-      ["waker", "w", 60],
-    ]);
-    expect(container.querySelectorAll("[data-message-id]")).toHaveLength(3);
-    expect(calls.send).not.toHaveBeenCalled();
-    expect(calls.source).not.toHaveBeenCalled();
+      new URLSearchParams(router.state.location.search).get("source"),
+    ).toBe(workChatId);
+    expect(
+      new URLSearchParams(router.state.location.search).get("message"),
+    ).toBe(publication.id);
+    await waitFor(() =>
+      expect(
+        calls.source.mock.calls.some(
+          ([options]) => options.query?.beforeSequence === 50,
+        ),
+      ).toBe(true),
+    );
+    const answer = await screen.findByText("较早执行的原生答复");
+    const answerRow = answer.closest<HTMLElement>("[data-message-id]");
+    if (!answerRow) throw new Error("缺少原执行消息");
+    await waitFor(() => expect(jump.mock.contexts).toContain(answerRow));
+    const row = within(answerRow);
+    expect(
+      row.queryByRole("button", { name: "阅读操作" }),
+    ).not.toBeInTheDocument();
+    calls.fork.mockResolvedValue({ data: {} });
+    await userEvent.click(row.getByRole("button", { name: "分支到新聊天" }));
+    expect(calls.fork).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        path: { chatId: workChatId },
+        body: { executionId, clientRequestId: expect.any(String) },
+      }),
+    );
   } finally {
     jump.mockRestore();
   }
 });
+
+it("同一伙伴的两条简报打开完整的普通会话，续聊只出现在这里", async () => {
+  const user = userEvent.setup();
+  const workChatId = "partner-default-chat";
+  const smallTalk = turnReply("在呢", 1, undefined, workChatId);
+  const news = turnReply("新闻查好了", 2, undefined, workChatId);
+  calls.timeline.mockReturnValue({ messages: [smallTalk, news] });
+  calls.source.mockResolvedValue({
+    data: {
+      chat: { id: workChatId, wakerId: "w" },
+      privateContinuation: true,
+      resources: [
+        { id: "hello", role: "user", content: "你好", createdSequence: 1 },
+        {
+          id: "answer-hello",
+          executionId: "answer-hello",
+          role: "assistant",
+          status: "completed",
+          displayParts: [{ type: "text", text: "你好，今天想聊什么？" }],
+          createdSequence: 2,
+        },
+        {
+          id: "check-news",
+          role: "user",
+          content: "查一下今天的新闻",
+          createdSequence: 3,
+        },
+        {
+          id: "answer-news",
+          executionId: "answer-news",
+          role: "assistant",
+          status: "completed",
+          displayParts: [{ type: "text", text: "今天的新闻完整内容。" }],
+          createdSequence: 4,
+        },
+      ],
+      publishedMessages: [
+        {
+          id: smallTalk.id,
+          executionId: "answer-hello",
+          content: smallTalk.content,
+        },
+        { id: news.id, executionId: "answer-news", content: news.content },
+      ],
+    },
+  });
+  let finishSend = () => {};
+  const received = new Promise<void>((resolve) => {
+    finishSend = resolve;
+  });
+  calls.sendSource.mockImplementation(async () => {
+    await received;
+    return { data: { execution: { id: "answer-followup" } } };
+  });
+  const jump = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+  const { back, router } = show();
+  try {
+    for (const report of [smallTalk, news]) {
+      await screen.findByText(report.content);
+      await user.click(
+        within(timelineRow(report.id)).getByRole("button", {
+          name: "打开工作会话",
+        }),
+      );
+      const params = new URLSearchParams(router.state.location.search);
+      expect(params.get("source")).toBe(workChatId);
+      expect(params.get("message")).toBe(report.id);
+      const completeGreeting = await screen.findByText("你好，今天想聊什么？");
+      const completeNews = screen.getByText("今天的新闻完整内容。");
+      expect(completeGreeting).toBeVisible();
+      expect(completeNews).toBeVisible();
+      const target = report === smallTalk ? completeGreeting : completeNews;
+      await waitFor(() =>
+        expect(jump.mock.contexts).toContain(
+          target.closest("[data-message-id]"),
+        ),
+      );
+      expect(screen.getByText(report.content)).not.toBeVisible();
+      if (report === smallTalk) await back();
+    }
+    const editor = await screen.findByRole("textbox", { name: "输入消息" });
+    const followUp = "只在普通会话追问";
+    await user.type(editor, followUp);
+    const send = screen.getByRole("button", { name: "发送消息" });
+    await waitFor(() => expect(send).toBeEnabled());
+    await user.click(send);
+    await waitFor(() => expect(calls.sendSource).toHaveBeenCalledOnce());
+    expect(calls.sendSource.mock.calls[0]?.[0]).toMatchObject({
+      path: { subjectType: "waker", subjectId: "w", workChatId },
+      body: { text: followUp },
+    });
+    await back();
+    expect(await screen.findByText(news.content)).toBeVisible();
+    expect(screen.queryByText(followUp)).toBeNull();
+    expect(calls.send).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => finishSend());
+    jump.mockRestore();
+  }
+});
+
+it("回投报告显示原会话来源并打开公开记录", async () => {
+  const report = {
+    ...turnReply("原交办已结案", 1, undefined, ""),
+    originalWork: {
+      chatId: "deleted-chat",
+      ticketId: "original-ticket",
+      title: "发布前检查",
+    },
+  };
+  calls.timeline.mockReturnValue({ messages: [report] });
+  const { router } = show();
+  await screen.findByText(report.content);
+  const row = within(timelineRow(report.id));
+  const origin = "来自已删除的会话「发布前检查」";
+  expect(row.getByText(origin)).toBeVisible();
+  await userEvent.click(row.getByRole("button", { name: "打开工作会话" }));
+  const target = new URLSearchParams(router.state.location.search);
+  expect(target.get("record")).toBe(report.id);
+  expect(target.get("source")).toBeNull();
+  const record = within(
+    await screen.findByRole("region", { name: "工作会话" }),
+  );
+  expect(record.getByText(report.content)).toBeVisible();
+  expect(record.getByText(origin)).toBeVisible();
+  expect(record.queryByRole("link")).toBeNull();
+  expect(calls.source).not.toHaveBeenCalled();
+});
+
+it("转交回件凭原发言打开接手人的只读工作记录", async () => {
+  const workChatId = "receiver-work";
+  const executionId = "receiver-execution";
+  const report = {
+    ...turnReply("接手人提交了结果。", 1, undefined, workChatId),
+    sourceWakerId: "receiver",
+    sourceReadOnly: true,
+  };
+  calls.timeline.mockReturnValue({ messages: [report] });
+  calls.source.mockImplementation(async ({ path, query }) => {
+    expect(path).toEqual({ subjectType: "waker", subjectId: "w", workChatId });
+    expect(query?.publicationId).toBe(report.id);
+    return {
+      data: {
+        chat: { id: workChatId, wakerId: "receiver" },
+        forkLatestExecutionId: executionId,
+        resources: [
+          { id: "handoff-input", role: "user", content: "已授权的交接说明。" },
+          {
+            id: executionId,
+            executionId,
+            role: "assistant",
+            status: "completed",
+            fork: { available: true },
+            content: "接手执行的原生结果。",
+          },
+        ],
+        publishedMessages: [
+          { id: report.id, executionId, content: report.content },
+        ],
+      },
+    };
+  });
+  const { router } = show();
+  await screen.findByText(report.content);
+  await userEvent.click(
+    within(timelineRow(report.id)).getByRole("button", {
+      name: "打开工作会话",
+    }),
+  );
+  const target = new URLSearchParams(router.state.location.search);
+  expect(target.get("source")).toBe(workChatId);
+  expect(target.get("publication")).toBe(report.id);
+  expect(await screen.findByText("已授权的交接说明。")).toBeVisible();
+  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "回复" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "分支到新聊天" }),
+  ).not.toBeInTheDocument();
+  expect(calls.source).toHaveBeenCalledTimes(1);
+});
+
+it.each(["用户", "伙伴"])(
+  "%s使用键盘激活最新页的引用会按游标逐页定位公开原话",
+  async (author) => {
+    const original =
+      author === "伙伴"
+        ? turnInput("更早的公开交办", 10)
+        : turnReply("更早的公开原话", 10);
+    const reply =
+      author === "伙伴"
+        ? {
+            ...turnReply("引用原话的公开答复", 120, original.id),
+            quoteReply: true,
+          }
+        : {
+            ...turnInput("收到原话后的追问", 120),
+            replyToMessageId: original.id,
+          };
+    const pages = new Map<number | undefined, HistoryPage>([
+      [
+        undefined,
+        { messages: [reply], hasMore: true, nextBeforeSequence: 120 },
+      ],
+      [
+        120,
+        {
+          messages: [turnReply("中间页的公开消息", 60)],
+          hasMore: true,
+          nextBeforeSequence: 60,
+        },
+      ],
+      [60, { messages: [original], hasMore: true, nextBeforeSequence: 10 }],
+    ]);
+    serveMainHistory(({ query }) => {
+      const page = pages.get(query?.beforeSequence);
+      if (!page) throw new Error("定位不应越过原话所在页");
+      return page;
+    });
+    const jump = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    try {
+      const user = userEvent.setup();
+      const { container } = show();
+      await screen.findByText(reply.content);
+      await screen.findByRole("textbox", { name: "输入消息" });
+      expect(calls.history).toHaveBeenCalledOnce();
+      expect(screen.queryByText(original.content)).toBeNull();
+      const quote = messageQuote(reply.id);
+      const key = vi.fn();
+      const click = vi.fn();
+      quote.addEventListener("keydown", key);
+      quote.addEventListener("click", click);
+      quote.focus();
+      expect(quote).toHaveFocus();
+      await user.keyboard("{Enter}");
+      expect(key).toHaveBeenCalled();
+      expect(click).toHaveBeenCalled();
+      await waitFor(() => expect(earlierCursors()).toEqual([120, 60]));
+      await screen.findByText(original.content, { selector: "p" });
+      await waitFor(() =>
+        expect(jump.mock.contexts).toContain(timelineRow(original.id, "p")),
+      );
+      expect(
+        timelineRow(original.id, "p").querySelector(
+          "[data-chat-message-bubble]",
+        ),
+      ).toHaveFocus();
+      const bubble = timelineRow(reply.id).querySelector(
+        "[data-chat-message-bubble]",
+      );
+      expect(bubble).toContainElement(messageQuote(reply.id));
+      expect(messageQuote(reply.id)).toHaveTextContent(original.content);
+      expect(
+        calls.history.mock.calls.map(([request]) => [
+          request.path.subjectType,
+          request.path.subjectId,
+          request.query?.beforeSequence,
+        ]),
+      ).toEqual([
+        ["waker", "w", undefined],
+        ["waker", "w", 120],
+        ["waker", "w", 60],
+      ]);
+      expect(container.querySelectorAll("[data-message-id]")).toHaveLength(3);
+      expect(calls.send).not.toHaveBeenCalled();
+      expect(calls.source).not.toHaveBeenCalled();
+    } finally {
+      jump.mockRestore();
+    }
+  },
+);
 
 it("定位跨页引用时仍能接收后台新发言", async () => {
   const original = turnReply("等待定位的公开原话", 10);
@@ -2277,38 +2812,45 @@ it("键盘定位已加载的原话，不因程序性滚动加载旧页", async (
   }
 });
 
-it.each(["已删除", "没有访问权限"])(
-  "原话%s时在引用旁提示不可用",
-  async (reason) => {
-    const other = turnReply("同一会话里可访问的较早消息", 30);
-    const reply = {
-      ...turnInput("引用不存在的公开消息", 60),
-      replyToMessageId: "missing-message",
-    };
-    serveMainHistory(({ query }) => {
-      if (query?.beforeSequence === undefined)
-        return { messages: [reply], hasMore: true, nextBeforeSequence: 60 };
-      if (reason === "没有访问权限")
-        throw new ApiError("不可访问", "Forbidden", 403);
-      return { messages: [other], hasMore: false };
-    });
+it.each([
+  ["用户", "已删除"],
+  ["用户", "没有访问权限"],
+  ["伙伴", "已删除"],
+])("%s引用的原话%s时在引用旁提示不可用", async (author, reason) => {
+  const other = turnReply("同一会话里可访问的较早消息", 30);
+  const reply =
+    author === "伙伴"
+      ? {
+          ...turnReply("引用不存在的公开消息", 60, "missing-message"),
+          quoteReply: true,
+        }
+      : {
+          ...turnInput("引用不存在的公开消息", 60),
+          replyToMessageId: "missing-message",
+        };
+  serveMainHistory(({ query }) => {
+    if (query?.beforeSequence === undefined)
+      return { messages: [reply], hasMore: true, nextBeforeSequence: 60 };
+    if (reason === "没有访问权限")
+      throw new ApiError("不可访问", "Forbidden", 403);
+    return { messages: [other], hasMore: false };
+  });
 
-    const jump = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
-    try {
-      const user = userEvent.setup();
-      show();
-      await screen.findByText(reply.content);
-      await user.click(messageQuote(reply.id));
-      const row = within(timelineRow(reply.id));
-      expect(await row.findByText("原消息不可用")).toBeVisible();
-      expect(earlierCursors()).toEqual([60]);
-      expect(jump).not.toHaveBeenCalled();
-      expect(row.queryByRole("button", { name: "重试" })).toBeNull();
-    } finally {
-      jump.mockRestore();
-    }
-  },
-);
+  const jump = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+  try {
+    const user = userEvent.setup();
+    show();
+    await screen.findByText(reply.content);
+    await user.click(messageQuote(reply.id));
+    const row = within(timelineRow(reply.id));
+    expect(await row.findByText("原消息不可用")).toBeVisible();
+    expect(earlierCursors()).toEqual([60]);
+    expect(jump).not.toHaveBeenCalled();
+    expect(row.queryByRole("button", { name: "重试" })).toBeNull();
+  } finally {
+    jump.mockRestore();
+  }
+});
 
 it("跨页引用遇到分页错误时保留上下文，在引用旁从失败游标重试", async () => {
   const original = turnReply("重试后可定位的原话", 1);
@@ -2363,7 +2905,7 @@ it("跨页引用遇到分页错误时保留上下文，在引用旁从失败游�
   }
 });
 
-it("首条公开发言显示工作头像和名称，连续发言与工作结束都保留原身份位置", async () => {
+it("首条公开发言显示静态头像和名称，连续发言与工作结束都保留原身份位置", async () => {
   const active = {
     workChatId: "work-a",
     sourceWakerId: "w",
@@ -2389,6 +2931,7 @@ it("首条公开发言显示工作头像和名称，连续发言与工作结束�
   ];
   const first = turnReply("第一段公开进展", 7, active.inputMessageId);
   const second = turnReply("第二段公开进展", 8, active.inputMessageId);
+  const sourceText = "来源工作的实际过程";
   calls.activity.mockReturnValue([other, active]);
   calls.timeline.mockReturnValue({ messages: history });
   calls.source.mockImplementation(async ({ path: { workChatId } }) => ({
@@ -2403,24 +2946,49 @@ it("首条公开发言显示工作头像和名称，连续发言与工作结束�
             }
           : {}),
       },
-      resources: [],
+      resources:
+        workChatId === active.workChatId
+          ? [
+              {
+                id: "work-input",
+                role: "user",
+                content: sourceText,
+                createdSequence: 1,
+              },
+            ]
+          : [],
     },
   }));
   const { back } = show();
-  const sourceAction = { name: /^查看.*的工作记录$/ };
-  const wait = await screen.findByText("正在等待回复");
-  const waitRow = wait.closest<HTMLElement>("[data-role=assistant]");
-  if (!waitRow) throw new Error("未找到等待回复行");
-  expect(within(waitRow).getByRole("button", sourceAction)).toBeVisible();
-  const approvalCard = await screen.findByRole("region", {
+  const sourceAction = { name: "打开工作会话" };
+  await screen.findByRole("region", {
     name: "等待工具审批",
   });
+  expect(screen.getAllByText("正在等待回复")).toHaveLength(1);
   expect(
     within(timelineRow("之前的结果")).getByRole("button", sourceAction),
   ).toBeVisible();
   expect(
     within(timelineRow("并发工作的上次结果")).getByRole("button", sourceAction),
   ).toBeVisible();
+  const waitingRow = screen
+    .getByText("正在等待回复")
+    .closest<HTMLElement>("[data-role=assistant]");
+  if (!waitingRow) throw new Error("缺少首条回复前的等待行");
+  expect(waitingRow.previousElementSibling).toBe(
+    timelineRow(active.inputMessageId),
+  );
+  await userEvent.click(within(waitingRow).getByRole("button", sourceAction));
+  await waitFor(() =>
+    expect(calls.source.mock.lastCall?.[0].path).toEqual({
+      ...workPath,
+      workChatId: active.workChatId,
+    }),
+  );
+  await back();
+  const currentApproval = await screen.findByRole("region", {
+    name: "等待工具审批",
+  });
 
   calls.activity.mockReturnValue([other, { ...active, hasPublicReply: true }]);
   calls.timeline.mockReturnValue({ messages: [...history, first] });
@@ -2433,21 +3001,15 @@ it("首条公开发言显示工作头像和名称，连续发言与工作结束�
   const workingAvatar = head.getByRole("button", sourceAction);
   const avatar = workingAvatar.querySelector("[data-companion-avatar]");
   expect(workingAvatar).toBeVisible();
-  expect(workingAvatar).toHaveAccessibleDescription("工作中");
-  expect(avatar).toHaveAttribute("data-activity", "working");
-  expect(avatar).toHaveAttribute("data-motion", "thinking");
+  expect(workingAvatar).not.toHaveAccessibleDescription("工作中");
+  expect(avatar).toHaveAttribute("data-activity", "idle");
+  expect(avatar).toHaveAttribute("data-motion", "idle");
   const name = await head.findByText(partnerName);
   expect(name).toBeVisible();
-  expect(waitRow).not.toBeInTheDocument();
   expect(firstRow.nextElementSibling).toBeNull();
-  expect(approvalCard).toBeVisible();
+  expect(currentApproval).toBeVisible();
   await userEvent.click(workingAvatar);
-  await waitFor(() =>
-    expect(calls.source.mock.lastCall?.[0].path).toEqual({
-      ...workPath,
-      workChatId: active.workChatId,
-    }),
-  );
+  expect(await screen.findByText(sourceText)).toBeVisible();
   await back();
   const resumedApproval = await screen.findByRole("region", {
     name: "等待工具审批",
@@ -2464,8 +3026,10 @@ it("首条公开发言显示工作头像和名称，连续发言与工作结束�
   const tail = within(secondRow);
   expect(tail.queryByRole("button", sourceAction)).toBeNull();
   expect(tail.queryByText(partnerName)).toBeNull();
+  expect(tail.queryByRole("button", { name: /定位原消息/ })).toBeNull();
   expect(tail.getByRole("button", { name: "回复" })).toBeInTheDocument();
-  expect(secondRow).toHaveClass("-mt-1");
+  expect(secondRow).not.toHaveClass("-mt-1");
+  expect(secondRow.parentElement).toHaveClass("gap-2");
   expect(secondRow.nextElementSibling).toBeNull();
 
   calls.activity.mockReturnValue([other]);
@@ -2499,7 +3063,8 @@ it("首条公开发言显示工作头像和名称，连续发言与工作结束�
     messages: [...history, first, second, next],
   });
   mainConversationChanged(4);
-  expect(await screen.findByText("正在等待回复")).toBeVisible();
+  expect(await screen.findByText(next.content)).toBeVisible();
+  expect(screen.getAllByText("正在等待回复")).toHaveLength(1);
   expect(head.getByRole("button", sourceAction)).toBe(workingAvatar);
   expect(head.getByText(partnerName)).toBeVisible();
   expect(avatar).toHaveAttribute("data-activity", "idle");
@@ -2529,7 +3094,7 @@ it("已发布答复的工作在本页没有发言时不占用独立的活动行"
   );
   show();
   expect(await screen.findByText(later.content)).toBeVisible();
-  const sourceAction = { name: /^查看.*的工作记录$/ };
+  const sourceAction = { name: "打开工作会话" };
   expect(screen.queryByRole("button", sourceAction)).toBeNull();
   expect(timelineRow(later.id).nextElementSibling).toBeNull();
   expect(screen.queryByText(first.content)).toBeNull();
@@ -2542,7 +3107,7 @@ it("已发布答复的工作在本页没有发言时不占用独立的活动行"
   expect(activeAvatar).toBeVisible();
   expect(activeAvatar.querySelector("[data-companion-avatar]")).toHaveAttribute(
     "data-activity",
-    "working",
+    "idle",
   );
   expect(await head.findByText("伙伴 A")).toBeVisible();
   expect(timelineRow(later.id).nextElementSibling).toBeNull();
@@ -2579,13 +3144,11 @@ it("向前翻页后跨页合并连续身份，并保留其他回合和作者的�
   show();
   await screen.findByText("当前页的同轮进展");
   const current = timelineRow("当前页的同轮进展");
-  expect(current).not.toHaveClass("-mt-1");
+  const sourceAction = { name: "打开工作会话" };
+  expect(within(current).getByRole("button", sourceAction)).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "加载更早消息" }));
   await screen.findByText("上一页的同轮进展");
   expect(timelineRow("当前页的同轮进展")).toBe(current);
-  expect(current).toHaveClass("-mt-1");
-  expect(timelineRow("本轮最终消息")).not.toHaveClass("-mt-1");
-  const sourceAction = { name: /^查看.*的工作记录$/ };
   expect(within(current).queryByRole("button", sourceAction)).toBeNull();
   for (const id of [
     "上一页的同轮进展",

@@ -54,6 +54,7 @@ const server = vi.hoisted(() => ({
 
 vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
   ...(await original<typeof SDK>()),
+  listWorkTickets: async () => ({ data: [] }),
   getMainConversation: server.main,
   getMainConversationSource: server.source,
   getMainConversationReading: server.mainReading,
@@ -162,13 +163,19 @@ it("主会话及工作记录沿用原标题栏的摘要与工作台开关", asyn
   await user.click(await screen.findByRole("button", { name: "查看摘要" }));
   const overview = await screen.findByRole("dialog", { name: "查看摘要" });
   expect(
-    within(overview).getByRole("button", { name: "第一份文档.md" }),
-  ).toBeVisible();
+    within(overview).getByRole("region", { name: "任务" }),
+  ).toHaveTextContent("暂无正在执行的任务");
   expect(
-    within(overview).getByRole("button", { name: "第二份文档.md" }),
-  ).toBeVisible();
+    within(overview).queryByRole("button", { name: "第一份文档.md" }),
+  ).toBeNull();
+  expect(
+    within(overview).queryByRole("button", { name: "第二份文档.md" }),
+  ).toBeNull();
   expect(server.files).not.toHaveBeenCalled();
-  await user.click(within(overview).getByRole("button", { name: "查看全部" }));
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: "工作区" }));
+  await user.click(screen.getByRole("button", { name: "添加工作台标签" }));
+  await user.click(await screen.findByRole("menuitem", { name: "文件" }));
   await user.click(
     await screen.findByRole("treeitem", { name: "第二份文档.md" }),
   );
@@ -418,7 +425,71 @@ it("桌面待办导航打开公开主会话的请求但没有已读打开意图"
   }
 });
 
-it("冷窗口从伙伴未读提示打开主会话后，实际读到公开发言才解除未读保留", async () => {
+it("定时简报未读不出现在已读主会话的伙伴入口", async () => {
+  const report = {
+    id: "router-answer",
+    sequence: 7,
+    role: "assistant",
+    content: "这是主会话中的直接回答",
+    sourceChatId: "",
+    readable: true,
+  };
+  const conversationId = "already-read-main";
+  server.executors.mockResolvedValue({
+    data: {
+      resources: [
+        {
+          executorId: subject.subjectId,
+          unreadMessageCount: 1,
+          chats: [
+            {
+              work: { kind: "chat", id: "automatic-briefing" },
+              chatId: "automatic-briefing",
+              title: "定时简报",
+              requests: [],
+              unreadMessageCount: 1,
+              requestKinds: [],
+              activity: "idle",
+            },
+          ],
+        },
+        {
+          executorId: "waker-2",
+          unreadMessageCount: 1,
+          mainConversationUnreadGeneration: 0,
+          chats: [],
+        },
+      ],
+    },
+  });
+  server.mainReading.mockResolvedValue({
+    data: {
+      conversationId,
+      complete: true,
+      throughSequence: 7,
+      unreadGeneration: 0,
+      holdUnread: false,
+      unreadMessageCount: 0,
+      latestReadableMessageID: report.id,
+    },
+  });
+  const view = renderPartner(undefined, true);
+  await act(async () => {
+    view.client.setQueryData(mainKey, {
+      pages: [{ id: conversationId, messages: [report], activeWork: [] }],
+      pageParams: [undefined],
+    });
+  });
+
+  expect(await screen.findByText(report.content)).toBeVisible();
+  // 第二个伙伴的未读角标出现后，同一批摘要已应用到两个入口。
+  await screen.findByRole("button", { name: "伙伴二，1 条未读消息" });
+  expect(
+    screen.getByRole("button", { name: /^伙伴一(?:，|$)/ }),
+  ).toHaveAccessibleName("伙伴一");
+});
+
+it("独立聊天未读不计入伙伴角标，冷窗口实际读到公开发言才解除未读保留", async () => {
   const conversationId = "colleague-main";
   const target = { subjectType: "waker", subjectId: "waker-2" };
   const report = {
@@ -434,8 +505,19 @@ it("冷窗口从伙伴未读提示打开主会话后，实际读到公开发言�
       resources: [
         {
           executorId: target.subjectId,
-          unreadMessageCount: 1,
+          unreadMessageCount: 2,
           mainConversationUnreadGeneration: generation,
+          chats: [
+            {
+              work: { kind: "chat", id: "independent-chat" },
+              chatId: "independent-chat",
+              title: "独立聊天",
+              requests: [],
+              unreadMessageCount: 1,
+              requestKinds: [],
+              activity: "idle",
+            },
+          ],
         },
       ],
     },
@@ -464,6 +546,7 @@ it("冷窗口从伙伴未读提示打开主会话后，实际读到公开发言�
     const partner = await screen.findByRole("button", {
       name: /^伙伴二，.*未读/,
     });
+    expect(partner).toHaveAccessibleName("伙伴二，1 条未读消息");
     expect(server.mainReading).not.toHaveBeenCalled();
     await userEvent.click(partner);
     expect(await screen.findByText(report.content)).toBeVisible();
@@ -812,7 +895,7 @@ it("主会话与加号打开的普通草稿使用聊天编辑器，各自保留�
   expect(await activeEditor()).toHaveValue("普通对话尚未发出");
 });
 
-it("主会话发布第一段发言后收起等待文字，固定页签保持伙伴身份", async () => {
+it("主会话显示首条回复前的等待头像，固定页签保持伙伴身份", async () => {
   const user = userEvent.setup();
   let accept = () => {};
   const accepted = new Promise<void>((resolve) => {
@@ -858,7 +941,7 @@ it("主会话发布第一段发言后收起等待文字，固定页签保持伙�
     };
   });
   server.main.mockResolvedValue({
-    data: { ...conversation, messages: [input], activeWork },
+    data: { ...conversation, messages: [], activeWork: [] },
   });
   const { client } = renderPartner();
   const pinned = await screen.findByRole("tab", { name: "伙伴一" });
@@ -868,14 +951,14 @@ it("主会话发布第一段发言后收起等待文字，固定页签保持伙�
   await waitFor(() => expect(send).toBeEnabled());
   await user.click(send);
   await waitFor(() => expect(server.send).toHaveBeenCalledOnce());
-  const wait = await screen.findByText("正在等待回复");
-  expect(wait.closest('[role="status"]')).toBeVisible();
-  expect(wait.closest(".sr-only")).toBeNull();
-  expect(wait).toHaveAttribute("data-text-shimmer", "true");
-  expect(wait.closest("[data-running-shimmer]")).toBeNull();
+  expect(await screen.findByText("正在等待回复")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /查看.*的工作记录/ })).toBeNull();
   expect(pinned.querySelector("[data-native-attention]")).toBeNull();
-  expect(pinned).toHaveTextContent(/^伙伴一$/);
+  expect(pinned).not.toHaveTextContent("伙伴一");
   expect(pinned).toHaveAccessibleDescription("主会话");
+  server.main.mockResolvedValue({
+    data: { ...conversation, messages: [input], activeWork },
+  });
   await act(async () => {
     accept();
   });
@@ -884,7 +967,10 @@ it("主会话发布第一段发言后收起等待文字，固定页签保持伙�
     pages: [{ activeWork }],
   });
   expect(screen.getByText("正在等待回复")).toBeVisible();
-  expect(pinned).toHaveTextContent(/^伙伴一$/);
+  expect(
+    await screen.findByRole("button", { name: /查看.*的工作记录/ }),
+  ).toBeVisible();
+  expect(pinned).not.toHaveTextContent("伙伴一");
   expect(pinned).toHaveAccessibleDescription("主会话");
   server.main.mockResolvedValue({
     data: {
@@ -939,7 +1025,7 @@ it("伙伴的其他工作在侧栏显示，固定页签仍只显示伙伴身份"
     await screen.findByRole("button", { name: "伙伴一，工作中" }),
   ).toBeVisible();
   const tab = screen.getByRole("tab", { name: "伙伴一" });
-  expect(tab).toHaveTextContent(/^伙伴一$/);
+  expect(tab).not.toHaveTextContent("伙伴一");
   expect(tab).toHaveAccessibleDescription("主会话");
   expect(screen.queryByText("正在等待回复")).toBeNull();
 });
@@ -1016,6 +1102,7 @@ it("顶栏后退保留主会话草稿，前进返回先前通过头像打开的�
   await user.click(
     within(publicMessage).getByRole("button", { name: /工作记录/ }),
   );
+  expect(router.state.location.search).toBe("?source=work-a&message=published");
   expect(await screen.findByText("工作 work-a")).toBeVisible();
   expect(screen.queryByRole("button", { name: "返回主会话" })).toBeNull();
   expect(screen.queryByRole("heading", { name: "工作记录" })).toBeNull();
@@ -1028,13 +1115,14 @@ it("顶栏后退保留主会话草稿，前进返回先前通过头像打开的�
   expect(viewport.scrollTop).toBe(165);
   await user.click(forward);
   expect(await screen.findByText("工作 work-a")).toBeVisible();
+  expect(router.state.location.search).toBe("?source=work-a&message=published");
   await user.click(back);
   const waitingRow = (
     await screen.findByRole("region", { name: "等待工具审批" })
   ).closest<HTMLElement>("[data-role=assistant]");
   if (!waitingRow) throw Error("缺少等待审批的来源行");
   const tab = screen.getByRole("tab", { name: "伙伴一" });
-  expect(tab).toHaveTextContent(/^伙伴一$/);
+  expect(tab).not.toHaveTextContent("伙伴一");
   expect(tab).toHaveAccessibleDescription("主会话");
   await user.click(
     within(waitingRow).getByRole("button", { name: /工作记录/ }),
@@ -1054,4 +1142,56 @@ it("顶栏后退保留主会话草稿，前进返回先前通过头像打开的�
   expect(router.state.location.key).toBe(homeLocation);
   await user.click(back);
   expect(await screen.findByText("工作 work-b")).toBeVisible();
+});
+
+it("直答头像使用同一个工作记录导航，顶栏可前进后退并保留主会话草稿", async () => {
+  const user = userEvent.setup();
+  const question = {
+    id: "direct-input",
+    role: "user",
+    sequence: 1,
+    content: "这次的交付有哪些？",
+  };
+  const answer = {
+    id: "direct-answer",
+    role: "assistant",
+    sequence: 2,
+    replyToMessageId: question.id,
+    sourceWakerId: subject.subjectId,
+    content: "共有三项交付。",
+  };
+  const { client, router } = renderPartner();
+  act(() => {
+    client.setQueryData(mainKey, {
+      pages: [{ messages: [question, answer], activeWork: [] }],
+      pageParams: [undefined],
+    });
+  });
+  const editor = await activeEditor();
+  await user.type(editor, "还没发的下一件事");
+  const reply = (await screen.findByText(answer.content)).closest<HTMLElement>(
+    "[data-message-id]",
+  );
+  if (!reply) throw Error("缺少直答");
+  await user.click(within(reply).getByRole("button", { name: /工作记录/ }));
+  const url = "?record=direct-answer";
+  expect(router.state.location.search).toBe(url);
+  const record = screen.getByRole("region", { name: "工作记录" });
+  expect(within(record).getByText(question.content)).toBeVisible();
+  expect(within(record).getByText(answer.content)).toBeVisible();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(server.source).not.toHaveBeenCalled();
+  const back = screen.getByRole("button", { name: "后退" });
+  const forward = screen.getByRole("button", { name: "前进" });
+  await user.click(back);
+  expect(router.state.location.search).toBe("");
+  expect(await activeEditor()).toBe(editor);
+  expect(editor).toHaveValue("还没发的下一件事");
+  await user.click(forward);
+  expect(router.state.location.search).toBe(url);
+  expect(screen.getByRole("region", { name: "工作记录" })).toBeVisible();
+  const pinned = screen.getByRole("tab", { name: "伙伴一" });
+  await user.click(pinned);
+  expect(router.state.location.search).toBe("");
+  expect(await activeEditor()).toBe(editor);
 });

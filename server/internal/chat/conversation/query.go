@@ -11,6 +11,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"gorm.io/gorm"
 )
 
@@ -452,6 +453,14 @@ func applyChatMessageFact(m *agent.StoredMessage, fact agent.ChatFact) error {
 		m.Complete = true
 	case constants.ChatEventTypeExecutionCompleted, constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
 		m.Complete = true
+	case constants.ChatEventTypeExecutionDelivery:
+		if fact.MessageID != fact.ExecutionID {
+			var report eventlog.ExecutionDeliveryData
+			if json.Unmarshal(fact.Data, &report) != nil || !report.IsTransferredWorkReport() || report.SourceID != m.ID {
+				return status_error.ChatLogCorrupted
+			}
+			m.ExecutionID, m.Text, m.Complete = "", report.Summary, true
+		}
 	}
 	return nil
 }

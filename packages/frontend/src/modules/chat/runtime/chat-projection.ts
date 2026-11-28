@@ -88,7 +88,7 @@ export type BotChatMessage = ChatMessage & {
   steerPending?: boolean;
   liveRevision?: number;
   codeReferences?: ChatCodeReference[];
-  /** 来源工作记录只把已提交的公开发言投影到结果区，原生部件仍由日志持有。 */
+  /** 来源工作缺少原生结尾时使用这个执行实际提交的公开发言。 */
   publishedResultParts?: readonly MessageDisplayPart[];
 };
 
@@ -301,7 +301,7 @@ export function mergeAuthoritativeMessages(
     currentByID.delete(local?.id ?? message.id);
     if (!local) return message;
     if (local.optimistic || isTerminalMessageStatus(message.status))
-      return message;
+      return mergeTaskReceipts(message, local);
     const localRevision = contentRevision(local);
     const authoritativeRevision = contentRevision(message);
     return mergeMessageCoverage(
@@ -325,6 +325,27 @@ export function mergeAuthoritativeMessages(
   return merged;
 }
 
+function mergeTaskReceipts(
+  base: BotChatMessage,
+  source: ChatMessage,
+): BotChatMessage {
+  const delivered = source.automaticTaskReceipts?.filter(
+    (receipt) =>
+      !base.automaticTaskReceipts?.some(
+        (existing) => existing.receiptId === receipt.receiptId,
+      ),
+  );
+  if (!delivered?.length) return base;
+  return {
+    ...base,
+    readable: base.readable || source.readable,
+    automaticTaskReceipts: [
+      ...(base.automaticTaskReceipts ?? []),
+      ...delivered,
+    ],
+  };
+}
+
 /** 持久元数据可以先于正文检查点到达；保留尚未被检查点覆盖的增量正文。 */
 function mergeMessageCoverage(
   local: BotChatMessage,
@@ -332,17 +353,20 @@ function mergeMessageCoverage(
   keepLive: boolean,
 ): BotChatMessage {
   if (keepLive && (authoritative.revision ?? -1) <= (local.revision ?? -1))
-    return local;
-  const next = keepLive
-    ? {
-        ...local,
-        ...authoritative,
-        content: local.content,
-        displayParts: local.displayParts,
-        liveRevision: local.liveRevision,
-        revision: Math.max(local.revision ?? 0, authoritative.revision ?? 0),
-      }
-    : authoritative;
+    return mergeTaskReceipts(local, authoritative);
+  const next = mergeTaskReceipts(
+    keepLive
+      ? {
+          ...local,
+          ...authoritative,
+          content: local.content,
+          displayParts: local.displayParts,
+          liveRevision: local.liveRevision,
+          revision: Math.max(local.revision ?? 0, authoritative.revision ?? 0),
+        }
+      : authoritative,
+    local,
+  );
   if (
     !["completed", "failed", "canceled"].includes(authoritative.status ?? "") &&
     local.runMetrics &&
@@ -412,12 +436,16 @@ export function applyChatEvent(
     event.type === "execution.delivery" &&
     authoritative.role === "assistant" &&
     isTerminalMessageStatus(authoritative.status);
-  if (
-    event.type === "execution.delivery" &&
-    (!currentMessage ||
-      (currentMessage.revision ?? -1) >= (authoritative.revision ?? -1))
-  )
-    return messages;
+  if (event.type === "execution.delivery") {
+    if (!currentMessage) return messages;
+    if ((currentMessage.revision ?? -1) >= (authoritative.revision ?? -1)) {
+      const merged = mergeMessageCoverage(currentMessage, authoritative, true);
+      if (merged === currentMessage) return messages;
+      const next = [...messages];
+      next[index] = merged;
+      return next;
+    }
+  }
   if (
     currentMessage &&
     ["completed", "failed", "canceled"].includes(currentMessage.status ?? "") &&
@@ -443,7 +471,7 @@ export function applyChatEvent(
   if (currentMessage)
     next[index] =
       delivery || isTerminalEvent(event)
-        ? authoritative
+        ? mergeTaskReceipts(authoritative, currentMessage)
         : mergeMessageCoverage(currentMessage, authoritative, false);
   else next.push(authoritative);
   return next;

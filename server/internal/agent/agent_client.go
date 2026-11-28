@@ -579,6 +579,8 @@ type AgentNativeOutcome struct {
 	DeliveryError error
 	// Unavailable identifies omitted outcome fields.
 	Unavailable []string
+	// streamAnswerEligible is set by the foreground host after observing the full turn.
+	streamAnswerEligible bool
 }
 
 // AgentFinalMessage is provider-confirmed text, including its reconciliation ID.
@@ -612,8 +614,10 @@ type directAgentClient struct {
 	mcpCapabilities acp.McpCapabilities
 	// requireVerifiedMCP gates session publication on proven connection readiness.
 	requireVerifiedMCP bool
-	// requireNoTools limits session setup to a fresh, tool-free Claude launch.
+	// requireNoTools limits session setup to a tool-free Claude launch.
 	requireNoTools bool
+	// continuedText enables session restore for a private, tool-free text thread.
+	continuedText bool
 	// codexEphemeral requires the native thread start to confirm no persistence.
 	codexEphemeral bool
 	// supportsElicitation reflects the installed callback capabilities.
@@ -633,10 +637,10 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		claude.SettingSources = []string{}
 		claude.Tools = []string{}
 	}
-	if launch.RequireNoTools || launch.EphemeralText {
+	if launch.RequireNoTools || launch.EphemeralText || launch.ContinuedText {
 		callbacks.Approve, callbacks.Input, callbacks.CompleteInput = nil, nil, nil
 	}
-	if launch.EphemeralText && callbacks.Observe != nil {
+	if (launch.EphemeralText || launch.ContinuedText) && callbacks.Observe != nil {
 		observe := callbacks.Observe
 		callbacks.Observe = func(ctx context.Context, scope AgentScope, event AgentEvent) error {
 			if event.Kind == "tool" {
@@ -663,6 +667,7 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 	host := nativeHostCallbacks(callbacks)
 	client := &directAgentClient{
 		cwd: account.CWD, mcp: mcp, requireVerifiedMCP: launch.RequireVerifiedMCP, requireNoTools: launch.RequireNoTools,
+		continuedText: launch.ContinuedText,
 	}
 	if callbacks.Input != nil {
 		client.supportsElicitation = &acp.ElicitationCapabilities{Form: &acp.ElicitationFormCapabilities{}}
@@ -694,7 +699,7 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		for key, value := range startup {
 			config[key] = value
 		}
-		if launch.EphemeralText {
+		if launch.EphemeralText || launch.ContinuedText {
 			config["web_search"] = json.RawMessage(`"disabled"`)
 			config["features.shell_tool"] = json.RawMessage("false")
 			config["features.apply_patch_freeform"] = json.RawMessage("false")
@@ -711,7 +716,7 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		}
 		executable, prefixArgs := launch.Executable, launch.PrefixArgs
 		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})).With("runtime_id", account.Provider)
-		if launch.EphemeralText {
+		if launch.EphemeralText || launch.ContinuedText {
 			logger = slog.New(slog.DiscardHandler)
 		}
 		if launch.usesEphemeralClaude(account.Provider) {
@@ -1062,7 +1067,10 @@ func (c *directAgentClient) Initialize(ctx context.Context) error {
 		c.capabilities.ReloadInstructionsOnResume, _ = c.instructionSupport["resume"].(bool)
 	}
 	if c.requireNoTools {
-		c.capabilities.Load, c.capabilities.Resume, c.capabilities.List = false, false, false
+		if !c.continuedText {
+			c.capabilities.Load, c.capabilities.Resume = false, false
+		}
+		c.capabilities.List = false
 		c.capabilities.AdditionalDirectories, c.capabilities.Steer, c.capabilities.Compact = false, false, false
 		c.capabilities.ForkMode = acpmeta.ForkUnsupported
 	}

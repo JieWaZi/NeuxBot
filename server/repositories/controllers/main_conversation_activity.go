@@ -26,18 +26,19 @@ func (c *MainConversationController) ActiveWork(ctx context.Context, conversatio
 	}
 	encoded, _ := json.Marshal(executions)
 	var public []models.MainConversationActivity
-	// 只查看本轮的公开发言，避免翻页时丢失更早的答复或错认旧轮消息。
+	// 区分本轮交办的原归属与仍可见的发言，移除公开发言不会停止来源执行。
 	if err := db.Table("main_conversation_messages INDEXED BY idx_main_conversation_messages_source_execution_id").
 		Select("source_chat_id AS work_chat_id, source_execution_id AS execution_id, "+
-			"MAX(CASE WHEN role = ? THEN id ELSE '' END) AS input_message_id, MAX(role = ?) AS has_public_reply",
-			constants.MessageRoleUser, constants.MessageRoleAssistant).
-		Where("conversation_id = ? AND removed_at = 0 AND admission_pending = 0 AND source_execution_id IN (SELECT value FROM json_each(?))", conversationID, string(encoded)).
+			"MAX(role = ? AND id = source_execution_id) AS from_main, "+
+			"MAX(CASE WHEN role = ? AND removed_at = 0 THEN id ELSE '' END) AS input_message_id, MAX(role = ? AND removed_at = 0) AS has_public_reply",
+			constants.MessageRoleUser, constants.MessageRoleUser, constants.MessageRoleAssistant).
+		Where("conversation_id = ? AND admission_pending = 0 AND source_execution_id IN (SELECT value FROM json_each(?))", conversationID, string(encoded)).
 		Group("source_chat_id, source_execution_id").Find(&public).Error; err != nil {
 		return nil, databaseError("active_main_work_publications", conversationID, err)
 	}
 	for _, row := range public {
 		if i, ok := bySourceExecution[[2]string{row.WorkChatID, row.ExecutionID}]; ok {
-			active[i].InputMessageID, active[i].HasPublicReply = row.InputMessageID, row.HasPublicReply
+			active[i].FromMain, active[i].InputMessageID, active[i].HasPublicReply = row.FromMain, row.InputMessageID, row.HasPublicReply
 		}
 	}
 	return active, nil
@@ -51,7 +52,7 @@ func activeMainWork(db *gorm.DB, conversationIDs []string) (map[string][]models.
 	}
 	owned := db.Model(&models.MainConversationWork{}).Select("work_chat_id").Where("conversation_id IN ?", conversationIDs)
 	var active []models.MainConversationActivity
-	err := db.Model(&models.Chat{}).Select("id AS work_chat_id, active_execution_id AS execution_id, waker_id AS source_waker_id, waiting_approval, waiting_elicitation, "+
+	err := db.Model(&models.Chat{}).Select("id AS work_chat_id, title, last_runtime_id AS runtime_id, active_execution_id AS execution_id, waker_id AS source_waker_id, waiting_approval, waiting_elicitation, "+
 		"CASE WHEN waiting_approval THEN COALESCE(json_array_length(NULLIF(pending_approvals,'')),0) ELSE 0 END + "+
 		"CASE WHEN waiting_elicitation THEN COALESCE(json_array_length(NULLIF(pending_elicitations,'')),0) ELSE 0 END AS request_count").
 		Where("id IN (?) AND hidden_from_waker_history = ? AND active_execution_id <> ''", owned, true).Order("id").Find(&active).Error
@@ -67,7 +68,7 @@ func activeMainWork(db *gorm.DB, conversationIDs []string) (map[string][]models.
 	}
 	encoded, _ := json.Marshal(ids)
 	var sources []models.MainConversationWork
-	if err := db.Select("conversation_id", "work_chat_id", "waker_id").Where("work_chat_id IN (SELECT value FROM json_each(?))", string(encoded)).Find(&sources).Error; err != nil {
+	if err := db.Select("conversation_id", "work_chat_id", "waker_id", "scope_key").Where("work_chat_id IN (SELECT value FROM json_each(?))", string(encoded)).Find(&sources).Error; err != nil {
 		return nil, databaseError("active_main_work_owners", "", err)
 	}
 	owners := make(map[string]models.MainConversationWork, len(sources))
@@ -89,6 +90,7 @@ func activeMainWork(db *gorm.DB, conversationIDs []string) (map[string][]models.
 			continue
 		}
 		if source := owners[work.WorkChatID]; source.ConversationID != "" && source.WakerID == work.SourceWakerID {
+			work.DefaultSource = source.ScopeKey == models.MainConversationDefaultScope
 			result[source.ConversationID] = append(result[source.ConversationID], work)
 		}
 	}
@@ -109,9 +111,20 @@ func mainWorkCounts(db *gorm.DB, subjects []string) (map[string]MainConversation
 	if err != nil {
 		return nil, err
 	}
+	var queued []string
+	if len(ids) != 0 {
+		if err := db.Model(&models.MainConversationInput{}).Where("conversation_id IN ?", ids).
+			Where(openMainInputs).Distinct("conversation_id").Pluck("conversation_id", &queued).Error; err != nil {
+			return nil, databaseError("main_work_pending_inputs", "", err)
+		}
+	}
+	pending := make(map[string]bool, len(queued))
+	for _, id := range queued {
+		pending[id] = true
+	}
 	counts := make(map[string]MainConversationSubjectActivity, len(convs))
 	for _, conv := range convs {
-		summary := MainConversationSubjectActivity{SubjectType: conv.SubjectType}
+		summary := MainConversationSubjectActivity{SubjectType: conv.SubjectType, HasPendingInput: pending[conv.ID]}
 		for _, work := range active[conv.ID] {
 			if !work.WaitingApproval && !work.WaitingElicitation {
 				summary.RunningCount++

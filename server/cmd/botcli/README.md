@@ -1,6 +1,6 @@
 # botcli 系统能力
 
-`botcli` 是 NeuxBot 随应用交付的能力命令入口，供智能体在当前执行的授权范围内调用主会话、知识库、IM、工作流、团队、记忆和结构化问答。本文列出当前实现的完整操作；某次聊天实际能调用哪些操作，以该执行的 `capabilities` 返回为准。
+`botcli` 是 NeuxBot 随应用交付的能力命令入口，供智能体在当前执行的授权范围内调用主会话、工单、知识库、IM、工作流、团队、记忆和结构化问答。某次聊天实际能调用的操作以该执行的 `capabilities` 返回为准。
 
 命令与参数的权威定义是 [contract](../../internal/agent/capability/catalog.go)，命令树直接由该目录建立。本文说明用途和完成语义，完整参数、枚举、限制与输出结构通过 `describe` 获取，避免维护第二套参数表。目录测试检查下列能力是否遗漏、重复，以及影响和完成语义是否与代码一致。
 
@@ -66,7 +66,24 @@ botcli knowledge pages search --library-id library-example --query "部署流程
 | 操作标识                     | 用途                                   | 影响       | 完成语义    |
 | ---------------------------- | -------------------------------------- | ---------- | ----------- |
 | `conversations.messages.list` | 分页读取当前工作绑定的公开主会话消息。 | `read` | `immediate` |
-| `conversations.messages.post` | 将一条正文写入当前工作绑定的公开主会话。 | `mutation` | `immediate` |
+| `conversations.messages.post` | 立即向当前工作绑定的公开主会话发送一条发言，可选择引用原输入。 | `mutation` | `immediate` |
+
+### 工单报告
+
+主会话派工后的 Worker 和引用续办可以获得工单报告能力。提交进展、等待、受阻或已完成的结果时，宿主用当前执行核验工单尝试并向原会话回报。重复调用沿用原请求标识和正文。模型可以通过 `botcli describe work.tickets.report` 查看参数及回执。执行成功结束后，未结案的工单仍可沿原消息续办。
+
+获授权的工单执行可通过 `work tickets delegate` 将有界文本交办给已知的本地伙伴或团队。子单只向直接父单回报。父单可用 `work tickets results --report-id <id>` 读取完整回件。若父单已经结束本轮，新的待答问题会唤醒父单，父单可用 `work tickets reply` 答复后继续等待所需结果。原生用户提问和审批仍在原工作记录中处理。
+
+有权引用已观察 PR 的工单，可用 `work tickets subscribe-event` 订阅上下文。规则已启用 CI 成功事件时，可用 `work tickets wait-for-event --kind checks_passed --request-id <id>` 登记本轮等待。
+
+| 操作标识 | 用途 | 影响 | 完成语义 |
+| --- | --- | --- | --- |
+| `work.tickets.report` | 向本次工单的原会话提交一份报告。 | `mutation` | `immediate` |
+| `work.tickets.delegate` | 将文本交办给已知的本地伙伴或团队，子单向本单回报。 | `mutation` | `immediate` |
+| `work.tickets.results` | 读取直接子单交回本单的结果。 | `read` | `immediate` |
+| `work.tickets.reply` | 向直接子单提交一条答复，继续原等待工作。 | `mutation` | `accepted` |
+| `work.tickets.wait-for-event` | 登记等待当前工单所授权 PR 的检查通过事件。 | `mutation` | `accepted` |
+| `work.tickets.subscribe-event` | 将已观察且有权引用的 PR 作为本单的后续上下文。 | `mutation` | `accepted` |
 
 ### 知识库
 
@@ -129,6 +146,7 @@ botcli knowledge pages search --library-id library-example --query "部署流程
 | `workflow.sdk.get`              | 读取一个 SDK 主题或示例；合法名称由发现合同返回。                      | `read`     | `immediate` |
 | `workflow.resources.list`       | 分页发现当前创作可用的一类资源。                                       | `read`     | `immediate` |
 | `workflow.annotations.list`     | 读取绑定工作流的创作批注。                                             | `read`     | `immediate` |
+| `workflow.definitions.create` | 在当前伙伴范围创建工作流草稿。 | `mutation` | `immediate` |
 | `workflow.definitions.list`     | 发现当前执行获授权的工作流定义。                                       | `read`     | `immediate` |
 | `workflow.definitions.describe` | 读取一个定义的版本和输入输出合同。                                     | `read`     | `immediate` |
 | `workflow.runs.start`           | 按明确版本及冻结输入接纳一次运行。                                     | `external` | `accepted`  |
@@ -140,6 +158,18 @@ botcli knowledge pages search --library-id library-example --query "部署流程
 | `workflow.evidence.list`        | 读取运行及外部效果的原始执行证据。                                     | `read`     | `immediate` |
 | `workflow.results.schema`       | 获取当前 worker 尝试的结果 Schema。                                    | `read`     | `immediate` |
 | `workflow.results.submit`       | 按 Schema 提交当前 worker 的实际候选结果。                             | `mutation` | `candidate` |
+
+### 自动规则
+
+当前伙伴和团队负责人可从有授权的普通聊天管理本主体的定时及事件规则。规则保存回执指向原自动任务。自动运行的执行者使用当次机会的冻结配置。
+
+| 操作标识 | 用途 | 影响 | 完成语义 |
+| --- | --- | --- | --- |
+| `routine.rules.list` | 读取本主体的规则与最近运行。 | `read` | `immediate` |
+| `routine.rules.get` | 读取一个规则的详细配置与最近运行。 | `read` | `immediate` |
+| `routine.rules.create` | 新建伙伴或工作流的定时任务并返回管理链接。 | `mutation` | `immediate` |
+| `routine.rules.update` | 修订指定规则，或暂停和恢复后续触发。 | `mutation` | `immediate` |
+| `routine.rules.delete` | 经用户明确要求后删除指定规则与关联运行。 | `mutation` | `immediate` |
 
 ### 团队协作
 

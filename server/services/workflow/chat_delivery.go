@@ -249,9 +249,10 @@ func (s *Service) runChatDeliveryLoop(lifecycle *runnerLifecycle) {
 	// 唤醒处理正常终态，低频扫描只用于恢复漏送通知和临时会话占用。
 	retry := time.NewTicker(3 * time.Second)
 	defer retry.Stop()
-	after := ""
+	after, afterConclusion := "", ""
 	for {
 		after = s.drainChatDeliveries(lifecycle.ctx, after)
+		afterConclusion = s.drainConclusions(lifecycle.ctx, afterConclusion)
 		select {
 		case <-lifecycle.ctx.Done():
 			return
@@ -262,7 +263,7 @@ func (s *Service) runChatDeliveryLoop(lifecycle *runnerLifecycle) {
 }
 
 func (s *Service) notifyTerminalChat(l *runnerLifecycle, run models.WorkflowRun) {
-	if run.SourceChatID == "" || run.SourceWorkbench {
+	if !run.ConclusionRequested && (run.SourceChatID == "" || run.SourceWorkbench) {
 		return
 	}
 	select {

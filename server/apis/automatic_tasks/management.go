@@ -3,12 +3,10 @@ package automatic_tasks
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -58,6 +56,11 @@ func (s *taskAPI) TriggerManual(ctx context.Context, wakerID, taskID, key string
 	}
 	if task.WorkflowID == "" && callArgs != nil {
 		return schedule.RunView{}, status_error.BadRequest
+	}
+	if task.Trigger == constants.AutomaticTaskTriggerEvent {
+		// 来源检查使用实际 I/O，避免持锁等待并阻塞其他任务保存和派发。
+		release()
+		return s.service.TestEventRule(ctx, wakerID, taskID, key)
 	}
 	return s.service.Admit(ctx, schedule.AdmissionCommand{Task: task, Source: constants.AutomaticRunSourceManual, OccurrenceKey: "manual:" + key, RequestID: key, Args: callArgs, NextRunAt: task.NextRunAt})
 }
@@ -117,120 +120,9 @@ func (s *taskAPI) RotateToken(ctx context.Context, wakerID, id string, revision 
 	return schedule.SavedTask{TaskID: id, Token: token}, nil
 }
 
-// Delete 封闭新触发，并通过 Chat 的统一 staging 事务删除任务完整聚合。
+// Delete 复用表单与聊天共享的自动任务聚合删除。
 func (s *taskAPI) Delete(ctx context.Context, wakerID, id string) error {
-	ctx, release := s.service.AcquireMutation(ctx)
-	defer release()
-	if _, err := s.getTask(ctx, wakerID, id); err != nil {
-		return err
-	}
-	if err := s.service.WithAuthorizationWrite(ctx, func(ctx context.Context) error { return s.config.Tasks.SetDeleting(ctx, id, true) }); err != nil {
-		return err
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = s.service.WithAuthorizationWrite(context.WithoutCancel(ctx), func(ctx context.Context) error { return s.config.Tasks.SetDeleting(ctx, id, false) })
-		}
-	}()
-	runs, _, err := s.config.Tasks.ListRuns(ctx, id, 0, 0)
-	if err != nil {
-		return err
-	}
-	channelIDs := map[string]bool{}
-	for _, run := range runs {
-		if run.Configuration.ChannelID != "" {
-			channelIDs[run.Configuration.ChannelID] = true
-		}
-	}
-	ordered := make([]string, 0, len(channelIDs))
-	for id := range channelIDs {
-		ordered = append(ordered, id)
-	}
-	sort.Strings(ordered)
-	for _, id := range ordered {
-		locked, release, lockErr := teamwork.Acquire(ctx, id)
-		if lockErr != nil {
-			return lockErr
-		}
-		ctx = locked
-		defer release()
-	}
-	chatIDs := []string{}
-	threadIDs := []string{}
-	for _, run := range runs {
-		if err := s.service.ReconcileRun(ctx, &run); err != nil {
-			return err
-		}
-		if run.WorkflowRunID != "" {
-			view, err := s.service.ReadRun(ctx, run)
-			if err != nil {
-				return err
-			}
-			if schedule.Unfinished(view.State) {
-				return status_error.AutomaticTaskBusy
-			}
-			continue
-		}
-		if run.ChatID == "" {
-			continue
-		}
-		if run.ThreadID != "" {
-			view, err := s.service.ReadRun(ctx, run)
-			if err != nil {
-				return err
-			}
-			if schedule.Unfinished(view.State) {
-				return status_error.AutomaticTaskBusy
-			}
-			active, err := s.config.Threads.CountActiveWork(ctx, run.ThreadID)
-			if err != nil {
-				return err
-			}
-			if active > 0 {
-				return status_error.AutomaticTaskBusy
-			}
-			ids, err := s.config.Threads.ListChatIDs(ctx, run.ThreadID)
-			if err != nil {
-				return err
-			}
-			chatIDs = append(chatIDs, ids...)
-			threadIDs = append(threadIDs, run.ThreadID)
-			continue
-		}
-		state, err := s.config.Chats.ReadInitialExecution(ctx, run.ChatID)
-		if util.HasStatusCode(err, status_error.ChatNotFound) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if state.Chat.ActiveExecutionID != "" {
-			return status_error.AutomaticTaskBusy.WithParams(map[string]interface{}{"ChatID": run.ChatID})
-		}
-		chatIDs = append(chatIDs, run.ChatID)
-	}
-	finalize := func(tx context.Context) error {
-		for _, threadID := range threadIDs {
-			if err := s.config.Threads.Delete(tx, threadID); err != nil {
-				return err
-			}
-		}
-		return s.config.Tasks.Delete(tx, id)
-	}
-	// 最终删除必须先进入授权屏障，再获取数据库写锁；同一 Context 让任务仓库重入，
-	// 避免 Chat 索引已写入后才等待撤权锁，与 Key 更新形成反向锁序。
-	err = s.service.WithAuthorizationWrite(ctx, func(ctx context.Context) error {
-		if len(chatIDs) == 0 {
-			return s.config.Transactions.Transaction(ctx, finalize)
-		}
-		return s.config.Chats.DeleteChatsAtomically(ctx, chatIDs, finalize)
-	})
-	committed = err == nil
-	if committed {
-		s.service.ForgetTask(ctx, id)
-	}
-	return err
+	return s.service.Delete(ctx, wakerID, id)
 }
 
 // Runs 按任务归属分页返回运行历史。

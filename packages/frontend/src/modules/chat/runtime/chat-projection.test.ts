@@ -11,6 +11,47 @@ import {
 import type { ChatEvent } from "@/shared/api/events";
 
 describe("chat projection", () => {
+  it("keeps two distinct task receipts through stale delivery replay", () => {
+    const original: BotChatMessage = {
+      id: "reply",
+      role: "assistant",
+      status: "completed",
+      revision: 12,
+      content: "Final content",
+    };
+    const create = {
+      receiptId: "create-command",
+      taskId: "same-task",
+      nextRunAt: 1795827600000,
+    };
+    const update = {
+      ...create,
+      receiptId: "update-command",
+      nextRunAt: 1795914000000,
+    };
+    const first: ChatEvent = {
+      type: "execution.delivery",
+      message: { ...original, revision: 8, automaticTaskReceipts: [create] },
+    };
+    const second: ChatEvent = {
+      type: "execution.delivery",
+      message: {
+        ...original,
+        revision: 9,
+        automaticTaskReceipts: [create, update],
+      },
+    };
+    const withCards = applyChatEvent(applyChatEvent([original], first), second);
+    expect(withCards[0]?.content).toBe("Final content");
+    expect(withCards[0]?.automaticTaskReceipts).toEqual([create, update]);
+    expect(applyChatEvent(withCards, first)).toBe(withCards);
+    const terminal = applyChatEvent(withCards, {
+      type: "execution.completed",
+      message: { ...original, revision: 7 },
+    });
+    expect(terminal[0]?.automaticTaskReceipts).toEqual([create, update]);
+  });
+
   it("已结束的回复接收同一运行的晚到交付文件，重放旧回执保留新快照", () => {
     const original: BotChatMessage = {
       id: "workflow-reply",

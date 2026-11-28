@@ -16,7 +16,7 @@ export function sameChatOwner(
   return left?.kind === right?.kind && left?.id === right?.id;
 }
 
-/** 记录聊天主体与明确打开的工作来源。普通页签、文件和资料页沿用主体历史。 */
+/** 记录聊天主体与明确打开的来源或公开工作记录。普通页签、文件和资料页沿用主体历史。 */
 export function recordEntityHistory(
   history: EntityHistory,
   visit: ConversationDestination | undefined,
@@ -24,13 +24,19 @@ export function recordEntityHistory(
 ): EntityHistory {
   if (!visit) return history;
   const sameVisit = (entry: ConversationDestination | undefined) =>
-    sameChatOwner(entry, visit) && entry?.workChatId === visit.workChatId;
+    sameChatOwner(entry, visit) &&
+    entry?.workChatId === visit.workChatId &&
+    entry?.messageId === visit.messageId &&
+    entry?.recordMessageId === visit.recordMessageId;
   if (target !== undefined && sameVisit(history.entries[target]))
     return target === history.index ? history : { ...history, index: target };
   const current = history.entries[history.index];
   if (sameVisit(current)) return history;
   const entries = history.entries.slice(0, history.index + 1);
-  if (visit.workChatId && !sameChatOwner(current, visit))
+  if (
+    (visit.workChatId || visit.recordMessageId) &&
+    !sameChatOwner(current, visit)
+  )
     entries.push({ kind: visit.kind, id: visit.id });
   entries.push(visit);
   return { entries, index: entries.length - 1 };

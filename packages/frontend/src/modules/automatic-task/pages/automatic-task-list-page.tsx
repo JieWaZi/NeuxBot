@@ -74,12 +74,13 @@ export function AutomaticTaskListPage() {
   const client = useQueryClient();
   const active = useRouteSceneActive();
   const queryText = params.get("search") || "";
-  const trigger: "api" | "schedule" | "all" =
-    params.get("trigger") === "api"
-      ? "api"
-      : params.get("trigger") === "schedule"
-        ? "schedule"
-        : "all";
+  const triggerParam = params.get("trigger");
+  const trigger: "api" | "schedule" | "event" | "all" =
+    triggerParam === "api" ||
+    triggerParam === "schedule" ||
+    triggerParam === "event"
+      ? triggerParam
+      : "all";
   const enabled =
     params.get("status") === "enabled"
       ? "enabled"
@@ -264,6 +265,9 @@ export function AutomaticTaskListPage() {
                 { value: "all", label: t("allTriggers") },
                 { value: "schedule", label: t("schedule") },
                 { value: "api", label: t("api") },
+                ...(trigger === "event" || (counts?.event ?? 0) > 0
+                  ? [{ value: "event", label: t("event") }]
+                  : []),
               ]}
             />
             <ResourceFilterSelect
@@ -376,7 +380,9 @@ export function AutomaticTaskListPage() {
                     <p>
                       {task.trigger === "api"
                         ? t("api")
-                        : scheduleSummary(task.schedule, t)}
+                        : task.trigger === "event"
+                          ? task.event?.repository || t("event")
+                          : scheduleSummary(task.schedule, t)}
                     </p>
                     {task.trigger === "schedule" ? (
                       <p className="text-content-secondary type-caption mt-1">
@@ -385,7 +391,7 @@ export function AutomaticTaskListPage() {
                     ) : null}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
-                    {task.trigger === "api"
+                    {task.trigger !== "schedule"
                       ? "—"
                       : formatTime(
                           task.nextRunAt,

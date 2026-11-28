@@ -30,6 +30,10 @@ type StartRunCommand struct {
 	localConsumer *models.WorkflowConsumerLease
 	// ChatSource 是服务端确认的聊天来源，运行与该关系一同提交。
 	ChatSource *ChatRunSource `json:"-"`
+	// ConclusionRecipient 是定时自动任务随持久机会冻结的收件主体。
+	ConclusionRecipient *models.MainConversationRecipient `json:"-"`
+	// ConclusionPolicy 是定时任务接纳时确定的汇报策略。
+	ConclusionPolicy constants.AutomaticReportPolicy `json:"-"`
 	// ReplaySourceRunID 让完整重跑沿用已经冻结的原输入文件，但不复用节点结果。
 	ReplaySourceRunID string `json:"-"`
 	// ExpectedSourceVersion 是重新执行时核对的来源运行版本。
@@ -46,6 +50,8 @@ type StartRunCommand struct {
 	InputFileTaskID string `json:"-"`
 	// ConsumerLeaseID 是服务端绑定的单回合使用者身份，不接纳模型自填。
 	ConsumerLeaseID string `json:"-"`
+	// LimitWorkerPermissions 让定时任务、节点和子运行受冻结 Defaults 的权限上限约束。
+	LimitWorkerPermissions bool `json:"-"`
 	// ApprovedScope 是业务入口已经验证的工作范围，HTTP 和模型不能自行扩大。
 	ApprovedScope *models.WorkflowScopeBinding `json:"-"`
 	// additionalWorkingDirectories 是来源聊天批准的其他根目录。
@@ -86,6 +92,30 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		return models.WorkflowRun{}, status_error.WorkflowBudgetExceeded.WithField("budget", "input_bytes")
 	}
 	payload := []any{command, command.DefinitionID, command.TriggerSource, command.RetrySourceRunID, command.ParentRunID, command.Joined, command.Depth, command.ConsumerLeaseID, command.ApprovedScope, command.InputFileTaskID, command.InputFileOwnerKeyID, command.AutomaticRunID, command.WorkerConfigurations}
+	if command.LimitWorkerPermissions {
+		if command.AutomaticRunID == "" {
+			return models.WorkflowRun{}, status_error.WorkflowStateConflict
+		}
+		payload = append(payload, command.LimitWorkerPermissions)
+	}
+	if command.ConclusionRecipient != nil {
+		if command.AutomaticRunID == "" || command.TriggerSource != string(constants.AutomaticRunSourceSchedule) || command.ChatSource != nil || command.ParentRunID != "" {
+			return models.WorkflowRun{}, status_error.WorkflowStateConflict
+		}
+		payload = append(payload, command.ConclusionRecipient)
+	}
+	switch command.ConclusionPolicy {
+	case "":
+	case constants.AutomaticReportPolicyAlways, constants.AutomaticReportPolicyChangesOnly:
+		if command.ConclusionRecipient == nil {
+			return models.WorkflowRun{}, status_error.WorkflowStateConflict
+		}
+		if command.ConclusionPolicy == constants.AutomaticReportPolicyChangesOnly {
+			payload = append(payload, command.ConclusionPolicy)
+		}
+	default:
+		return models.WorkflowRun{}, status_error.BadRequest
+	}
 	if command.ChatSource != nil || command.ReplaySourceRunID != "" {
 		payload = append(payload, command.ChatSource, command.ReplaySourceRunID)
 	}
@@ -140,7 +170,7 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		return models.WorkflowRun{}, err
 	}
 	var parent, previous *models.WorkflowRun
-	limitWorkerPermissions := command.ConsumerLeaseID != ""
+	limitWorkerPermissions := command.ConsumerLeaseID != "" || command.LimitWorkerPermissions
 	if sourceID := cmp.Or(command.ParentRunID, command.RetrySourceRunID, command.ReplaySourceRunID); sourceID != "" {
 		source, err := s.runs.GetRun(ctx, sourceID)
 		if err != nil {
@@ -343,6 +373,11 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		run = models.WorkflowRun{AutomaticRunID: command.AutomaticRunID, ID: id, RootRunID: rootRunID, DefinitionID: definition.ID, RevisionID: revision.ID, RevisionOrdinal: revision.Ordinal, Status: constants.WorkflowRunStatusQueued, Args: args, InputFileDigests: inputDigests, Defaults: command.Defaults, WorkerConfigurations: configurations, Limits: revision.Manifest.Meta.Limits, ScopeBinding: scope, Context: flowContext, RootFiberID: fiberID, ParentRunID: command.ParentRunID, Joined: command.Joined, Depth: command.Depth, Version: 1, StartedAt: now, DeadlineAt: now + timeout}
 		run.WorkerPermissionsLimited = limitWorkerPermissions
 		run.AdditionalWorkingDirectories = command.additionalWorkingDirectories
+		if command.ConclusionRecipient != nil {
+			run.ConclusionRequested = true
+			run.ConclusionRecipient = command.ConclusionRecipient
+			run.ConclusionPolicy = command.ConclusionPolicy
+		}
 		if origin := command.ChatSource; origin != nil {
 			run.SourceChatID = origin.ChatID
 			run.SourceExecutionID = origin.ExecutionID
@@ -352,6 +387,16 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 			run.SourceName = origin.Name
 			run.SourceRunID = origin.RunID
 			run.SourceWorkbench = origin.Workbench
+			if !origin.Workbench {
+				run.ConclusionRequested = true
+				if s.resolveMainOrigin != nil {
+					var err error
+					run.ConclusionMainID, run.ConclusionReplyID, err = s.resolveMainOrigin(ctx, origin.ChatID, origin.ExecutionID)
+					if err != nil {
+						return err
+					}
+				}
+			}
 		}
 		fiber := models.WorkflowFiber{ID: fiberID, RunID: id, Path: "root", Status: constants.WorkflowStepStatusReady, State: workflowdsl.NewMachine(revision.Bundle, args, flowContext, now)}
 		if err = s.runs.CreateRun(ctx, run, fiber); err != nil {

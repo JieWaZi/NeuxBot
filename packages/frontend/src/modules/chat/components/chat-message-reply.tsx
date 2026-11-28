@@ -1,6 +1,7 @@
 import { Reply, X } from "lucide-react";
 import { createContext, useContext, useId } from "react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { ComposerContext } from "@/shared/ui/composer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
@@ -27,11 +28,14 @@ const replyPreviewLimit = 160;
 function replyText(
   message: BotChatMessage,
   segments: readonly ChatMessageSegment[] | undefined,
-  memberReport: boolean,
+  {
+    memberReport,
+    workTicketAnchor,
+  }: { memberReport: boolean; workTicketAnchor: boolean },
 ) {
   if (message.role === "user") {
-    return !message.attachmentOnly &&
-      !message.codeReferenceOnly &&
+    return (workTicketAnchor ||
+      (!message.attachmentOnly && !message.codeReferenceOnly)) &&
       (memberReport || !message.actor || message.actor === "user")
       ? message.content
       : undefined;
@@ -52,7 +56,13 @@ function replyText(
 export function useSelectMessageReply(
   message: BotChatMessage,
   segments?: readonly ChatMessageSegment[],
-  allowMemberReport = false,
+  {
+    allowMemberReport = false,
+    workTicketAnchor = false,
+  }: {
+    allowMemberReport?: boolean;
+    workTicketAnchor?: boolean;
+  } = {},
 ) {
   const { select } = useContext(ChatMessageReplyActions);
   const { id, createdSequence, optimistic, question, inherited, sourceChatId } =
@@ -72,7 +82,7 @@ export function useSelectMessageReply(
     (sourceChatId && !inherited && !memberReport)
   )
     return;
-  const text = replyText(message, segments, memberReport);
+  const text = replyText(message, segments, { memberReport, workTicketAnchor });
   const role = memberReport ? "assistant" : message.role;
   if (!text?.trim() || (role !== "assistant" && role !== "user")) return;
   return () => {
@@ -122,11 +132,13 @@ export function MessageReplyQuote({
   replyTo,
   authorName,
   replyingMessageId,
+  variant = "user",
 }: {
   replyTo: Pick<ChatReplyReference, "messageId"> &
     Partial<Pick<ChatReplyReference, "role" | "preview">>;
   authorName?: string;
   replyingMessageId?: string;
+  variant?: "assistant" | "user";
 }) {
   const { t } = useTranslation("chat");
   const { locate } = useContext(ChatMessageReplyActions);
@@ -141,7 +153,11 @@ export function MessageReplyQuote({
       type="button"
       variant="plain"
       size={null}
-      className="text-user-message-content/75 hover:text-user-message-content active:text-user-message-content mb-1 flex w-fit max-w-full min-w-0 justify-start text-start"
+      className={cn(
+        "mb-1 flex w-fit max-w-full min-w-0 justify-start text-start",
+        variant === "user" &&
+          "text-user-message-content/75 hover:text-user-message-content active:text-user-message-content",
+      )}
       aria-label={label}
       aria-describedby={author ? authorId : undefined}
       title={replyTo.preview}
@@ -154,11 +170,23 @@ export function MessageReplyQuote({
       }
       disabled={!locate}
     >
-      <span className="type-ui border-user-message-content/35 block min-w-0 border-s-2 ps-2">
+      <span
+        className={cn(
+          "type-ui block min-w-0 border-s-2 ps-2",
+          variant === "user"
+            ? "border-user-message-content/35"
+            : "border-border-strong",
+        )}
+      >
         {author ? (
           <span
             id={authorId}
-            className="text-user-message-content block truncate font-semibold"
+            className={cn(
+              "block truncate font-semibold",
+              variant === "user"
+                ? "text-user-message-content"
+                : "text-content-primary",
+            )}
           >
             {author}
           </span>

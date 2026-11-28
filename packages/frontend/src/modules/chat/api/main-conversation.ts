@@ -21,6 +21,12 @@ export type ConversationSubject = {
 export type PublicMessage = NonNullable<
   GetMainConversationResponse["messages"]
 >[number];
+export type PendingMainConversationInput = NonNullable<
+  GetMainConversationResponse["pendingInputs"]
+>[number];
+export type SourceInputTrigger = NonNullable<
+  GetMainConversationSourceResponse["inputTriggers"]
+>[number];
 
 function earlier(page: { hasMore?: boolean; nextBeforeSequence?: number }) {
   return page.hasMore ? page.nextBeforeSequence : undefined;
@@ -92,6 +98,7 @@ export function refreshMainConversationHistory(
 export function sourceHistoryOptions(
   subject: ConversationSubject,
   workChatId: string,
+  publicationId?: string,
 ) {
   const path = { ...subject, workChatId };
   return infiniteQueryOptions({
@@ -100,6 +107,7 @@ export function sourceHistoryOptions(
       subject.subjectType,
       subject.subjectId,
       workChatId,
+      ...(publicationId ? [publicationId] : []),
     ],
     initialPageParam: undefined as number | undefined,
     getNextPageParam: earlier,
@@ -108,7 +116,11 @@ export function sourceHistoryOptions(
         await getMainConversationSource(
           withLocalErrorSurface({
             path,
-            query: { limit: 50, beforeSequence: pageParam },
+            query: {
+              limit: 50,
+              beforeSequence: pageParam,
+              ...(publicationId ? { publicationId } : {}),
+            },
             signal,
             throwOnError: true,
           }),

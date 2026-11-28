@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -30,6 +31,12 @@ type TurnRequest struct {
 	Context []TurnFact
 	// CoreMemory is an optional bounded snapshot offered only on verified public workbench turns.
 	CoreMemory *CoreMemoryContext
+	// freshText seeds a replacement private text session with bounded public context.
+	freshText string
+	// privateText captures Router text in memory while the native store keeps body-free usage.
+	privateText *ephemeralTextStore
+	// authorizeText rechecks the private route's principal before retaining any native binding.
+	authorizeText func(context.Context) error
 }
 
 func validTurnInput(input TurnRequest) bool {
@@ -55,12 +62,16 @@ type TurnPorts struct {
 	ResolveHandoffSource func(context.Context, NativeBinding) (HandoffSource, error)
 	// Admit supplies frozen business facts to write before the first submission.
 	Admit func(context.Context, TurnAdmission) (ConversationBatch, error)
+	// CommitAdmission optionally wraps the atomic business, binding and input commit in host authorization.
+	CommitAdmission func(context.Context, func(context.Context) error) error
 	// Authorize enables input authorization after admission is persisted and returns a revocation function.
 	Authorize func(context.Context, TurnAdmission, CommitReceipt) (func(), error)
 	// Committed delivers committed chat versions; the callback must enqueue without blocking.
 	Committed func(CommitReceipt)
 	// Observe consumes this turn's native events in order.
 	Observe func(context.Context, AgentScope, AgentEvent) error
+	// PromptReturned ends in-flight host observation before durable outcome settlement.
+	PromptReturned func()
 	// AppendLive delivers the same normalized text fragments and coverage versions before persistence.
 	AppendLive func(MessageChange)
 	// CheckpointLive delivers committed message checkpoints and tail changes.
@@ -77,6 +88,8 @@ type TurnPorts struct {
 
 // TurnResult keeps admission, native outcome and local delivery faults separate.
 type TurnResult struct {
+	// timing records adapter and settlement boundaries for detached callers.
+	timing TextTimings
 	// BusinessAdmitted is true once the durable BeforeSubmit batch was written.
 	BusinessAdmitted bool
 	// InteractionRequested records native approval or input requests, including requests denied before a business record exists.
@@ -132,6 +145,8 @@ type Turn struct {
 	ports TurnPorts
 	// mu protects phase, exact active scope and interaction authorization.
 	mu sync.Mutex
+	// submissionOpenedAt marks when authorization allows the native prompt to leave Core.
+	submissionOpenedAt time.Time
 	// phase distinguishes preparing, prepared, running and settling.
 	phase turnPhase
 	// conn references the actual process owner, as set during preparation.
@@ -228,7 +243,9 @@ func (t *Turn) Run(ctx context.Context) TurnResult {
 		result.Admission == string(native.AdmissionUnknown) &&
 		(result.Submission == string(native.SubmissionSent) || result.Submission == string(native.SubmissionUnknown))
 	incomplete := result.Outcome != nil && incompleteNativeOutcome(*result.Outcome)
-	result.CleanupError = t.settle(unconfirmed || incomplete || t.thread.chatID == "" || t.opened && !t.admitted)
+	cleanupStarted := time.Now()
+	result.CleanupError = t.settle(unconfirmed || incomplete || t.thread.chatID == "" && t.thread.textSession == "" || t.opened && !t.admitted)
+	result.timing.Settlement += time.Since(cleanupStarted)
 	return result
 }
 
@@ -248,6 +265,7 @@ func (t *Turn) runPrompt() TurnResult {
 	}
 	t.live.start(t.ctx, t.ports.Observe)
 	prompt, coreMemory := t.promptRequest()
+	submissionStarted := time.Now()
 	run, err := client.ReservePrompt(t.ctx, prompt)
 	if err != nil {
 		res.OperationError = err
@@ -260,13 +278,25 @@ func (t *Turn) runPrompt() TurnResult {
 			res.DeliveryError = out.Outcome.DeliveryError
 		}
 	}
+	returnedAt := time.Now()
+	if t.ports.PromptReturned != nil {
+		t.ports.PromptReturned()
+	}
 	t.mu.Lock()
+	submissionOpenedAt := t.submissionOpenedAt
 	t.authorized = false
 	t.phase = turnFinishing
 	revoke := t.revoke
 	res.BusinessAdmitted = t.admitted
 	res.InteractionRequested = t.interactionRequested
 	t.mu.Unlock()
+	if submissionOpenedAt.IsZero() {
+		res.timing.BeforeSubmit = returnedAt.Sub(submissionStarted)
+	} else {
+		res.timing.Submitted = true
+		res.timing.BeforeSubmit = submissionOpenedAt.Sub(submissionStarted)
+		res.timing.NativeTurn = returnedAt.Sub(submissionOpenedAt)
+	}
 	t.controls.Wait()
 	for _, revoke := range t.steerRevokes {
 		revoke()
@@ -287,11 +317,15 @@ func (t *Turn) runPrompt() TurnResult {
 	if res.Outcome != nil && !incompleteNativeOutcome(*res.Outcome) {
 		l := t.lifecycle
 		reader := l.sessionReader(t.thread)
+		outcome := *res.Outcome
+		outcome.streamAnswerEligible = t.binding.Session.Provider == constants.RuntimeIDWorkBuddy &&
+			outcome.FinalMessage == nil && outcome.StopReason == "end_turn" && res.BusinessAdmitted &&
+			!res.InteractionRequested && res.StorageError == nil && res.OperationError == nil && res.DeliveryError == nil
 		var err error
 		if reader != nil && reader.session == t.binding.Session {
-			err = l.persistReceipt(finalize, reader, *res.Outcome, t.ports.Committed)
+			err = l.persistReceipt(finalize, reader, outcome, t.ports.Committed)
 		} else {
-			err = l.commitAndAcknowledge(finalize, client, t.binding.Session, *res.Outcome, t.ports.Committed)
+			err = l.commitAndAcknowledge(finalize, client, t.binding.Session, outcome, t.ports.Committed, t.thread.textSession != "")
 		}
 		res.StorageError = errors.Join(res.StorageError, err)
 	}
@@ -299,6 +333,7 @@ func (t *Turn) runPrompt() TurnResult {
 	if coreMemory != nil {
 		t.confirmCoreMemory(*coreMemory, res)
 	}
+	res.timing.Settlement = time.Since(returnedAt)
 	return res
 }
 
@@ -308,11 +343,16 @@ func (t *Turn) beforeSubmit(ctx context.Context, submission AgentPromptSubmissio
 			return err
 		}
 	}
+	if t.input.authorizeText != nil {
+		if err := t.input.authorizeText(ctx); err != nil {
+			return err
+		}
+	}
 	admission, receipt, err := t.recordInput(ctx, t.input, t.ports, submission)
-	if err != nil {
+	if err != nil && receipt.Version == 0 {
 		return err
 	}
-	if t.thread.chatID != "" {
+	if t.thread.chatID != "" || t.thread.textSession != "" {
 		t.publishBinding()
 	}
 	t.mu.Lock()
@@ -323,6 +363,14 @@ func (t *Turn) beforeSubmit(ctx context.Context, submission AgentPromptSubmissio
 	}
 	t.adapterInputID = submission.InputID
 	t.mu.Unlock()
+	if err != nil {
+		// The host rejected final authorization after the journal accepted the input.
+		// Surface that receipt for projection and settlement without sending the prompt.
+		if t.ports.Committed != nil {
+			t.ports.Committed(receipt)
+		}
+		return err
+	}
 	revoke, err := authorizeInput(ctx, t.ports, admission, receipt)
 	if err == nil && ctx.Err() == nil && t.binding.Handoff != nil {
 		err = t.claimHandoff(ctx, submission)
@@ -333,6 +381,9 @@ func (t *Turn) beforeSubmit(ctx context.Context, submission AgentPromptSubmissio
 	t.mu.Lock()
 	t.revoke = revoke
 	t.authorized = err == nil && ctx.Err() == nil
+	if t.authorized {
+		t.submissionOpenedAt = time.Now()
+	}
 	t.mu.Unlock()
 	if err != nil {
 		return err
@@ -357,7 +408,12 @@ func (t *Turn) recordInput(ctx context.Context, input TurnRequest, ports TurnPor
 	admission.Input.Attribution = &UsageAttribution{ChatID: t.thread.chatID, AccountID: t.conn.account.id,
 		WakerID: input.UsageWakerID, Source: input.UsageSource}
 	if input.ExecutionID == "" {
-		err = t.lifecycle.store.CommitDetachedInput(ctx, admission.Input)
+		if t.thread.textSession != "" && t.freshSession {
+			err = t.lifecycle.store.(textBindingStore).WriteTextBinding(ctx, t.thread.textSession, admission.Binding)
+		}
+		if err == nil {
+			err = t.lifecycle.store.CommitDetachedInput(ctx, admission.Input)
+		}
 	} else {
 		batch, prepareErr := ports.Admit(ctx, admission)
 		if prepareErr != nil {
@@ -374,7 +430,19 @@ func (t *Turn) recordInput(ctx context.Context, input TurnRequest, ports TurnPor
 			changes = append(changes, change)
 		}
 		batch.Changes = append(changes, ConversationChange{Binding: &t.binding}, ConversationChange{Input: &admission.Input})
-		receipt, err = commitConversation(ctx, t.lifecycle.store, batch)
+		commit := func(ctx context.Context) error {
+			var err error
+			receipt, err = commitConversation(ctx, t.lifecycle.store, batch)
+			return err
+		}
+		if ports.CommitAdmission != nil {
+			err = ports.CommitAdmission(ctx, commit)
+			if err == nil && receipt.Version == 0 {
+				err = status_error.ChatLogRecordInvalid
+			}
+		} else {
+			err = commit(ctx)
+		}
 	}
 	if err != nil && input.HostInvocationID == t.input.HostInvocationID {
 		t.gateStorageErr = err
@@ -507,7 +575,7 @@ func (t *Turn) cancelPrepared() {
 	}
 	t.mu.Unlock()
 	if prepared {
-		t.settle(t.thread.chatID == "" || t.opened)
+		t.settle(t.thread.chatID == "" && t.thread.textSession == "" || t.opened)
 	}
 }
 
@@ -535,6 +603,10 @@ func (t *Turn) settle(release bool) error {
 		state.active = nil
 		if !state.closing && state.connection == nil && t.cleanupErr == nil {
 			delete(l.threads, state.id)
+		} else if !l.closing && !state.closing && state.textSession != "" && state.connection != nil {
+			state.textIdleGeneration++
+			generation := state.textIdleGeneration
+			state.textIdle = time.AfterFunc(textSessionIdleTimeout, func() { l.expireTextThread(state, generation) })
 		}
 	}
 	close(t.done)
@@ -543,7 +615,11 @@ func (t *Turn) settle(release bool) error {
 }
 
 func (t *Turn) deltaTarget() deltaTarget {
-	return deltaTarget{store: t.lifecycle.store, session: t.binding.Session,
+	store := t.lifecycle.store
+	if t.input.privateText != nil {
+		store = t.input.privateText
+	}
+	return deltaTarget{store: store, session: t.binding.Session,
 		chatID: t.thread.chatID, hostID: t.input.HostInvocationID, messageID: t.input.AssistantMessageID,
 		executionID: t.input.ExecutionID, committed: t.ports.Committed,
 		appendLive: t.ports.AppendLive, checkpointLive: t.ports.CheckpointLive}
@@ -656,7 +732,7 @@ func (l *ThreadLifecycle) callbacks(state *threadState, generation uint64) Agent
 				t.live.offer(scope, event)
 				return nil
 			}
-			if scope.HostInvocationID == "" && scope.NativeInvocationID != "" {
+			if state.textSession == "" && scope.HostInvocationID == "" && scope.NativeInvocationID != "" {
 				l.mu.Lock()
 				reader := state.reader
 				valid := state.generation == generation && reader != nil && reader.session.SessionID == scope.SessionID
@@ -743,6 +819,6 @@ func (l *ThreadLifecycle) Compact(ctx context.Context, chatID string) (AgentComp
 	}
 	storeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), turnSettlementTimeout)
 	defer cancel()
-	storeErr := l.commitAndAcknowledge(storeCtx, client, binding.Session, AgentNativeOutcome{Turn: *result.Turn}, nil)
+	storeErr := l.commitAndAcknowledge(storeCtx, client, binding.Session, AgentNativeOutcome{Turn: *result.Turn}, nil, false)
 	return result, errors.Join(operationErr, storeErr)
 }

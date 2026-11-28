@@ -102,7 +102,7 @@ func (o *SaveWorkflowTriggers) Output(ginContext *gin.Context) (interface{}, err
 	scheduler, tasks, transactions := global.ScheduleService, global.AutomaticTaskControllerManager, global.TransactionControllerManager
 	ctx, release := scheduler.AcquireMutation(ginContext)
 	defer release()
-	if transactions == nil || command.RequestID == "" || len(command.RequestID) > 120 || len(command.Triggers) > 5 || command.Configuration.WorkflowID != workflowID || command.Configuration.TargetKind != constants.AutomaticTaskTargetKindWorkflow {
+	if transactions == nil || command.RequestID == "" || len(command.RequestID) > 120 || len(command.Triggers) > 5 || command.Configuration.WorkflowID != workflowID || command.Configuration.TargetKind != constants.AutomaticTaskTargetKindWorkflow || command.Configuration.WorkflowReportRecipient != nil {
 		return SavedWorkflowTriggers{}, status_error.BadRequest
 	}
 	payload, err := json.Marshal(command)
@@ -152,6 +152,10 @@ func (o *SaveWorkflowTriggers) Output(ginContext *gin.Context) (interface{}, err
 				}
 				version = task.ConfigurationVersion
 				seen[trigger.TaskID] = true
+				if config.Trigger == constants.AutomaticTaskTriggerSchedule {
+					config.WorkflowReportRecipient = task.WorkflowReportRecipient
+					config.ReportPolicy = task.ReportPolicy
+				}
 			}
 			saved, err := scheduler.SaveConfiguration(ctx, "", trigger.TaskID, version, config, true)
 			if err != nil {

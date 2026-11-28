@@ -33,6 +33,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/apis/wakers"
 	"github.com/JieWaZi/NeuxBot/server/apis/websession"
 	"github.com/JieWaZi/NeuxBot/server/apis/work_board"
+	"github.com/JieWaZi/NeuxBot/server/apis/work_tickets"
 	"github.com/JieWaZi/NeuxBot/server/apis/workflows"
 	"github.com/JieWaZi/NeuxBot/server/apis/workspace"
 	"github.com/JieWaZi/NeuxBot/server/apis/workspace_attention"
@@ -79,6 +80,7 @@ func init() {
 	desktopRouter.Register(workflows.Router)
 	desktopRouter.Register(workspace.Router)
 	desktopRouter.Register(work_board.Router)
+	desktopRouter.Register(work_tickets.Router)
 	desktopRouter.Register(chat_reading.Router)
 	desktopRouter.Register(run_viewing.Router)
 	desktopRouter.Register(workspace_attention.Router)

@@ -2,7 +2,8 @@ import { useTranslation } from "react-i18next";
 import { Avatar } from "@/shared/ui/avatar";
 import { Button } from "@/shared/ui/button";
 import { companionAttention } from "@/shared/ui/conversation-attention";
-import type { MainConversationAvatarActivity } from "../model/main-conversation-message-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import type { MainConversationRequest } from "../model/main-conversation-message-group";
 
 export type OpenMainConversationSource = (
   id: string,
@@ -15,44 +16,51 @@ export function MainConversationAvatar({
   workChatId,
   activity,
   openSource,
+  openRecord,
+  defaultConversation = false,
 }: {
   name: string;
   src?: string;
-  workChatId: string;
-  activity?: MainConversationAvatarActivity;
-  openSource: OpenMainConversationSource;
+  workChatId?: string;
+  activity?: MainConversationRequest | "working";
+  openSource?: OpenMainConversationSource;
+  openRecord?: () => void;
+  defaultConversation?: boolean;
 }) {
   const { t } = useTranslation("chat");
-  const request =
-    activity === "input" || activity === "approval" ? activity : undefined;
+  const request = activity === "working" ? undefined : activity;
   const attention = request
     ? companionAttention({ kind: "action", request })
-    : activity === "working"
-      ? companionAttention({ kind: "working" })
-      : undefined;
+    : activity && companionAttention({ kind: "working" });
   const avatar = (
     <Avatar
       name={name}
       src={src}
       size="sm"
       animated={Boolean(activity)}
-      activity={activity && (request ? "waiting" : "working")}
+      activity={activity && (activity === "working" ? "working" : "waiting")}
       attention={attention}
       interactive={false}
     />
   );
-  if (!workChatId) return avatar;
-  const label = t("openSource", { name });
+  const onOpen =
+    workChatId && openSource
+      ? (trigger: HTMLElement) => openSource(workChatId, trigger)
+      : openRecord;
+  if (!onOpen) return avatar;
+  const label = t(
+    defaultConversation ? "openDefaultConversation" : "openSource",
+  );
   const description =
     activity &&
     t(
-      request === "input"
+      activity === "input"
         ? "waitingElicitation"
-        : request === "approval"
+        : activity === "approval"
           ? "waitingApproval"
           : "working",
     );
-  return (
+  const button = (
     <Button
       type="button"
       size="icon"
@@ -61,9 +69,15 @@ export function MainConversationAvatar({
       title={label}
       aria-label={label}
       aria-description={description}
-      onClick={(event) => openSource(workChatId, event.currentTarget)}
+      onClick={(event) => onOpen(event.currentTarget)}
     >
       {avatar}
     </Button>
+  );
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }

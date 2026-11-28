@@ -48,6 +48,8 @@ type MessageViewBuilder struct {
 	executionMessages map[string]string
 	// deliverySummaries 保留领域交付正文，原生消息内容替换不覆盖此正文。
 	deliverySummaries map[string]string
+	// workTicketReports 保留原执行已提交、可以引用的工单正文，原生正文替换不会覆盖报告。
+	workTicketReports map[string][]MessageDisplayPart
 	// toolIndexes 按消息与调用复合身份定位工具展示部件。
 	toolIndexes map[string]map[string]int
 	// toolStates 只保留当前工具的安全展示事实，不保留输入正文、输出或历史参数。
@@ -97,6 +99,7 @@ func NewMessageViewBuilder() *MessageViewBuilder {
 		messageIndexes:         make(map[string]int),
 		executionMessages:      make(map[string]string),
 		deliverySummaries:      make(map[string]string),
+		workTicketReports:      make(map[string][]MessageDisplayPart),
 		toolIndexes:            make(map[string]map[string]int),
 		toolStates:             make(map[string]map[string]*toolProjectionState),
 		latestToolKeys:         make(map[string]map[string]string),
@@ -157,6 +160,8 @@ func (p *MessageViewBuilder) Apply(record eventlog.Record) (string, error) {
 		return p.applyExecutionCreated(record)
 	case constants.ChatEventTypeExecutionStarted:
 		return p.applyExecutionStarted(record), nil
+	case constants.ChatEventTypeExecutionWatchdogStopRequested:
+		return p.applyWatchdogStopRequested(record)
 	case constants.ChatEventTypeRuntimeEvent:
 		return p.applyRuntimeEvent(record)
 	case constants.ChatEventTypeFileChanges:
@@ -256,15 +261,21 @@ func (p *MessageViewBuilder) snapshotMessage(message Message, public bool) Messa
 	// 继承消息没有 Runtime 事件或增量工具索引，直接保留权威继承快照中的文件摘要。
 	message = cloneMessage(message, public)
 	if text := p.deliverySummaries[message.ID]; text != "" {
-		if message.Content == "" {
-			message.Content = text
-		} else {
-			message.Content += "\n\n" + text
-		}
-		message.DisplayParts = append(message.DisplayParts, MessageDisplayPart{ID: DeliveryPartID(message.ID), Type: constants.MessageDisplayPartText, Text: text})
+		appendPublicDeliveryText(&message, MessageDisplayPart{ID: DeliveryPartID(message.ID), Type: constants.MessageDisplayPartText, Text: text})
+	}
+	for _, part := range p.workTicketReports[message.ID] {
+		appendPublicDeliveryText(&message, part)
 	}
 	message.Readable = ReadingKind(message) != ""
 	return message
+}
+
+func appendPublicDeliveryText(message *Message, part MessageDisplayPart) {
+	if message.Content != "" {
+		message.Content += "\n\n"
+	}
+	message.Content += part.Text
+	message.DisplayParts = append(message.DisplayParts, part)
 }
 
 // DeliveryPartID 返回助手消息所附交付摘要的稳定部件标识。
@@ -301,6 +312,28 @@ func (p *MessageViewBuilder) applyExecutionDelivery(record eventlog.Record) (str
 	if json.Unmarshal(record.Data, &data) != nil {
 		return "", status_error.ChatLogCorrupted
 	}
+	if record.MessageID != record.ExecutionID && data.IsTransferredWorkReport() {
+		if record.MessageID == "" || record.MessageID != data.SourceID || strings.TrimSpace(data.Summary) == "" {
+			return "", status_error.ChatLogCorrupted
+		}
+		message := Message{
+			ID: record.MessageID, Role: constants.MessageRoleAssistant, Actor: constants.WorkTicketReportActor,
+			SourceChatID: data.SourceChatID, SourceWakerID: data.SourceWakerID, Content: data.Summary,
+			DisplayParts: []MessageDisplayPart{{ID: displayPartID(record.MessageID, 1), Type: constants.MessageDisplayPartText, Text: data.Summary}},
+			Revision:     record.Sequence, LiveRevision: record.Sequence, CreatedSequence: record.Sequence,
+			CreatedAt: record.RecordedAt, UpdatedAt: record.RecordedAt,
+		}
+		if index, exists := p.messageIndexes[message.ID]; exists {
+			current := p.messages[index]
+			if current.Content != message.Content || current.SourceChatID != message.SourceChatID || current.SourceWakerID != message.SourceWakerID {
+				return "", status_error.ChatLogCorrupted
+			}
+			return "", nil
+		}
+		p.messageIndexes[message.ID] = len(p.messages)
+		p.messages = append(p.messages, message)
+		return message.ID, nil
+	}
 	index, exists := p.messageIndexes[record.MessageID]
 	if !exists {
 		return "", nil
@@ -309,6 +342,27 @@ func (p *MessageViewBuilder) applyExecutionDelivery(record eventlog.Record) (str
 	if message.ExecutionID != record.ExecutionID || message.Role != constants.MessageRoleAssistant {
 		return "", status_error.ChatLogCorrupted
 	}
+	if data.WorkTicketReport {
+		if data.SourceID == "" || strings.TrimSpace(data.Summary) == "" {
+			return "", status_error.ChatLogCorrupted
+		}
+		reports := p.workTicketReports[message.ID]
+		for _, report := range reports {
+			if report.ID != data.SourceID {
+				continue
+			}
+			if report.Text != data.Summary {
+				return "", status_error.ChatLogCorrupted
+			}
+			return "", nil
+		}
+		p.workTicketReports[message.ID] = append(reports, MessageDisplayPart{
+			ID: data.SourceID, Type: constants.MessageDisplayPartText, Text: data.Summary,
+		})
+		message.Revision = max(message.Revision+1, record.Sequence)
+		message.UpdatedAt = record.RecordedAt
+		return message.ID, nil
+	}
 	for _, attachment := range data.Attachments {
 		if !slices.ContainsFunc(message.Attachments, func(current eventlog.AttachmentReference) bool { return current.Path == attachment.Path }) {
 			message.Attachments = append(message.Attachments, attachment)
@@ -316,6 +370,13 @@ func (p *MessageViewBuilder) applyExecutionDelivery(record eventlog.Record) (str
 	}
 	if data.Summary != "" {
 		p.deliverySummaries[message.ID] = data.Summary
+	}
+	if task := data.AutomaticTaskReceipt; task != nil {
+		if !slices.ContainsFunc(message.AutomaticTaskReceipts, func(current eventlog.AutomaticTaskReceipt) bool {
+			return current.ReceiptID == task.ReceiptID
+		}) {
+			message.AutomaticTaskReceipts = append(message.AutomaticTaskReceipts, *task)
+		}
 	}
 	message.Revision = max(message.Revision+1, record.Sequence)
 	message.UpdatedAt = record.RecordedAt
@@ -378,28 +439,29 @@ func (p *MessageViewBuilder) applyMessageCreated(record eventlog.Record) (string
 		return "", nil
 	}
 	message := Message{
-		ID:                record.MessageID,
-		SubmissionID:      data.SubmissionID,
-		Role:              data.Role,
-		Actor:             data.Actor,
-		SourceWakerID:     data.SourceWakerID,
-		SourceChatID:      data.SourceChatID,
-		Truncated:         data.Truncated,
-		Content:           data.Content,
-		AttachmentOnly:    data.AttachmentOnly,
-		CodeReferenceOnly: data.CodeReferenceOnly,
-		ReplyTo:           data.ReplyTo,
-		Attachments:       append([]eventlog.AttachmentReference(nil), data.Attachments...),
-		Plugins:           append([]plugins.Snapshot(nil), data.Plugins...),
-		Skills:            append([]eventlog.MessageSkillReference(nil), data.Skills...),
-		Connectors:        append([]eventlog.MessageConnectorReference(nil), data.Connectors...),
-		CodeReferences:    append([]eventlog.CodeReference(nil), data.CodeReferences...),
-		Workflow:          data.Workflow,
-		Revision:          record.Sequence,
-		LiveRevision:      record.Sequence,
-		CreatedSequence:   record.Sequence,
-		CreatedAt:         record.RecordedAt,
-		UpdatedAt:         record.RecordedAt,
+		MainConversationTriggerID: data.MainConversationTriggerID,
+		ID:                        record.MessageID,
+		SubmissionID:              data.SubmissionID,
+		Role:                      data.Role,
+		Actor:                     data.Actor,
+		SourceWakerID:             data.SourceWakerID,
+		SourceChatID:              data.SourceChatID,
+		Truncated:                 data.Truncated,
+		Content:                   data.Content,
+		AttachmentOnly:            data.AttachmentOnly,
+		CodeReferenceOnly:         data.CodeReferenceOnly,
+		ReplyTo:                   data.ReplyTo,
+		Attachments:               append([]eventlog.AttachmentReference(nil), data.Attachments...),
+		Plugins:                   append([]plugins.Snapshot(nil), data.Plugins...),
+		Skills:                    append([]eventlog.MessageSkillReference(nil), data.Skills...),
+		Connectors:                append([]eventlog.MessageConnectorReference(nil), data.Connectors...),
+		CodeReferences:            append([]eventlog.CodeReference(nil), data.CodeReferences...),
+		Workflow:                  data.Workflow,
+		Revision:                  record.Sequence,
+		LiveRevision:              record.Sequence,
+		CreatedSequence:           record.Sequence,
+		CreatedAt:                 record.RecordedAt,
+		UpdatedAt:                 record.RecordedAt,
 	}
 	if data.Content != "" {
 		message.DisplayParts = []MessageDisplayPart{{
@@ -548,6 +610,20 @@ func (p *MessageViewBuilder) applyRuntimeContent(
 		return err
 	}
 	return nil
+}
+
+func (p *MessageViewBuilder) applyWatchdogStopRequested(record eventlog.Record) (string, error) {
+	var stop eventlog.WatchdogStopRequestedData
+	if json.Unmarshal(record.Data, &stop) != nil || stop.ExecutionID != record.ExecutionID || stop.ReasonCode == "" {
+		return "", status_error.ChatLogCorrupted
+	}
+	messageID := p.executionMessages[record.ExecutionID]
+	if index, exists := p.messageIndexes[messageID]; exists && p.messages[index].Status == constants.ExecutionStatusRunning {
+		p.messages[index].ErrorMessageSource = constants.ErrorMessageSourceLocalized
+		p.updateStatus(messageID, constants.ExecutionStatusRunning, record, stop.ReasonCode, "", 0)
+		return messageID, nil
+	}
+	return "", nil
 }
 
 func (p *MessageViewBuilder) applyExecutionFinished(record eventlog.Record) (string, error) {
@@ -911,6 +987,7 @@ func cloneMessage(message Message, public bool) Message {
 		clone.FileChangeRecord = &record
 	}
 	clone.Attachments = append([]eventlog.AttachmentReference(nil), message.Attachments...)
+	clone.AutomaticTaskReceipts = slices.Clone(message.AutomaticTaskReceipts)
 	clone.Skills = append([]eventlog.MessageSkillReference(nil), message.Skills...)
 	clone.Connectors = append([]eventlog.MessageConnectorReference(nil), message.Connectors...)
 	clone.CodeReferences = append([]eventlog.CodeReference(nil), message.CodeReferences...)

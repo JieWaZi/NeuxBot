@@ -169,6 +169,8 @@ type ProviderLaunch struct {
 	RequireNoTools bool
 	// EphemeralText isolates detached text and enables cleanup retries.
 	EphemeralText bool
+	// ContinuedText applies detached text restrictions while allowing native history.
+	ContinuedText bool
 }
 
 // ClaudeLaunch declares the native settings and tool restrictions for Claude.

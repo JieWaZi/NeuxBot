@@ -20,6 +20,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/services/mainconversation"
 	"github.com/JieWaZi/NeuxBot/server/services/schedule"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -115,6 +116,8 @@ type testHarness struct {
 	workflowStore controllers.WorkflowController
 	// workflowState 与删除API、Runner共用同一命令保护。
 	workflowState *workflowstate.Coordinator
+	// main 保存真实定时回件及其原地址。
+	main *mainconversation.Service
 	// boundary 是可产生等待、终态和后续手动执行的模型边界。
 	boundary *testExecutionBoundary
 	// now 是并发安全的注入时钟。
@@ -137,12 +140,14 @@ func newHarness(t *testing.T) *testHarness {
 	boundary := &testExecutionBoundary{states: map[string]chat.InitialExecutionState{}, transactions: tx}
 	wakers := controllers.NewWakerController(database.DB)
 	h := &testHarness{boundary: boundary, wakerID: util.New(), directory: t.TempDir()}
+	channels := controllers.NewChannelController(database.DB)
+	h.main = mainconversation.New(controllers.NewMainConversationController(database.DB), tx, wakers, channels)
 	workflowStore := controllers.NewWorkflowController(database.DB)
 	workflowRuns := controllers.NewWorkflowRunController(database.DB)
 	workflowState := workflowstate.New(workflowStore, workflowRuns, tx)
 	dataDirectory := t.TempDir()
 	managedDirectory := t.TempDir()
-	h.workflows = workflow.New(workflow.Config{Store: workflowStore, Runs: workflowRuns, State: workflowState, Transactions: tx, DataDirectory: managedDirectory})
+	h.workflows = workflow.New(workflow.Config{Store: workflowStore, Runs: workflowRuns, State: workflowState, Transactions: tx, DataDirectory: managedDirectory, PublishMainConclusion: h.main.PublishWorkflowConclusion})
 	h.workflowStore, h.workflowState = workflowStore, workflowState
 	h.now.Store(time.Date(2026, 9, 30, 8, 0, 0, 0, time.UTC).UnixMilli())
 	if err := wakers.Create(context.Background(), models.Waker{ID: h.wakerID, Name: "自动任务伙伴"}); err != nil {
@@ -150,7 +155,7 @@ func newHarness(t *testing.T) *testHarness {
 	}
 	h.api = taskAPI{config: schedule.Config{APIHandler: NewLocalHandler, Workflows: h.workflows, WorkflowRuns: workflowRuns, Tasks: controllers.NewAutomaticTaskController(database.DB), Transactions: tx, Wakers: wakers,
 		Projects: controllers.NewProjectController(database.DB), Executions: boundary, Chats: boundary,
-		Channels: controllers.NewChannelController(database.DB), Threads: controllers.NewChannelThreadController(database.DB), TeamTasks: controllers.NewChannelTaskController(database.DB), DataDirectory: dataDirectory, ManagedFilesDirectory: managedDirectory, Now: func() time.Time { return time.UnixMilli(h.now.Load()).UTC() }}}
+		Channels: channels, Threads: controllers.NewChannelThreadController(database.DB), TeamTasks: controllers.NewChannelTaskController(database.DB), DataDirectory: dataDirectory, ManagedFilesDirectory: managedDirectory, Now: func() time.Time { return time.UnixMilli(h.now.Load()).UTC() }}}
 	portData, _ := json.Marshal(map[string]any{"ip": "127.0.0.1", "port": availableAPIPort(t), "enabled": true})
 	if err := os.WriteFile(filepath.Join(dataDirectory, "integration-api.json"), portData, 0600); err != nil {
 		t.Fatal(err)

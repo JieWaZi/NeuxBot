@@ -525,6 +525,43 @@ func TestNativeProductWorkflowResumesAfterToolConnectionChanges(t *testing.T) {
 	}
 }
 
+func TestNativeMainConversationCanAuthorAScheduledWorkflow(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	core, _, store, closeRuntime := fixture.open()
+	defer closeRuntime()
+	manager, tools := core.(*service), agentPreparationFixture(t)
+	manager.agent, manager.agentEndpoint, manager.systemSkillDirectory = tools.agent, tools.agentEndpoint, tools.systemSkillDirectory
+	authoring := agentPreparationBinding(t, "workflow.definitions.create")
+	bound := 0
+	manager.bindLocalWorkflowTurn = func(_ context.Context, chat models.Chat, _ string, _ *workinput.WorkflowReference, _ string) (WorkflowTurnBinding, error) {
+		if !chat.HiddenFromWakerHistory {
+			t.Fatal("expected the main conversation's work source")
+		}
+		bound++
+		return WorkflowTurnBinding{Capability: &ToolCapability{ID: "workflow.local", Bindings: []capability.Binding{authoring}}}, nil
+	}
+	intent := WorkIntent{
+		ClientRequestID: "schedule-a-monitor",
+		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker", HiddenFromWakerHistory: true}},
+		Input:           WorkInput{Actor: "user", Content: "Create a workflow and schedule an inventory check"},
+		Options:         WorkOptions{EntryPoint: MainConversationEntryPoint, RuntimeID: "codex", Model: "fixture-model", PermissionLevel: constants.PermissionLevelAuto},
+	}
+	run, err := core.Start(ctx, intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitNativeProductStatus(t, ctx, store, run, constants.ExecutionStatusCompleted)
+	if bound != 1 {
+		t.Fatalf("bound workflow authoring %d times, want one", bound)
+	}
+	trace, err := os.ReadFile(fixture.trace)
+	if err != nil || !strings.Contains(string(trace), "bot_capabilities") {
+		t.Fatalf("workflow authoring lacked a native tool connection: %v", err)
+	}
+}
+
 func TestNativeProductLocalWorkflowSendsOnlyCurrentSelection(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()

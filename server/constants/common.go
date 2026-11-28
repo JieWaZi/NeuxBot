@@ -148,6 +148,8 @@ const (
 	AutomaticTaskLocalTimeLayout = "2006-01-02T15:04"
 	// AutomaticTaskActor 是自动输入在标准 Chat 中的独立参与者身份。
 	AutomaticTaskActor = "automatic_task"
+	// AutomaticTaskReceiptDataKey 保存定时任务命令结果中的展示快照。
+	AutomaticTaskReceiptDataKey = "automaticTaskReceipt"
 	// AutomaticTaskScheduleGraceSeconds 是持续运行期间允许的调度宽限。
 	AutomaticTaskScheduleGraceSeconds = 60
 )
@@ -959,3 +961,10 @@ const (
 
 // StoragePolicyFileName 是程序数据根中保留策略和最近维护结果的文件名。
 const StoragePolicyFileName = "storage-policy.json"
+
+const (
+	// WorkTicketEventTopic 是按原会话读取工单的实时更新主题。
+	WorkTicketEventTopic = "work-tickets"
+	// WorkTicketChangedEvent 表示原会话的工单查询需要刷新。
+	WorkTicketChangedEvent = "work-tickets.changed"
+)

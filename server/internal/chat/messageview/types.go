@@ -174,6 +174,8 @@ type MessageQuestion struct {
 
 // Message 是从权威事件重放出的聊天消息视图。
 type Message struct {
+	// MainConversationTriggerID 供已授权的来源历史核对原公开输入，不进入通用聊天协议。
+	MainConversationTriggerID string `json:"-"`
 	// 接续执行标识
 	SteerExecutionID string `json:"steerExecutionId,omitempty"`
 
@@ -205,6 +207,8 @@ type Message struct {
 	ReplyTo *eventlog.MessageReply `json:"replyTo,omitempty"`
 	// 问题卡
 	Question *MessageQuestion `json:"question,omitempty"`
+	// AutomaticTaskReceipts 是本轮已提交的定时任务快照。
+	AutomaticTaskReceipts []eventlog.AutomaticTaskReceipt `json:"automaticTaskReceipts,omitempty"`
 	// Attachments 是用户消息携带的有序附件引用。
 	Attachments []eventlog.AttachmentReference `json:"attachments,omitempty"`
 	// Skills 是用户发送消息时明确选择的技能快照。

@@ -103,6 +103,7 @@ func (q *Query) ExecutorSummaries(ctx context.Context, reader string, ids []stri
 		entry := models.ExecutorAttentionSummary{ExecutorID: id, Kind: "waker", Chats: []models.ExecutorAttentionChat{}, Requests: []models.WorkBoardAttention{}}
 		if source, exists := facts.MainWorkCounts[id]; exists {
 			entry.RunningChatCount = source.RunningCount
+			entry.MainConversationPending = source.HasPendingInput
 			entry.Kind = source.SubjectType
 		}
 		kinds := map[models.WorkRef][]string{}

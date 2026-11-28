@@ -92,9 +92,10 @@ export function PartnerConversationTabStrip({
           ...main,
           fixed: true,
           closeable: false,
+          iconOnly: true,
           description: t("mainConversation"),
           indicator: (
-            <StaticAvatar name={label} src={partner?.avatar} size="sm" />
+            <StaticAvatar name={label} src={partner?.avatar} size="xs" />
           ),
         },
         ...ordinary,

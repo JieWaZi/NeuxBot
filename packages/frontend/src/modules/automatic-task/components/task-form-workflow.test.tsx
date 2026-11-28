@@ -23,7 +23,12 @@ const { update, bulk } = vi.hoisted(() => ({
 vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
   ...(await original<typeof SDK>()),
   listWakers: async () => ({ data: { resources: [], totalSize: 0 } }),
-  listChannels: async () => ({ data: { resources: [], totalSize: 0 } }),
+  listChannels: async () => ({
+    data: {
+      resources: [{ channel: { id: "review-team", name: "审核团队" } }],
+      totalSize: 1,
+    },
+  }),
   listRuntimes: async () => ({ data: { resources: [] } }),
   listAiAccounts: async () => ({ data: { resources: [] } }),
   listWorkflows: async () => ({
@@ -146,6 +151,72 @@ it("编辑工作流自动任务只保存当前任务，API 必填字段无需填
   });
   expect(bulk).not.toHaveBeenCalled();
   expect(saved).toHaveBeenCalledWith({ taskId: "task-a" });
+});
+
+it("全局定时工作流默认关闭回报，选择团队后保存收件主体", async () => {
+  update.mockClear();
+  const user = userEvent.setup();
+  const open = (
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <TaskFormDialog
+        open
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        task={{
+          id: "task-report",
+          wakerId: "owner",
+          name: "日报",
+          targetKind: "workflow",
+          workflowId: "flow",
+          workflowRevisionPolicy: "current",
+          workflowInputBindings: { text: { source: "fixed", value: "sample" } },
+          trigger: "schedule",
+          schedule: { kind: "daily", timezone: "UTC", hour: 9, minute: 0 },
+          enabled: true,
+          revision: 1,
+        }}
+      />
+    </QueryClientProvider>
+  );
+  render(open);
+  const report = await screen.findByRole("switch", { name: "回报到主会话" });
+  expect(report).not.toBeChecked();
+  const save = screen.getByRole("button", { name: "保存" });
+  await waitFor(() => expect(save).toBeEnabled());
+  await user.click(report);
+  expect(save).toBeDisabled();
+  const recipient = screen.getByRole("combobox", { name: "收件人" });
+  await user.click(recipient);
+  await user.click(await screen.findByRole("option", { name: "审核团队" }));
+  await user.click(screen.getByRole("combobox", { name: "汇报频率" }));
+  await user.click(
+    await screen.findByRole("option", { name: "仅在有变化时汇报" }),
+  );
+  await user.click(save);
+  await waitFor(() =>
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          reportPolicy: "changes_only",
+          workflowReportRecipient: {
+            subjectType: "team",
+            subjectId: "review-team",
+          },
+        }),
+      }),
+    ),
+  );
+  await user.click(report);
+  await user.click(save);
+  await waitFor(() =>
+    expect(
+      update.mock.lastCall?.[0].body.workflowReportRecipient,
+    ).toBeUndefined(),
+  );
 });
 
 it("编辑工作流触发设置保留显式关闭的 Fast", async () => {

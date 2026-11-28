@@ -18,6 +18,10 @@ func (v AutomaticRunSource) String() string {
 		return ""
 	case AutomaticRunSourceAPI:
 		return "api"
+	case AutomaticRunSourceEvent:
+		return "event"
+	case AutomaticRunSourceEventTest:
+		return "event_test"
 	case AutomaticRunSourceManual:
 		return "manual"
 	case AutomaticRunSourceSchedule:
@@ -32,6 +36,10 @@ func (v AutomaticRunSource) Label() string {
 		return "AutomaticRunSourceUnspecified 表示缺少运行来源。"
 	case AutomaticRunSourceAPI:
 		return "AutomaticRunSourceAPI 表示一个带幂等标识的本机请求。"
+	case AutomaticRunSourceEvent:
+		return "AutomaticRunSourceEvent 表示规则接纳的真实来源变化。"
+	case AutomaticRunSourceEventTest:
+		return "AutomaticRunSourceEventTest 表示用户明确请求的事件测试。"
 	case AutomaticRunSourceManual:
 		return "AutomaticRunSourceManual 表示用户明确点击立即运行。"
 	case AutomaticRunSourceSchedule:
@@ -41,7 +49,7 @@ func (v AutomaticRunSource) Label() string {
 }
 
 func (v AutomaticRunSource) Values() []enum.Enum {
-	return []enum.Enum{AutomaticRunSourceUnspecified, AutomaticRunSourceAPI, AutomaticRunSourceManual, AutomaticRunSourceSchedule}
+	return []enum.Enum{AutomaticRunSourceUnspecified, AutomaticRunSourceAPI, AutomaticRunSourceEvent, AutomaticRunSourceEventTest, AutomaticRunSourceManual, AutomaticRunSourceSchedule}
 }
 
 func (v AutomaticRunSource) Type() string {
@@ -50,7 +58,7 @@ func (v AutomaticRunSource) Type() string {
 
 func (v AutomaticRunSource) MarshalText() ([]byte, error) {
 	switch v {
-	case AutomaticRunSourceUnspecified, AutomaticRunSourceAPI, AutomaticRunSourceManual, AutomaticRunSourceSchedule:
+	case AutomaticRunSourceUnspecified, AutomaticRunSourceAPI, AutomaticRunSourceEvent, AutomaticRunSourceEventTest, AutomaticRunSourceManual, AutomaticRunSourceSchedule:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -63,6 +71,10 @@ func (v *AutomaticRunSource) UnmarshalText(text []byte) error {
 		*v = AutomaticRunSourceUnspecified
 	case AutomaticRunSourceAPI.String():
 		*v = AutomaticRunSourceAPI
+	case AutomaticRunSourceEvent.String():
+		*v = AutomaticRunSourceEvent
+	case AutomaticRunSourceEventTest.String():
+		*v = AutomaticRunSourceEventTest
 	case AutomaticRunSourceManual.String():
 		*v = AutomaticRunSourceManual
 	case AutomaticRunSourceSchedule.String():

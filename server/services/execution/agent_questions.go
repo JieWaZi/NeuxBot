@@ -173,13 +173,25 @@ func (c *elicitationCoordinator) createQuestionWithValidation(ctx context.Contex
 	if count >= 8 {
 		return nil, false, status_error.AgentInputInvalid
 	}
+	var resumeWatchdog func()
+	if c.pauseWatchdog != nil {
+		var allowed bool
+		resumeWatchdog, allowed = c.pauseWatchdog(chatID, executionID)
+		if !allowed {
+			return nil, false, status_error.OperationCanceled
+		}
+	}
 	requested := eventlog.ElicitationRequestedData{ElicitationID: id, CommandRequestID: request.RequestID, CommandDigest: hash, AllowSkip: &input.AllowSkip, Mode: "form", Message: input.Message, RequestedSchema: encoded}
 	record, err := c.journal.AppendInteractionFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeElicitationRequested, ExecutionID: executionID, InvocationID: executionID, Data: marshalData(requested)})
 	if err != nil {
+		if resumeWatchdog != nil {
+			resumeWatchdog()
+		}
 		return nil, false, err
 	}
 	c.mutex.Lock()
-	c.byID[id] = &pendingElicitation{chatID: chatID, executionID: executionID, invocationID: record.InvocationID, requested: requested, response: make(chan agentapi.ElicitationDecision, 1)}
+	c.byID[id] = &pendingElicitation{chatID: chatID, executionID: executionID, invocationID: record.InvocationID, requested: requested, response: make(chan agentapi.ElicitationDecision, 1),
+		resumeWatchdog: resumeWatchdog}
 	c.orderByChat[chatID] = append(c.orderByChat[chatID], id)
 	c.mutex.Unlock()
 	c.journal.PublishInteractionFact(ctx, record)

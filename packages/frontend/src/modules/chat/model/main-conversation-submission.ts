@@ -4,6 +4,7 @@ import type { GithubComJieWaZiNeuxBotServerApisChatsMessageRequest as ChatMessag
 import {
   conversationSubmissionKey,
   type ConversationSubject,
+  type PendingMainConversationInput,
   type PublicMessage,
 } from "../api/main-conversation";
 import type { BotChatMessage } from "../runtime/chat-projection";
@@ -12,6 +13,7 @@ type MainConversationSubmissionRequest = {
   message: ChatMessageRequest;
   submissionId: string;
   replyId?: string;
+  historySourceChatId?: string;
 };
 
 export type MainConversationSubmission = {
@@ -27,12 +29,26 @@ type MainConversationSubmissionResult = {
   historyUpdates: number;
 };
 
-export async function mainConversationUserPreview(
+export function pendingMainConversationMessage(
+  input: PendingMainConversationInput,
+  conversationId: string | undefined,
+): PublicMessage {
+  return {
+    id: input.id,
+    conversationId,
+    role: "user",
+    content: input.content,
+    sourceChatId: input.workChatId,
+    replyToMessageId: input.replyToMessageId,
+    createdAt: input.createdAt,
+    failureCode: input.failureCode,
+  };
+}
+
+export async function mainConversationInputId(
   conversationId: string | undefined,
   submissionId: string,
-  message: BotChatMessage,
-  workChatId: string | undefined,
-): Promise<PublicMessage> {
+): Promise<string> {
   let id = `submission:${submissionId}`;
   if (conversationId && crypto.subtle) {
     // 与 Core 的 UserMessageID 使用同一身份，使事件可以在 HTTP 回执之前接管该行。
@@ -46,14 +62,24 @@ export async function mainConversationUserPreview(
       ).join("");
     }
   }
+  return id;
+}
+
+export async function mainConversationUserPreview(
+  conversationId: string | undefined,
+  submissionId: string,
+  message: BotChatMessage,
+  workChatId: string | undefined,
+  replyId: string | undefined,
+): Promise<PublicMessage> {
   return {
-    id,
+    id: await mainConversationInputId(conversationId, submissionId),
     conversationId,
     role: "user",
     content: message.content,
     createdAt: message.updatedAt,
     sourceChatId: workChatId,
-    replyToMessageId: workChatId ? undefined : message.replyTo?.messageId,
+    replyToMessageId: workChatId ? undefined : replyId,
     attachments: message.attachments?.map(({ name, mediaType }) => ({
       name,
       mediaType,
@@ -92,7 +118,7 @@ export function useMainConversationSubmissions(
   const confirmed: MainConversationSubmissionRequest[] = [];
   const appended = new Set<string>();
   const oldest = committed[0]?.sequence;
-  let waiting = false;
+  let pendingMainInputs: Set<string> | undefined;
   let changed = false;
   for (const submission of submissions) {
     if (!messages || !submission) continue;
@@ -143,8 +169,11 @@ export function useMainConversationSubmissions(
       inputContent: row.content,
     });
     appended.add(id);
+    if (submission.pending && !row.sourceChatId) {
+      pendingMainInputs ??= new Set();
+      pendingMainInputs.add(id);
+    }
     changed = true;
-    waiting ||= submission.pending;
   }
   useLayoutEffect(() => {
     for (const request of confirmed) coveredByHistory.add(request);
@@ -157,6 +186,6 @@ export function useMainConversationSubmissions(
               (left.sequence ?? Infinity) - (right.sequence ?? Infinity),
           )
         : committed,
-    waiting,
+    pendingMainInputs,
   };
 }

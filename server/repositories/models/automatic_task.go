@@ -2,6 +2,8 @@ package models
 
 import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/eventsource"
+	"github.com/JieWaZi/NeuxBot/server/internal/schedulecalc"
 	workflowinput "github.com/JieWaZi/NeuxBot/server/internal/workflow/input"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -12,24 +14,7 @@ func init() {
 }
 
 // AutomaticTaskSchedule 保存可预览与持久化的当地定时规则。
-type AutomaticTaskSchedule struct {
-	// Kind 是一次性、常用周期或自定义 Cron 的规则类型。
-	Kind constants.AutomaticScheduleKind `json:"kind"`
-	// Timezone 是保存与计算规则使用的 IANA 时区。
-	Timezone string `json:"timezone" validate:"max=120"`
-	// OnceAt 是一次性计划的当地日期时间，格式为 YYYY-MM-DDTHH:mm。
-	OnceAt string `json:"onceAt" validate:"max=16"`
-	// Minute 是每小时或固定时间规则的分钟。
-	Minute int `json:"minute"`
-	// Hour 是每天、每周或每月规则的小时。
-	Hour int `json:"hour"`
-	// Weekday 是每周规则的星期，星期日为 0。
-	Weekday int `json:"weekday"`
-	// DayOfMonth 是每月规则的日期，不存在的日期跳过该月。
-	DayOfMonth int `json:"dayOfMonth"`
-	// Cron 是仅包含分、时、日、月、周的自定义表达式。
-	Cron string `json:"cron" validate:"max=120"`
-}
+type AutomaticTaskSchedule = schedulecalc.AutomaticTaskSchedule
 
 // AutomaticTaskMemberConfiguration 保存一位成员在此自动任务中的完整覆盖配置。
 type AutomaticTaskMemberConfiguration struct {
@@ -65,6 +50,8 @@ type AutomaticTaskConfiguration struct {
 	WorkflowInputRevisionID string `gorm:"size:32;not null;default:''" json:"workflowInputRevisionId" validate:"max=32"`
 	// WorkflowInputBindings 为每个顶层参数保存唯一来源与可选固定值。
 	WorkflowInputBindings map[string]workflowinput.Binding `gorm:"serializer:json;type:text" json:"workflowInputBindings"`
+	// WorkflowReportRecipient 选择定时整图回件的主会话，空值表示关闭。
+	WorkflowReportRecipient *MainConversationRecipient `gorm:"serializer:json;type:text" json:"workflowReportRecipient,omitempty"`
 	// WorkspaceReadOnly 冻结工作流宿主和伙伴操作的只读约束。
 	WorkspaceReadOnly bool `json:"workspaceReadOnly"`
 	// MemberConfigs 在任务配置中保存成员覆盖，在运行记录中保存接纳时的完整成员选择。
@@ -77,10 +64,16 @@ type AutomaticTaskConfiguration struct {
 	Name string `json:"name" validate:"required,max=120"`
 	// Instruction 是每次执行发送给伙伴的完整工作指令。
 	Instruction string `json:"instruction" validate:"max=10000"`
+	// ReportDestination 是主会话或规则专属话题，空值保留历史任务的运行记录行为。
+	ReportDestination constants.AutomaticReportDestination `gorm:"size:24;not null;default:''" json:"reportDestination,omitempty"`
+	// ReportPolicy 决定每次报告还是仅报告有变化的结果。
+	ReportPolicy constants.AutomaticReportPolicy `gorm:"size:24;not null;default:''" json:"reportPolicy,omitempty"`
 	// Trigger 是任务唯一的持久触发类型。
 	Trigger constants.AutomaticTaskTrigger `json:"trigger"`
 	// Schedule 是定时任务的规则，API 任务使用零值。
 	Schedule AutomaticTaskSchedule `gorm:"serializer:json;type:text" json:"schedule"`
+	// Event 是事件规则授权的来源配置。
+	Event *eventsource.Config `gorm:"serializer:json;type:text" json:"event,omitempty"`
 	// ProjectID 是所属伙伴的项目，使用临时目录时为空。
 	ProjectID string `json:"projectId" validate:"max=32"`
 	// WorkingDirectory 是用户授权的本地目录，选择项目时为空。
@@ -103,6 +96,8 @@ type AutomaticTaskConfiguration struct {
 
 // AutomaticTask 保存伙伴或团队的自动工作配置和计划游标。
 type AutomaticTask struct {
+	// WorkflowPermissionsLimited 表示聊天创建的工作流节点受任务执行权限上限约束。
+	WorkflowPermissionsLimited bool `gorm:"not null;default:false" json:"-"`
 	// WorkflowTriggerDetached 表示已从流程触发配置移除，保留既有运行与密钥审计记录。
 	WorkflowTriggerDetached bool `gorm:"not null;default:false" json:"-"`
 	// ID 是任务的稳定标识。
@@ -140,6 +135,8 @@ func (AutomaticTask) TableName() string { return "automatic_tasks" }
 
 // AutomaticRun 保存一次机会的不可变输入和标准 Chat 接纳关系。
 type AutomaticRun struct {
+	// WorkflowPermissionsLimited 冻结本次运行是否约束工作流节点和子运行的权限。
+	WorkflowPermissionsLimited bool `gorm:"not null;default:false" json:"-"`
 	// IntegrationInvocation 是原集成调用的受信身份，nil 保留定时与旧 Token 行为。
 	IntegrationInvocation *IntegrationInvocation `gorm:"serializer:json;type:text" json:"-"`
 	// WorkflowRunID 是已接纳的工作流运行，伙伴和团队目标为空。
@@ -151,7 +148,23 @@ type AutomaticRun struct {
 	// ThreadID 是团队运行创建的会话；独立伙伴运行为空。
 	ThreadID string `gorm:"type:varchar(32);not null;default:'';index;index:idx_auto_run_chat_thread,priority:2" json:"threadId"`
 	// ID 是运行记录及派生首次发送身份的稳定标识。
-	ID string `gorm:"type:varchar(32);primaryKey;index:idx_automatic_run_latest,priority:3,sort:desc" json:"id"`
+	ID string `gorm:"type:varchar(32);primaryKey;index:idx_automatic_run_latest,priority:3,sort:desc;index:idx_automatic_run_pending_report,priority:2,where:report_state = 'pending'" json:"id"`
+	// ReportState 保存独立于运行终态的报告投递状态，空值表示未约定报告。
+	ReportState constants.AutomaticReportState `gorm:"size:24;not null;default:'';index:idx_automatic_run_pending_report,priority:1,where:report_state = 'pending'" json:"reportState,omitempty"`
+	// ReportHref 指向已核验的实际公开报告。
+	ReportHref string `gorm:"not null;default:''" json:"reportHref,omitempty"`
+	// ReportByAgent 冻结本次运行采用显式投递，而不是读取终态正文。
+	ReportByAgent bool `gorm:"not null;default:false" json:"-"`
+	// AgentReportKey 保存唯一受理的投递请求标识，供原请求查询回执。
+	AgentReportKey string `gorm:"not null;default:''" json:"-"`
+	// AgentReportBody 保存重试投递所需的原正文。
+	AgentReportBody string `gorm:"type:text;not null;default:''" json:"-"`
+	// EventObservationID 指向接纳的真实事件，使用测试样本时为空。
+	EventObservationID string `gorm:"size:64;not null;default:'';uniqueIndex:idx_automatic_run_event,where:event_observation_id <> ''" json:"eventObservationId,omitempty"`
+	// SourceEvent 保存此次运行使用的完整来源引用。
+	SourceEvent *eventsource.Event `gorm:"serializer:json;type:text" json:"sourceEvent,omitempty"`
+	// AwaitingDispatch 标记因原规则已有运行而持久等待的机会。
+	AwaitingDispatch bool `gorm:"not null;default:false;index:idx_automatic_run_dispatch_queue,priority:1,where:awaiting_dispatch = 1" json:"-"`
 	// TaskID 是运行所属自动任务。
 	TaskID string `gorm:"type:varchar(32);not null;uniqueIndex:automatic_run_occurrence;index;index:idx_automatic_run_latest,priority:1" json:"taskId"`
 	// WakerID 是实际执行的独立伙伴或该次团队会话的负责人。
@@ -183,7 +196,7 @@ type AutomaticRun struct {
 	// ScheduledAt 是本次定时机会的 UTC 时间，其他来源为空。
 	ScheduledAt *int64 `json:"scheduledAt"`
 	// CreatedAt 是机会登记的 Unix 毫秒时间。
-	CreatedAt int64 `gorm:"autoCreateTime:milli;index:idx_automatic_run_latest,priority:2,sort:desc" json:"createdAt"`
+	CreatedAt int64 `gorm:"autoCreateTime:milli;index:idx_automatic_run_latest,priority:2,sort:desc;index:idx_automatic_run_dispatch_queue,priority:2,where:awaiting_dispatch = 1" json:"createdAt"`
 	// UpdatedAt 是接纳关系最近更新的 Unix 毫秒时间。
 	UpdatedAt int64 `gorm:"autoUpdateTime:milli" json:"updatedAt"`
 }

@@ -1,18 +1,20 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { getWakerOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
+import {
+  localizedDateTimeFormat,
+  localizedRelativeTimeFormat,
+} from "@/shared/i18n/format";
 import { MarkdownVisibility } from "@/shared/markdown/visibility";
+import { Button } from "@/shared/ui/button";
 import { FileReferenceProvider } from "@/shared/workspace/file-reference-link";
 import {
   sourceScopeOptions,
   type ConversationSubject,
   type PublicMessage,
 } from "../api/main-conversation";
-import { runtimeFailurePresentation } from "../model/runtime-failure-presentation";
-import type { MainConversationAvatarActivity } from "../model/main-conversation-message-group";
-import { ChatErrorCard } from "./chat-error-card";
-import { assistantMessageRowClassName } from "./chat-layout";
 import { AssistantMarkdown } from "./chat-message-content";
 import {
   ChatMessageAttachments,
@@ -30,11 +32,53 @@ import type { ChatReplyReference } from "../runtime/chat-projection";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
 import type { ChatCodeReferenceOpenScope } from "./use-chat-workspace-bindings";
 
+const conversationClock = localizedDateTimeFormat({
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const conversationDateTime = localizedDateTimeFormat({
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+const conversationDay = localizedRelativeTimeFormat({ numeric: "auto" });
+
+export function MainConversationTimeDivider({
+  date,
+  messageId,
+}: {
+  date: Date;
+  messageId: string;
+}) {
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const calendarDate = date.toDateString();
+  const exactTime = conversationDateTime.format(date);
+  let label = exactTime;
+  if (calendarDate === now.toDateString())
+    label = `${conversationDay.format(0, "day")} ${conversationClock.format(date)}`;
+  else if (calendarDate === yesterday.toDateString())
+    label = `${conversationDay.format(-1, "day")} ${conversationClock.format(date)}`;
+
+  return (
+    <time
+      dateTime={date.toISOString()}
+      title={exactTime}
+      data-chat-time-divider={messageId}
+      className="type-caption text-content-secondary px-6 py-1 text-center tabular-nums"
+    >
+      {label}
+    </time>
+  );
+}
+
 export function quotePublicMessage(
   row: PublicMessage,
 ): ChatReplyReference | undefined {
   if (!row.id || (row.role !== "user" && row.role !== "assistant")) return;
-  const characters = Array.from((row.content ?? "").trim());
+  const characters = Array.from(
+    row.content?.trim() || row.automaticTaskReceipts?.[0]?.name || "",
+  );
   return {
     messageId: row.id,
     role: row.role,
@@ -50,11 +94,12 @@ export function PublicConversationMessage({
   row,
   quoted,
   quoteFeedback,
-  replyActivity,
+  inTimeline = true,
   continued,
   active,
   select,
   openSource,
+  openRecord,
   showWorkRecord,
   sourceBusy,
   onMarkUnread,
@@ -67,11 +112,12 @@ export function PublicConversationMessage({
   row: PublicMessage;
   quoted?: PublicMessage;
   quoteFeedback?: ReactNode;
-  replyActivity?: MainConversationAvatarActivity;
+  inTimeline?: boolean;
   continued?: boolean;
   active: boolean;
-  select: (quote: ChatReplyReference) => void;
-  openSource: OpenMainConversationSource;
+  select?: (quote: ChatReplyReference) => void;
+  openSource?: OpenMainConversationSource;
+  openRecord?: () => void;
   showWorkRecord?: boolean;
   sourceBusy?: boolean;
   onMarkUnread?: (messageId: string) => void;
@@ -85,23 +131,34 @@ export function PublicConversationMessage({
 }) {
   const { t } = useTranslation("chat");
   const workChatId = row.sourceChatId || "";
-  const failureCode = row.role === "user" ? row.failureCode : undefined;
   const showIdentity = row.role === "assistant" && !continued;
   const author = useQuery({
     ...getWakerOptions({ path: { wakerId: row.sourceWakerId || "" } }),
-    enabled:
-      active &&
-      (Boolean(failureCode) || showIdentity) &&
-      Boolean(row.sourceWakerId),
+    enabled: active && showIdentity && Boolean(row.sourceWakerId),
   });
   const name = author.data?.name || t("wakerFallback");
+  const originalWork = row.role === "assistant" ? row.originalWork : undefined;
+  const originalTitle = originalWork?.title?.trim();
   const content =
     row.role === "user" ? (row.inputContent ?? row.content) : row.content;
+  const workflowRun = row.workflowRun;
+  const runLink =
+    workflowRun?.definitionId && workflowRun.runId ? (
+      <Button asChild size="sm" variant="link" className="w-fit">
+        <Link
+          to={`/workflows/${encodeURIComponent(workflowRun.definitionId)}/runs/${encodeURIComponent(workflowRun.runId)}`}
+        >
+          {t("openWorkflowRun")}
+        </Link>
+      </Button>
+    ) : null;
   const scope = useQuery({
     ...sourceScopeOptions(subject, workChatId),
     enabled:
       active &&
       Boolean(
+        openSource &&
+        !row.sourceReadOnly &&
         workChatId &&
         (row.attachments?.length ||
           row.codeReferences?.length ||
@@ -120,7 +177,9 @@ export function PublicConversationMessage({
   const ref = quotePublicMessage(row);
   if (!ref) return null;
   const selectReply =
-    row.sequence || ref.role === "assistant" ? () => select(ref) : undefined;
+    select && (row.sequence || ref.role === "assistant")
+      ? () => select(ref)
+      : undefined;
   const deleteAction =
     row.sequence && onDelete
       ? (trigger: HTMLButtonElement) => onDelete(ref.messageId, trigger)
@@ -132,25 +191,47 @@ export function PublicConversationMessage({
     createdAt: row.createdAt,
     createdSequence: row.sequence,
     readable: row.readable,
+    automaticTaskReceipts: row.automaticTaskReceipts,
     attachments: row.attachments,
     codeReferences: row.codeReferences,
     attachmentOnly: row.attachmentOnly,
     codeReferenceOnly: row.codeReferenceOnly,
   };
-  // 助手发言的关联 ID 指向原交办；用户的显式回复可以加载未显示的引用原话。
-  const original = quoted && quotePublicMessage(quoted);
+  // 助手发言默认只关联原交办，显式引用时才在公开时间线展示原话。
+  const replyQuote =
+    row.replyToMessageId &&
+    (ref.role === "user" ||
+      (ref.role === "assistant" && inTimeline && row.quoteReply === true)) ? (
+      <>
+        <MessageReplyQuote
+          replyTo={
+            (quoted && quotePublicMessage(quoted)) ?? {
+              messageId: row.replyToMessageId,
+            }
+          }
+          replyingMessageId={row.id}
+          variant={ref.role}
+        />
+        {quoteFeedback}
+      </>
+    ) : undefined;
   const actions = (
     <>
       {selectReply && <MessageReplyAction onSelect={selectReply} />}
       <ChatMessageActions
         copyText={content ?? ""}
         onOpenWorkRecord={
-          showWorkRecord && workChatId
+          (showWorkRecord ||
+            (row.sourceReadOnly && ref.role === "assistant")) &&
+          workChatId &&
+          openSource &&
+          (!row.sourceReadOnly || ref.role === "assistant")
             ? (trigger) => openSource(workChatId, trigger)
             : undefined
         }
         forkItem={
           ref.role === "assistant" &&
+          openSource &&
           workChatId &&
           row.sourceWakerId &&
           row.forkExecutionId ? (
@@ -171,16 +252,20 @@ export function PublicConversationMessage({
       />
     </>
   );
-  const identity =
-    failureCode || showIdentity ? (
-      <MainConversationAvatar
-        name={name}
-        src={author.data?.avatar}
-        workChatId={workChatId}
-        activity={replyActivity}
-        openSource={openSource}
-      />
-    ) : null;
+  const identity = showIdentity ? (
+    <MainConversationAvatar
+      name={name}
+      src={author.data?.avatar}
+      workChatId={workChatId}
+      openSource={openSource}
+      defaultConversation={!workChatId && !originalWork}
+      openRecord={
+        active && !workChatId && (row.replyToMessageId || originalWork)
+          ? openRecord
+          : undefined
+      }
+    />
+  ) : null;
   return (
     <FileReferenceProvider
       context={{
@@ -199,68 +284,70 @@ export function PublicConversationMessage({
     >
       <MarkdownVisibility value={active}>
         {ref.role === "user" ? (
-          <UserMessage
-            message={message}
-            onOpenFile={openSourceFile}
-            onOpenCodeReference={
-              source && openCodeReference
-                ? (reference) =>
-                    openCodeReference(reference, {
-                      sourceChatId: workChatId,
-                      rootPath: source.workspaceDirectory,
-                    })
-                : undefined
-            }
-            sideAction={actions}
-            replyQuote={
-              row.replyToMessageId ? (
-                <>
-                  <MessageReplyQuote
-                    replyTo={original ?? { messageId: row.replyToMessageId }}
-                    replyingMessageId={row.id}
-                  />
-                  {quoteFeedback}
-                </>
-              ) : undefined
-            }
-          />
+          <>
+            <UserMessage
+              message={message}
+              onOpenFile={openSourceFile}
+              onOpenCodeReference={
+                source && openCodeReference
+                  ? (reference) =>
+                      openCodeReference(reference, {
+                        sourceChatId: workChatId,
+                        rootPath: source.workspaceDirectory,
+                      })
+                  : undefined
+              }
+              sideAction={inTimeline ? actions : undefined}
+              replyQuote={replyQuote}
+            />
+            {runLink && <div className="flex justify-end px-6">{runLink}</div>}
+          </>
         ) : (
           <ChatReplyMessage
             message={message}
-            variant="post"
-            name={showIdentity ? name : undefined}
+            variant={inTimeline ? "post" : undefined}
+            name={inTimeline && showIdentity ? name : undefined}
             continued={continued}
             identity={identity}
-            sideAction={actions}
+            sideAction={inTimeline ? actions : undefined}
+            footer={inTimeline ? undefined : actions}
           >
-            {row.readable ? (
-              <div data-chat-readable-body>
-                <AssistantMarkdown text={content || ""} />
-              </div>
-            ) : (
-              <AssistantMarkdown text={content || ""} />
-            )}
-            {message.attachments?.length ? (
-              <div className="flex flex-wrap items-start gap-1 py-1">
-                <ChatMessageAttachments
-                  attachments={message.attachments}
-                  onOpenFile={openSourceFile}
-                />
-              </div>
+            {replyQuote ||
+            content ||
+            runLink ||
+            message.attachments?.length ||
+            originalWork?.ticketId ? (
+              <>
+                {replyQuote}
+                {content &&
+                  (row.readable ? (
+                    <div data-chat-readable-body>
+                      <AssistantMarkdown text={content} />
+                    </div>
+                  ) : (
+                    <AssistantMarkdown text={content} />
+                  ))}
+                {runLink}
+                {message.attachments?.length ? (
+                  <div className="flex flex-wrap items-start gap-1 py-1">
+                    <ChatMessageAttachments
+                      attachments={message.attachments}
+                      onOpenFile={openSourceFile}
+                    />
+                  </div>
+                ) : null}
+                {originalWork?.chatId && originalWork.ticketId && (
+                  <p className="type-ui text-content-secondary wrap-anywhere">
+                    {originalTitle
+                      ? t("deletedWorkOriginWithTitle", {
+                          title: originalTitle,
+                        })
+                      : t("deletedWorkOrigin")}
+                  </p>
+                )}
+              </>
             ) : null}
           </ChatReplyMessage>
-        )}
-        {failureCode && (
-          <div className={assistantMessageRowClassName}>
-            {identity}
-            <div className="w-fit min-w-0">
-              <ChatErrorCard
-                id={`main-conversation:${row.id}`}
-                message={runtimeFailurePresentation(failureCode).message}
-                execution
-              />
-            </div>
-          </div>
         )}
       </MarkdownVisibility>
     </FileReferenceProvider>

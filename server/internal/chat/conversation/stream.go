@@ -84,6 +84,8 @@ type rowIndex struct {
 	Content constants.RuntimeEventType
 	// Adapter 以冻结会话和适配器标识定位持久输入。
 	Adapter []byte `gorm:"index:conversation_row_adapter,where:adapter IS NOT NULL"`
+	// ConsumedAdapter 定位已完成的原生终态，不改变宿主输入索引的唯一性。
+	ConsumedAdapter []byte `gorm:"index:conversation_row_consumed_adapter,where:consumed_adapter IS NOT NULL"`
 	// PatchBase 定位前一个完整或增量工具快照。
 	PatchBase int64
 }
@@ -116,6 +118,7 @@ const (
 	indexQuestionRequested
 	indexQuestionResolved
 	indexManagedResourceChange
+	indexSourceModelChanged
 )
 
 func contextError(ctx context.Context) error {
@@ -180,7 +183,7 @@ func (i *streamIndex) rebuild(path string, public bool) error {
 	var scanError error
 	err = i.query(func(db *gorm.DB) error {
 		return db.Transaction(func(tx *gorm.DB) error {
-			coverage := streamCoverage{Path: i.coverage.Path, QuestionsIndexed: public}
+			coverage := streamCoverage{Path: i.coverage.Path, QuestionsIndexed: public, NativeConsumptionIndexed: !public}
 			if i.coverage.Stream != 0 {
 				if err := clearIndexStream(tx, i.coverage.Stream); err != nil {
 					return err

@@ -14,6 +14,7 @@ func init() {
 	Router.Register(&SendMainConversationMessage{})
 	Router.Register(&DeleteMainConversationMessage{})
 	Router.Register(&GetMainConversationSource{})
+	Router.Register(&SetMainConversationSourceModel{})
 	Router.Register(&SendMainConversationSourceMessage{})
 	Router.Register(&ResolveMainConversationSourceApproval{})
 	Router.Register(&ResolveMainConversationSourceElicitation{})

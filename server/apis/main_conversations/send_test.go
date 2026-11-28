@@ -3,11 +3,16 @@ package main_conversations
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/apis/chats"
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -16,6 +21,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
 	"github.com/JieWaZi/NeuxBot/server/internal/uploads"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -23,6 +29,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/JieWaZi/NeuxBot/server/services/mainconversation"
+	"github.com/JieWaZi/NeuxBot/server/services/workticket"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -207,11 +214,7 @@ func TestSendMainConversationMessagePublishesAndRepliesInOriginalProject(t *test
 		c.Request = httptest.NewRequest("POST", "/api/v1/main-conversations/"+kind+"/"+subject+"/messages", nil)
 		c.Set("bot.auth.subject", auth)
 		op := SendMainConversationMessage{SubjectType: kind, SubjectID: subject, Body: body}
-		value, err := op.Output(c)
-		if err != nil {
-			return MainConversationAcceptance{}, err
-		}
-		return value.(MainConversationAcceptance), nil
+		return op.send(c.Request.Context(), c, nil)
 	}
 	invoke := func(kind, subject string, body MainConversationInput) (MainConversationAcceptance, error) {
 		return invokeAs(kind, subject, "", body)
@@ -468,27 +471,19 @@ func TestSendMainConversationMessagePublishesAndRepliesInOriginalProject(t *test
 	}
 	sourceTurn := runner.turns[len(runner.turns)-1]
 	afterSource, _, _ := global.MainConversationService.Messages(ctx, full.Message.ConversationID, 0, 100)
-	if len(afterSource) != len(beforeSource)+1 || afterSource[len(afterSource)-1].Content != "work here\n\nsecond.png" || afterSource[len(afterSource)-1].SourceChatID != source.WorkChatID || sourceTurn.Input.Content != "work here" || sourceTurn.Chat.ChatID != full.Message.SourceChatID || len(sourceTurn.Options.ToolCapabilities) != 1 || sourceTurn.Options.RuntimeID != "source-runtime" {
-		t.Fatalf("source input did not reach the public timeline and its original work history: %+v", sourceTurn)
+	if len(afterSource) != len(beforeSource) || sourceTurn.Input.Content != "work here" ||
+		sourceTurn.Chat.ChatID != full.Message.SourceChatID || len(sourceTurn.Options.ToolCapabilities) != 1 ||
+		sourceTurn.Options.RuntimeID != "source-runtime" || len(sourceTurn.Input.Attachments) != 1 ||
+		sourceTurn.Input.Attachments[0].SourcePath != "/some/other/second.png" {
+		t.Fatalf("source input did not stay in its original work history: %+v", sourceTurn)
 	}
-	sourceRow := afterSource[len(afterSource)-1]
-	if sourceRow.SourceMessageID == "" || sourceRow.SourceMessageID != sourceTurn.UserMessageID || sourceRow.SourceMessageID == actual.UserMessageID {
-		t.Fatalf("source continuation must link its own input: %+v", sourceRow)
+	if sourceTurn.UserMessageID == "" || sourceTurn.UserMessageID == actual.UserMessageID || sourceTurn.ExecutionID == full.ExecutionID {
+		t.Fatalf("source continuation must have its own input and execution: %+v", sourceTurn)
 	}
-	if _, err := sendSource(); err != nil {
-		t.Fatal(err)
-	}
-	againRows, _, _ := global.MainConversationService.Messages(ctx, full.Message.ConversationID, 0, 100)
-	if len(againRows) != len(afterSource) || againRows[len(againRows)-1].ID != sourceRow.ID {
-		t.Fatal("source retry duplicated the published user message")
-	}
-	t.Run("active work identifies its public input and replies beyond the current page", func(t *testing.T) {
-		if sourceRow.ID == sourceTurn.ExecutionID || sourceRow.SourceChatID != full.Message.SourceChatID {
-			t.Fatalf("continuation must use its own execution on the same work: %+v", sourceRow)
-		}
+	t.Run("active private work identifies its public replies beyond the current page", func(t *testing.T) {
 		chatStore := controllers.NewChatController(db.DB)
 		if err := chatStore.Create(ctx, models.Chat{
-			ID: sourceRow.SourceChatID, WakerID: "partner",
+			ID: source.WorkChatID, WakerID: "partner",
 			HiddenFromWakerHistory: true, ActiveExecutionID: sourceTurn.ExecutionID,
 		}); err != nil {
 			t.Fatal(err)
@@ -513,15 +508,15 @@ func TestSendMainConversationMessagePublishesAndRepliesInOriginalProject(t *test
 			if err := json.Unmarshal(body, &active); err != nil {
 				t.Fatal(err)
 			}
-			if len(active) != 1 || active[0]["workChatId"] != sourceRow.SourceChatID ||
-				active[0]["executionId"] != sourceTurn.ExecutionID || active[0]["inputMessageId"] != sourceRow.ID ||
+			if len(active) != 1 || active[0]["workChatId"] != source.WorkChatID ||
+				active[0]["executionId"] != sourceTurn.ExecutionID || active[0]["inputMessageId"] != nil ||
 				active[0]["hasPublicReply"] != answered {
 				t.Fatalf("active continuation has the wrong public facts: %s", body)
 			}
 		}
 
 		// 即使旧轮发言后进入公开记录，也不能算作本轮的公开进展。
-		stale, _, err := global.MainConversationService.PublishWithReceipt(ctx, sourceRow.SourceChatID, full.ExecutionID, "old-reply", "older turn", full.Message.ID)
+		stale, _, err := global.MainConversationService.PublishWithReceipt(ctx, source.WorkChatID, full.ExecutionID, "old-reply", "older turn", full.Message.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -548,9 +543,9 @@ func TestSendMainConversationMessagePublishesAndRepliesInOriginalProject(t *test
 			}
 			latest := readPage(0)
 			if len(latest.Messages) != 1 || latest.Messages[0].ID != receipt.CommandID ||
-				latest.Messages[0].ID == lastReplyID || latest.Messages[0].ReplyToMessageID != sourceRow.ID ||
-				latest.Messages[0].SourceChatID != sourceRow.SourceChatID {
-				t.Fatalf("source reply lost its own identity or input reference: %+v", latest.Messages)
+				latest.Messages[0].ID == lastReplyID || latest.Messages[0].ReplyToMessageID != "" ||
+				latest.Messages[0].SourceChatID != source.WorkChatID {
+				t.Fatalf("source reply must keep its identity and omit any reference to a private input: %+v", latest.Messages)
 			}
 			lastReplyID = receipt.CommandID
 			checkActive(latest, true)
@@ -564,9 +559,9 @@ func TestSendMainConversationMessagePublishesAndRepliesInOriginalProject(t *test
 			t.Fatalf("latest window should no longer include either reply: %+v", latest.Messages)
 		}
 		checkActive(latest, true)
-		checkActive(readPage(sourceRow.Sequence), true)
+		checkActive(readPage(full.Message.Sequence), true)
 
-		if err := chatStore.AdvanceProjection(ctx, sourceRow.SourceChatID, 0, map[string]any{
+		if err := chatStore.AdvanceProjection(ctx, source.WorkChatID, 0, map[string]any{
 			"latest_sequence": int64(1), "active_execution_id": "",
 		}); err != nil {
 			t.Fatal(err)
@@ -575,10 +570,6 @@ func TestSendMainConversationMessagePublishesAndRepliesInOriginalProject(t *test
 			t.Fatalf("ended execution stayed active: %+v", active)
 		}
 	})
-	source.Body.Text = "changed"
-	if _, err := sendSource(); !util.HasStatusCode(err, status_error.CreateRequestConflict) {
-		t.Fatalf("source replay changed the accepted public content: %v", err)
-	}
 	source.SubjectType = "team"
 	source.SubjectID = "team"
 	if _, err := sendSource(); !util.HasStatusCode(err, status_error.ChatNotFound) {
@@ -626,25 +617,21 @@ func TestSendMainConversationMessagePublishesAndRepliesInOriginalProject(t *test
 			Role: constants.MessageRoleUser, Actor: "user", AttachmentOnly: true,
 			Attachments: []eventlog.AttachmentReference{{Name: "proof.txt", Path: "attachments/proof.txt", Managed: true}},
 		},
-		{sourceRow.SourceChatID, sourceRow.SourceMessageID}: {
+		{source.WorkChatID, sourceTurn.UserMessageID}: {
 			Role: constants.MessageRoleUser, Actor: "user", Content: "work here",
 			Attachments: []eventlog.AttachmentReference{{Name: "second.png", Path: "attachments/second.png", MediaType: "image/png", Managed: true}},
 		},
 	}
+	projectionStart := len(runner.projectedReads)
 	readyPage := readMainPage(t)
 	file := readyPage.Messages[len(readyPage.Messages)-1]
 	if len(readyPage.Messages) != len(pendingPage.Messages)+1 || file.ID != fileID || file.InputContent == nil || *file.InputContent != "" || !file.AttachmentOnly || len(file.Attachments) != 1 || !file.Attachments[0].Managed {
 		t.Fatalf("replay did not hydrate the same user message: %+v", file)
 	}
-	var image MainConversationTimelineMessage
-	for _, row := range readyPage.Messages {
-		if row.ID == sourceRow.ID {
-			image = row
-			break
+	for _, input := range runner.projectedReads[projectionStart:] {
+		if input == [2]string{source.WorkChatID, sourceTurn.UserMessageID} {
+			t.Fatal("main history attempted to read the private source attachment")
 		}
-	}
-	if image.InputContent == nil || *image.InputContent != "work here" || len(image.Attachments) != 1 || image.Attachments[0].MediaType != "image/png" {
-		t.Fatalf("wrong source image projection: %+v", image)
 	}
 	store.Close()
 	if replay, err := invokeAs("waker", "partner", browser, fileInput); err != nil || replay.ExecutionID != fileReceipt.ExecutionID {
@@ -773,4 +760,363 @@ func TestSendMainConversationMessagePublishesAndRepliesInOriginalProject(t *test
 		t.Fatalf("original interaction requests: %#v", runner.decisions)
 	}
 
+	t.Run("normal sends route to authorized project sources and clarify in the main conversation", func(t *testing.T) {
+		projects := global.ProjectControllerManager
+		sources := controllers.NewProjectSourceController(db.DB)
+		for _, name := range []string{"RoutedAlpha", "RoutedBeta", "Unavailable"} {
+			if err := projects.Create(ctx, models.Project{ID: name, Name: name, WakerID: "partner"}); err != nil {
+				t.Fatal(err)
+			}
+			if name == "Unavailable" {
+				continue
+			}
+			root, err := projectsource.Resolve(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := sources.Ensure(ctx, root); err != nil {
+				t.Fatal(err)
+			}
+			if err := projects.ReplaceDirectories(ctx, name, []models.ProjectDirectory{{Source: root, IsDefault: true}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := projects.Create(ctx, models.Project{ID: "foreign-project", Name: "Foreign", WakerID: "other"}); err != nil {
+			t.Fatal(err)
+		}
+
+		var calls atomic.Int32
+		concurrentEntered, concurrentRelease := make(chan struct{}, 2), make(chan struct{})
+		model := func(_ context.Context, _, payload string) (string, error) {
+			calls.Add(1)
+			var prompt struct {
+				// Content 是本次交办原文。
+				Content string `json:"content"`
+				// PreviousRequest 是待指定范围的上次交办。
+				PreviousRequest string `json:"previousRequest"`
+				// Quote 是本次回复指向的公开正文与角色。
+				Quote map[string]string `json:"quote"`
+				// Candidates 是模型可以选择的本轮项目序号。
+				Candidates []struct {
+					// Choice 是项目在本轮的序号。
+					Choice int `json:"choice"`
+					// Name 是项目显示名。
+					Name string `json:"name"`
+				} `json:"candidates"`
+			}
+			if err := json.Unmarshal([]byte(payload), &prompt); err != nil {
+				t.Fatal(err)
+			}
+			for _, candidate := range prompt.Candidates {
+				if candidate.Name == "Foreign" {
+					t.Fatal("foreign project disclosed to Router")
+				}
+			}
+			switch prompt.Content {
+			case "Hello!":
+				return `{"action":"answer","message":"Hello from your partner!"}`, nil
+			case "Which project is this concurrently?":
+				concurrentEntered <- struct{}{}
+				<-concurrentRelease
+				return `{"action":"clarify","message":"Which project should I use?"}`, nil
+			case "What did you say in the old greeting?":
+				if prompt.Quote["role"] != "assistant" || prompt.Quote["content"] != "Hello to you." {
+					return "", status_error.RuntimeProtocolIncompatible
+				}
+				return `{"action":"answer","message":"I greeted you earlier."}`, nil
+			case "Please inspect the project README":
+				return `{"action":"clarify","message":"Which project contains the README?"}`, nil
+			case "The backend one", "The demo one":
+				if prompt.PreviousRequest != "Please inspect the project README" {
+					t.Fatalf("Router lost the unresolved task: %s", payload)
+				}
+				return `{"action":"clarify","message":"What is its project name?","continuePrevious":true}`, nil
+			case "RoutedBeta":
+				if prompt.PreviousRequest != "Please inspect the project README" {
+					t.Fatalf("Router did not receive the unresolved task: %s", payload)
+				}
+			case "Check the Foreign project":
+				return `{"action":"dispatch","scope":"managed"}`, nil
+			}
+			for _, candidate := range prompt.Candidates {
+				if (strings.HasPrefix(candidate.Name, "Routed") || candidate.Name == "Unavailable") && strings.Contains(prompt.Content, candidate.Name) {
+					out, _ := json.Marshal(map[string]any{"action": "dispatch", "scope": "project", "choice": candidate.Choice, "continuePrevious": prompt.Content == "RoutedBeta"})
+					return string(out), nil
+				}
+			}
+			return `{"action":"dispatch","scope":"directory"}`, nil
+		}
+		route := func(body MainConversationInput) (MainConversationAcceptance, error) {
+			t.Helper()
+			httpCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			httpCtx.Request = httptest.NewRequest("POST", "/api/v1/main-conversations/waker/partner/messages", nil)
+			op := SendMainConversationMessage{SubjectType: "waker", SubjectID: "partner", Body: body}
+			return op.send(httpCtx.Request.Context(), httpCtx, func(_, _ string, _ execution.WorkOptions, _ bool) mainconversation.ProjectRoutingModel { return model })
+		}
+		turns := len(runner.turns)
+		first := MainConversationInput{SubmissionID: "router-a", Message: &chats.MessageRequest{Text: "Inspect the RoutedAlpha README", RuntimeID: "partner-runtime"}}
+		a, err := route(first)
+		if err != nil || a.ExecutionID == "" || len(runner.turns) != turns+1 {
+			t.Fatalf("named project did not dispatch: %+v %v", a, err)
+		}
+		alphaTurn := runner.turns[turns]
+		if alphaTurn.Chat.MainConversationSource.ProjectID != "RoutedAlpha" || alphaTurn.Chat.MainConversationSource.ProjectScope == nil || !alphaTurn.Ticket.Start {
+			t.Fatalf("named project was not frozen into the original work admission: %+v", alphaTurn)
+		}
+		if replay, err := route(first); err != nil || !reflect.DeepEqual(replay, a) || calls.Load() != 1 || len(runner.turns) != turns+1 {
+			t.Fatalf("accepted project was rerouted: %+v %v calls=%d", replay, err, calls.Load())
+		}
+		post, err := alphaTurn.Options.ToolCapabilities[0].Bindings[1].Call(ctx, capability.Request{RequestID: "route-a-result", Params: map[string]any{"content": "RoutedAlpha README result"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if post.CommandID == "" {
+			t.Fatalf("missing Worker publication receipt: %+v", post)
+		}
+		for i, prompt := range []string{"Check the Foreign project", "Inspect Unavailable", "Please inspect the project README", "The backend one", "The demo one"} {
+			answer, err := route(MainConversationInput{SubmissionID: "router-public-" + string(rune('a'+i)), Content: prompt})
+			if err != nil || answer.ExecutionID != "" || answer.Message.SourceChatID != "" || len(runner.turns) != turns+1 {
+				t.Fatalf("public-only input %q started a Worker: %+v %v", prompt, answer, err)
+			}
+			rows := readMainPage(t).Messages
+			last := rows[len(rows)-1]
+			if last.Role != "assistant" || last.ReplyToMessageID != answer.Message.ID || last.SourceChatID != "" {
+				t.Fatalf("public reply missing for %q: %+v", prompt, last)
+			}
+		}
+		b, err := route(MainConversationInput{SubmissionID: "router-b", Content: "RoutedBeta"})
+		if err != nil || b.ExecutionID == "" || a.Message.SourceChatID == b.Message.SourceChatID || len(runner.turns) != turns+2 {
+			t.Fatalf("clarification answer did not dispatch in a different source: %+v %v", b, err)
+		}
+		betaTurn := runner.turns[turns+1]
+		if betaTurn.Chat.MainConversationSource.ProjectID != "RoutedBeta" || len(betaTurn.Input.ContextInstructions) != 1 || !strings.Contains(betaTurn.Input.ContextInstructions[0].Content, "Please inspect the project README") {
+			t.Fatalf("Worker lost the original assignment when its scope was clarified: %+v", betaTurn)
+		}
+		if b.Message.ReplyToMessageID == "" {
+			t.Fatal("clarification continuation did not keep its original public thread")
+		}
+		if replay, err := route(MainConversationInput{SubmissionID: "router-b", Content: "RoutedBeta"}); err != nil || !reflect.DeepEqual(replay, b) {
+			t.Fatalf("implicit reply changed the user's submission identity: %+v %v", replay, err)
+		}
+		callsBeforeQuote := calls.Load()
+		quoted, err := route(MainConversationInput{SubmissionID: "route-a-quote", Content: "Check the heading again", ReplyToMessageID: post.CommandID})
+		if err != nil || quoted.Message.SourceChatID != a.Message.SourceChatID || calls.Load() != callsBeforeQuote || len(runner.turns) != turns+3 {
+			t.Fatalf("quote lost its original project or called the Router again: %+v %v", quoted, err)
+		}
+		conversation, err := global.MainConversationService.Ensure(ctx, "waker", "partner")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := global.MainConversationService.PublishRoute(ctx, conversation, "partner", "legacy-greeting", "", "Hello!", "", execution.WorkInput{},
+			mainconversation.ProjectRoute{Message: "Hello to you."}); err != nil {
+			t.Fatal(err)
+		}
+		greeting := readMainPage(t).Messages
+		greetingID := greeting[len(greeting)-1].ID
+		oldAnswerReply, err := route(MainConversationInput{SubmissionID: "route-old-answer-quote", Content: "What did you say in the old greeting?", ReplyToMessageID: greetingID})
+		if err != nil || oldAnswerReply.ExecutionID != "" || oldAnswerReply.Message.SourceChatID != "" || oldAnswerReply.Message.ReplyToMessageID != greetingID || len(runner.turns) != turns+3 {
+			t.Fatalf("old source-less quote did not continue in the default conversation: %+v %v", oldAnswerReply, err)
+		}
+		temporaryDirectory := filepath.Join(t.TempDir(), "temp scope with spaces")
+		if err := os.Mkdir(temporaryDirectory, 0700); err != nil {
+			t.Fatal(err)
+		}
+		resolvedDirectory, err := filepath.EvalSymlinks(temporaryDirectory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		directory, err := route(MainConversationInput{SubmissionID: "route-temp", Content: "Work in `" + temporaryDirectory + "` to inspect the README"})
+		if err != nil || directory.ExecutionID == "" || len(runner.turns) != turns+4 || runner.turns[turns+3].Chat.MainConversationSource.WorkingDirectory != resolvedDirectory {
+			t.Fatalf("explicit temp directory did not reach the original Worker path: %+v %v", directory, err)
+		}
+		missing, err := route(MainConversationInput{SubmissionID: "route-missing-temp", Content: "Work in `" + filepath.Join(temporaryDirectory, "missing") + "` to inspect the README"})
+		if err != nil || missing.ExecutionID != "" || missing.Message.SourceChatID != "" || len(runner.turns) != turns+4 {
+			t.Fatalf("missing directory launched a Worker: %+v %v", missing, err)
+		}
+
+		callsBeforeConcurrent := calls.Load()
+		concurrent := MainConversationInput{SubmissionID: "route-concurrent", Content: "Which project is this concurrently?"}
+		answers, failures := make(chan MainConversationAcceptance, 2), make(chan error, 2)
+		sendConcurrent := func() {
+			answer, err := route(concurrent)
+			answers <- answer
+			failures <- err
+		}
+		go sendConcurrent()
+		<-concurrentEntered
+		go sendConcurrent()
+		close(concurrentRelease)
+		firstAnswer, secondAnswer := <-answers, <-answers
+		if firstErr, secondErr := <-failures, <-failures; firstErr != nil || secondErr != nil || !reflect.DeepEqual(firstAnswer, secondAnswer) || firstAnswer.Message.ID == "" || calls.Load() != callsBeforeConcurrent+1 {
+			t.Fatalf("same input did not recover one original result: %+v %+v %v %v", firstAnswer, secondAnswer, firstErr, secondErr)
+		}
+		rich := MainConversationInput{SubmissionID: "route-ambiguous-rich", Message: &chats.MessageRequest{Text: "Please inspect the project README", RuntimeID: "partner-runtime", SkillIDs: []string{"selected-skill"}}}
+		if _, err := route(rich); !util.HasStatusCode(err, status_error.MainConversationProjectRequired) || len(runner.turns) != turns+4 {
+			t.Fatalf("route accepted a message it could not process with its selected resource: %v", err)
+		}
+		publicID := mainconversation.UserMessageID(a.Message.ConversationID, rich.SubmissionID)
+		if _, err := global.MainConversationService.Message(ctx, a.Message.ConversationID, publicID); !util.HasStatusCode(err, status_error.ChatMessageNotFound) {
+			t.Fatalf("resource-bearing message was acknowledged without retaining its resources: %v", err)
+		}
+
+		oldest := models.Project{ID: "oldest-router-project", WakerID: "partner", Name: "RoutedOldest", CreatedAt: 1, UpdatedAt: 1}
+		if err := projects.Create(ctx, oldest); err != nil {
+			t.Fatal(err)
+		}
+		root, err := projectsource.Resolve(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sources.Ensure(ctx, root); err != nil {
+			t.Fatal(err)
+		}
+		if err := projects.ReplaceDirectories(ctx, oldest.ID, []models.ProjectDirectory{{Source: root, IsDefault: true}}); err != nil {
+			t.Fatal(err)
+		}
+		for index := range 34 {
+			id := fmt.Sprintf("routing-catalog-%d", index)
+			if err := projects.Create(ctx, models.Project{ID: id, WakerID: "partner", Name: id, CreatedAt: 2, UpdatedAt: 2}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		oldWork, err := route(MainConversationInput{SubmissionID: "route-oldest-project", Content: "Inspect the project RoutedOldest"})
+		if err != nil || oldWork.ExecutionID == "" || len(runner.turns) != turns+5 || runner.turns[turns+4].Chat.MainConversationSource.ProjectID != oldest.ID {
+			t.Fatalf("oldest exact project was omitted before checking all names: %+v %v", oldWork, err)
+		}
+		collision := models.Project{ID: "age-collision-project", WakerID: "partner", Name: "ROUTEDOLDEST", CreatedAt: 1, UpdatedAt: 1}
+		if err := projects.Create(ctx, collision); err != nil {
+			t.Fatal(err)
+		}
+		ambiguous, err := route(MainConversationInput{SubmissionID: "route-old-project-collision", Content: "Inspect the project RoutedOldest"})
+		if err != nil || ambiguous.ExecutionID != "" || ambiguous.Message.SourceChatID != "" || len(runner.turns) != turns+5 {
+			t.Fatalf("omitted project name collision admitted a Worker: %+v %v", ambiguous, err)
+		}
+
+		t.Run("independent tasks in the same project have separate sources", func(t *testing.T) {
+			before := len(runner.turns)
+			one := MainConversationInput{SubmissionID: "shared-project-inspect-api", Content: "Inspect the RoutedAlpha API"}
+			two := MainConversationInput{SubmissionID: "shared-project-inspect-ui", Content: "Inspect the RoutedAlpha UI"}
+			first, err := route(one)
+			if err != nil || first.Message.SourceChatID == "" {
+				t.Fatalf("first task did not dispatch: %+v %v", first, err)
+			}
+			chatStore := controllers.NewChatController(db.DB)
+			if err := chatStore.Create(ctx, models.Chat{ID: first.Message.SourceChatID, WakerID: "partner",
+				ProjectID: "RoutedAlpha", HiddenFromWakerHistory: true, ActiveExecutionID: first.ExecutionID}); err != nil {
+				t.Fatal(err)
+			}
+			active, err := global.MainConversationControllerManager.ActiveWork(ctx, first.Message.ConversationID)
+			if err != nil || !slices.ContainsFunc(active, func(work models.MainConversationActivity) bool {
+				return work.WorkChatID == first.Message.SourceChatID && work.ExecutionID == first.ExecutionID
+			}) {
+				t.Fatalf("first task must still be active before the second dispatch: %+v %v", active, err)
+			}
+			second, err := route(two)
+			if err != nil || second.Message.SourceChatID == "" || first.Message.SourceChatID == second.Message.SourceChatID {
+				t.Fatalf("unrelated tasks shared a source: first=%+v second=%+v %v", first, second, err)
+			}
+			for _, turn := range runner.turns[before:] {
+				source := turn.Chat.MainConversationSource
+				if source == nil || source.ProjectScope == nil || source.ProjectID != "RoutedAlpha" || source.ProjectScope.Project.WakerID != "partner" {
+					t.Fatalf("task lost its frozen project authorization: %+v", source)
+				}
+			}
+			routeCalls := calls.Load()
+			if replay, err := route(one); err != nil || !reflect.DeepEqual(replay, first) || calls.Load() != routeCalls || len(runner.turns) != before+2 {
+				t.Fatalf("retry changed the original task: %+v %v", replay, err)
+			}
+			continued, err := route(MainConversationInput{SubmissionID: "shared-project-continue-api", Content: "Check the API heading", ReplyToMessageID: first.Message.ID})
+			if err != nil || continued.Message.SourceChatID != first.Message.SourceChatID || calls.Load() != routeCalls {
+				t.Fatalf("quoted continuation lost its original task: %+v %v", continued, err)
+			}
+			legacy := MainConversationInput{ProjectID: "RoutedAlpha", SubmissionID: "explicit-project-first", Content: "Inspect the project explicitly"}
+			explicit, err := route(legacy)
+			if err != nil || explicit.Message.SourceChatID == "" || explicit.Message.SourceChatID == first.Message.SourceChatID {
+				t.Fatalf("explicit project send did not retain its separate legacy scope: %+v %v", explicit, err)
+			}
+			legacy.SubmissionID = "explicit-project-follow-up"
+			if replay, err := route(legacy); err != nil || replay.Message.SourceChatID != explicit.Message.SourceChatID || calls.Load() != routeCalls {
+				t.Fatalf("explicit project no longer reuses its previous scope: %+v %v", replay, err)
+			}
+		})
+
+		t.Run("routed partial admission keeps the reserved source", func(t *testing.T) {
+			input := MainConversationInput{SubmissionID: "shared-project-partial", Content: "Inspect the RoutedAlpha changelog"}
+			runner.admissionError = status_error.ChatLogError
+			if _, err := route(input); !util.HasStatusCode(err, status_error.ChatLogError) {
+				t.Fatalf("expected interrupted source admission: %v", err)
+			}
+			id := mainconversation.UserMessageID(a.Message.ConversationID, input.SubmissionID)
+			pending, err := global.MainConversationService.Message(ctx, a.Message.ConversationID, id)
+			if err != nil || !pending.AdmissionPending || pending.SourceChatID == "" {
+				t.Fatalf("pending work lacks a stable source: %+v %v", pending, err)
+			}
+			routeCalls := calls.Load()
+			accepted, err := route(input)
+			if err != nil || accepted.Message.SourceChatID != pending.SourceChatID || calls.Load() != routeCalls || accepted.Message.AdmissionPending {
+				t.Fatalf("retry lost the pending source or rerouted the request: %+v %v", accepted, err)
+			}
+		})
+	})
+}
+
+func TestRoutedMainSourceFollowsItsOriginalTicket(t *testing.T) {
+	configureNativeMainConversation(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	request, _ := gin.CreateTestContext(httptest.NewRecorder())
+	request.Request = httptest.NewRequest("POST", "/", nil).WithContext(ctx)
+	const partner = "native-main-partner"
+	initial := &SendMainConversationMessage{SubjectType: "waker", SubjectID: partner,
+		Body: MainConversationInput{SubmissionID: "original-dispatch", Content: "Collect harmless fixture results.", StartWork: true}}
+	raw, err := initial.Output(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := raw.(MainConversationAcceptance)
+	waitForWorker := func(executionID string) {
+		t.Helper()
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for global.ExecutionService.IsExecutionActive(first.Message.SourceChatID, executionID) {
+			select {
+			case <-ctx.Done():
+				t.Fatal("worker did not settle")
+			case <-ticker.C:
+			}
+		}
+	}
+	waitForWorker(first.ExecutionID)
+	followUp := &SendMainConversationSourceMessage{SubjectType: "waker", SubjectID: partner, WorkChatID: first.Message.SourceChatID,
+		Body: chats.SendMessageRequest{SubmissionID: "source-follow-up", MessageRequest: chats.MessageRequest{Text: "Add one fixture to the original work.", RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto}}}
+	raw, err = followUp.Output(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	continued := raw.(MainConversationSourceAcceptance)
+	waitForWorker(continued.Execution.ID)
+	replay, err := followUp.Output(request)
+	if err != nil || !replay.(MainConversationSourceAcceptance).Replayed ||
+		replay.(MainConversationSourceAcceptance).Execution.ID != continued.Execution.ID {
+		t.Fatalf("source retry did not return its original execution: %+v, %v", replay, err)
+	}
+	followUp.Body.Text += " changed"
+	if _, err := followUp.Output(request); !util.HasStatusCode(err, status_error.CreateRequestConflict) {
+		t.Fatalf("source retry changed the accepted input: %v", err)
+	}
+	address := workticket.Address{Kind: constants.WorkTicketOriginMain, ID: first.Message.ConversationID}
+	messageID := mainconversation.UserMessageID(first.Message.ConversationID, followUp.Body.SubmissionID)
+	ticket, found, err := global.WorkTicketService.ForMessage(ctx, address, messageID)
+	if err != nil || !found || ticket.ID != first.Message.ID || ticket.WorkChatID != first.Message.SourceChatID || ticket.CurrentExecutionID != continued.Execution.ID {
+		t.Fatalf("unquoted source continuation did not reopen the original ticket: %+v found=%t %v", ticket, found, err)
+	}
+	raw, err = (&GetMainConversation{SubjectType: "waker", SubjectID: partner}).Output(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range raw.(MainConversationResponse).Messages {
+		if message.ID == messageID {
+			t.Fatalf("source-only ticket input leaked into main: %+v", message)
+		}
+	}
 }

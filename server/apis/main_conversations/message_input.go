@@ -17,13 +17,26 @@ func (b MainConversationInput) workInput() (execution.WorkInput, *execution.Work
 		if strings.TrimSpace(b.Content) == "" {
 			return execution.WorkInput{}, nil, "", "", status_error.BadRequest
 		}
-		return execution.WorkInput{Actor: "user", Content: b.Content}, nil, b.Content, "", nil
+		var digest string
+		if b.StartWork {
+			identity, err := requestidempotency.NewSubmission(b.SubmissionID, []any{b.Content, map[string]bool{"startWork": true}})
+			if err != nil {
+				return execution.WorkInput{}, nil, "", "", err
+			}
+			digest = identity.Hash
+		}
+		return execution.WorkInput{Actor: "user", Content: b.Content}, nil, b.Content, digest, nil
 	}
 	input, options := b.Message.WorkInput()
 	if b.Content != "" || input.SteerExecutionID != "" || (strings.TrimSpace(input.Content) == "" && input.Workflow == nil) {
 		return input, nil, "", "", status_error.BadRequest
 	}
-	identity, err := requestidempotency.NewSubmission(b.SubmissionID, []any{input, options})
+	options.HistorySourceChatID = b.HistorySourceChatID
+	request := []any{input, options}
+	if b.StartWork {
+		request = append(request, map[string]bool{"startWork": true})
+	}
+	identity, err := requestidempotency.NewSubmission(b.SubmissionID, request)
 	if err != nil {
 		return input, nil, "", "", err
 	}

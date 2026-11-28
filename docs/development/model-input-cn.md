@@ -20,12 +20,13 @@
 | 场景                   | 会话规则和工具                                                                                                                                                                                     | 正文以外的本轮输入                                                                                                                       |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | 普通伙伴与项目对话     | 伙伴档案、工作范围、项目允许加载的说明和已交付能力入口。工作流可按用户请求在授权工具中发现，普通本地对话省略工作流专用会话指令。技能、连接器的显式管理通过授权命令及保存回执，规则随实际能力交付。 | 有选择时发送附件名称和工作路径、代码路径或选区、技能名、原生连接器名及已选插件信息。明确回复时，通过 `Reply target` 交付同一 Chat 原消息的有界正文。工作台合格对话按下节交付核心记忆。按需查找普通记忆。 |
-| 主会话交办的工作 Chat | 宿主签发公开历史读取与主会话发言能力。工作 Chat 按需翻阅同一会话的公开记录。 | 原始公开交办与引用由宿主绑定到当前执行。来源内续聊的用户输入也在主会话可见。工作记录保存完整工具过程和原生输出。 |
+| 主会话 Router          | 在主会话的私有原生会话或隔离单次调用中输出答复、澄清或派工建议。Core 不签发应用工具或工作范围。 | 用户正文、伙伴简介、本轮引用、必要的工作回报及有界项目候选。新建会话时补充近期公开历史。项目候选只含名称、简介和本轮序号，目录授权由 Core 核验。 |
+| 主会话交办的工作 Chat | 宿主签发公开历史读取与同一主会话的发言能力。获授权回合可按需翻阅公开记录并回送应公开的答复。 | 原始公开交办与引用由宿主绑定到当前执行。`Input origin` 标记用户直接在工作记录里发送的输入，并指引继续主会话时用发言工具回送答复。工作记录保存完整工具过程和原生输出。 |
 | 普通对话指定工作流     | 沿用普通对话的会话规则和工具集合。                                                                                                                                                                 | `Workflow target` 携带本轮冻结的定义和版本，以及可读名称。下一轮由新的选择决定。                                                         |
 | 工作流创作             | 创作角色和工作区规则作为会话指令，完整指南、源码、资源和 SDK 通过 `workflow.authoring.prepare` 按需读取。                                                                                          | 冻结画布或运行引用，未选择时省略。公开用户正文沿用创作页原始输入。                                                                       |
 | 工作流运行与节点       | 使用当前执行或消费者入口的规则及精确授权；有结果提交契约时提示按工具回执提交。                                                                                                                     | 当前运行目录、业务输入和所需结果 Schema。独立的工具授权、运行身份和提交回执由 Core 保持。                                                |
 | 团队负责人和成员       | 团队角色、协作规则、已授权的派工或报告能力。只有工具要求时提供可指派成员身份。                                                                                                                     | 结构化提及触发本轮直办模式，协调模式可用默认值。成员依赖与已提交报告按当前输入提供。明确回复时以 `Reply target` 交付原消息正文。主对话交给负责人，成员对话交给当前成员。 |
-| 自动任务与 IM          | 复用已绑定的普通、团队、工作流或 Wiki 入口，使用该入口的授权和工作范围。                                                                                                                           | 任务要求或外部正文使用同一正文通道；回执、发送者和目标平台身份由宿主路由。定期 Wiki 维护仅提供冻结目标库的维护规则与能力。               |
+| 自动任务与 IM          | 复用已绑定的普通、团队、工作流或 Wiki 入口，使用该入口的授权和工作范围。                                                                                                                           | 任务要求或外部消息写入正文。自动运行的报告说明只作为宿主回合上下文交给模型。回执、发送者和目标平台身份由宿主路由。定期 Wiki 维护仅提供冻结目标库的维护规则与能力。 |
 | 建档与档案优化         | 分别使用建档或档案编辑规则，授权保存能力只在对应入口开启。                                                                                                                                         | 当前场景的明确编辑标记、有效用户输入和结构化问答。                                                                                       |
 | 独立 Wiki 维护         | 受限的目标库工具、维护指南及工作目录通过独立会话交付。                                                                                                                                             | 用户原始要求或任务正文、冻结库引用、有值时发送补充发现。                                                                                 |
 | 独立文本生成和文档整理 | `GenerateText` 把开头的 system 消息映射为会话指令。每次调用有独立会话和文本结果。                                                                                                                  | 最后一条 user 消息为正文。有明确提供的既往角色消息时，作为单个引用事实交付。                                                             |
@@ -158,7 +159,15 @@ For NeuxBot-provided operations, read the bot skill at "{{botSkillDir}}/SKILL.md
 ```text
 ## Public conversation messages
 
-Publish complete messages with conversations.messages.post (conversations_messages_post over MCP). Each call delivers immediately to the same main conversation from either input view. For short answers, one post is enough. For longer work, publish a useful, self-contained finding or a change that affects the user's next decision as soon as you have it, then continue. Publish the finished result when ready. Use a structured question when you need the user's answer to proceed. While a question is pending, keep the turn open. Call interaction.questions.wait with its questionId. On completed=false, repeat the wait with the same ID until resolved. Continue from the actual answer. Keep reasoning, tool steps and routine progress in the work transcript. Give each message its own requestId. If its receipt is uncertain, look it up or retry with the original requestId and content. Read earlier public messages when needed via conversations.messages.list (conversations_messages_list over MCP).
+Use conversations.messages.post (conversations_messages_post over MCP) for the bound main conversation. The work transcript stays private. Answer main conversation inputs there and follow any input destination. Whatever started the turn, post results, findings or blockers meant for the main conversation within its authorized scope. For longer work, post a brief acknowledgment, then each useful finding with its evidence as soon as it is ready. Use quoteReply on the post that answers the assigned input when a quote helps. Use a structured question when you need an answer. Keep the turn open and call interaction.questions.wait with its questionId. On completed=false, wait again with the same ID. Use a separate requestId per post. Recover uncertain receipts with the original requestId and content. Read earlier posts via conversations.messages.list.
+```
+
+来源内发送通过本轮事实标记输入来源。延续主会话的简短答复和工作结果都可通过已授权的工具送回，明确要求只在工作记录内答复时沿用该要求。
+
+```text
+<neuxbot-turn-context>
+{"Input origin":"Keep this work conversation's input and execution details here. If it continues the main conversation or its work, use the granted conversations.messages.post tool (conversations_messages_post over MCP) to send the user-facing reply or outcome there, even for brief chat. Respect requests to reply only here."}
+</neuxbot-turn-context>
 ```
 
 #### 技能与连接器管理

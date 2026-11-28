@@ -33,6 +33,8 @@ type pendingElicitation struct {
 	requested eventlog.ElicitationRequestedData
 	// response 把最终选择交回正在等待的 Runtime 回调。
 	response chan agentapi.ElicitationDecision
+	// resumeWatchdog 在已发布的软件提问结算后结束该执行的等待。
+	resumeWatchdog func()
 }
 
 // elicitationCoordinator 在进程内连接 ACP 回调、Chat 权威事实和用户响应。
@@ -49,6 +51,8 @@ type elicitationCoordinator struct {
 	orderByChat map[string][]string
 	// journal 先持久化结构化输入事实，再更新可重建投影并发布安全事件。
 	journal chatservice.Journal
+	// pauseWatchdog 在对话的原执行仍可等待用户时暂停巡检。
+	pauseWatchdog func(string, string) (func(), bool)
 }
 
 // executionElicitationHandler 把固定 Chat/Execution 身份绑定到结构化输入协调器。
@@ -138,6 +142,13 @@ func (c *elicitationCoordinator) request(
 		executionID:    executionID,
 		requested:      requested,
 		response:       make(chan agentapi.ElicitationDecision, 1),
+	}
+	if c.pauseWatchdog != nil {
+		resume, allowed := c.pauseWatchdog(chatID, executionID)
+		if !allowed {
+			return agentapi.ElicitationDecision{Cancelled: true}, status_error.OperationCanceled
+		}
+		defer resume()
 	}
 
 	c.commitMutex.Lock()
@@ -380,6 +391,9 @@ func (c *elicitationCoordinator) commitResolution(
 	c.mutex.Unlock()
 
 	c.journal.PublishInteractionFact(ctx, record)
+	if pending.resumeWatchdog != nil {
+		pending.resumeWatchdog()
+	}
 	if c.events != nil {
 		_ = events.Emit(c.events, "interaction", "interaction.changed", events.Resource{Kind: "execution", ID: pending.executionID}, map[string]any{"questionId": pending.requested.ElicitationID})
 	}

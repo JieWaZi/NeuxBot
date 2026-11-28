@@ -239,6 +239,9 @@ func (c *wakerController) UpdateProfileProjection(
 // Delete 删除伙伴。
 func (c *wakerController) Delete(ctx context.Context, id string) error {
 	db := controllerDB(ctx, c.db)
+	if err := deleteWorkTickets(db, models.WorkTicket{OriginKind: constants.WorkTicketOriginChat, OwnerKind: "waker", OwnerID: id}, id); err != nil {
+		return err
+	}
 	if err := deleteMainConversation(db, "waker", id); err != nil {
 		return err
 	}
