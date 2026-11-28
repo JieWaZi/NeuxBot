@@ -67,6 +67,8 @@ type MessageHistoryPage struct {
 type ListChatsInput struct {
 	// WakerID 是需要筛选的伙伴标识。
 	WakerID string
+	// Query 是可选的对话标题搜索词。
+	Query string
 	// BeforeUpdatedAt 是上一页末项的最近活动时间。
 	BeforeUpdatedAt int64
 	// BeforeID 是相同活动时间下的稳定标识游标。
@@ -139,7 +141,8 @@ func (m *service) ListChats(
 ) (ChatList, error) {
 	input.WakerID = strings.TrimSpace(input.WakerID)
 	input.BeforeID = strings.TrimSpace(input.BeforeID)
-	if input.WakerID == "" || input.BeforeUpdatedAt < 0 ||
+	input.Query = strings.TrimSpace(input.Query)
+	if len([]rune(input.Query)) > 120 || input.WakerID == "" || input.BeforeUpdatedAt < 0 ||
 		(input.BeforeUpdatedAt == 0) != (input.BeforeID == "") ||
 		input.Limit < 1 || input.Limit > 100 {
 		return ChatList{}, status_error.BadRequest

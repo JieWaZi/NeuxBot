@@ -144,6 +144,7 @@ type TeamNavigationProps = {
   onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
   preferences: PartnerNavigationPreferences;
   threadId?: string;
+  search?: string;
 };
 
 export function TeamMemberMenu({
@@ -272,6 +273,7 @@ export function TeamChatTree({
   onPreferencesChange,
   preferences,
   threadId,
+  search = "",
 }: TeamNavigationProps) {
   const { t } = useTranslation("team");
   const location = useLocation();
@@ -293,7 +295,10 @@ export function TeamChatTree({
   const removeThread = useMutation(
     withLocalErrorMutation(deleteChannelThreadMutation()),
   );
-  const historyOptions = teamThreadsInfiniteOptions(channelId || "pending");
+  const historyOptions = teamThreadsInfiniteOptions(
+    channelId || "pending",
+    search || undefined,
+  );
   const threadsQuery = useInfiniteQuery({
     ...historyOptions,
     enabled: Boolean(channelId),
@@ -483,7 +488,9 @@ export function TeamChatTree({
             </div>
           ) : groups.length === 0 ? (
             <p className="text-muted-foreground type-caption px-2 py-4">
-              {t("chatNavigation.empty")}
+              {search
+                ? t("common:partnerNavigation.noSearchResults")
+                : t("chatNavigation.empty")}
             </p>
           ) : (
             groups.map((group, index) => (
@@ -503,7 +510,7 @@ export function TeamChatTree({
                   label={group.label}
                   onToggle={() => toggleGroup(group.key)}
                 />
-                {!collapsedGroups.has(group.key) ? (
+                {search.trim() || !collapsedGroups.has(group.key) ? (
                   <div className="mt-1 grid gap-0.5 pl-2">
                     {group.threads.map((thread) => threadRow(thread))}
                   </div>

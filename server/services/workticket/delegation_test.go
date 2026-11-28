@@ -325,3 +325,41 @@ func TestDelegationResumeFindsFinalBeyondReportHistoryLimit(t *testing.T) {
 		t.Fatalf("resumed direct parent cannot retrieve exact full final: %+v %v", rows, err)
 	}
 }
+
+func TestTeamMainDelegationRequiresCurrentMembership(t *testing.T) {
+	ctx := t.Context()
+	db, service, _ := newTicketChat(t, nil)
+	const main = constants.WorkTicketOriginMain
+	for _, row := range []any{
+		&models.Waker{ID: "member", Name: "Member"},
+		&models.Channel{ID: "team", Name: "Team", LeadWakerID: "owner"},
+		&models.MainConversation{ID: "team-main", SubjectType: "team", SubjectID: "team"},
+		&models.MainConversation{ID: "member-main", SubjectType: "waker", SubjectID: "member"},
+		&models.MainConversationWork{ConversationID: "team-main", WorkChatID: "root-work", WakerID: "owner", ScopeKey: "root"},
+		&models.MainConversationWork{ConversationID: "member-main", WorkChatID: "member-work", WakerID: "member", ScopeKey: "member"},
+		&models.Chat{ID: "root-work", WakerID: "owner", HiddenFromWakerHistory: true},
+	} {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	root := admit(t, service, workticket.Admission{Address: workticket.Address{Kind: main, ID: "team-main"}, WorkChatID: "root-work", MessageID: "team-root", SourceMessageID: "source", ExecutionID: "run", SubmissionID: "sub", SubmissionHash: "digest", OwnerKind: "team", OwnerID: "team", OwnerWakerID: "owner", PermissionLevel: constants.PermissionLevelAuto})
+	in := workticket.DelegationInput{RequestID: "request", Target: workticket.Address{Kind: main, ID: "member-main"}, OwnerKind: "waker", OwnerID: "member", OwnerWakerID: "member", WorkChatID: "member-work", Content: "Check the fixture"}
+	if _, err := service.Delegate(ctx, root, in); !errors.Is(err, status_error.AgentOperationForbidden) {
+		t.Fatalf("out of team assignment: %v", err)
+	}
+	member := models.ChannelMember{ChannelID: "team", WakerID: "member"}
+	if err := db.Create(&member).Error; err != nil {
+		t.Fatal(err)
+	}
+	child, err := service.Delegate(ctx, root, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Delete(&member).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Delegation(ctx, child.ID); !errors.Is(err, status_error.AgentOperationForbidden) {
+		t.Fatalf("removed member can still launch: %v", err)
+	}
+}

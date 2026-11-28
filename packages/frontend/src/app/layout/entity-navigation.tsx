@@ -108,6 +108,7 @@ type EntityNavigationProps = {
   onShowcaseWaker?: (waker: Waker, origin: HTMLElement) => void;
   selectedKey: string;
   history?: ReactNode;
+  sidebarSearch?: string;
   wakerGroups?: readonly WakerNavigationGroup[];
   renderWakerRow?: (item: NavigationWaker, row: ReactElement) => ReactElement;
   renderTeamRow?: (
@@ -528,6 +529,7 @@ export function EntityNavigation({
   onShowcaseWaker,
   selectedKey,
   history,
+  sidebarSearch,
   wakerGroups = [],
   renderWakerRow,
   renderTeamRow,
@@ -546,7 +548,9 @@ export function EntityNavigation({
   const itemRefs = useRef(new Map<string, HTMLButtonElement>());
   const indicatorRef = useRef<HTMLSpanElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase("zh-CN");
+  const normalizedSearchQuery = (sidebarSearch ?? searchQuery)
+    .trim()
+    .toLocaleLowerCase("zh-CN");
   const visibleItems = normalizedSearchQuery
     ? items.filter((item) => {
         const searchable =
@@ -1027,7 +1031,7 @@ export function EntityNavigation({
               size="sm"
               value={mode}
             />
-            {expandedCreateToolbar}
+            {sidebarSearch === undefined ? expandedCreateToolbar : null}
             {onRetryGroupImport && mode === "waker" ? (
               <div className="flex items-center justify-between gap-2 px-2 py-1">
                 <p role="alert" className="text-content-muted type-ui">

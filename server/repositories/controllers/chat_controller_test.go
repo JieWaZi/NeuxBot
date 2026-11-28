@@ -643,3 +643,32 @@ func TestChatControllerWakerActivityExcludesOwnedBackgroundChats(t *testing.T) {
 		}
 	}
 }
+
+func TestListByWakerBeforeSearchesScopedTitleBeforePagination(t *testing.T) {
+	db := newTestDB(t)
+	ctx := t.Context()
+	controller := NewChatController(db)
+	for _, row := range []models.Chat{
+		{ID: "a", WakerID: "partner", Title: "Literal 100% Result", UpdatedAt: 100},
+		{ID: "b", WakerID: "partner", Title: "Literal 100% older", UpdatedAt: 90},
+		{ID: "c", WakerID: "partner", Title: "Literal 1000 wildcard", UpdatedAt: 200},
+		{ID: "d", WakerID: "partner", Title: "Literal 100% private", UpdatedAt: 300, HiddenFromWakerHistory: true},
+		{ID: "e", WakerID: "other", Title: "Literal 100% private", UpdatedAt: 400},
+	} {
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := controller.ListByWakerBefore(ctx, "partner", 0, "", 1, " 100% ")
+	if err != nil || len(first) != 1 || first[0].ID != "a" {
+		t.Fatalf("first search page = %+v %v", first, err)
+	}
+	second, err := controller.ListByWakerBefore(ctx, "partner", first[0].UpdatedAt, first[0].ID, 1, "100%")
+	if err != nil || len(second) != 1 || second[0].ID != "b" {
+		t.Fatalf("second search page = %+v %v", second, err)
+	}
+	rows, err := controller.ListByWakerBefore(ctx, "partner", 0, "", 10, "RESULT")
+	if err != nil || len(rows) != 1 || rows[0].ID != "a" {
+		t.Fatalf("case-insensitive search = %+v %v", rows, err)
+	}
+}

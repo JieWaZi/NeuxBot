@@ -1,4 +1,14 @@
 export const mainConversationZh = {
+  partnerSettings: "伙伴设置",
+  teamSettings: "团队设置",
+  delegatedWork: "委派工作",
+  delegationQueued: "等待执行",
+  delegationRunning: "运行中",
+  delegationWaiting: "等待回复",
+  delegationBlocked: "已阻塞",
+  delegationCompleted: "已完成",
+  delegationFailed: "失败",
+  delegationStopped: "已停止",
   newTeamThread: "新建团队对话",
   mainConversation: "主会话",
   openSource: "打开工作会话",
@@ -44,6 +54,16 @@ export const mainConversationZh = {
 };
 
 export const mainConversationEn = {
+  partnerSettings: "Partner settings",
+  teamSettings: "Team settings",
+  delegatedWork: "Delegated work",
+  delegationQueued: "Waiting to start",
+  delegationRunning: "Running",
+  delegationWaiting: "Waiting for a reply",
+  delegationBlocked: "Blocked",
+  delegationCompleted: "Completed",
+  delegationFailed: "Failed",
+  delegationStopped: "Stopped",
   newTeamThread: "New team conversation",
   mainConversation: "Main conversation",
   openSource: "Open work conversation",

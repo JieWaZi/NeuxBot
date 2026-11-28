@@ -4,8 +4,10 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
@@ -137,6 +139,95 @@ func TestWorkTicketRecoveryQueriesHaveNarrowIndexes(t *testing.T) {
 		}
 		if len(rows) != 1 || !strings.Contains(rows[0].Detail, query.index) {
 			t.Fatalf("unbounded recovery lookup: %+v", rows)
+		}
+	}
+}
+
+func TestWorkTicketActivityCandidatesSeparateOriginAndReceiver(t *testing.T) {
+	db := newTestDB(t)
+	const main = constants.WorkTicketOriginMain
+	ctx := t.Context()
+	store := NewWorkTicketController(db)
+	for _, row := range []models.WorkTicket{
+		{ID: "A-root", OriginKind: main, OriginID: "A-main", OwnerWakerID: "A"},
+		{ID: "B-child", OriginKind: main, OriginID: "B-main", OwnerWakerID: "B", ParentTicketID: "A-root", Status: constants.WorkTicketStatusCompleted},
+		{ID: "C-child", OriginKind: main, OriginID: "C-main", OwnerWakerID: "C", ParentTicketID: "B-child"},
+		{ID: "team-root", OriginKind: main, OriginID: "team-main", OwnerWakerID: "D"},
+		{ID: "team-child", OriginKind: main, OriginID: "B-main", OwnerWakerID: "B", ParentTicketID: "team-root"},
+	} {
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		conversation, kind, subject string
+		want                        map[string]bool
+	}{
+		{"A-main", "waker", "A", map[string]bool{"A-root": true, "B-child": true, "C-child": true}},
+		{"B-main", "waker", "B", map[string]bool{"B-child": true, "team-child": true}},
+		{"team-main", "team", "team", map[string]bool{"team-root": true, "team-child": true}},
+		{"", "waker", "absent", map[string]bool{}},
+	} {
+		rows, err := store.ActivityCandidates(ctx, tc.conversation, tc.kind, tc.subject)
+		if err != nil || len(rows) != len(tc.want) {
+			t.Fatalf("%s: unexpected candidates %+v, %v", tc.subject, rows, err)
+		}
+		for _, row := range rows {
+			if !tc.want[row.ID] {
+				t.Fatalf("%s: unexpected candidate %s", tc.subject, row.ID)
+			}
+		}
+	}
+}
+
+func TestWorkTicketActivityInvalidatesOriginAndRecipientAfterCommit(t *testing.T) {
+	ctx := t.Context()
+	hub := events.New()
+	t.Cleanup(hub.Close)
+	db := WithEventPublisher(newTestDB(t), hub)
+	origin := eventsResource("team", "team")
+	receiver := eventsResource("waker", "B")
+	source := hub.Subscribe(constants.MainConversationEventTopic, origin)
+	target := hub.Subscribe(constants.MainConversationEventTopic, receiver)
+	t.Cleanup(source.Close)
+	t.Cleanup(target.Close)
+	for _, row := range []any{
+		&models.MainConversation{ID: "team-main", SubjectType: "team", SubjectID: "team"},
+		&models.WorkTicket{ID: "root", OriginKind: constants.WorkTicketOriginMain, OriginID: "team-main"},
+	} {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	tx := NewTransactionController(dbhelper.NewGormTransactionManager(db))
+	store := NewWorkTicketController(db)
+	err := tx.Transaction(ctx, func(ctx context.Context) error {
+		if err := store.CreateTicket(ctx, &models.WorkTicket{ID: "child", ParentTicketID: "root", OwnerWakerID: "B"}); err != nil {
+			return err
+		}
+		select {
+		case <-source.Events:
+			t.Fatal("event before commit")
+		default:
+		}
+		select {
+		case <-target.Events:
+			t.Fatal("event before commit")
+		default:
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ch := range []<-chan events.Event{source.Events, target.Events} {
+		select {
+		case e := <-ch:
+			if e.Type != constants.MainConversationEventTopic+".changed" {
+				t.Fatalf("wrong change %+v", e)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("missing work activity invalidation")
 		}
 	}
 }

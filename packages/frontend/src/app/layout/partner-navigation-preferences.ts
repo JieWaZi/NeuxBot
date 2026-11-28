@@ -10,6 +10,8 @@ export type PartnerNavigationPreferences = {
   contextSidebarWidth: number;
   currentPartnerId: string;
   currentRailKey: string;
+  /** 左侧导航的伙伴与会话视图。 */
+  conversationSidebarView?: "conversations" | "partners";
   entityMode: "team" | "waker";
   /** Shell 左侧栏的手动收起状态。 */
   globalSidebarCollapsed: boolean;
@@ -149,6 +151,11 @@ export function readPartnerNavigationPreferences(): PartnerNavigationPreferences
           : currentPartnerId
             ? `waker:${currentPartnerId}`
             : "",
+      conversationSidebarView:
+        "conversationSidebarView" in value &&
+        value.conversationSidebarView === "conversations"
+          ? "conversations"
+          : undefined,
       entityMode:
         "entityMode" in value && value.entityMode === "team" ? "team" : "waker",
       globalSidebarCollapsed:

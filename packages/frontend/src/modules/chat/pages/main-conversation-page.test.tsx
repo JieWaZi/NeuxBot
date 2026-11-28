@@ -58,6 +58,7 @@ const calls = vi.hoisted(() => ({
   approve: vi.fn(),
   ordinaryApprove: vi.fn(),
   activity: vi.fn(),
+  ticketActivity: vi.fn(),
   subscribe: vi.fn<typeof GlobalEvents.subscribeGlobalEvents>(),
   answer: vi.fn(),
   source: vi.fn(),
@@ -75,6 +76,7 @@ const calls = vi.hoisted(() => ({
 vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
   ...(await original<typeof SDK>()),
   listWorkTickets: async () => ({ data: [] }),
+  listWorkTicketActivity: async () => ({ data: calls.ticketActivity() ?? [] }),
   getMainConversation: async (options: HistoryRequest) => {
     if (calls.history.getMockImplementation()) return calls.history(options);
     return {
@@ -191,6 +193,7 @@ beforeEach(() => {
   calls.approve.mockReset();
   calls.ordinaryApprove.mockReset();
   calls.activity.mockReset();
+  calls.ticketActivity.mockReset();
   calls.subscribe.mockReset().mockReturnValue(() => {});
   calls.answer.mockReset();
   calls.selectFiles.mockReset().mockResolvedValue([]);
@@ -269,6 +272,39 @@ function mainConversationChanged(
   );
 }
 describe("公开主会话", () => {
+  it.each(["waker", "team"] as const)(
+    "在%s的发起消息下只展示由此发出的子单",
+    async (kind) => {
+      const input = turnInput("请让伙伴核对发布说明", 1, "root-work");
+      calls.timeline.mockReturnValue({ messages: [input] });
+      const child = {
+        ticketId: "child",
+        parentTicketId: "parent",
+        sourceMessageId: input.id,
+        title: "独立执行的委派",
+        state: "completed",
+        workChatId: "child-work",
+        workSubjectType: "waker",
+        workSubjectId: "receiver",
+        received: false,
+      };
+      calls.ticketActivity.mockReturnValue([
+        child,
+        {
+          ...child,
+          ticketId: "received",
+          title: "不可插入主会话的受托工作",
+          received: true,
+        },
+      ]);
+      show(undefined, "", kind);
+      expect(
+        await screen.findByRole("link", { name: /独立执行的委派/ }),
+      ).toHaveAttribute("href", "/chat/main/waker/receiver?source=child-work");
+      expect(screen.queryByText("不可插入主会话的受托工作")).toBeNull();
+    },
+  );
+
   it("伙伴菜单从对应工作回合分支，并按公开消息标记未读", async () => {
     const user = userEvent.setup();
     const input = turnInput("检查故障", 1, "test-work");
@@ -446,8 +482,11 @@ describe("公开主会话", () => {
 
     action.focus();
     expect(action).toHaveFocus();
-    await user.keyboard("{Enter}{Home}");
-    const openWork = screen.getByRole("menuitem", { name: "打开工作会话" });
+    await user.keyboard("{Enter}");
+    const openWork = await screen.findByRole("menuitem", {
+      name: "打开工作会话",
+    });
+    fireEvent.keyDown(openWork, { key: "Home" });
     expect(openWork).toHaveFocus();
     expect(screen.getByRole("menuitem", { name: "复制消息" })).toBeVisible();
     await user.keyboard("{Enter}");

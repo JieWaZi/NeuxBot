@@ -8,6 +8,7 @@ var Router = ginx.NewRouter(ginx.Group("/work-tickets"))
 
 func init() {
 	Router.Register(&ListWorkTickets{})
+	Router.Register(&ListWorkTicketActivity{})
 	Router.Register(&StopWorkTicket{})
 	Router.Register(&TransferWorkTicket{})
 }

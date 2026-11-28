@@ -261,3 +261,23 @@ func TestRouterTurnInputKeepsCurrentPublicWorkAndExplicitQuoteWithoutReplayingDi
 		t.Fatal(err)
 	}
 }
+
+func TestProjectRouterPromptDispatchesActualPartnerDelegation(t *testing.T) {
+	for _, tc := range []struct {
+		input, completion string
+		dispatch          bool
+	}{
+		{"请让小安核对两份公开说明的差异", `{"action":"dispatch","scope":"managed","acknowledgment":"我先安排小安核对。"}`, true},
+		{"你能讲讲怎么委派给小安吗？", `{"action":"answer","message":"可以通过主会话委派。"}`, false},
+	} {
+		route, err := RouteProject(t.Context(), func(_ context.Context, prompt, payload string) (string, error) {
+			if !strings.Contains(prompt, "named partner") || !strings.Contains(prompt, "Never substitute a direct answer") {
+				t.Fatal("missing actual delegation routing policy")
+			}
+			return tc.completion, nil
+		}, ProjectRoutingInput{Content: tc.input})
+		if err != nil || (route.Message == "") != tc.dispatch {
+			t.Fatalf("%s: unexpected route %+v, %v", tc.input, route, err)
+		}
+	}
+}

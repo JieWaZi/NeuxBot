@@ -258,6 +258,7 @@ func (p *queryIndexStore) readChatList(
 		input.BeforeUpdatedAt,
 		input.BeforeID,
 		input.Limit+1,
+		input.Query,
 	)
 	if err != nil {
 		return ChatList{}, err

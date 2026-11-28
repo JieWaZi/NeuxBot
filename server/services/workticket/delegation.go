@@ -155,7 +155,7 @@ func (s *Service) PendingDelegations(ctx context.Context, after string, limit in
 		for _, row := range rows {
 			after = row.ID
 			checked, err := s.Delegation(ctx, row.ID)
-			if errors.Is(err, status_error.WorkTicketAttemptUnavailable) || errors.Is(err, status_error.WorkTicketCannotContinue) {
+			if errors.Is(err, status_error.WorkTicketAttemptUnavailable) || errors.Is(err, status_error.WorkTicketCannotContinue) || errors.Is(err, status_error.AgentOperationForbidden) {
 				continue
 			}
 			if err != nil {
@@ -246,6 +246,19 @@ func (s *Service) authorizeDelegationChain(ctx context.Context, child models.Wor
 		if parent.ID == "" || parent.Generation != current.ParentGeneration || parent.Status == constants.WorkTicketStatusStopped ||
 			parent.Status == constants.WorkTicketStatusCompleted {
 			return status_error.WorkTicketAttemptUnavailable
+		}
+		// 共享团队主会话的根单不授予跨团队派发权限；回复与重放同样验证当前成员资格。
+		if parent.ParentTicketID == "" && parent.OwnerKind == "team" && parent.OriginKind == constants.WorkTicketOriginMain {
+			if child.OwnerKind != "waker" {
+				return status_error.AgentOperationForbidden
+			}
+			member, err := s.store.AuthorizesTeamDelegate(ctx, parent.OwnerID, child.OwnerWakerID)
+			if err != nil {
+				return err
+			}
+			if !member {
+				return status_error.AgentOperationForbidden
+			}
 		}
 		if sameDelegationOwner(parent, child) {
 			return status_error.WorkTicketCannotContinue

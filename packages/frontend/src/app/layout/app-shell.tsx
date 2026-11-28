@@ -805,6 +805,7 @@ function AppShellContent({
     hasActiveScene &&
     !settingsOpen &&
     showChatChromeActions &&
+    (!mainOwner || Boolean(workSource) || Boolean(publicRecord)) &&
     activeRightPanel !== "workspace" ? (
       <Button
         aria-label={t("workspace")}

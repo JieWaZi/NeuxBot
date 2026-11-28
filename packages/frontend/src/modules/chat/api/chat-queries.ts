@@ -334,13 +334,15 @@ export function nextMessageCursor(
   return { beforeSequence: page.nextBeforeSequence };
 }
 
-export function chatListInfiniteOptions(wakerId: string) {
+export function chatListInfiniteOptions(wakerId: string, query?: string) {
   return infiniteQueryOptions({
-    queryKey: chatListKey(wakerId),
+    queryKey: query
+      ? [...chatListKey(wakerId), { query }]
+      : chatListKey(wakerId),
     initialPageParam: undefined as ChatCursor | undefined,
     queryFn: async ({ pageParam, signal }) => {
       const { data } = await listChats({
-        query: { wakerId, limit: 50, ...pageParam },
+        query: { wakerId, limit: query ? 20 : 50, ...pageParam, query },
         signal,
         throwOnError: true,
       });

@@ -16,6 +16,8 @@ type ListChats struct {
 	ginx.MethodGet
 	// 伙伴标识
 	WakerID string `in:"query" name:"wakerId" validate:"required"`
+	// 对话标题搜索词
+	Query string `in:"query" name:"query" validate:"max=120"`
 	// 时间游标
 	BeforeUpdatedAt int64 `in:"query" name:"beforeUpdatedAt"`
 	// 标识游标
@@ -63,6 +65,7 @@ func (l *ListChats) Output(ctx *gin.Context) (interface{}, error) {
 		ctx,
 		chat.ListChatsInput{
 			WakerID:         l.WakerID,
+			Query:           l.Query,
 			BeforeUpdatedAt: l.BeforeUpdatedAt,
 			BeforeID:        l.BeforeID,
 			Limit:           l.Limit,

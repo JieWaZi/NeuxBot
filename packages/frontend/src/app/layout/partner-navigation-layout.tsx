@@ -1,6 +1,7 @@
+import "./partner-navigation-pages.css";
+
 import { waitingConversations, workAttentionHref } from "@/modules/work-board";
 import {
-  ChatHistoryContentContext,
   ChatHistoryPanelSurface,
   ChatHistoryNavigationRow,
   ChatForkMenuItem,
@@ -10,6 +11,7 @@ import {
   LoaderCircle,
   MessageSquareText,
   PanelLeft,
+  Plus,
 } from "lucide-react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -54,11 +56,21 @@ import { AppModuleRail } from "./app-module-rail";
 import { resolveAppNavigation, type AppModuleId } from "./app-navigation-model";
 import { ChatGroupHeader } from "@/modules/chat";
 import { TeamChatTree } from "./team-context-sidebar";
+import { SidebarWorkTree } from "./sidebar-work-tree";
 import { EntityNavigation, type NavigationEntity } from "./entity-navigation";
 import { useOptionalAppSceneWorkspace } from "@/shared/workspace/app-scene-workspace";
 import type { ChatSceneOwner } from "@/shared/workspace/app-scene-model";
 import { chatDraftHref, chatHref } from "@/shared/lib/chat-navigation";
 import { Button } from "@/shared/ui/button";
+import { SearchField } from "@/shared/ui/search-field";
+import { SegmentedControl } from "@/shared/ui/segmented-control";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 import { CornerLauncherButton } from "@/shared/ui/corner-launcher-button";
 import { ResourceInfiniteScroll } from "@/shared/ui/resource-infinite-scroll";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
@@ -86,6 +98,11 @@ import {
   useFloatingChatLauncher,
 } from "@/shared/workspace/floating-chat-launcher";
 
+const PartnerContextSidebar = lazy(() =>
+  import("./partner-context-sidebar").then((module) => ({
+    default: module.PartnerContextSidebar,
+  })),
+);
 type PartnerNavigationLayoutProps = {
   activeChatId?: string;
   channels: ChannelDetail[];
@@ -123,12 +140,6 @@ type ChatGroup = {
   label: string;
   type: "folder" | "project";
 };
-
-const PartnerContextSidebar = lazy(() =>
-  import("./partner-context-sidebar").then((module) => ({
-    default: module.PartnerContextSidebar,
-  })),
-);
 
 function partnerSectionHref(partnerId: string, section: string) {
   const root = `/wakers/${partnerId}`;
@@ -228,7 +239,7 @@ function PartnerNavigationLayoutContent({
   onSelectTeam,
   preferences,
   sceneContentFlush = false,
-  selectedPartnerId = "",
+  selectedPartnerId,
   selectedRailKey,
   settingsSidebar,
   settingsOpen,
@@ -405,8 +416,81 @@ function PartnerNavigationLayoutContent({
   const bodyContextSidebarHidden = contextSidebarHidden || !partnerContext;
   const showContextSidebar =
     !bodyContextSidebarHidden && Boolean(contextSidebar);
-  const showPartnerSidebarNavigation =
-    !bodyContextSidebarHidden && !contextSidebar && Boolean(selectedPartnerId);
+  const showPartnerSettingsNavigation =
+    !bodyContextSidebarHidden &&
+    !contextSidebar &&
+    Boolean(selectedPartnerId) &&
+    /^\/wakers\/[^/]+(?:\/|$)/.test(location.pathname);
+  const [sidebarSearch, setSidebarSearch] = useState("");
+  const searchQuery = sidebarSearch.trim();
+  const [settledSearch, setSettledSearch] = useState("");
+  const [searchBatch, setSearchBatch] = useState({ key: "", size: 6 });
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettledSearch(searchQuery), 180);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+  const sidebarSearchRef = useRef<HTMLDivElement>(null);
+  const [listScope, setListScope] = useState<string>();
+  const sidebarView = preferences.conversationSidebarView ?? "partners";
+  const displayedSidebarView = sidebarSearch.trim()
+    ? "conversations"
+    : sidebarView;
+  const allConversationItems = [...navigationEntityByKey.values()];
+  const defaultScope = sidebarSearch.trim()
+    ? "all"
+    : (chatHistoryItem?.key ?? "all");
+  const effectiveScope =
+    listScope && navigationEntityByKey.has(listScope)
+      ? listScope
+      : listScope === "all"
+        ? "all"
+        : defaultScope;
+  const conversationItems =
+    effectiveScope === "all"
+      ? allConversationItems
+      : allConversationItems.filter((item) => item.key === effectiveScope);
+  const searchBatchKey = JSON.stringify([effectiveScope, searchQuery]);
+  const batchSize = searchBatchKey === searchBatch.key ? searchBatch.size : 6;
+  const visibleConversationItems = searchQuery
+    ? conversationItems.slice(0, batchSize)
+    : conversationItems;
+  const searchScopeKeys = new Set(
+    visibleConversationItems.map((item) => item.key),
+  );
+  const searchPending = Boolean(searchQuery && searchQuery !== settledSearch);
+  const sidebarEntityName = (key: string) => {
+    const item = navigationEntityByKey.get(key);
+    return item?.kind === "waker" ? item.waker.name : item?.team.channel?.name;
+  };
+  useEffect(() => {
+    if (
+      !sidebarExpanded ||
+      !partnerContext ||
+      pageSidebar ||
+      showPartnerSettingsNavigation
+    )
+      return;
+    const focusSearch = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        !(event.metaKey || event.ctrlKey) ||
+        event.key.toLowerCase() !== "k"
+      )
+        return;
+      const input = sidebarSearchRef.current?.querySelector("input");
+      if (!input) return;
+      event.preventDefault();
+      input.focus();
+      input.select();
+    };
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, [
+    sidebarExpanded,
+    partnerContext,
+    pageSidebar,
+    showPartnerSettingsNavigation,
+  ]);
   const navigationInset = platform().chrome?.navigationInset ?? 8;
   const nativeDarwin =
     platform().kind === "desktop" &&
@@ -508,107 +592,313 @@ function PartnerNavigationLayoutContent({
             >
               <div
                 hidden={
-                  !partnerContext || pageSidebar || showPartnerSidebarNavigation
+                  !partnerContext ||
+                  pageSidebar ||
+                  showPartnerSettingsNavigation
                 }
                 aria-hidden={
                   !partnerContext ||
                   pageSidebar ||
-                  showPartnerSidebarNavigation ||
+                  showPartnerSettingsNavigation ||
                   undefined
                 }
                 inert={
-                  !partnerContext || pageSidebar || showPartnerSidebarNavigation
+                  !partnerContext ||
+                  pageSidebar ||
+                  showPartnerSettingsNavigation
                 }
                 data-sidebar-entity-body
-                className="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain"
+                className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
               >
-                <EntityNavigation
-                  canReorder={
-                    preferences.entityMode !== "waker" ||
-                    navigationGroups.canMove
-                  }
-                  collapsed={false}
-                  entityStatus={entityStatus}
-                  mode={preferences.entityMode}
-                  onManageEntities={onManageEntities}
-                  onModeChange={(entityMode) =>
-                    onPreferencesChange((current) => ({
-                      ...current,
-                      entityMode,
-                    }))
-                  }
-                  onReorder={updateOrder}
-                  onRetryGroupImport={navigationGroups.retryImport}
-                  onSelectPartner={onSelectPartner}
-                  onSelectTeam={onSelectTeam}
-                  onShowcaseWaker={(waker, origin) =>
-                    setShowcase(captureShowcase(waker, origin))
-                  }
-                  selectedKey={selectedRailKey}
-                  items={visibleRailItems}
-                  wakerGroups={navigationGroups.groups}
-                  renderTeamRow={(item, row) => (
-                    <TeamNavigationMenu
-                      key={item.key}
-                      detail={item.team}
-                      onNewChat={() =>
-                        openNewOwnerChat({ kind: "team", id: item.id })
+                <div
+                  className="flex shrink-0 items-center gap-1 px-3 py-2"
+                  ref={sidebarSearchRef}
+                >
+                  <SearchField
+                    containerClassName="min-w-0 flex-1"
+                    aria-label={t("partnerNavigation.sidebarSearch")}
+                    placeholder={t("partnerNavigation.sidebarSearch")}
+                    size="sm"
+                    value={sidebarSearch}
+                    maxLength={120}
+                    onChange={(event) => setSidebarSearch(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape" && sidebarSearch) {
+                        event.stopPropagation();
+                        setSidebarSearch("");
                       }
-                      onDeleted={() => {
-                        onPreferencesChange((current) =>
-                          current.currentRailKey === item.key
-                            ? { ...current, currentRailKey: "" }
-                            : current,
-                        );
-                        if (
-                          location.pathname === `/teams/${item.id}` ||
-                          location.pathname.startsWith(`/teams/${item.id}/`)
-                        )
-                          navigate("/chat", { replace: true });
-                      }}
+                    }}
+                  />
+                  {displayedSidebarView === "partners" ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t(
+                        preferences.entityMode === "waker"
+                          ? "partnerNavigation.createWaker"
+                          : "partnerNavigation.createTeam",
+                      )}
+                      onClick={() => onManageEntities(preferences.entityMode)}
                     >
-                      {row}
-                    </TeamNavigationMenu>
-                  )}
-                  renderWakerRow={(item, row) => (
-                    <WakerNavigationMenu
-                      key={item.key}
-                      waker={item.waker}
-                      wakerId={item.id}
-                      groups={navigationGroups.groups}
-                      canMove={navigationGroups.canMove}
-                      canDuplicate={navigationGroups.migrationResolved}
-                      onNewChat={() =>
-                        openNewOwnerChat({ kind: "waker", id: item.id })
+                      <Plus aria-hidden="true" strokeWidth={1.5} />
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="min-h-0 flex-1 overflow-clip">
+                  <div data-sidebar-page-track={displayedSidebarView}>
+                    <div
+                      className="min-h-0 overflow-hidden"
+                      data-sidebar-page="partners"
+                      aria-hidden={
+                        displayedSidebarView !== "partners" || undefined
                       }
-                      onMove={(name) => navigationGroups.move(item.id, name)}
-                      onDeleted={() => {
-                        void navigationGroups.refresh();
-                        const owner = mainConversationOwner(location.pathname);
-                        if (
-                          owner
-                            ? owner.kind === "waker" && owner.id === item.id
-                            : selectedRailKey === item.key &&
-                              (location.pathname === "/chat" || activeChatId)
-                        )
-                          navigate("/wakers", { replace: true });
-                      }}
+                      inert={displayedSidebarView !== "partners"}
                     >
-                      {row}
-                    </WakerNavigationMenu>
-                  )}
-                />
+                      <EntityNavigation
+                        sidebarSearch=""
+                        canReorder={
+                          preferences.entityMode !== "waker" ||
+                          navigationGroups.canMove
+                        }
+                        collapsed={false}
+                        entityStatus={entityStatus}
+                        mode={preferences.entityMode}
+                        onManageEntities={onManageEntities}
+                        onModeChange={(entityMode) =>
+                          onPreferencesChange((current) => ({
+                            ...current,
+                            entityMode,
+                          }))
+                        }
+                        onReorder={updateOrder}
+                        onRetryGroupImport={navigationGroups.retryImport}
+                        onSelectPartner={onSelectPartner}
+                        onSelectTeam={onSelectTeam}
+                        onShowcaseWaker={(waker, origin) =>
+                          setShowcase(captureShowcase(waker, origin))
+                        }
+                        selectedKey={selectedRailKey}
+                        items={visibleRailItems}
+                        wakerGroups={navigationGroups.groups}
+                        renderTeamRow={(item, row) => (
+                          <div key={item.key}>
+                            <TeamNavigationMenu
+                              key={item.key}
+                              detail={item.team}
+                              onNewChat={() =>
+                                openNewOwnerChat({ kind: "team", id: item.id })
+                              }
+                              onDeleted={() => {
+                                onPreferencesChange((current) =>
+                                  current.currentRailKey === item.key
+                                    ? { ...current, currentRailKey: "" }
+                                    : current,
+                                );
+                                if (
+                                  location.pathname === `/teams/${item.id}` ||
+                                  location.pathname.startsWith(
+                                    `/teams/${item.id}/`,
+                                  )
+                                )
+                                  navigate("/chat", { replace: true });
+                              }}
+                            >
+                              {row}
+                            </TeamNavigationMenu>
+                            <SidebarWorkTree
+                              kind={item.kind}
+                              id={item.id}
+                              sourceName={sidebarEntityName}
+                            />
+                          </div>
+                        )}
+                        renderWakerRow={(item, row) => (
+                          <div key={item.key}>
+                            <WakerNavigationMenu
+                              key={item.key}
+                              waker={item.waker}
+                              wakerId={item.id}
+                              groups={navigationGroups.groups}
+                              canMove={navigationGroups.canMove}
+                              canDuplicate={navigationGroups.migrationResolved}
+                              onNewChat={() =>
+                                openNewOwnerChat({ kind: "waker", id: item.id })
+                              }
+                              onMove={(name) =>
+                                navigationGroups.move(item.id, name)
+                              }
+                              onDeleted={() => {
+                                void navigationGroups.refresh();
+                                const owner = mainConversationOwner(
+                                  location.pathname,
+                                );
+                                if (
+                                  owner
+                                    ? owner.kind === "waker" &&
+                                      owner.id === item.id
+                                    : selectedRailKey === item.key &&
+                                      (location.pathname === "/chat" ||
+                                        activeChatId)
+                                )
+                                  navigate("/wakers", { replace: true });
+                              }}
+                            >
+                              {row}
+                            </WakerNavigationMenu>
+                            <SidebarWorkTree
+                              kind={item.kind}
+                              id={item.id}
+                              sourceName={sidebarEntityName}
+                            />
+                          </div>
+                        )}
+                      />
+                    </div>
+                    <div
+                      data-sidebar-page="conversations"
+                      aria-hidden={
+                        displayedSidebarView !== "conversations" || undefined
+                      }
+                      inert={displayedSidebarView !== "conversations"}
+                      role="region"
+                      aria-label={t("partnerNavigation.sidebarConversations")}
+                      className="scrollbar-hidden min-h-0 overflow-x-hidden overflow-y-auto px-3"
+                    >
+                      {displayedSidebarView === "conversations" &&
+                      allConversationItems.length > 1 ? (
+                        <div className="bg-canvas sticky top-0 z-10 pb-1">
+                          <Select
+                            value={effectiveScope}
+                            onValueChange={setListScope}
+                          >
+                            <SelectTrigger
+                              aria-label={t("partnerNavigation.sidebarScope")}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">
+                                {t("partnerNavigation.sidebarAll")}
+                              </SelectItem>
+                              {allConversationItems.map((item) => (
+                                <SelectItem key={item.key} value={item.key}>
+                                  {sidebarEntityName(item.key) || item.key}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ) : null}
+                      {displayedSidebarView === "conversations" &&
+                      searchPending ? (
+                        <p
+                          role="status"
+                          className="type-caption text-muted-foreground px-2 py-4"
+                        >
+                          {t("partnerNavigation.loadingChats")}
+                        </p>
+                      ) : null}
+                      {displayedSidebarView === "conversations" &&
+                      !searchPending
+                        ? visibleConversationItems.map((item) => (
+                            <section
+                              key={item.key}
+                              aria-label={
+                                item.kind === "waker"
+                                  ? item.waker.name
+                                  : item.team.channel?.name
+                              }
+                            >
+                              {conversationItems.length > 1 ? (
+                                <p className="type-caption text-muted-foreground px-2 pt-2">
+                                  {item.kind === "waker"
+                                    ? item.waker.name
+                                    : item.team.channel?.name}
+                                </p>
+                              ) : null}
+                              {sidebarSearch.trim() ? (
+                                <SidebarWorkTree
+                                  key={item.key}
+                                  kind={item.kind}
+                                  id={item.id}
+                                  search={searchQuery}
+                                  searchScopeKeys={searchScopeKeys}
+                                  sourceName={sidebarEntityName}
+                                />
+                              ) : null}
+                              <ChatHistoryPanel
+                                activeChatId={activeChatId}
+                                item={item}
+                                onPreferencesChange={onPreferencesChange}
+                                preferences={preferences}
+                                teamContext={teamContext}
+                                search={searchQuery}
+                              />
+                            </section>
+                          ))
+                        : null}
+                      {displayedSidebarView === "conversations" &&
+                      !searchPending &&
+                      searchQuery &&
+                      visibleConversationItems.length <
+                        conversationItems.length ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setSearchBatch({
+                              key: searchBatchKey,
+                              size: batchSize + 6,
+                            })
+                          }
+                        >
+                          {t("partnerNavigation.searchMoreScopes")}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="shrink-0 px-3 pt-1 pb-2">
+                  <SegmentedControl
+                    appearance="shell"
+                    ariaLabel={t("partnerNavigation.sidebarView")}
+                    distribution="fill"
+                    onValueChange={(value) => {
+                      if (value !== "partners" && value !== "conversations")
+                        return;
+                      setSidebarSearch("");
+                      onPreferencesChange((current) => ({
+                        ...current,
+                        conversationSidebarView: value,
+                      }));
+                    }}
+                    options={[
+                      {
+                        label: t("partnerNavigation.sidebarPartners"),
+                        value: "partners",
+                      },
+                      {
+                        label: t("partnerNavigation.sidebarConversations"),
+                        value: "conversations",
+                      },
+                    ]}
+                    size="sm"
+                    value={displayedSidebarView}
+                  />
+                </div>
               </div>
-              {sidebar || showPartnerSidebarNavigation ? (
+              {sidebar || showPartnerSettingsNavigation ? (
                 <div
                   className="absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-contain"
                   data-sidebar-page-nav
                 >
-                  {sidebar ?? (
-                    <Suspense fallback={null}>
-                      <PartnerContextSidebar partnerId={selectedPartnerId} />
-                    </Suspense>
-                  )}
+                  {sidebar ??
+                    (selectedPartnerId ? (
+                      <Suspense fallback={null}>
+                        <PartnerContextSidebar partnerId={selectedPartnerId} />
+                      </Suspense>
+                    ) : null)}
                 </div>
               ) : null}
             </div>
@@ -658,7 +948,7 @@ function PartnerNavigationLayoutContent({
             <div
               className={cn(
                 "grid h-full min-h-0 min-w-0",
-                sceneContentFlush || showPartnerSidebarNavigation
+                sceneContentFlush || showPartnerSettingsNavigation
                   ? "pl-0"
                   : "pl-4",
                 showContextSidebar
@@ -668,22 +958,7 @@ function PartnerNavigationLayoutContent({
             >
               {showContextSidebar ? contextSidebar : null}
               <div className="app-scene-body-clip h-full min-h-0 min-w-0">
-                <ChatHistoryContentContext.Provider
-                  value={
-                    chatHistoryItem ? (
-                      <ChatHistoryPanel
-                        key={chatHistoryItem.key}
-                        activeChatId={activeChatId}
-                        item={chatHistoryItem}
-                        onPreferencesChange={onPreferencesChange}
-                        preferences={preferences}
-                        teamContext={teamContext}
-                      />
-                    ) : null
-                  }
-                >
-                  {children}
-                </ChatHistoryContentContext.Provider>
+                {children}
               </div>
             </div>
             {chatHistoryItem ? <CornerLauncher /> : null}
@@ -747,12 +1022,14 @@ function ChatHistoryPanel({
   onPreferencesChange,
   preferences,
   teamContext,
+  search,
 }: {
   activeChatId?: string;
   item: NavigationEntity;
   onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
   preferences: PartnerNavigationPreferences;
   teamContext?: { channelId: string; threadId?: string };
+  search?: string;
 }) {
   return (
     <ChatHistoryPanelSurface>
@@ -762,11 +1039,13 @@ function ChatHistoryPanel({
           onPreferencesChange={onPreferencesChange}
           preferences={preferences}
           selectedPartnerId={item.id}
+          search={search}
           attention={item.attention?.chats}
         />
       ) : (
         <TeamChatTree
           channelId={item.id}
+          search={search}
           attention={item.attention?.chats}
           onPreferencesChange={onPreferencesChange}
           preferences={preferences}
@@ -787,12 +1066,14 @@ function PartnerChatTree({
   onPreferencesChange,
   preferences,
   selectedPartnerId,
+  search = "",
 }: {
   activeChatId?: string;
   attention?: ChatAttention[];
   onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
   preferences: PartnerNavigationPreferences;
   selectedPartnerId: string;
+  search?: string;
 }) {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
@@ -800,6 +1081,7 @@ function PartnerChatTree({
   const queryClient = useQueryClient();
   const historyOptions = chatListInfiniteOptions(
     selectedPartnerId || "pending",
+    search || undefined,
   );
   const chatsQuery = useInfiniteQuery({
     ...historyOptions,
@@ -916,7 +1198,11 @@ function PartnerChatTree({
               </div>
             ) : groups.length === 0 ? (
               <p className="text-muted-foreground type-caption px-2 py-4">
-                {t("partnerNavigation.noChats")}
+                {t(
+                  search
+                    ? "partnerNavigation.noSearchResults"
+                    : "partnerNavigation.noChats",
+                )}
               </p>
             ) : (
               groups.map((group, index) => (
@@ -939,7 +1225,7 @@ function PartnerChatTree({
                     label={group.label}
                     onToggle={() => toggleGroup(group.key)}
                   />
-                  {!collapsedGroups.has(group.key) ? (
+                  {search.trim() || !collapsedGroups.has(group.key) ? (
                     <div className="mt-1 grid gap-0.5 pl-2">
                       {group.chats.map((chat) => (
                         <ChatNavigationRow

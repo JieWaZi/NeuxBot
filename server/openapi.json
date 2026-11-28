@@ -6296,6 +6296,19 @@
             }
           },
           {
+            "name": "query",
+            "in": "query",
+            "description": "对话标题搜索词",
+            "schema": {
+              "type": "string",
+              "description": "对话标题搜索词",
+              "x-go-field-name": "Query",
+              "x-tag-in": "query",
+              "x-tag-name": "query",
+              "x-tag-validate": "max=120"
+            }
+          },
+          {
             "name": "wakerId",
             "in": "query",
             "description": "伙伴标识",
@@ -7330,6 +7343,19 @@
             "x-status-errors": [
               "[BadRequest][40000000001]",
               "[MessageAttachmentInvalid][40000000017]"
+            ]
+          },
+          "403": {
+            "description": ">\n* `[AgentOperationForbidden][40300009001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[AgentOperationForbidden][40300009001]"
             ]
           },
           "404": {
@@ -56943,6 +56969,138 @@
         }
       }
     },
+    "/api/v1/work-tickets/activity": {
+      "get": {
+        "tags": [
+          "github.com/JieWaZi/NeuxBot/server/apis/work_tickets"
+        ],
+        "summary": "查询伙伴或团队的工单活动",
+        "operationId": "ListWorkTicketActivity",
+        "parameters": [
+          {
+            "name": "subjectId",
+            "in": "query",
+            "description": "主会话的主体标识。",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "主会话的主体标识。",
+              "x-go-field-name": "SubjectID",
+              "x-tag-in": "query",
+              "x-tag-name": "subjectId",
+              "x-tag-validate": "required,max=32"
+            }
+          },
+          {
+            "name": "subjectType",
+            "in": "query",
+            "description": "主会话的主体类型。",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "主会话的主体类型。",
+              "x-go-field-name": "SubjectType",
+              "x-tag-in": "query",
+              "x-tag-name": "subjectType",
+              "x-tag-validate": "required,oneof=waker team"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisWorkTicketsworkTicketActivity"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": ">\n* `[BadRequest][40000000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[BadRequest][40000000001]"
+            ]
+          },
+          "403": {
+            "description": ">\n* `[AgentOperationForbidden][40300009001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[AgentOperationForbidden][40300009001]"
+            ]
+          },
+          "404": {
+            "description": ">\n* `[ChatNotFound][40400000005]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[ChatNotFound][40400000005]"
+            ]
+          },
+          "408": {
+            "description": ">\n* `[DatabaseOperationCancelled][40800001001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseOperationCancelled][40800001001]"
+            ]
+          },
+          "500": {
+            "description": ">\n* `[DatabaseError][50000000002]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseError][50000000002]"
+            ]
+          },
+          "503": {
+            "description": ">\n* `[DatabaseBusy][50300001001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[DatabaseBusy][50300001001]"
+            ]
+          }
+        }
+      }
+    },
     "/api/v1/work-tickets/{ticketId}/stop": {
       "post": {
         "tags": [
@@ -83685,6 +83843,83 @@
         "description": "工单转交回执",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWorkTicketsTransferWorkTicketResponse",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/work_tickets.TransferWorkTicketResponse"
+      },
+      "GithubComJieWaZiNeuxBotServerApisWorkTicketsworkTicketActivity": {
+        "type": "object",
+        "properties": {
+          "executorWakerId": {
+            "type": "string",
+            "description": "ExecutorWakerID 是当前实际责任伙伴。",
+            "x-go-field-name": "ExecutorWakerID"
+          },
+          "parentTicketId": {
+            "type": "string",
+            "description": "ParentTicketID 是这项工作向其回件的直接工单。",
+            "x-go-field-name": "ParentTicketID",
+            "x-tag-json": "parentTicketId,omitempty"
+          },
+          "received": {
+            "type": "boolean",
+            "description": "Received 表明这行是按接收伙伴投影的受托工作。",
+            "x-go-field-name": "Received"
+          },
+          "runtimeId": {
+            "type": "string",
+            "description": "RuntimeID 仅在已有执行记录时返回其真实运行时。",
+            "x-go-field-name": "RuntimeID",
+            "x-tag-json": "runtimeId,omitempty"
+          },
+          "sourceMessageId": {
+            "type": "string",
+            "description": "SourceMessageID 是根工单对应的公开交办消息。",
+            "x-go-field-name": "SourceMessageID"
+          },
+          "sourceSubjectId": {
+            "type": "string",
+            "description": "SourceSubjectID 标记根工单的公开主体。",
+            "x-go-field-name": "SourceSubjectID"
+          },
+          "sourceSubjectType": {
+            "type": "string",
+            "description": "SourceSubjectType 标记根工单的公开主体类型。",
+            "x-go-field-name": "SourceSubjectType"
+          },
+          "state": {
+            "type": "string",
+            "description": "State 用业务状态反映已接纳的工作，未启动的工作标为 queued。",
+            "x-go-field-name": "State"
+          },
+          "ticketId": {
+            "type": "string",
+            "description": "TicketID 是跨入口稳定的工单标识。",
+            "x-go-field-name": "TicketID"
+          },
+          "title": {
+            "type": "string",
+            "description": "Title 是工作标题或精简的交办标题。",
+            "x-go-field-name": "Title"
+          },
+          "workChatId": {
+            "type": "string",
+            "description": "WorkChatID 是经过工作会话授权检查的来源。",
+            "x-go-field-name": "WorkChatID",
+            "x-tag-json": "workChatId,omitempty"
+          },
+          "workSubjectId": {
+            "type": "string",
+            "description": "WorkSubjectID 是工作来源的可访问主体。",
+            "x-go-field-name": "WorkSubjectID",
+            "x-tag-json": "workSubjectId,omitempty"
+          },
+          "workSubjectType": {
+            "type": "string",
+            "description": "WorkSubjectType 与 WorkSubjectID 共同定位来源所属会话。",
+            "x-go-field-name": "WorkSubjectType",
+            "x-tag-json": "workSubjectType,omitempty"
+          }
+        },
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWorkTicketsworkTicketActivity",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/work_tickets.workTicketActivity"
       },
       "GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand": {
         "type": "object",

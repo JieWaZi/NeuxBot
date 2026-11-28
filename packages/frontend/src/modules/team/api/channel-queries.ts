@@ -236,16 +236,19 @@ export function teamChannelsInfiniteOptions() {
   });
 }
 
-export function teamThreadsInfiniteOptions(channelId: string) {
+export function teamThreadsInfiniteOptions(channelId: string, query?: string) {
   return infiniteQueryOptions({
-    queryKey: teamQueryKeys.threadPages(channelId),
+    queryKey: query
+      ? [...teamQueryKeys.threadPages(channelId), { query }]
+      : teamQueryKeys.threadPages(channelId),
     initialPageParam: "",
     queryFn: async ({ pageParam, signal }) => {
       const { data } = await listChannelThreads({
         path: { channelId },
         query: {
           cursor: pageParam || undefined,
-          pageSize: teamThreadsPageSize,
+          pageSize: query ? 20 : teamThreadsPageSize,
+          query,
         },
         signal,
         throwOnError: true,

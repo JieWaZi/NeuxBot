@@ -117,5 +117,96 @@ func (c *workTicketController) MarkDelegationFailed(ctx context.Context, ticket 
 	result := controllerDB(ctx, c.db).Model(&models.WorkTicket{}).
 		Where("id = ? AND current_execution_id = ? AND generation = ? AND parent_ticket_id <> ''", ticket.ID, ticket.CurrentExecutionID, ticket.Generation).
 		UpdateColumn("delegation_failed", true)
-	return workTicketChanged(result, "mark_work_ticket_delegation_failed", ticket.ID)
+	if err := workTicketChanged(result, "mark_work_ticket_delegation_failed", ticket.ID); err != nil {
+		return err
+	}
+	c.publishActivityChange(ctx, ticket)
+	return nil
+}
+
+// ActivityCandidates 读取主会话工单树与受托子单，调用方必须校验读取和跳转范围。
+func (c *workTicketController) ActivityCandidates(ctx context.Context, conversationID, subjectType, subjectID string) ([]models.WorkTicket, error) {
+	db := controllerDB(ctx, c.db)
+	const limit = 100
+	var rows []models.WorkTicket
+	if err := db.Where("origin_kind = ? AND origin_id = ? AND origin_id <> '' AND parent_ticket_id = ''", constants.WorkTicketOriginMain, conversationID).
+		Order("created_at DESC, id DESC").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, databaseError("read_work_activity_roots", conversationID, err)
+	}
+	seen := make(map[string]bool)
+	for _, row := range rows {
+		seen[row.ID] = true
+	}
+	frontier := append([]models.WorkTicket(nil), rows...)
+	for depth := 0; len(frontier) > 0 && depth < 12; depth++ {
+		ids := make([]string, 0, len(frontier))
+		for _, row := range frontier {
+			ids = append(ids, row.ID)
+		}
+		frontier = nil
+		if err := db.Where("parent_ticket_id IN ?", ids).Order("created_at DESC, id DESC").Limit(limit).Find(&frontier).Error; err != nil {
+			return nil, databaseError("read_work_activity_children", conversationID, err)
+		}
+		for _, row := range frontier {
+			if !seen[row.ID] {
+				seen[row.ID] = true
+				rows = append(rows, row)
+			}
+		}
+	}
+	if subjectType == "waker" {
+		var incoming []models.WorkTicket
+		if err := db.Where("owner_waker_id = ? AND parent_ticket_id <> ''", subjectID).Order("created_at DESC, id DESC").Limit(limit).Find(&incoming).Error; err != nil {
+			return nil, databaseError("read_work_activity_received", subjectID, err)
+		}
+		for _, row := range incoming {
+			if !seen[row.ID] {
+				rows = append(rows, row)
+			}
+		}
+	}
+	return rows, nil
+}
+
+// publishActivityChange 用无内容的事件更新发起会话和接收伙伴的活动投影。
+func (c *workTicketController) publishActivityChange(ctx context.Context, ticket models.WorkTicket) {
+	root := ticket
+	for depth := 0; root.ParentTicketID != "" && depth < 12; depth++ {
+		parent, err := c.Ticket(ctx, root.ParentTicketID)
+		if err != nil || parent.ID == "" {
+			return
+		}
+		root = parent
+	}
+	if root.OriginKind != constants.WorkTicketOriginMain || root.ParentTicketID != "" {
+		return
+	}
+	var owner models.MainConversation
+	if err := controllerDB(ctx, c.db).Select("subject_type", "subject_id").Where("id = ?", root.OriginID).Take(&owner).Error; err != nil {
+		return
+	}
+	publishCommittedChange(ctx, c.db, constants.MainConversationEventTopic, eventsResource(owner.SubjectType, owner.SubjectID))
+	if ticket.ParentTicketID != "" && ticket.OwnerWakerID != "" && (owner.SubjectType != "waker" || owner.SubjectID != ticket.OwnerWakerID) {
+		publishCommittedChange(ctx, c.db, constants.MainConversationEventTopic, eventsResource("waker", ticket.OwnerWakerID))
+	}
+}
+
+// AuthorizesTeamDelegate 查询指定团队目前有效的实际执行成员，不读取其他团队。
+func (c *workTicketController) AuthorizesTeamDelegate(ctx context.Context, teamID, wakerID string) (bool, error) {
+	db := controllerDB(ctx, c.db)
+	var team models.Channel
+	if err := db.Where("id = ?", teamID).Limit(1).Find(&team).Error; err != nil {
+		return false, databaseError("work_ticket_delegate_team", teamID, err)
+	}
+	if team.ID == "" {
+		return false, nil
+	}
+	if team.AuthorizesWorkActor(wakerID, nil) {
+		return true, nil
+	}
+	var member models.ChannelMember
+	if err := db.Where("channel_id = ? AND waker_id = ?", teamID, wakerID).Limit(1).Find(&member).Error; err != nil {
+		return false, databaseError("work_ticket_delegate_member", teamID, err)
+	}
+	return team.AuthorizesWorkActor(wakerID, []models.ChannelMember{member}), nil
 }

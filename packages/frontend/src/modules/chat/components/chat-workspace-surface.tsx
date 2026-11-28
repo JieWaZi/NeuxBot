@@ -114,7 +114,8 @@ type ChatWorkspaceSurfaceProps = {
   allowSideChat?: boolean;
   gitRoots?: readonly string[];
   renderTeamMembers?: (onMemberOpened: () => void) => ReactNode;
-  renderMainSummary?: (close: () => void) => ReactNode;
+  conversationActions?: ReactNode;
+  conversationPanel?: ReactNode;
   showActivityIndicator?: boolean;
   taskBoard?: ReactNode;
   workspace: SceneWorkspace;
@@ -154,7 +155,8 @@ export function ChatWorkspaceSurface({
   allowSideChat,
   gitRoots = [],
   renderTeamMembers,
-  renderMainSummary,
+  conversationActions,
+  conversationPanel,
   // showActivityIndicator = true,
   taskBoard,
   workspace,
@@ -406,7 +408,6 @@ export function ChatWorkspaceSurface({
         workspaceDirectory={identity.workspaceDirectory}
         directoryLabel={directoryLabel}
         renderTeamMembers={renderTeamMembers}
-        renderMainSummary={renderMainSummary}
         onOpenChanges={(root, repository) => {
           setChangesTarget({ scopeKey: gitScopeKey, root, repository });
           dispatch({
@@ -482,14 +483,18 @@ export function ChatWorkspaceSurface({
           ) : null}
           {appSceneWorkspace && sceneActive && !fullView ? (
             <SceneChromePaneActionsPortal>
-              {summary}
+              {conversationActions ?? summary}
             </SceneChromePaneActionsPortal>
           ) : null}
           {!appSceneWorkspace && sceneActive ? (
             <SceneChromePortal>
               <SceneTabStrip
                 activeTabId={activeTab?.id ?? ""}
-                paneActions={sceneActive && !fullView ? summary : undefined}
+                paneActions={
+                  sceneActive && !fullView
+                    ? (conversationActions ?? summary)
+                    : undefined
+                }
                 ariaLabel={t("workspace.content")}
                 onClose={(tabId) =>
                   workspace.dispatch({ type: "close-tab", tabId })
@@ -613,6 +618,7 @@ export function ChatWorkspaceSurface({
             }
           />
         </main>
+        {conversationPanel}
         <ChatRightPanelHost
           hidden={canvasInput}
           activePanel={activeRightPanel}

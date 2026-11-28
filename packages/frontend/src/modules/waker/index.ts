@@ -19,3 +19,6 @@ export {
   isBuiltinWaker,
   PERSONAL_ASSISTANT_WAKER_ID,
 } from "./model/builtin-waker";
+
+export { WakerDefaultModelAction } from "./components/waker-default-model-action";
+export { WakerProfileSection } from "./components/waker-profile-section";

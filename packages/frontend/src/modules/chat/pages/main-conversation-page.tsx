@@ -1,5 +1,6 @@
 import {
   useInfiniteQuery,
+  useQuery,
   useQueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
@@ -23,6 +24,7 @@ import {
   usePresentedChatBoundary,
   useVisibleScene,
 } from "@/shared/api/chat-reading";
+import { listWakersOptions } from "@/modules/waker";
 import { ApiError } from "@/shared/api/errors";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { Button } from "@/shared/ui/button";
@@ -36,6 +38,11 @@ import {
   type ConversationSubject,
   type PublicMessage,
 } from "../api/main-conversation";
+import { useWorkTicketActivity } from "../api/work-ticket-activity";
+import {
+  MainConversationDelegations,
+  delegatedWorkForMessage,
+} from "../components/main-conversation-delegations";
 import { useWorkTickets, type WorkTicketOrigin } from "../api/work-tickets";
 import { ChatHistoryLoadingState } from "../components/chat-history-loading-state";
 import { useChatMessageLocator } from "../components/chat-message-locator";
@@ -48,7 +55,7 @@ import {
 } from "../components/main-conversation-message";
 import { MainConversationDeleteMessage } from "../components/main-conversation-delete-message";
 import { MainConversationSource } from "../components/main-conversation-source";
-import { MainConversationSummary } from "../components/main-conversation-summary";
+import { useMainConversationSettings } from "../components/main-conversation-settings";
 import { MainConversationRequests } from "../components/main-conversation-requests";
 import { MainConversationWait } from "../components/main-conversation-wait";
 import { WorkTicketLoadError } from "../components/work-ticket-load-error";
@@ -96,6 +103,7 @@ function Conversation({ subject }: { subject: ConversationSubject }) {
   }>();
   const viewingRecord = Boolean(source || recordId);
   const visible = active && !viewingRecord;
+  const settings = useMainConversationSettings(subject, visible);
   const recordVisible = active && Boolean(recordId);
   const [replyLocation, setReplyLocation] = useState<{
     replyId: string;
@@ -437,6 +445,28 @@ function Conversation({ subject }: { subject: ConversationSubject }) {
     onRefreshCommit: motion.onRefreshCommit,
     read,
   });
+  const activity = useWorkTicketActivity(
+    subject.subjectType,
+    subject.subjectId,
+    visible,
+  );
+  const wakers = useQuery({
+    ...listWakersOptions({ query: { pageNum: 1, pageSize: 100 } }),
+    enabled:
+      visible &&
+      Boolean(
+        activity.data?.some((row) => row.parentTicketId && !row.received),
+      ),
+  });
+  const executorNames = useMemo(
+    () =>
+      new Map(
+        (wakers.data?.resources ?? []).flatMap(({ id, name }) =>
+          id && name ? [[id, name] as const] : [],
+        ),
+      ),
+    [wakers.data],
+  );
   useChatViewportScroll({
     scope,
     viewport,
@@ -609,6 +639,13 @@ function Conversation({ subject }: { subject: ConversationSubject }) {
         openFile={workspaceBindings.openAttachmentFile}
         openCodeReference={workspaceBindings.openCodeReference}
       />,
+      inTimeline && (
+        <MainConversationDelegations
+          key={`delegations:${row.id}`}
+          entries={delegatedWorkForMessage(activity.data ?? [], row.id)}
+          executorNames={executorNames}
+        />
+      ),
       ...(row.questions ?? []).map((question) => (
         <SettledChatQuestion
           key={`question:${row.id}:${question.elicitationId}`}
@@ -835,20 +872,8 @@ function Conversation({ subject }: { subject: ConversationSubject }) {
     <ChatWorkspaceSurface
       {...surface}
       adapter={{ ...adapter, content }}
-      renderMainSummary={
-        !viewingRecord
-          ? (close) => (
-              <MainConversationSummary
-                activeWork={activeWork}
-                pending={history.isPending}
-                onOpenSource={(chatId, messageId) => {
-                  close();
-                  void navigateToSource(chatId, messageId);
-                }}
-              />
-            )
-          : undefined
-      }
+      showSummary={viewingRecord}
+      {...settings}
     />
   );
 }

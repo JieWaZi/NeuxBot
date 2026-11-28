@@ -41,7 +41,7 @@ type ChatController interface {
 	// Get 按标识返回 Chat 索引。
 	Get(ctx context.Context, id string) (models.Chat, error)
 	// ListByWakerBefore 按稳定活动游标返回一位伙伴更早的 Chat。
-	ListByWakerBefore(ctx context.Context, wakerID string, beforeUpdatedAt int64, beforeID string, limit int) ([]models.Chat, error)
+	ListByWakerBefore(ctx context.Context, wakerID string, beforeUpdatedAt int64, beforeID string, limit int, titleQuery ...string) ([]models.Chat, error)
 	// ListByWakerUpdatedRange 按标题和最近活动时间范围分页返回一位伙伴的 Chat。
 	ListByWakerUpdatedRange(ctx context.Context, wakerID string, titleQuery string, updatedAtStart int64, updatedAtEnd int64, limit int, offset int) ([]models.Chat, error)
 	// ListRecentProjectCandidates 按稳定活动游标读取有界项目候选。
@@ -204,9 +204,15 @@ func (c *chatController) ListByWakerBefore(
 	beforeUpdatedAt int64,
 	beforeID string,
 	limit int,
+	titleQuery ...string,
 ) ([]models.Chat, error) {
 	query := controllerDB(ctx, c.db).
 		Where("waker_id = ? AND hidden_from_waker_history = ?", wakerID, false)
+	if len(titleQuery) > 0 {
+		if keyword := strings.TrimSpace(titleQuery[0]); keyword != "" {
+			query = query.Where("instr(lower(title), lower(?)) > 0", keyword)
+		}
+	}
 	if beforeUpdatedAt > 0 && beforeID != "" {
 		query = query.Where(
 			"updated_at < ? OR (updated_at = ? AND id < ?)",

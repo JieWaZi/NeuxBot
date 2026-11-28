@@ -13,6 +13,10 @@ import (
 
 // WorkTicketStore 保存工单、尝试、输入和原会话报告，写入加入用例事务。
 type WorkTicketStore interface {
+	// ActivityCandidates 读取主体自己的根工单、其任务树和伙伴接受的子工单。
+	ActivityCandidates(ctx context.Context, conversationID, subjectType, subjectID string) ([]models.WorkTicket, error)
+	// AuthorizesTeamDelegate 核查新团队工单实际接单人的在任资格。
+	AuthorizesTeamDelegate(ctx context.Context, teamID, wakerID string) (bool, error)
 	EventSubscription(context.Context, string) (models.WorkTicketEventSubscription, error)
 	EventTopicSubscriptions(context.Context, string, string) ([]models.WorkTicketEventSubscription, error)
 	CreateEventSubscription(context.Context, models.WorkTicketEventSubscription) error
@@ -355,7 +359,11 @@ func (c *workTicketController) Authorizes(ctx context.Context, ticket models.Wor
 }
 
 func (c *workTicketController) CreateTicket(ctx context.Context, ticket *models.WorkTicket) error {
-	return c.create(ctx, ticket.ID, ticket)
+	if err := c.create(ctx, ticket.ID, ticket); err != nil {
+		return err
+	}
+	c.publishActivityChange(ctx, *ticket)
+	return nil
 }
 
 func (c *workTicketController) CreateAttempt(ctx context.Context, attempt models.WorkTicketAttempt) error {
@@ -388,7 +396,11 @@ func (c *workTicketController) ChangeTicket(ctx context.Context, previous, next 
 			"current_execution_id": next.CurrentExecutionID, "pending_execution_id": next.PendingExecutionID,
 			"updated_at": next.UpdatedAt, "awaiting_delegation_returns": next.AwaitingDelegationReturns,
 		})
-	return workTicketChanged(result, "update_work_ticket", previous.ID)
+	if err := workTicketChanged(result, "update_work_ticket", previous.ID); err != nil {
+		return err
+	}
+	c.publishActivityChange(ctx, next)
+	return nil
 }
 
 func (c *workTicketController) ChangeAttempt(ctx context.Context, attempt models.WorkTicketAttempt, status constants.WorkTicketAttemptStatus) error {

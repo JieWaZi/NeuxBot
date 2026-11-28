@@ -6984,6 +6984,61 @@ export type GithubComJieWaZiNeuxBotServerApisWorkTicketsTransferWorkTicketRespon
     ticketId?: string;
 };
 
+export type GithubComJieWaZiNeuxBotServerApisWorkTicketsworkTicketActivity = {
+    /**
+     * ExecutorWakerID 是当前实际责任伙伴。
+     */
+    executorWakerId?: string;
+    /**
+     * ParentTicketID 是这项工作向其回件的直接工单。
+     */
+    parentTicketId?: string;
+    /**
+     * Received 表明这行是按接收伙伴投影的受托工作。
+     */
+    received?: boolean;
+    /**
+     * RuntimeID 仅在已有执行记录时返回其真实运行时。
+     */
+    runtimeId?: string;
+    /**
+     * SourceMessageID 是根工单对应的公开交办消息。
+     */
+    sourceMessageId?: string;
+    /**
+     * SourceSubjectID 标记根工单的公开主体。
+     */
+    sourceSubjectId?: string;
+    /**
+     * SourceSubjectType 标记根工单的公开主体类型。
+     */
+    sourceSubjectType?: string;
+    /**
+     * State 用业务状态反映已接纳的工作，未启动的工作标为 queued。
+     */
+    state?: string;
+    /**
+     * TicketID 是跨入口稳定的工单标识。
+     */
+    ticketId?: string;
+    /**
+     * Title 是工作标题或精简的交办标题。
+     */
+    title?: string;
+    /**
+     * WorkChatID 是经过工作会话授权检查的来源。
+     */
+    workChatId?: string;
+    /**
+     * WorkSubjectID 是工作来源的可访问主体。
+     */
+    workSubjectId?: string;
+    /**
+     * WorkSubjectType 与 WorkSubjectID 共同定位来源所属会话。
+     */
+    workSubjectType?: string;
+};
+
 /**
  * 流程输入回答
  */
@@ -21352,6 +21407,10 @@ export type ListChatsData = {
          */
         limit?: number;
         /**
+         * 对话标题搜索词
+         */
+        query?: string;
+        /**
          * 伙伴标识
          */
         wakerId: string;
@@ -21825,6 +21884,12 @@ export type SendMessageErrors = {
      *
      */
     400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
     /**
      * >
      * * `[ChatNotFound][40400000005]`
@@ -49682,6 +49747,69 @@ export type ListWorkTicketsResponses = {
 };
 
 export type ListWorkTicketsResponse = ListWorkTicketsResponses[keyof ListWorkTicketsResponses];
+
+export type ListWorkTicketActivityData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * 主会话的主体标识。
+         */
+        subjectId: string;
+        /**
+         * 主会话的主体类型。
+         */
+        subjectType: string;
+    };
+    url: '/api/v1/work-tickets/activity';
+};
+
+export type ListWorkTicketActivityErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     *
+     */
+    403: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     *
+     */
+    408: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter;
+};
+
+export type ListWorkTicketActivityError = ListWorkTicketActivityErrors[keyof ListWorkTicketActivityErrors];
+
+export type ListWorkTicketActivityResponses = {
+    200: Array<GithubComJieWaZiNeuxBotServerApisWorkTicketsworkTicketActivity>;
+};
+
+export type ListWorkTicketActivityResponse = ListWorkTicketActivityResponses[keyof ListWorkTicketActivityResponses];
 
 export type StopWorkTicketData = {
     body: GithubComJieWaZiNeuxBotServerApisWorkTicketsStopWorkTicketRequest & unknown;

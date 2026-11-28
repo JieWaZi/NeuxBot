@@ -27,6 +27,19 @@ const preferences: PartnerNavigationPreferences = {
 describe("partner navigation preferences", () => {
   beforeEach(() => window.localStorage.clear());
 
+  it("恢复左侧会话视图并对旧偏好使用伙伴视图", () => {
+    expect(
+      readPartnerNavigationPreferences().conversationSidebarView,
+    ).toBeUndefined();
+    writePartnerNavigationPreferences({
+      ...preferences,
+      conversationSidebarView: "conversations",
+    });
+    expect(readPartnerNavigationPreferences().conversationSidebarView).toBe(
+      "conversations",
+    );
+  });
+
   it("保留有效手动顺序并把新伙伴追加到末尾", () => {
     expect(
       reconcilePartnerOrder(

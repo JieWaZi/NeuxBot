@@ -42,7 +42,6 @@ type ChatSummaryProps = {
   onOpenFile: (file: WorkspaceFile) => void;
   onViewAllFiles: () => void;
   renderTeamMembers?: (onMemberOpened: () => void) => ReactNode;
-  renderMainSummary?: (close: () => void) => ReactNode;
   workspaceDirectory: string;
 };
 
@@ -59,7 +58,6 @@ export function ChatSummary({
   onOpenFile,
   onViewAllFiles,
   renderTeamMembers,
-  renderMainSummary,
   workspaceDirectory,
 }: ChatSummaryProps) {
   const { t } = useTranslation("chat");
@@ -111,12 +109,7 @@ export function ChatSummary({
       </DialogTrigger>
       <DialogDrawerContent container={pane} title={t("summary.view")}>
         <div className="grid min-w-0 gap-3">
-          {renderMainSummary?.(() => setOpen(false))}
-          <section
-            className="min-w-0"
-            aria-label={t("summary.projectChanges")}
-            hidden={Boolean(renderMainSummary)}
-          >
+          <section className="min-w-0" aria-label={t("summary.projectChanges")}>
             <div className="grid gap-2">
               {repositories.map((repository) => (
                 <ChatRepositorySummary
@@ -184,7 +177,6 @@ export function ChatSummary({
           <section
             className="border-border-subtle min-w-0 border-t pt-3"
             aria-label={t("workspace.chatFiles")}
-            hidden={Boolean(renderMainSummary)}
           >
             <h2 className="text-muted-foreground type-body mb-2">
               {t("summary.sources")}

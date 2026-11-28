@@ -1,0 +1,28 @@
+/*
+ * Adapted from Nuphos sidebar-pages.css and sidebar-swipe-controller.ts
+ * (2c2f2e27fab0a9098de430734f05079680ff71c8), Apache-2.0.
+ * Copyright 2026 Zeabur Inc. See THIRD_PARTY_NOTICES.md.
+ */
+[data-sidebar-page-track] {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  transform: translate3d(0, 0, 0);
+  transition: transform var(--duration-standard) cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+[data-sidebar-page-track="conversations"] {
+  transform: translate3d(-50%, 0, 0);
+}
+
+[data-sidebar-page] {
+  flex: 0 0 50%;
+  min-width: 0;
+  height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-sidebar-page-track] {
+    transition: none;
+  }
+}

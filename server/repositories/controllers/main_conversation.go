@@ -144,3 +144,8 @@ func deleteMainConversation(db *gorm.DB, kind, id string) error {
 	}
 	return nil
 }
+
+// SubjectConversationID 只查看现有公开会话的地址，不为列表读取创建记录。
+func (c *MainConversationController) SubjectConversationID(ctx context.Context, kind, id string) (string, error) {
+	return publicSubjectConversationID(controllerDB(ctx, c.db), kind, id)
+}

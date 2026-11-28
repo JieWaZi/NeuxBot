@@ -140,6 +140,10 @@ beforeEach(() => {
     );
 });
 
+vi.mock("@/modules/chat/api/work-ticket-activity", () => ({
+  useWorkTicketActivity: () => ({ data: [] }),
+}));
+
 vi.mock(import("@/modules/waker/api/waker-queries"), async (original) => ({
   ...(await original()),
   deleteWakerMutation: () => ({ mutationFn: removeWaker }),
@@ -208,57 +212,65 @@ vi.mock("@/modules/chat", async (importOriginal) => ({
   ...(await importOriginal<typeof ChatModule>()),
   ChatForkMenuItem: () => null,
   ChatTaskDialog: () => null,
-  chatListInfiniteOptions: (wakerId: string) => ({
+  chatListInfiniteOptions: (wakerId: string, query?: string) => ({
     getNextPageParam: (page: { nextCursor?: string }) => page.nextCursor,
     initialPageParam: "",
     queryFn: async ({ pageParam }: { pageParam: string }) => ({
       nextCursor: !pageParam && history.nextPage ? "older" : undefined,
       resources:
-        pageParam === "older"
-          ? [{ id: "chat-older", title: "更早的会话", wakerId }]
-          : wakerId === "waker-6"
-            ? [
-                {
-                  id: "chat-project",
-                  activeExecutionId: history.executionId,
-                  waitingApproval: history.waitingApproval,
-                  waitingElicitation: history.waitingElicitation,
-                  lastRuntimeId: "codex",
-                  lastModel: "gpt-5.6",
-                  projectId: "project-1",
-                  projectName: "项目甲",
-                  title: "项目会话",
-                  updatedAt: Date.now(),
-                  wakerId,
-                },
-                {
-                  additionalWorkingDirectories: ["/managed/chat-a/workspace"],
-                  projectName: "workspace",
-                  id: "chat-temp-a",
-                  title: "临时会话甲",
-                  updatedAt: 2,
-                  wakerId,
-                },
-                {
-                  additionalWorkingDirectories: [
-                    "C:\\managed\\chat-b\\workspace",
-                  ],
-                  id: "chat-temp-b",
-                  title: "临时会话乙",
-                  updatedAt: 1,
-                  wakerId,
-                },
-                {
-                  additionalWorkingDirectories: ["/tmp/临时目录"],
-                  id: "chat-folder",
-                  title: "临时会话",
-                  updatedAt: Date.now() - 60_000,
-                  wakerId,
-                },
-              ]
-            : [],
+        query === "服务端深处的会话" && wakerId === "waker-6"
+          ? [{ id: "chat-remote", title: query, wakerId }]
+          : query === "项目会话" && wakerId === "waker-6"
+            ? [{ id: "chat-project", title: query, wakerId }]
+            : query
+              ? []
+              : pageParam === "older"
+                ? [{ id: "chat-older", title: "更早的会话", wakerId }]
+                : wakerId === "waker-6"
+                  ? [
+                      {
+                        id: "chat-project",
+                        activeExecutionId: history.executionId,
+                        waitingApproval: history.waitingApproval,
+                        waitingElicitation: history.waitingElicitation,
+                        lastRuntimeId: "codex",
+                        lastModel: "gpt-5.6",
+                        projectId: "project-1",
+                        projectName: "项目甲",
+                        title: "项目会话",
+                        updatedAt: Date.now(),
+                        wakerId,
+                      },
+                      {
+                        additionalWorkingDirectories: [
+                          "/managed/chat-a/workspace",
+                        ],
+                        projectName: "workspace",
+                        id: "chat-temp-a",
+                        title: "临时会话甲",
+                        updatedAt: 2,
+                        wakerId,
+                      },
+                      {
+                        additionalWorkingDirectories: [
+                          "C:\\managed\\chat-b\\workspace",
+                        ],
+                        id: "chat-temp-b",
+                        title: "临时会话乙",
+                        updatedAt: 1,
+                        wakerId,
+                      },
+                      {
+                        additionalWorkingDirectories: ["/tmp/临时目录"],
+                        id: "chat-folder",
+                        title: "临时会话",
+                        updatedAt: Date.now() - 60_000,
+                        wakerId,
+                      },
+                    ]
+                  : [],
     }),
-    queryKey: ["chats", wakerId],
+    queryKey: ["chats", wakerId, query],
   }),
   chatMessagesInfiniteOptions: (chatId: string) => ({
     getNextPageParam: () => undefined,
@@ -321,7 +333,7 @@ vi.mock("@/modules/team/api/channel-queries", () => ({
   }: {
     path: { channelId: string; threadId: string };
   }) => ["channel-thread", path.channelId, path.threadId],
-  teamThreadsInfiniteOptions: (channelId: string) => ({
+  teamThreadsInfiniteOptions: (channelId: string, query?: string) => ({
     queryFn: async () => ({
       resources: [
         {
@@ -339,9 +351,9 @@ vi.mock("@/modules/team/api/channel-queries", () => ({
           title: "团队临时会话",
           updatedAt: Date.now() - 60_000,
         },
-      ],
+      ].filter((thread) => !query || thread.title.includes(query)),
     }),
-    queryKey: ["channel-threads", channelId],
+    queryKey: ["channel-threads", channelId, query],
     initialPageParam: 1,
     getNextPageParam: () => undefined,
   }),
@@ -1143,14 +1155,49 @@ describe("PartnerNavigationLayout", () => {
     },
   );
 
-  it("右下只保留当前身份的历史入口，不重复弹实体导航", async () => {
+  it("搜索能找到未加载到侧栏的历史会话", async () => {
     const user = userEvent.setup();
     renderLayout();
-    expect(screen.getAllByRole("navigation", { name: "伙伴" })).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: /打开身份切换器/ })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
-    expect(await screen.findByText("项目会话")).toBeVisible();
-    expect(screen.getAllByRole("navigation", { name: "伙伴" })).toHaveLength(1);
+    expect(screen.queryByText("服务端深处的会话")).not.toBeInTheDocument();
+    await user.type(
+      screen.getByRole("searchbox", { name: "搜索会话" }),
+      "服务端深处的会话",
+    );
+    expect(await screen.findByText("服务端深处的会话")).toBeVisible();
+  });
+
+  it("左侧切换会话列表不切换主内容，并保留会话搜索", async () => {
+    const user = userEvent.setup();
+    renderLayout();
+    const main = screen.getByText("主内容");
+    const route = screen.getByTestId("current-route").textContent;
+    const search = screen.getByRole("searchbox", { name: "搜索会话" });
+    await user.keyboard("{Control>}k{/Control}");
+    expect(search).toHaveFocus();
+    await user.click(screen.getByRole("radio", { name: "会话" }));
+    expect(
+      await within(screen.getByRole("region", { name: "会话" })).findByText(
+        "项目会话",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("主内容")).toBe(main);
+    expect(screen.getByTestId("current-route")).toHaveTextContent(route ?? "");
+    expect(screen.getByRole("searchbox", { name: "搜索会话" })).toBe(search);
+    expect(screen.queryByRole("button", { name: "查看历史会话" })).toBeNull();
+    await user.click(
+      within(screen.getByRole("radiogroup", { name: "左侧栏视图" })).getByRole(
+        "radio",
+        { name: "伙伴" },
+      ),
+    );
+    expect(screen.getByRole("navigation", { name: "伙伴" })).toBeVisible();
+    await user.type(search, "项目会话");
+    expect(
+      await within(screen.getByRole("region", { name: "会话" })).findByText(
+        "项目会话",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText("临时会话")).toBeNull();
   });
 
   it("收起隐藏左栏并释放正文空间，键盘展开恢复宽度与原导航", async () => {
@@ -1200,8 +1247,8 @@ describe("PartnerNavigationLayout", () => {
     expect(
       screen.getByRole("separator", { name: "调整模块侧栏宽度" }),
     ).toHaveAttribute("aria-valuenow", "300");
-    await user.click(screen.getByRole("button", { name: "搜索伙伴" }));
-    expect(screen.getByRole("searchbox", { name: "搜索伙伴" })).toHaveFocus();
+    await user.click(screen.getByRole("searchbox", { name: "搜索会话" }));
+    expect(screen.getByRole("searchbox", { name: "搜索会话" })).toHaveFocus();
   });
 
   it("跨模块保持收起状态，有侧栏页面可重新展开", async () => {
@@ -1378,7 +1425,7 @@ describe("PartnerNavigationLayout", () => {
     expect(
       screen.queryByRole("button", { name: "工作中，打开对话" }),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "查看历史会话" })).toBeVisible();
+    expect(screen.getByRole("radio", { name: "会话" })).toBeVisible();
   });
 
   it("伙伴管理页面隐藏伙伴菜单并让主内容占据单列", () => {
@@ -1398,86 +1445,22 @@ describe("PartnerNavigationLayout", () => {
     ).toHaveClass("grid-cols-[minmax(0,1fr)]");
   });
 
-  it("调整侧栏宽度后右下仍为同一伙伴历史，保留实体活动与选择", async () => {
+  it("保留左侧会话行的 CLI 模型、状态与打开路由", async () => {
     const user = userEvent.setup();
     renderLayout();
-    const history = screen.getByRole("button", { name: "查看历史会话" });
-    expect(history.parentElement).toHaveClass("right-0", "bottom-0");
-    expect(history).toHaveClass("size-control-hit-target");
-    expect(history.firstElementChild).toHaveClass("h-control-corner-launcher");
-    await user.click(history);
-    expect(await screen.findByText("项目会话")).toBeVisible();
-    expect(screen.queryByRole("button", { name: "返回身份列表" })).toBeNull();
-    expect(
-      within(screen.getByRole("tabpanel")).queryByRole("button", {
-        name: "新建会话",
-      }),
-    ).toBeNull();
-    const rail = screen.getByRole("navigation", { name: "伙伴" });
-    expect(
-      within(rail).getByRole("button", { name: "伙伴 5，需要操作" }),
-    ).toBeVisible();
-    expect(
-      within(rail).getByRole("button", { name: "伙伴 6，工作中" }),
-    ).toHaveAttribute("aria-current", "page");
-    expect(history).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("navigation", { name: "当前伙伴功能" }),
-    ).toBeNull();
-  });
-
-  it("右下展开工作台的会话列表标签，重复点击聚焦原标签", async () => {
-    const user = userEvent.setup();
-    renderLayout();
-
-    const launcher = screen.getByRole("button", { name: "查看历史会话" });
-    await user.click(launcher);
-    const tab = screen.getByRole("tab", { name: "会话列表" });
-    const workbench = screen.getByRole("region", { name: "工作台" });
-    const list = within(workbench).getByRole("tabpanel");
-    expect(tab).toHaveAttribute("aria-controls", list.id);
-    expect(tab).toHaveAttribute("aria-selected", "true");
-    expect(
-      screen.queryByRole("button", { name: "查看历史会话" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "历史会话" })).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "会话" }));
+    const list = screen.getByRole("region", { name: "会话" });
     const chat = await within(list).findByRole("link", { name: "项目会话" });
     expect(chat).toHaveAccessibleDescription("gpt-5.6");
-    const icon = within(chat).getByTitle("gpt-5.6");
-    expect(icon.previousElementSibling).toHaveAttribute("data-history-status");
-    expect(icon.nextElementSibling).toHaveTextContent("项目会话");
+    expect(
+      within(chat).getByTitle("gpt-5.6").previousElementSibling,
+    ).toHaveAttribute("data-history-status");
     const oldChat = within(list).getByRole("link", { name: "临时会话" });
     expect(oldChat).not.toHaveAttribute("aria-description");
-
-    await user.click(screen.getByRole("button", { name: "添加工作台标签" }));
-    await user.click(screen.getByRole("menuitem", { name: "浏览器" }));
-    const browser = screen.getByRole("tab", { name: "新标签页" });
-    expect(browser).toHaveAttribute("aria-selected", "true");
-    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
-    expect(screen.getByRole("tab", { name: "会话列表" })).toBe(tab);
-    expect(tab).toHaveAttribute("aria-selected", "true");
-    expect(browser).toBeInTheDocument();
-    await user.click(within(list).getByRole("link", { name: "临时会话" }));
+    await user.click(oldChat);
     expect(screen.getByTestId("current-route")).toHaveTextContent(
       "/chats/chat-folder",
     );
-    await user.click(screen.getByRole("button", { name: /关闭.*会话列表/ }));
-    expect(tab).not.toBeInTheDocument();
-    expect(browser).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("button", { name: "查看历史会话" })).toBeVisible();
-  });
-
-  it("键盘打开会话列表后聚焦页签，关闭最后一个标签后返回入口", async () => {
-    const user = userEvent.setup();
-    renderLayout();
-
-    screen.getByRole("button", { name: "查看历史会话" }).focus();
-    await user.keyboard("{Enter}");
-    const tab = screen.getByRole("tab", { name: "会话列表" });
-    expect(tab).toHaveFocus();
-
-    await user.keyboard("{Delete}");
-    expect(screen.getByRole("button", { name: "查看历史会话" })).toHaveFocus();
   });
 
   it("会话列表无需先滚动即可读取下一页", async () => {
@@ -1485,8 +1468,8 @@ describe("PartnerNavigationLayout", () => {
     history.nextPage = true;
     try {
       renderLayout();
-      await user.click(screen.getByRole("button", { name: "查看历史会话" }));
-      const list = screen.getByRole("tabpanel");
+      await user.click(screen.getByRole("radio", { name: "会话" }));
+      const list = screen.getByRole("region", { name: "会话" });
       const loadMore = await within(list).findByRole("button", {
         name: "加载更多",
       });
@@ -1657,8 +1640,8 @@ describe("PartnerNavigationLayout", () => {
   });
 
   it.each([
-    ["zh-CN", "默认", "查看历史会话"],
-    ["en-US", "Default", "View chat history"],
+    ["zh-CN", "默认", "会话"],
+    ["en-US", "Default", "Conversations"],
   ])(
     "%s 将不同临时路径合并为一个可折叠分组",
     async (language, label, historyLabel) => {
@@ -1666,7 +1649,7 @@ describe("PartnerNavigationLayout", () => {
       try {
         const user = userEvent.setup();
         renderLayout();
-        await user.click(screen.getByRole("button", { name: historyLabel }));
+        await user.click(screen.getByRole("radio", { name: historyLabel }));
         const group = await screen.findByRole("button", { name: label });
         expect(screen.getAllByRole("button", { name: label })).toHaveLength(1);
         expect(screen.getByText("临时会话甲")).toBeVisible();
@@ -1707,8 +1690,8 @@ describe("PartnerNavigationLayout", () => {
       channels: [{ channel: { id: "team-1", name: "研发团队" } }],
       navigationPreferences: { entityMode: "team" },
     });
-    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
-    const list = screen.getByRole("tabpanel");
+    await user.click(screen.getByRole("radio", { name: "会话" }));
+    const list = screen.getByRole("region", { name: "会话" });
     const chat = await within(list).findByRole("link", {
       name: /团队项目会话/,
     });
@@ -1722,11 +1705,30 @@ describe("PartnerNavigationLayout", () => {
     expect(olderChat).not.toHaveAttribute("aria-description");
   });
 
+  it("切换左栏时沿用两页轨道，离屏页不能交互", async () => {
+    const user = userEvent.setup();
+    renderLayout();
+    const track = document.querySelector("[data-sidebar-page-track]");
+    const partners = track?.querySelector('[data-sidebar-page="partners"]');
+    const conversations = track?.querySelector(
+      '[data-sidebar-page="conversations"]',
+    );
+
+    expect(track).toHaveAttribute("data-sidebar-page-track", "partners");
+    expect(conversations).toHaveAttribute("inert");
+    await user.click(screen.getByRole("radio", { name: "会话" }));
+
+    expect(track).toHaveAttribute("data-sidebar-page-track", "conversations");
+    expect(partners).toHaveAttribute("inert");
+    expect(conversations).not.toHaveAttribute("inert");
+    expect(screen.getByRole("region", { name: "会话" })).toBe(conversations);
+  });
+
   it("会话列表标签按来源分组，列表顶部直接显示分组", async () => {
     const user = userEvent.setup();
     renderLayout();
-    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
-    const historyPanel = screen.getByRole("tabpanel");
+    await user.click(screen.getByRole("radio", { name: "会话" }));
+    const historyPanel = screen.getByRole("region", { name: "会话" });
     expect(historyPanel.querySelector("[data-chat-history-list]")).toHaveClass(
       "overflow-y-auto",
     );
@@ -1734,8 +1736,8 @@ describe("PartnerNavigationLayout", () => {
       within(historyPanel).queryByRole("button", { name: "新建会话" }),
     ).toBeNull();
     expect(
-      within(screen.getByRole("tabpanel")).queryByText("伙伴 6"),
-    ).toBeNull();
+      within(historyPanel).getByRole("combobox", { name: "会话范围" }),
+    ).toHaveTextContent("伙伴 6");
     expect(
       within(historyPanel).queryByRole("button", { name: "伙伴 6，工作中" }),
     ).toBeNull();
@@ -1795,7 +1797,7 @@ describe("PartnerNavigationLayout", () => {
       screen.queryByRole("navigation", { name: "当前伙伴功能" }),
     ).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+    await user.click(screen.getByRole("radio", { name: "会话" }));
 
     const projectChatRows = await waitFor(() =>
       screen.findAllByRole("link", {
@@ -1828,7 +1830,7 @@ it.each([
   const user = userEvent.setup();
   const view = renderLayout();
   try {
-    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+    await user.click(screen.getByRole("radio", { name: "会话" }));
     const link = await screen.findByRole("link", { name: /项目会话/ });
     expect(
       within(link).getByRole("img", { name: label }).querySelector("svg"),
@@ -1857,7 +1859,7 @@ it.each([
   const user = userEvent.setup();
   const view = renderLayout();
   try {
-    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+    await user.click(screen.getByRole("radio", { name: "会话" }));
     const link = await screen.findByRole("link", { name: /项目会话/ });
     const dot = () => link.querySelector("[data-history-status]");
     expect(dot()).toHaveAttribute("data-history-status", "running");

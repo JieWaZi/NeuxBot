@@ -191,6 +191,15 @@ func dispatchMainConversationInput(ctx context.Context, item models.MainConversa
 			item.Input.ContextInstructions = append(item.Input.ContextInstructions, mainconversation.DispatchAcknowledgmentInstruction())
 		}
 	}
+	if item.StartWork && !item.PrivateSource {
+		roster, rosterErr := MainConversationService.DelegationTargets(ctx, conv, work.WakerID)
+		if rosterErr != nil {
+			return models.Execution{}, rosterErr
+		}
+		if roster.Content != "" {
+			item.Input.ContextInstructions = append(item.Input.ContextInstructions, roster)
+		}
+	}
 	publicID := item.PublicMessageID
 	if item.PrivateSource {
 		if item.EntryPoint != execution.MainConversationSourceEntryPoint || item.StartWork {
